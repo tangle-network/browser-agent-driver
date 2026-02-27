@@ -1,0 +1,561 @@
+/**
+ * Test Runner — dependency-aware orchestration with ground-truth verification.
+ *
+ * Sequential mode (default): reuses a single driver, resolves dependencies.
+ * Parallel mode: spawns up to N concurrent workers, each with its own driver.
+ */
+
+import type { Page } from 'playwright';
+import type {
+  TestCase,
+  TestResult,
+  TestSuiteResult,
+  CriterionResult,
+  SuccessCriterion,
+  AgentConfig,
+  AgentResult,
+  Turn,
+} from './types.js';
+import type { Driver } from './drivers/types.js';
+import { AgentRunner } from './runner.js';
+import { TrajectoryStore } from './memory/store.js';
+import { TrajectoryAnalyzer, type RunAnalysis } from './memory/analyzer.js';
+
+const DEFAULT_MAX_TURNS = 30;
+
+export interface TestRunnerOptions {
+  /** Agent configuration (model, API key, vision, etc.) */
+  config?: AgentConfig;
+
+  /** Single driver for sequential execution */
+  driver?: Driver;
+  /** Factory for creating isolated drivers (required for parallel execution) */
+  driverFactory?: () => Promise<Driver>;
+
+  /** Max concurrent test cases (default: 1 = sequential) */
+  concurrency?: number;
+  /** Stop suite on first failure */
+  stopOnFailure?: boolean;
+
+  /** Enable trajectory memory (loads/saves successful runs) */
+  enableMemory?: boolean;
+  /** Path to trajectory store directory */
+  trajectoryStorePath?: string;
+
+  /** Hints from previous run analysis — injected into each agent's context */
+  feedbackHints?: string;
+
+  /** Capture screenshot every N turns (0 = disabled) */
+  screenshotInterval?: number;
+
+  /** Called when a test case starts */
+  onTestStart?: (tc: TestCase) => void;
+  /** Called when a test case completes */
+  onTestComplete?: (result: TestResult) => void;
+  /** Called after each agent turn */
+  onTurn?: (tc: TestCase, turn: Turn) => void;
+}
+
+export class TestRunner {
+  private config: AgentConfig;
+  private driver: Driver | undefined;
+  private driverFactory: (() => Promise<Driver>) | undefined;
+  private concurrency: number;
+  private stopOnFailure: boolean;
+  private store: TrajectoryStore | null;
+  private feedbackHints: string | undefined;
+  private screenshotInterval: number;
+  private analyzer: TrajectoryAnalyzer;
+  private onTestStart?: (tc: TestCase) => void;
+  private onTestComplete?: (result: TestResult) => void;
+  private onTurn?: (tc: TestCase, turn: Turn) => void;
+
+  constructor(options: TestRunnerOptions) {
+    if (!options.driver && !options.driverFactory) {
+      throw new Error('TestRunnerOptions requires either driver or driverFactory');
+    }
+    this.config = options.config || {};
+    this.driver = options.driver;
+    this.driverFactory = options.driverFactory;
+    this.concurrency = options.concurrency ?? 1;
+    this.stopOnFailure = options.stopOnFailure ?? false;
+    this.store = options.enableMemory
+      ? new TrajectoryStore(options.trajectoryStorePath)
+      : null;
+    this.feedbackHints = options.feedbackHints;
+    this.screenshotInterval = options.screenshotInterval ?? 0;
+    this.analyzer = new TrajectoryAnalyzer();
+    this.onTestStart = options.onTestStart;
+    this.onTestComplete = options.onTestComplete;
+    this.onTurn = options.onTurn;
+  }
+
+  /** Run a single test case */
+  async runTest(testCase: TestCase, driver?: Driver): Promise<TestResult> {
+    const activeDriver = driver || this.driver;
+    if (!activeDriver) {
+      throw new Error('No driver available — provide driver or driverFactory');
+    }
+
+    const startedAt = new Date();
+    const screenshots: { turn: number; base64: string }[] = [];
+    this.onTestStart?.(testCase);
+
+    // Run setup hook
+    const page = activeDriver.getPage?.();
+    if (testCase.setup && page) {
+      await testCase.setup(page);
+    }
+
+    try {
+      // Look up reference trajectory
+      let referenceTrajectory: string | undefined;
+      if (this.store) {
+        const match = this.store.findBestMatch(testCase.goal);
+        if (match) {
+          referenceTrajectory = this.store.formatAsReference(match);
+        }
+      }
+
+      // Build combined context: reference trajectory + feedback hints
+      let combinedReference = referenceTrajectory;
+      if (this.feedbackHints) {
+        combinedReference = combinedReference
+          ? `${combinedReference}\n\n${this.feedbackHints}`
+          : this.feedbackHints;
+      }
+
+      const runner = new AgentRunner({
+        driver: activeDriver,
+        config: this.config,
+        referenceTrajectory: combinedReference,
+        onTurn: (turn) => {
+          this.onTurn?.(testCase, turn);
+          if (this.screenshotInterval > 0 && turn.turn % this.screenshotInterval === 0) {
+            if (turn.state.screenshot) {
+              screenshots.push({ turn: turn.turn, base64: turn.state.screenshot });
+            }
+          }
+        },
+      });
+
+      // Build goal with success description
+      let goal = testCase.goal;
+      if (testCase.successDescription) {
+        goal += `\n\nSuccess criteria: ${testCase.successDescription}`;
+      }
+
+      // Run with timeout + abort signal
+      const timeoutMs = testCase.timeoutMs;
+      const abortController = timeoutMs && timeoutMs > 0 ? new AbortController() : undefined;
+
+      const runPromise = runner.run({
+        goal,
+        startUrl: testCase.startUrl,
+        maxTurns: testCase.maxTurns ?? DEFAULT_MAX_TURNS,
+        signal: abortController?.signal,
+      });
+
+      let agentResult: AgentResult;
+      if (timeoutMs && timeoutMs > 0 && abortController) {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const timeoutPromise = new Promise<AgentResult>((resolve) => {
+          timer = setTimeout(() => {
+            abortController.abort(`Test timed out after ${timeoutMs}ms`);
+            resolve({
+              success: false,
+              reason: `Test timed out after ${timeoutMs}ms`,
+              turns: [],
+              totalMs: timeoutMs,
+            });
+          }, timeoutMs);
+        });
+        agentResult = await Promise.race([runPromise, timeoutPromise])
+          .finally(() => { if (timer) clearTimeout(timer); });
+      } else {
+        agentResult = await runPromise;
+      }
+
+      // Ground-truth verification
+      let verified = true;
+      let criteriaResults: CriterionResult[] | undefined;
+
+      if (testCase.successCriteria?.length && page) {
+        criteriaResults = await this.verifyCriteria(testCase.successCriteria, page);
+        verified = criteriaResults.every((c) => c.passed);
+      }
+
+      // Save trajectory if memory enabled
+      const tokensUsed = agentResult.turns.reduce((sum, t) => sum + (t.tokensUsed || 0), 0);
+      if (this.store) {
+        this.store.save(
+          testCase.goal,
+          agentResult.turns,
+          verified && agentResult.success,
+          this.config.model || 'unknown',
+        );
+      }
+
+      const endedAt = new Date();
+      const verdict = this.buildVerdict(agentResult, verified, criteriaResults);
+
+      const result: TestResult = {
+        testCase,
+        agentResult,
+        agentSuccess: agentResult.success,
+        verified,
+        criteriaResults,
+        verdict,
+        turnsUsed: agentResult.turns.length,
+        tokensUsed,
+        durationMs: endedAt.getTime() - startedAt.getTime(),
+        startedAt,
+        endedAt,
+        screenshots: screenshots.length > 0 ? screenshots : undefined,
+      };
+
+      this.onTestComplete?.(result);
+      return result;
+    } finally {
+      if (testCase.teardown && page) {
+        await testCase.teardown(page).catch((err) => {
+          if (this.config.debug) {
+            console.log(`[TestRunner] Teardown failed for ${testCase.id}: ${err instanceof Error ? err.message : err}`);
+          }
+        });
+      }
+    }
+  }
+
+  /** Run a suite of test cases with dependency resolution and optional parallelism */
+  async runSuite(cases: TestCase[]): Promise<TestSuiteResult> {
+    if (this.concurrency > 1 && this.driverFactory) {
+      return this.runParallel(cases);
+    }
+    return this.runSequential(cases);
+  }
+
+  /** Analyze a completed suite run and return structured findings */
+  analyzeSuite(suite: TestSuiteResult): RunAnalysis {
+    return this.analyzer.analyze(suite);
+  }
+
+  /** Generate optimization hints from analysis — pass to feedbackHints on the next run */
+  generateHints(analysis: RunAnalysis): string {
+    return this.analyzer.generateHints(analysis);
+  }
+
+  // ── Sequential execution ──
+
+  private async runSequential(cases: TestCase[]): Promise<TestSuiteResult> {
+    const sorted = [...cases].sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99));
+    const results: TestResult[] = [];
+
+    for (const tc of sorted) {
+      // Check dependencies
+      const skipReason = this.checkDependencies(tc, results);
+      if (skipReason) {
+        const skipped = this.makeSkippedResult(tc, skipReason);
+        results.push(skipped);
+        continue;
+      }
+
+      const result = await this.runTest(tc);
+      results.push(result);
+
+      if (!result.verified && this.stopOnFailure) break;
+    }
+
+    return this.buildSuiteResult(results);
+  }
+
+  // ── Parallel execution ──
+
+  private async runParallel(cases: TestCase[]): Promise<TestSuiteResult> {
+    const sorted = [...cases].sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99));
+    const results: TestResult[] = [];
+    const completed = new Map<string, TestResult>();
+    const pending = new Set(sorted.map((c) => c.id));
+    let stopped = false;
+
+    const tryDequeue = (): TestCase | null => {
+      for (const tc of sorted) {
+        if (!pending.has(tc.id)) continue;
+
+        // Check if dependencies are met
+        if (tc.dependsOn?.length) {
+          const unmet = tc.dependsOn.some((dep) => {
+            const depResult = completed.get(dep);
+            return !depResult || !depResult.verified;
+          });
+          // If a dependency failed, skip this case
+          const depFailed = tc.dependsOn.some((dep) => {
+            const depResult = completed.get(dep);
+            return depResult && !depResult.verified;
+          });
+          if (depFailed) {
+            const failedDeps = tc.dependsOn.filter(dep => {
+              const r = completed.get(dep);
+              return r && !r.verified;
+            });
+            pending.delete(tc.id);
+            const skipped = this.makeSkippedResult(tc, `Dependencies failed: ${failedDeps.join(', ')}`);
+            completed.set(tc.id, skipped);
+            results.push(skipped);
+            return tryDequeue(); // Try next
+          }
+          if (unmet) continue; // Dependencies not yet resolved, try another
+        }
+
+        pending.delete(tc.id);
+        return tc;
+      }
+      return null;
+    };
+
+    const worker = async (): Promise<void> => {
+      while (!stopped) {
+        const tc = tryDequeue();
+        if (!tc) {
+          if (pending.size === 0) return;
+          // Wait for dependencies to resolve
+          await new Promise((r) => setTimeout(r, 100));
+          continue;
+        }
+
+        const driver = await this.driverFactory!();
+        try {
+          const result = await this.runTest(tc, driver);
+          completed.set(tc.id, result);
+          results.push(result);
+
+          if (!result.verified && this.stopOnFailure) {
+            stopped = true;
+          }
+        } finally {
+          await driver.close?.();
+        }
+      }
+    };
+
+    // Spawn workers
+    const workers = Array.from(
+      { length: Math.min(this.concurrency, cases.length) },
+      () => worker(),
+    );
+    await Promise.all(workers);
+
+    // Preserve original sort order in results
+    const ordered = sorted.map((tc) =>
+      results.find((r) => r.testCase.id === tc.id) || this.makeSkippedResult(tc, 'Not reached'),
+    );
+
+    return this.buildSuiteResult(ordered);
+  }
+
+  // ── Verification ──
+
+  private async verifyCriteria(
+    criteria: SuccessCriterion[],
+    page: Page,
+  ): Promise<CriterionResult[]> {
+    const results: CriterionResult[] = [];
+
+    for (const criterion of criteria) {
+      try {
+        results.push(await this.verifySingleCriterion(criterion, page));
+      } catch (err) {
+        results.push({
+          criterion,
+          passed: false,
+          detail: `Error: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+    }
+
+    return results;
+  }
+
+  private async verifySingleCriterion(
+    criterion: SuccessCriterion,
+    page: Page,
+  ): Promise<CriterionResult> {
+    switch (criterion.type) {
+      case 'url-contains': {
+        const url = page.url();
+        const passed = url.includes(criterion.value || '');
+        return {
+          criterion,
+          passed,
+          detail: passed ? undefined : `URL "${url}" does not contain "${criterion.value}"`,
+        };
+      }
+
+      case 'url-matches': {
+        const url = page.url();
+        const regex = new RegExp(criterion.value || '');
+        const passed = regex.test(url);
+        return {
+          criterion,
+          passed,
+          detail: passed ? undefined : `URL "${url}" does not match pattern "${criterion.value}"`,
+        };
+      }
+
+      case 'element-visible': {
+        if (!criterion.selector) {
+          return { criterion, passed: false, detail: 'No selector provided' };
+        }
+        const visible = await page
+          .locator(criterion.selector)
+          .first()
+          .isVisible({ timeout: 5000 })
+          .catch(() => false);
+        return {
+          criterion,
+          passed: visible,
+          detail: visible ? undefined : `Element "${criterion.selector}" is not visible`,
+        };
+      }
+
+      case 'element-text': {
+        if (!criterion.selector) {
+          return { criterion, passed: false, detail: 'No selector provided' };
+        }
+        const text = await page
+          .locator(criterion.selector)
+          .first()
+          .textContent({ timeout: 5000 })
+          .catch(() => '');
+        const passed = (text || '').includes(criterion.value || '');
+        return {
+          criterion,
+          passed,
+          detail: passed
+            ? undefined
+            : `Element "${criterion.selector}" text "${text}" does not contain "${criterion.value}"`,
+        };
+      }
+
+      case 'element-count': {
+        if (!criterion.selector) {
+          return { criterion, passed: false, detail: 'No selector provided' };
+        }
+        const count = await page.locator(criterion.selector).count();
+        const expected = parseInt(criterion.value || '0', 10);
+        const passed = count >= expected;
+        return {
+          criterion,
+          passed,
+          detail: passed
+            ? undefined
+            : `Found ${count} elements matching "${criterion.selector}", expected >= ${expected}`,
+        };
+      }
+
+      case 'custom': {
+        if (!criterion.check) {
+          return { criterion, passed: false, detail: 'No check function provided' };
+        }
+        const passed = await criterion.check(page);
+        return {
+          criterion,
+          passed,
+          detail: passed ? undefined : `Custom check failed: ${criterion.description || 'unknown'}`,
+        };
+      }
+
+      default:
+        return { criterion, passed: false, detail: `Unknown criterion type: ${criterion.type}` };
+    }
+  }
+
+  // ── Helpers ──
+
+  private checkDependencies(tc: TestCase, completed: TestResult[]): string | undefined {
+    if (!tc.dependsOn?.length) return undefined;
+
+    const unmet = tc.dependsOn.filter((dep) => {
+      const depResult = completed.find((r) => r.testCase.id === dep);
+      return !depResult || !depResult.verified;
+    });
+
+    if (unmet.length > 0) {
+      return `Dependencies not met: ${unmet.join(', ')}`;
+    }
+    return undefined;
+  }
+
+  private makeSkippedResult(tc: TestCase, reason: string): TestResult {
+    const now = new Date();
+    return {
+      testCase: tc,
+      agentResult: { success: false, reason, turns: [], totalMs: 0 },
+      agentSuccess: false,
+      verified: false,
+      verdict: `Skipped: ${reason}`,
+      turnsUsed: 0,
+      tokensUsed: 0,
+      durationMs: 0,
+      startedAt: now,
+      endedAt: now,
+      skipped: true,
+      skipReason: reason,
+    };
+  }
+
+  private buildVerdict(
+    agentResult: AgentResult,
+    verified: boolean,
+    criteriaResults?: CriterionResult[],
+  ): string {
+    if (verified && agentResult.success) {
+      return agentResult.result || 'Goal achieved';
+    }
+    if (!agentResult.success) {
+      return agentResult.reason || 'Agent failed';
+    }
+    // Agent reported success but verification failed
+    const failedCriteria = criteriaResults
+      ?.filter((c) => !c.passed)
+      .map((c) => c.detail || c.criterion.description || c.criterion.type)
+      .join('; ');
+    return `Verification failed: ${failedCriteria || 'unknown criteria'}`;
+  }
+
+  private buildSuiteResult(results: TestResult[]): TestSuiteResult {
+    const nonSkipped = results.filter((r) => !r.skipped);
+    const durations = nonSkipped.map((r) => r.durationMs).sort((a, b) => a - b);
+    const passed = nonSkipped.filter((r) => r.verified).length;
+
+    return {
+      model: this.config.model || 'unknown',
+      timestamp: new Date().toISOString(),
+      results,
+      summary: {
+        total: results.length,
+        passed,
+        failed: nonSkipped.length - passed,
+        skipped: results.length - nonSkipped.length,
+        passRate: nonSkipped.length > 0 ? passed / nonSkipped.length : 0,
+        avgTurns: avg(nonSkipped.map((r) => r.turnsUsed)),
+        avgTokens: avg(nonSkipped.map((r) => r.tokensUsed)),
+        avgDurationMs: avg(durations),
+        p50DurationMs: percentile(durations, 0.5),
+        p95DurationMs: percentile(durations, 0.95),
+        totalDurationMs: durations.reduce((sum, d) => sum + d, 0),
+      },
+    };
+  }
+}
+
+function avg(nums: number[]): number {
+  if (nums.length === 0) return 0;
+  return nums.reduce((sum, n) => sum + n, 0) / nums.length;
+}
+
+function percentile(sorted: number[], p: number): number {
+  if (sorted.length === 0) return 0;
+  const idx = Math.ceil(sorted.length * p) - 1;
+  return sorted[Math.max(0, Math.min(idx, sorted.length - 1))];
+}
