@@ -144,11 +144,13 @@ export class Coordinator {
     this.emit({ type: 'sandbox:started', sandboxId: sandbox.id });
 
     // Write test cases to sandbox (strip non-serializable fields like functions)
+    const casesFile = '/tmp/cases.json';
+    const outputDir = '/output/';
     const serializableCases = cases.map(serializeTestCase);
-    await sandbox.writeFile('/tmp/cases.json', JSON.stringify(serializableCases, null, 2));
+    await sandbox.writeFile(casesFile, JSON.stringify(serializableCases, null, 2));
 
     // Build the agent-driver run command
-    const cmd = buildRunCommand(this.agentConfig);
+    const cmd = buildRunCommand(this.agentConfig, casesFile, outputDir);
 
     // Stream execution and parse JSON-lines progress events
     let suiteResult: TestSuiteResult | undefined;
@@ -385,12 +387,19 @@ function serializeTestCase(tc: TestCase): Record<string, unknown> {
 }
 
 /** Build the agent-driver CLI command */
-function buildRunCommand(config: AgentConfig): string {
+function buildRunCommand(config: AgentConfig, casesFile: string, outputDir: string): string {
+  // If the caller provided a custom command template, use it
+  if (config.runCommand) {
+    return config.runCommand
+      .replace(/\{casesFile\}/g, casesFile)
+      .replace(/\{outputDir\}/g, outputDir) + ' 2>&1';
+  }
+
   const parts = [
     'node', '/app/dist/cli.js', 'run',
-    '--cases', '/tmp/cases.json',
+    '--cases', casesFile,
     '--json',
-    '--sink', '/output/',
+    '--sink', outputDir,
     '--model', config.model,
     '--provider', config.provider,
   ];

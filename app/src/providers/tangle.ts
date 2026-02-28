@@ -19,6 +19,50 @@ import type {
   FileEntry,
 } from '../types.js';
 
+const DEBUG = !!process.env.DEBUG_TANGLE;
+
+function debug(msg: string, ...args: unknown[]): void {
+  if (DEBUG) process.stderr.write(`[tangle] ${msg} ${args.map(String).join(' ')}\n`);
+}
+
+/** Escape a string for safe use inside single-quoted shell arguments. */
+function shellEscape(s: string): string {
+  return `'${s.replace(/'/g, "'\\''")}'`;
+}
+
+/**
+ * Strip terminal prompt noise injected by the sidecar PTY.
+ *
+ * The sidecar uses a PTY-based terminal that emits shell prompts and
+ * internal control sequences around command output. These patterns:
+ *  - Container prompt:  `abc123:/path# ...`  or  `user@host dir % ...`
+ *  - CMD_DONE markers:  `printf '%s:%s\n' "__CMD_DONE_..."  "$?"`
+ *  - Exit commands:     bare `exit` lines
+ */
+const PROMPT_PATTERNS = [
+  // Container-style prompt: hex-id:/path# or hex-id:/path$
+  /^[0-9a-f]{8,}:\/\S*[#$]\s/,
+  // macOS-style prompt: user@Host dir %
+  /^.+@\S+\s+\S+\s+%\s/,
+  // CMD_DONE marker lines
+  /__CMD_DONE_\d+__/,
+  // printf used to emit CMD_DONE
+  /^printf\s+'%s:%s\\n'/,
+  // Bare exit command
+  /^exit\s*$/,
+];
+
+function stripPromptNoise(output: string): string {
+  return output
+    .split('\n')
+    .filter((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return true; // preserve blank lines
+      return !PROMPT_PATTERNS.some((re) => re.test(trimmed));
+    })
+    .join('\n');
+}
+
 export interface TangleSandboxProviderOptions {
   /** Tangle sandbox API key (sk_sb_*) */
   apiKey: string;
@@ -72,7 +116,8 @@ export class TangleSandboxProvider implements SandboxProvider {
 
     const createOptions: import('@tangle/sandbox').CreateSandboxOptions = {
       name: config.id ?? `sandbox-${randomUUID().slice(0, 8)}`,
-      // Only send image if explicitly set (not 'default' sentinel) — let orchestrator use its DEFAULT_CONTAINER_IMAGE
+      // Only send image if explicitly set (not 'default' sentinel) —
+      // let orchestrator use its DEFAULT_CONTAINER_IMAGE
       ...(this.image !== 'default' ? { image: this.image } : {}),
     };
 
@@ -143,8 +188,8 @@ class TangleSandbox implements AppSandbox {
       });
       return {
         exitCode: result.exitCode,
-        stdout: result.stdout,
-        stderr: result.stderr,
+        stdout: stripPromptNoise(result.stdout),
+        stderr: stripPromptNoise(result.stderr),
       };
     } finally {
       if (this._status === 'running') {
@@ -156,20 +201,69 @@ class TangleSandbox implements AppSandbox {
   async *execStream(command: string, options?: ExecOptions): AsyncIterable<string> {
     this._status = 'running';
     try {
-      // SDK exec returns full output — split into lines for streaming interface
+      // Try real streaming via process.spawn() + stdout() SSE
+      if (this.instance.process) {
+        try {
+          const proc = await this.instance.process.spawn(command, {
+            cwd: options?.cwd,
+            env: options?.env,
+            timeoutMs: options?.timeoutMs ?? this.timeoutMs,
+          });
+
+          let buffer = '';
+          for await (const chunk of proc.stdout()) {
+            // stdout() yields chunks that may contain partial lines
+            buffer += chunk;
+            const lines = buffer.split('\n');
+            buffer = lines.pop() ?? '';
+            for (const line of lines) {
+              const cleaned = line.trim();
+              if (cleaned && !PROMPT_PATTERNS.some((re) => re.test(cleaned))) {
+                yield line;
+              }
+            }
+          }
+          // Flush remaining buffer
+          if (buffer.trim()) {
+            const cleaned = buffer.trim();
+            if (!PROMPT_PATTERNS.some((re) => re.test(cleaned))) {
+              yield buffer;
+            }
+          }
+
+          const exitCode = await proc.wait();
+          if (exitCode !== 0) {
+            // Collect stderr for error reporting
+            let stderr = '';
+            try {
+              const status = await proc.status();
+              if ('stderr' in status) stderr = String(status.stderr);
+            } catch { /* ignore */ }
+            throw new Error(`Command failed (exit ${exitCode})${stderr ? ': ' + stderr : ''}`);
+          }
+          return;
+        } catch (err) {
+          // If process.spawn fails (e.g., endpoint not available), fall through to exec
+          if (err instanceof Error && err.message.startsWith('Command failed')) throw err;
+          debug('process.spawn() failed, falling back to exec:', err instanceof Error ? err.message : err);
+        }
+      }
+
+      // Fallback: blocking exec() — yields lines after command completes
       const result = await this.instance.exec(command, {
         cwd: options?.cwd,
         env: options?.env,
         timeoutMs: options?.timeoutMs ?? this.timeoutMs,
       });
 
-      const lines = result.stdout.split('\n');
+      const cleaned = stripPromptNoise(result.stdout);
+      const lines = cleaned.split('\n');
       for (const line of lines) {
         if (line) yield line;
       }
 
       if (result.exitCode !== 0 && result.stderr) {
-        throw new Error(`Command failed (exit ${result.exitCode}): ${result.stderr}`);
+        throw new Error(`Command failed (exit ${result.exitCode}): ${stripPromptNoise(result.stderr)}`);
       }
     } finally {
       if (this._status === 'running') {
@@ -185,14 +279,15 @@ class TangleSandbox implements AppSandbox {
     try {
       await this.instance.write(path, text);
       return;
-    } catch {
-      // Falls through to exec-based write for absolute paths outside workspace
+    } catch (err) {
+      debug('SDK write() failed, falling back to exec:', err instanceof Error ? err.message : err);
     }
 
     // Exec-based fallback — handles any filesystem path
     const b64 = Buffer.from(text).toString('base64');
+    const escaped = shellEscape(path);
     const result = await this.instance.exec(
-      `mkdir -p "$(dirname '${path}')" && echo '${b64}' | base64 -d > '${path}'`,
+      `mkdir -p "$(dirname ${escaped})" && echo '${b64}' | base64 -d > ${escaped}`,
       { timeoutMs: this.timeoutMs },
     );
     if (result.exitCode !== 0) {
@@ -205,18 +300,18 @@ class TangleSandbox implements AppSandbox {
     try {
       const content = await this.instance.read(path);
       return Buffer.from(content);
-    } catch {
-      // Falls through to exec-based read for absolute paths outside workspace
+    } catch (err) {
+      debug('SDK read() failed, falling back to exec:', err instanceof Error ? err.message : err);
     }
 
     // Exec-based fallback — base64 encode for binary safety
-    const result = await this.instance.exec(`base64 '${path}'`, {
+    const result = await this.instance.exec(`base64 ${shellEscape(path)}`, {
       timeoutMs: this.timeoutMs,
     });
     if (result.exitCode !== 0) {
       throw new Error(`readFile failed (exit ${result.exitCode}): ${result.stderr}`);
     }
-    return Buffer.from(result.stdout.replace(/\s/g, ''), 'base64');
+    return Buffer.from(stripPromptNoise(result.stdout).replace(/\s/g, ''), 'base64');
   }
 
   async listFiles(path: string): Promise<FileEntry[]> {
@@ -229,8 +324,8 @@ class TangleSandbox implements AppSandbox {
         isDirectory: f.isDir,
         size: f.size,
       }));
-    } catch {
-      // Falls through to exec-based listing
+    } catch (err) {
+      debug('SDK fs.list() failed, falling back to exec:', err instanceof Error ? err.message : err);
     }
 
     // Exec-based fallback using ls
@@ -238,11 +333,11 @@ class TangleSandbox implements AppSandbox {
     // the terminal CWD may differ from the workspace root
     let lsTarget: string;
     if (path === '.' || !path.startsWith('/')) {
-      // Use shell variable expansion (double quotes, not single)
       const suffix = path === '.' ? '' : `/${path}`;
+      // Double quotes so $AGENT_WORKSPACE_ROOT expands
       lsTarget = `"\${AGENT_WORKSPACE_ROOT:-.}${suffix}"`;
     } else {
-      lsTarget = `'${path}'`;
+      lsTarget = shellEscape(path);
     }
     const result = await this.instance.exec(
       `ls -1apL ${lsTarget} 2>/dev/null`,
@@ -251,7 +346,7 @@ class TangleSandbox implements AppSandbox {
     if (result.exitCode !== 0) {
       throw new Error(`listFiles failed (exit ${result.exitCode}): ${result.stderr}`);
     }
-    return result.stdout
+    return stripPromptNoise(result.stdout)
       .split('\n')
       .filter((l) => l && l !== './' && l !== '../')
       .map((name) => {
@@ -273,13 +368,14 @@ class TangleSandbox implements AppSandbox {
     try {
       await this.instance.fs.downloadDir(remotePath, localPath);
       return;
-    } catch {
-      // Falls through to exec-based tar extraction
+    } catch (err) {
+      debug('SDK fs.downloadDir() failed, falling back to exec:', err instanceof Error ? err.message : err);
     }
 
     // Exec-based fallback — tar + base64 for binary-safe transfer
+    const escaped = shellEscape(remotePath);
     const result = await this.instance.exec(
-      `tar czf - -C '${remotePath}' . 2>/dev/null | base64`,
+      `tar czf - -C ${escaped} . 2>/dev/null | base64`,
       { timeoutMs: this.timeoutMs },
     );
     if (result.exitCode !== 0) {
@@ -287,7 +383,10 @@ class TangleSandbox implements AppSandbox {
     }
 
     // Decode and extract locally
-    const tarBuffer = Buffer.from(result.stdout.replace(/\s/g, ''), 'base64');
+    const tarBuffer = Buffer.from(
+      stripPromptNoise(result.stdout).replace(/\s/g, ''),
+      'base64',
+    );
     const { writeFileSync, unlinkSync } = await import('node:fs');
     const { execFileSync } = await import('node:child_process');
     const tmpTar = `${localPath}/.tmp-archive-${Date.now()}.tar.gz`;

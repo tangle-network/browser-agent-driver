@@ -174,6 +174,19 @@ function main(): void {
           }
       );
 
+      // Graceful shutdown on SIGINT/SIGTERM — destroy all sandboxes
+      let shuttingDown = false;
+      const shutdown = () => {
+        if (shuttingDown) return;
+        shuttingDown = true;
+        if (!quiet) console.error('\nShutting down — destroying sandboxes...');
+        provider.destroyAll()
+          .catch(() => {})
+          .finally(() => process.exit(130));
+      };
+      process.on('SIGINT', shutdown);
+      process.on('SIGTERM', shutdown);
+
       const coordinator = new Coordinator({
         provider,
         concurrency,

@@ -120,6 +120,12 @@ export interface AgentConfig {
   goalVerification?: boolean;
   maxTurns?: number;
   headless?: boolean;
+  /**
+   * Command template for running agent-driver inside the sandbox.
+   * Use `{casesFile}` and `{outputDir}` as placeholders.
+   * Default: `node /app/dist/cli.js run --cases {casesFile} --json --sink {outputDir}`
+   */
+  runCommand?: string;
 }
 
 /** Configuration for the coordinator */
