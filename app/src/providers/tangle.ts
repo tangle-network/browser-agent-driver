@@ -72,7 +72,8 @@ export class TangleSandboxProvider implements SandboxProvider {
 
     const createOptions: import('@tangle/sandbox').CreateSandboxOptions = {
       name: config.id ?? `sandbox-${randomUUID().slice(0, 8)}`,
-      image: this.image,
+      // Only send image if explicitly set (not 'default' sentinel) — let orchestrator use its DEFAULT_CONTAINER_IMAGE
+      ...(this.image !== 'default' ? { image: this.image } : {}),
     };
 
     if (config.env) {
@@ -233,8 +234,18 @@ class TangleSandbox implements AppSandbox {
     }
 
     // Exec-based fallback using ls
+    // For relative paths, resolve against $AGENT_WORKSPACE_ROOT since
+    // the terminal CWD may differ from the workspace root
+    let lsTarget: string;
+    if (path === '.' || !path.startsWith('/')) {
+      // Use shell variable expansion (double quotes, not single)
+      const suffix = path === '.' ? '' : `/${path}`;
+      lsTarget = `"\${AGENT_WORKSPACE_ROOT:-.}${suffix}"`;
+    } else {
+      lsTarget = `'${path}'`;
+    }
     const result = await this.instance.exec(
-      `ls -1apL '${path}' 2>/dev/null`,
+      `ls -1apL ${lsTarget} 2>/dev/null`,
       { timeoutMs: this.timeoutMs },
     );
     if (result.exitCode !== 0) {
