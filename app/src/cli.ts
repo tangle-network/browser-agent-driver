@@ -104,8 +104,8 @@ function main(): void {
     ?? process.env.GOOGLE_API_KEY;
   const baseUrl = str(values['base-url']);
   const maxTurnsStr = str(values['max-turns']);
-  const tangleApiKey = str(values['tangle-api-key']);
-  const orchestratorUrl = str(values['orchestrator-url']);
+  const tangleApiKey = str(values['tangle-api-key']) ?? process.env.TANGLE_API_KEY;
+  const orchestratorUrl = str(values['orchestrator-url']) ?? process.env.TANGLE_BASE_URL;
   const dockerImage = str(values['docker-image']);
 
   // Progress handler
@@ -152,12 +152,17 @@ function main(): void {
   // Run
   void (async () => {
     try {
+      if (providerName === 'tangle' && !tangleApiKey) {
+        console.error('Error: --tangle-api-key or TANGLE_API_KEY is required for tangle provider');
+        process.exit(1);
+      }
+
       const provider = await createProvider(
         providerName === 'tangle'
           ? {
             type: 'tangle' as const,
             config: {
-              apiKey: tangleApiKey,
+              apiKey: tangleApiKey!,
               baseUrl: orchestratorUrl,
             },
           }

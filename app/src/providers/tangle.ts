@@ -1,14 +1,15 @@
 /**
  * TangleSandboxProvider — provisions sandboxes via the Tangle platform.
  *
- * Uses @tangle/sandbox SDK for container management, terminal execution,
- * and file I/O. The SDK is a peer dependency — only needed when using
- * this provider.
+ * Uses the public @tangle/sandbox SDK for container management, terminal
+ * execution, and file I/O. The SDK is a peer dependency — only needed when
+ * using this provider.
  */
 
+import { mkdirSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import type {
-  Sandbox,
+  Sandbox as AppSandbox,
   SandboxConfig,
   SandboxInfo,
   SandboxProvider,
@@ -19,54 +20,14 @@ import type {
 } from '../types.js';
 
 export interface TangleSandboxProviderOptions {
-  /** Tangle sandbox API key */
-  apiKey?: string;
-  /** Orchestrator base URL */
+  /** Tangle sandbox API key (sk_sb_*) */
+  apiKey: string;
+  /** Sandbox API base URL (default: https://agents.tangle.network) */
   baseUrl?: string;
   /** Sandbox image preset (default: 'default') */
   image?: string;
-  /** HTTP request timeout in ms (default: 300000 for local dev with sidecar startup) */
+  /** HTTP request timeout in ms (default: 300000) */
   timeoutMs?: number;
-}
-
-/** Lazily-resolved @tangle/sandbox types */
-interface TangleSandboxSDK {
-  Sandbox: new (config: { apiKey: string; baseUrl?: string; timeoutMs?: number }) => TangleSandboxClient;
-}
-
-interface TangleSandboxClient {
-  create(options: Record<string, unknown>): Promise<TangleSandboxInstance>;
-}
-
-interface TangleSandboxInstance {
-  id: string;
-  status: string;
-  connection: { sidecarUrl: string; authToken: string } | undefined;
-  exec(command: string, options?: { cwd?: string; env?: Record<string, string>; timeoutMs?: number }): Promise<{
-    exitCode: number;
-    stdout: string;
-    stderr: string;
-  }>;
-  read(path: string): Promise<string>;
-  write(path: string, content: string): Promise<void>;
-  fs: {
-    list(path: string, options?: { all?: boolean; long?: boolean }): Promise<TangleFileInfo[]>;
-  };
-  refresh(): Promise<void>;
-  waitFor(
-    status: string | string[],
-    options?: { timeoutMs?: number; pollIntervalMs?: number },
-  ): Promise<void>;
-  stop(): Promise<void>;
-  delete(): Promise<void>;
-}
-
-interface TangleFileInfo {
-  name: string;
-  path: string;
-  isDir: boolean;
-  isFile: boolean;
-  size: number;
 }
 
 export class TangleSandboxProvider implements SandboxProvider {
@@ -76,7 +37,7 @@ export class TangleSandboxProvider implements SandboxProvider {
   private readonly image: string;
   private readonly timeoutMs: number;
   private readonly sandboxes = new Map<string, TangleSandbox>();
-  private sdkModule: TangleSandboxSDK | undefined;
+  private sdkClient: import('@tangle/sandbox').SandboxClient | undefined;
 
   constructor(options: TangleSandboxProviderOptions) {
     if (!options.apiKey) {
@@ -85,15 +46,19 @@ export class TangleSandboxProvider implements SandboxProvider {
     this.apiKey = options.apiKey;
     this.baseUrl = options.baseUrl;
     this.image = options.image ?? 'default';
-    this.timeoutMs = options.timeoutMs ?? 300_000; // 5 min for local dev sidecar startup
+    this.timeoutMs = options.timeoutMs ?? 300_000;
   }
 
-  private async getSDK(): Promise<TangleSandboxSDK> {
-    if (this.sdkModule) return this.sdkModule;
+  private async getClient(): Promise<import('@tangle/sandbox').SandboxClient> {
+    if (this.sdkClient) return this.sdkClient;
     try {
-      // Dynamic import — @tangle/sandbox is an optional peer dependency
-      this.sdkModule = await import('@tangle/sandbox') as unknown as TangleSandboxSDK;
-      return this.sdkModule;
+      const { Sandbox } = await import('@tangle/sandbox');
+      this.sdkClient = new Sandbox({
+        apiKey: this.apiKey,
+        baseUrl: this.baseUrl,
+        timeoutMs: this.timeoutMs,
+      });
+      return this.sdkClient;
     } catch {
       throw new Error(
         'TangleSandboxProvider requires @tangle/sandbox to be installed. ' +
@@ -102,15 +67,10 @@ export class TangleSandboxProvider implements SandboxProvider {
     }
   }
 
-  async provision(config: SandboxConfig): Promise<Sandbox> {
-    const sdk = await this.getSDK();
-    const client = new sdk.Sandbox({
-      apiKey: this.apiKey,
-      baseUrl: this.baseUrl,
-      timeoutMs: this.timeoutMs,
-    });
+  async provision(config: SandboxConfig): Promise<AppSandbox> {
+    const client = await this.getClient();
 
-    const createOptions: Record<string, unknown> = {
+    const createOptions: import('@tangle/sandbox').CreateSandboxOptions = {
       name: config.id ?? `sandbox-${randomUUID().slice(0, 8)}`,
       image: this.image,
     };
@@ -129,7 +89,6 @@ export class TangleSandboxProvider implements SandboxProvider {
       }
     }
 
-    // Merge provider-specific config
     if (config.providerConfig) {
       Object.assign(createOptions, config.providerConfig);
     }
@@ -137,7 +96,7 @@ export class TangleSandboxProvider implements SandboxProvider {
     const instance = await client.create(createOptions);
     await instance.waitFor('running', { timeoutMs: this.timeoutMs });
 
-    const sandbox = new TangleSandbox(instance);
+    const sandbox = new TangleSandbox(instance, this.timeoutMs);
     this.sandboxes.set(instance.id, sandbox);
     return sandbox;
   }
@@ -157,18 +116,20 @@ export class TangleSandboxProvider implements SandboxProvider {
   }
 }
 
-class TangleSandbox implements Sandbox {
+class TangleSandbox implements AppSandbox {
   readonly id: string;
   private _status: SandboxStatus = 'ready';
-  private readonly instance: TangleSandboxInstance;
+  private readonly instance: import('@tangle/sandbox').SandboxInstance;
+  private readonly timeoutMs: number;
 
   get status(): SandboxStatus {
     return this._status;
   }
 
-  constructor(instance: TangleSandboxInstance) {
+  constructor(instance: import('@tangle/sandbox').SandboxInstance, timeoutMs: number) {
     this.id = instance.id;
     this.instance = instance;
+    this.timeoutMs = timeoutMs;
   }
 
   async exec(command: string, options?: ExecOptions): Promise<ExecResult> {
@@ -177,7 +138,7 @@ class TangleSandbox implements Sandbox {
       const result = await this.instance.exec(command, {
         cwd: options?.cwd,
         env: options?.env,
-        timeoutMs: options?.timeoutMs,
+        timeoutMs: options?.timeoutMs ?? this.timeoutMs,
       });
       return {
         exitCode: result.exitCode,
@@ -194,13 +155,11 @@ class TangleSandbox implements Sandbox {
   async *execStream(command: string, options?: ExecOptions): AsyncIterable<string> {
     this._status = 'running';
     try {
-      // Use exec and split output into lines.
-      // The SDK's process.spawn API could be used for true streaming,
-      // but exec is simpler and sufficient for JSON-lines output.
+      // SDK exec returns full output — split into lines for streaming interface
       const result = await this.instance.exec(command, {
         cwd: options?.cwd,
         env: options?.env,
-        timeoutMs: options?.timeoutMs,
+        timeoutMs: options?.timeoutMs ?? this.timeoutMs,
       });
 
       const lines = result.stdout.split('\n');
@@ -220,22 +179,113 @@ class TangleSandbox implements Sandbox {
 
   async writeFile(path: string, content: string | Buffer): Promise<void> {
     const text = typeof content === 'string' ? content : content.toString('utf-8');
-    await this.instance.write(path, text);
+
+    // Try SDK write() first (works for workspace-relative paths)
+    try {
+      await this.instance.write(path, text);
+      return;
+    } catch {
+      // Falls through to exec-based write for absolute paths outside workspace
+    }
+
+    // Exec-based fallback — handles any filesystem path
+    const b64 = Buffer.from(text).toString('base64');
+    const result = await this.instance.exec(
+      `mkdir -p "$(dirname '${path}')" && echo '${b64}' | base64 -d > '${path}'`,
+      { timeoutMs: this.timeoutMs },
+    );
+    if (result.exitCode !== 0) {
+      throw new Error(`writeFile failed (exit ${result.exitCode}): ${result.stderr}`);
+    }
   }
 
   async readFile(path: string): Promise<Buffer> {
-    const content = await this.instance.read(path);
-    return Buffer.from(content);
+    // Try SDK read() first (works for workspace-relative paths)
+    try {
+      const content = await this.instance.read(path);
+      return Buffer.from(content);
+    } catch {
+      // Falls through to exec-based read for absolute paths outside workspace
+    }
+
+    // Exec-based fallback — base64 encode for binary safety
+    const result = await this.instance.exec(`base64 '${path}'`, {
+      timeoutMs: this.timeoutMs,
+    });
+    if (result.exitCode !== 0) {
+      throw new Error(`readFile failed (exit ${result.exitCode}): ${result.stderr}`);
+    }
+    return Buffer.from(result.stdout.replace(/\s/g, ''), 'base64');
   }
 
   async listFiles(path: string): Promise<FileEntry[]> {
-    const files = await this.instance.fs.list(path, { all: true });
-    return files.map((f) => ({
-      name: f.name,
-      path: f.path,
-      isDirectory: f.isDir,
-      size: f.size,
-    }));
+    // Try SDK fs.list() first
+    try {
+      const files = await this.instance.fs.list(path);
+      return files.map((f) => ({
+        name: f.path.split('/').pop() ?? f.path,
+        path: f.path,
+        isDirectory: f.isDir,
+        size: f.size,
+      }));
+    } catch {
+      // Falls through to exec-based listing
+    }
+
+    // Exec-based fallback using ls
+    const result = await this.instance.exec(
+      `ls -1apL '${path}' 2>/dev/null`,
+      { timeoutMs: this.timeoutMs },
+    );
+    if (result.exitCode !== 0) {
+      throw new Error(`listFiles failed (exit ${result.exitCode}): ${result.stderr}`);
+    }
+    return result.stdout
+      .split('\n')
+      .filter((l) => l && l !== './' && l !== '../')
+      .map((name) => {
+        const isDir = name.endsWith('/');
+        const cleanName = isDir ? name.slice(0, -1) : name;
+        return {
+          name: cleanName,
+          path: path.endsWith('/') ? `${path}${cleanName}` : `${path}/${cleanName}`,
+          isDirectory: isDir,
+        };
+      });
+  }
+
+  /** Copy an entire directory from sandbox to local filesystem */
+  async copyDirectory(remotePath: string, localPath: string): Promise<void> {
+    mkdirSync(localPath, { recursive: true });
+
+    // Try SDK fs.downloadDir() first
+    try {
+      await this.instance.fs.downloadDir(remotePath, localPath);
+      return;
+    } catch {
+      // Falls through to exec-based tar extraction
+    }
+
+    // Exec-based fallback — tar + base64 for binary-safe transfer
+    const result = await this.instance.exec(
+      `tar czf - -C '${remotePath}' . 2>/dev/null | base64`,
+      { timeoutMs: this.timeoutMs },
+    );
+    if (result.exitCode !== 0) {
+      throw new Error(`copyDirectory failed (exit ${result.exitCode}): ${result.stderr}`);
+    }
+
+    // Decode and extract locally
+    const tarBuffer = Buffer.from(result.stdout.replace(/\s/g, ''), 'base64');
+    const { writeFileSync, unlinkSync } = await import('node:fs');
+    const { execFileSync } = await import('node:child_process');
+    const tmpTar = `${localPath}/.tmp-archive-${Date.now()}.tar.gz`;
+    writeFileSync(tmpTar, tarBuffer);
+    try {
+      execFileSync('tar', ['xzf', tmpTar, '-C', localPath]);
+    } finally {
+      try { unlinkSync(tmpTar); } catch { /* ignore */ }
+    }
   }
 
   async destroy(): Promise<void> {

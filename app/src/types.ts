@@ -192,12 +192,14 @@ export interface DockerProviderConfig {
 }
 
 export interface TangleProviderConfig {
-  /** Tangle sandbox API key */
-  apiKey?: string;
-  /** Orchestrator base URL */
+  /** Tangle sandbox API key (sk_sb_*) — required */
+  apiKey: string;
+  /** Sandbox API base URL (default: https://agents.tangle.network) */
   baseUrl?: string;
   /** Sandbox image preset */
   image?: string;
+  /** HTTP request timeout in ms (default: 300000) */
+  timeoutMs?: number;
 }
 
 /** A single entry in the artifact manifest produced by agent-driver */
