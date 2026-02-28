@@ -105,3 +105,6 @@ export { FilesystemSink } from './artifacts/filesystem-sink.js';
 export { CompositeSink } from './artifacts/composite-sink.js';
 export { WebhookSink } from './artifacts/webhook-sink.js';
 export type { WebhookSinkOptions, WebhookPayload } from './artifacts/webhook-sink.js';
+
+// Payload formatters (for WebhookSink.formatPayload)
+export { slackFormatter } from './formatters/slack.js';

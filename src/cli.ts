@@ -235,6 +235,34 @@ async function main(): Promise<void> {
 
   const result = await runner.runSuite(cases);
 
+  // Write reports for each configured format
+  const { generateReport } = await import('./test-report.js');
+  const reporters = driverConfig.reporters ?? ['json'];
+  const reportDir = path.resolve(sinkDir);
+  fs.mkdirSync(reportDir, { recursive: true });
+
+  const formatMeta: Record<string, { ext: string; contentType: string }> = {
+    json: { ext: 'json', contentType: 'application/json' },
+    markdown: { ext: 'md', contentType: 'text/markdown' },
+    html: { ext: 'html', contentType: 'text/html' },
+    junit: { ext: 'xml', contentType: 'application/xml' },
+  };
+
+  for (const format of reporters) {
+    const meta = formatMeta[format];
+    if (!meta) continue;
+    try {
+      const report = generateReport(result, { format, includeTurns: format === 'markdown' });
+      const reportPath = path.join(reportDir, `report.${meta.ext}`);
+      fs.writeFileSync(reportPath, report);
+      if (!quiet) {
+        console.log(`Report: ${reportPath}`);
+      }
+    } catch {
+      // Report generation is best-effort
+    }
+  }
+
   // Also write report to stdout if JSON mode
   if (values.json && !quiet) {
     console.log(JSON.stringify(result, null, 2));

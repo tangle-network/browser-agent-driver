@@ -180,6 +180,25 @@ describe('WebhookSink', () => {
     expect(body.summary).toEqual({ total: 5, passed: 4, failed: 1 });
   });
 
+  it('applies formatPayload callback before POST', async () => {
+    const sink = new WebhookSink({
+      url: 'https://hooks.example.com/test',
+      retries: 0,
+      formatPayload: (payload) => ({
+        text: `Custom: ${payload.event}`,
+        transformed: true,
+      }),
+    });
+
+    await sink.put(makeArtifact());
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.text).toBe('Custom: artifact');
+    expect(body.transformed).toBe(true);
+    // Original payload fields should NOT be present
+    expect(body.event).toBeUndefined();
+  });
+
   it('does not retry on 4xx client errors (except 429)', async () => {
     fetchMock.mockResolvedValue({ ok: false, status: 400 });
 

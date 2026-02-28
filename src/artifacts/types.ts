@@ -13,6 +13,7 @@ export type ArtifactType =
   | 'report-json'
   | 'report-md'
   | 'report-html'
+  | 'report-junit'
   | 'trajectory'
   | 'knowledge'
   | 'checkpoint';

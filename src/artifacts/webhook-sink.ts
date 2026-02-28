@@ -24,6 +24,8 @@ export interface WebhookSinkOptions {
   timeoutMs?: number;
   /** Number of retry attempts on failure (default: 3) */
   retries?: number;
+  /** Transform the payload before POST. Use for Slack, Discord, Teams formatting. */
+  formatPayload?: (payload: WebhookPayload) => unknown;
 }
 
 interface WebhookArtifactPayload {
@@ -59,6 +61,7 @@ export class WebhookSink implements ArtifactSink {
   private readonly maxPayloadBytes: number;
   private readonly timeoutMs: number;
   private readonly retries: number;
+  private readonly formatPayload: ((payload: WebhookPayload) => unknown) | undefined;
 
   constructor(options: WebhookSinkOptions) {
     this.url = options.url;
@@ -68,6 +71,7 @@ export class WebhookSink implements ArtifactSink {
     this.maxPayloadBytes = options.maxPayloadBytes ?? DEFAULT_MAX_PAYLOAD_BYTES;
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.retries = options.retries ?? DEFAULT_RETRIES;
+    this.formatPayload = options.formatPayload;
   }
 
   async put(artifact: Artifact): Promise<string> {
@@ -128,7 +132,8 @@ export class WebhookSink implements ArtifactSink {
 
   /** POST JSON with exponential backoff retry. Never throws. */
   private async post(payload: WebhookPayload): Promise<void> {
-    const body = JSON.stringify(payload);
+    const formatted = this.formatPayload ? this.formatPayload(payload) : payload;
+    const body = JSON.stringify(formatted);
     const baseDelay = 1000;
 
     for (let attempt = 0; attempt <= this.retries; attempt++) {
