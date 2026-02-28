@@ -508,6 +508,71 @@ Audit this page for design quality, UX issues, and visual bugs.`;
     }
   }
 
+  /**
+   * Extract reusable knowledge from a completed trajectory.
+   * Asks the LLM to identify patterns, timings, reliable selectors,
+   * and app quirks from a successful run.
+   */
+  async extractKnowledge(
+    trajectoryText: string,
+    domain: string,
+  ): Promise<Array<{ type: 'timing' | 'selector' | 'pattern' | 'quirk'; key: string; value: string }>> {
+    const model = await this.getModel();
+
+    const result = await generateText({
+      model,
+      system: `You are analyzing a browser automation trajectory to extract reusable knowledge.
+Extract facts that would help an agent complete similar tasks faster next time.
+
+Respond with ONLY a JSON array of facts:
+[
+  {"type": "timing", "key": "page-load", "value": "wait 3000ms after navigation for content to hydrate"},
+  {"type": "selector", "key": "send-button", "value": "[data-testid='chat-send-button'] is the reliable send button selector"},
+  {"type": "pattern", "key": "auth-flow", "value": "Click sign-in → fill email → fill password → click submit → wait for redirect"},
+  {"type": "quirk", "key": "lazy-loading", "value": "File tree loads asynchronously — wait for entries before asserting"}
+]
+
+Types:
+- timing: wait durations, delays that are necessary
+- selector: reliable selectors for important elements
+- pattern: multi-step interaction sequences
+- quirk: app-specific behaviors or gotchas
+
+Only include facts that are genuinely useful. Quality over quantity. Max 10 facts.`,
+      messages: [{
+        role: 'user',
+        content: `Domain: ${domain}\n\nTrajectory:\n${trajectoryText}`,
+      }],
+      temperature: 0,
+      maxOutputTokens: 800,
+      abortSignal: AbortSignal.timeout(this.llmTimeoutMs),
+    });
+
+    try {
+      let text = result.text.trim();
+      if (text.startsWith('```')) {
+        text = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+      }
+      const parsed = JSON.parse(text);
+      if (!Array.isArray(parsed)) return [];
+
+      const VALID_TYPES = new Set(['timing', 'selector', 'pattern', 'quirk']);
+      return parsed
+        .filter((f: Record<string, unknown>) =>
+          VALID_TYPES.has(f.type as string) &&
+          typeof f.key === 'string' &&
+          typeof f.value === 'string'
+        )
+        .map((f: Record<string, unknown>) => ({
+          type: f.type as 'timing' | 'selector' | 'pattern' | 'quirk',
+          key: f.key as string,
+          value: f.value as string,
+        }));
+    } catch {
+      return [];
+    }
+  }
+
   private parse(raw: string): Omit<BrainDecision, 'raw' | 'tokensUsed'> {
     let text = raw.trim();
 

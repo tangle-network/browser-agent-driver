@@ -18,9 +18,11 @@ import type {
 } from './types.js';
 import type { Driver } from './drivers/types.js';
 import { AgentRunner } from './runner.js';
+import { Brain } from './brain/index.js';
 import { TrajectoryStore } from './memory/store.js';
 import { TrajectoryAnalyzer, type RunAnalysis } from './memory/analyzer.js';
 import type { ProjectStore } from './memory/project-store.js';
+import { AppKnowledge } from './memory/knowledge.js';
 
 const DEFAULT_MAX_TURNS = 30;
 
@@ -244,9 +246,23 @@ export class TestRunner {
       result = await this.runSequential(cases);
     }
 
-    // Save run summary to project memory
+    // Post-suite memory operations
     if (this.projectStore) {
       this.projectStore.saveRunSummary(result);
+
+      // Generate and save optimization hints
+      const analysis = this.analyzer.analyze(result);
+      const hints = this.analyzer.generateHints(analysis);
+      if (hints) {
+        this.projectStore.saveHints(hints);
+      }
+
+      // Extract knowledge from successful runs (async, best-effort)
+      await this.extractAndSaveKnowledge(result).catch((err: unknown) => {
+        if (this.config.debug) {
+          console.log(`[TestRunner] Knowledge extraction failed: ${err instanceof Error ? err.message : err}`);
+        }
+      });
     }
 
     return result;
@@ -538,6 +554,48 @@ export class TestRunner {
       .map((c) => c.detail || c.criterion.description || c.criterion.type)
       .join('; ');
     return `Verification failed: ${failedCriteria || 'unknown criteria'}`;
+  }
+
+  /**
+   * Extract knowledge from successful test runs and merge into domain knowledge.
+   * Uses the Brain's extractKnowledge method to analyze trajectories.
+   */
+  private async extractAndSaveKnowledge(suite: TestSuiteResult): Promise<void> {
+    if (!this.projectStore) return;
+
+    const successfulResults = suite.results.filter(r => r.verified && !r.skipped);
+    if (successfulResults.length === 0) return;
+
+    const brain = new Brain(this.config);
+
+    for (const result of successfulResults) {
+      const startUrl = result.testCase.startUrl;
+      if (!startUrl) continue;
+
+      // Format trajectory for extraction
+      const trajectoryText = result.agentResult.turns
+        .map((t, i) => {
+          const action = JSON.stringify(t.action);
+          const verified = t.verified ? ' [verified]' : '';
+          return `${i + 1}. URL: ${t.state.url} → ${action}${verified}`;
+        })
+        .join('\n');
+
+      const facts = await brain.extractKnowledge(trajectoryText, startUrl);
+      if (facts.length === 0) continue;
+
+      // Merge into domain knowledge
+      const knowledge = new AppKnowledge(
+        this.projectStore.getKnowledgePath(startUrl),
+        startUrl,
+      );
+      knowledge.recordFacts(facts);
+      knowledge.save();
+
+      if (this.config.debug) {
+        console.log(`[TestRunner] Extracted ${facts.length} facts for ${startUrl}`);
+      }
+    }
   }
 
   private buildSuiteResult(results: TestResult[]): TestSuiteResult {
