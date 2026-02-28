@@ -16,6 +16,9 @@ import type { Scenario, AgentConfig, AgentResult, Turn, PageState } from './type
 import { analyzeRecovery } from './recovery.js';
 import { StaleRefError, AriaSnapshotHelper } from './drivers/snapshot.js';
 import { verifyPreview } from './preview.js';
+import type { ProjectStore } from './memory/project-store.js';
+import { AppKnowledge } from './memory/knowledge.js';
+import { SelectorCache } from './memory/selectors.js';
 
 const DEFAULT_MAX_TURNS = 20;
 const DEFAULT_RETRIES = 3;
@@ -28,6 +31,8 @@ export interface RunnerOptions {
   onTurn?: (turn: Turn) => void;
   /** Reference trajectory to inject into brain context */
   referenceTrajectory?: string;
+  /** Project memory store — enables knowledge + selector persistence */
+  projectStore?: ProjectStore;
 }
 
 /** Retry wrapper for transient failures. Respects AbortSignal between attempts. */
@@ -73,6 +78,9 @@ export class AgentRunner {
   private config: AgentConfig;
   private onTurn?: (turn: Turn) => void;
   private referenceTrajectory?: string;
+  private projectStore?: ProjectStore;
+  private knowledge?: AppKnowledge;
+  private selectorCache?: SelectorCache;
 
   constructor(options: RunnerOptions) {
     this.driver = options.driver;
@@ -80,6 +88,7 @@ export class AgentRunner {
     this.brain = new Brain(this.config);
     this.onTurn = options.onTurn;
     this.referenceTrajectory = options.referenceTrajectory;
+    this.projectStore = options.projectStore;
   }
 
   async run(scenario: Scenario): Promise<AgentResult> {
@@ -91,6 +100,17 @@ export class AgentRunner {
 
     // Reset brain history for fresh scenario
     this.brain.reset();
+
+    // Load domain-scoped memory if project store is configured
+    if (this.projectStore && scenario.startUrl) {
+      this.knowledge = new AppKnowledge(
+        this.projectStore.getKnowledgePath(scenario.startUrl),
+        scenario.startUrl,
+      );
+      this.selectorCache = new SelectorCache(
+        this.projectStore.getSelectorCachePath(scenario.startUrl),
+      );
+    }
 
     // Navigate to start URL if provided
     if (scenario.startUrl) {
@@ -181,6 +201,20 @@ export class AgentRunner {
         let extraContext = '';
         if (this.referenceTrajectory) {
           extraContext += `\nREFERENCE TRAJECTORY — A similar task was completed before:\n${this.referenceTrajectory}\nUse this as a guide, but adapt to the current page state.\n`;
+        }
+
+        // Inject persistent knowledge from previous runs
+        if (this.knowledge) {
+          const knowledgeContext = this.knowledge.formatForBrain();
+          if (knowledgeContext) {
+            extraContext += `\n${knowledgeContext}\n`;
+          }
+        }
+        if (this.selectorCache) {
+          const selectorContext = this.selectorCache.formatForBrain();
+          if (selectorContext) {
+            extraContext += `\n${selectorContext}\n`;
+          }
         }
 
         // Check if last turn had a verification failure
@@ -298,6 +332,7 @@ export class AgentRunner {
             // Passed quality gate — include evaluation in result
             turns.push(turn);
             this.onTurn?.(turn);
+            this.saveMemory();
             return {
               success: true,
               result: action.result,
@@ -315,6 +350,7 @@ export class AgentRunner {
 
           turns.push(turn);
           this.onTurn?.(turn);
+          this.saveMemory();
           return {
             success: true,
             result: action.result,
@@ -326,6 +362,7 @@ export class AgentRunner {
         if (action.action === 'abort') {
           turns.push(turn);
           this.onTurn?.(turn);
+          this.saveMemory();
           return {
             success: false,
             reason: action.reason,
@@ -386,6 +423,14 @@ export class AgentRunner {
           totalErrors++;
         } else {
           consecutiveErrors = 0;
+
+          // Update selector cache on successful action
+          if (this.selectorCache && 'selector' in action && action.selector) {
+            const element = findElementForRef(state.snapshot, action.selector);
+            if (element) {
+              this.selectorCache.recordSuccess(element, action.selector);
+            }
+          }
         }
 
         // ── 8. Post-action verification ──
@@ -436,6 +481,7 @@ export class AgentRunner {
         this.onTurn?.(turn);
 
         if (consecutiveErrors >= 3) {
+          this.saveMemory();
           return {
             success: false,
             reason: `${consecutiveErrors} consecutive errors: ${error}`,
@@ -445,6 +491,7 @@ export class AgentRunner {
         }
 
         if (totalErrors >= maxTotalErrors) {
+          this.saveMemory();
           return {
             success: false,
             reason: `Error budget exhausted (${totalErrors}/${maxTotalErrors} total errors): ${error}`,
@@ -459,6 +506,9 @@ export class AgentRunner {
       }
     }
 
+    // Persist memory before returning
+    this.saveMemory();
+
     // Max turns reached
     return {
       success: false,
@@ -466,6 +516,18 @@ export class AgentRunner {
       turns,
       totalMs: Date.now() - startTime,
     };
+  }
+
+  /** Persist knowledge and selector cache to disk */
+  private saveMemory(): void {
+    try {
+      this.knowledge?.save();
+      this.selectorCache?.save();
+    } catch (err) {
+      if (this.config.debug) {
+        console.log(`[Runner] Failed to save memory: ${err instanceof Error ? err.message : err}`);
+      }
+    }
   }
 
   /**
@@ -565,4 +627,17 @@ export async function runAgent(
 ): Promise<AgentResult> {
   const runner = new AgentRunner({ driver, ...options });
   return runner.run(scenario);
+}
+
+/**
+ * Extract the element identity (e.g., 'button "Send"') for a given @ref
+ * from an a11y snapshot. Returns undefined if the ref is not found.
+ */
+function findElementForRef(snapshot: string, selector: string): string | undefined {
+  if (!selector.startsWith('@')) return undefined;
+  const bareRef = selector.slice(1);
+  // Match: role "name" [ref=XXX] in the snapshot
+  const regex = new RegExp(`(\\w+ "[^"]*")\\s*\\[ref=${bareRef}\\]`);
+  const match = snapshot.match(regex);
+  return match?.[1];
 }

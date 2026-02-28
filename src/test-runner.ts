@@ -20,6 +20,7 @@ import type { Driver } from './drivers/types.js';
 import { AgentRunner } from './runner.js';
 import { TrajectoryStore } from './memory/store.js';
 import { TrajectoryAnalyzer, type RunAnalysis } from './memory/analyzer.js';
+import type { ProjectStore } from './memory/project-store.js';
 
 const DEFAULT_MAX_TURNS = 30;
 
@@ -42,6 +43,9 @@ export interface TestRunnerOptions {
   /** Path to trajectory store directory */
   trajectoryStorePath?: string;
 
+  /** Project memory store — enables knowledge, selectors, and domain-scoped trajectories */
+  projectStore?: ProjectStore;
+
   /** Hints from previous run analysis — injected into each agent's context */
   feedbackHints?: string;
 
@@ -63,6 +67,7 @@ export class TestRunner {
   private concurrency: number;
   private stopOnFailure: boolean;
   private store: TrajectoryStore | null;
+  private projectStore?: ProjectStore;
   private feedbackHints: string | undefined;
   private screenshotInterval: number;
   private analyzer: TrajectoryAnalyzer;
@@ -79,10 +84,12 @@ export class TestRunner {
     this.driverFactory = options.driverFactory;
     this.concurrency = options.concurrency ?? 1;
     this.stopOnFailure = options.stopOnFailure ?? false;
+    this.projectStore = options.projectStore;
     this.store = options.enableMemory
       ? new TrajectoryStore(options.trajectoryStorePath)
       : null;
-    this.feedbackHints = options.feedbackHints;
+    // Auto-load hints from project store if available
+    this.feedbackHints = options.feedbackHints ?? options.projectStore?.loadHints() ?? undefined;
     this.screenshotInterval = options.screenshotInterval ?? 0;
     this.analyzer = new TrajectoryAnalyzer();
     this.onTestStart = options.onTestStart;
@@ -129,6 +136,7 @@ export class TestRunner {
         driver: activeDriver,
         config: this.config,
         referenceTrajectory: combinedReference,
+        projectStore: this.projectStore,
         onTurn: (turn) => {
           this.onTurn?.(testCase, turn);
           if (this.screenshotInterval > 0 && turn.turn % this.screenshotInterval === 0) {
@@ -229,10 +237,19 @@ export class TestRunner {
 
   /** Run a suite of test cases with dependency resolution and optional parallelism */
   async runSuite(cases: TestCase[]): Promise<TestSuiteResult> {
+    let result: TestSuiteResult;
     if (this.concurrency > 1 && this.driverFactory) {
-      return this.runParallel(cases);
+      result = await this.runParallel(cases);
+    } else {
+      result = await this.runSequential(cases);
     }
-    return this.runSequential(cases);
+
+    // Save run summary to project memory
+    if (this.projectStore) {
+      this.projectStore.saveRunSummary(result);
+    }
+
+    return result;
   }
 
   /** Analyze a completed suite run and return structured findings */
