@@ -1,10 +1,12 @@
 /**
  * LLM Decision Engine — multimodal (vision + text), planning, verification,
  * conversation history management, and quality evaluation.
+ *
+ * Uses Vercel AI SDK for multi-provider support (OpenAI, Anthropic, Google).
  */
 
-import OpenAI from 'openai';
-import type { ChatCompletionMessageParam, ChatCompletionContentPart } from 'openai/resources/chat/completions';
+import { generateText } from 'ai';
+import type { ModelMessage, LanguageModel } from 'ai';
 import type { Action, PageState, AgentConfig, DesignFinding } from '../types.js';
 
 const SYSTEM_PROMPT = `You are a senior staff engineer operating a browser via Playwright automation.
@@ -144,26 +146,68 @@ export interface QualityEvaluation {
   tokensUsed?: number;
 }
 
+/** User message content — text-only or multimodal with screenshot */
+type UserContent = string | Array<{ type: 'text'; text: string } | { type: 'image'; image: string; mediaType: string }>;
+
 export class Brain {
-  private client: OpenAI;
-  private model: string;
+  private modelInstance: LanguageModel | null = null;
+  private provider: string;
+  private modelName: string;
+  private apiKey?: string;
+  private baseUrl?: string;
   private debug: boolean;
-  private history: ChatCompletionMessageParam[] = [];
+  private history: ModelMessage[] = [];
   private maxHistoryTurns: number;
   private visionEnabled: boolean;
   private llmTimeoutMs: number;
 
   constructor(config: AgentConfig = {}) {
     this.llmTimeoutMs = config.llmTimeoutMs ?? 60_000;
-    this.client = new OpenAI({
-      apiKey: config.apiKey || process.env.OPENAI_API_KEY,
-      baseURL: config.baseUrl,
-      timeout: this.llmTimeoutMs,
-    });
-    this.model = config.model || 'gpt-4o';
+    this.provider = config.provider || 'openai';
+    this.modelName = config.model || 'gpt-4o';
+    this.apiKey = config.apiKey || process.env.OPENAI_API_KEY;
+    this.baseUrl = config.baseUrl;
     this.debug = config.debug || false;
     this.maxHistoryTurns = config.maxHistoryTurns || 10;
     this.visionEnabled = config.vision !== false;
+  }
+
+  /** Lazily create the LLM model instance based on provider config */
+  private async getModel(): Promise<LanguageModel> {
+    if (this.modelInstance) return this.modelInstance;
+
+    switch (this.provider) {
+      case 'anthropic': {
+        const { createAnthropic } = await import('@ai-sdk/anthropic');
+        const provider = createAnthropic({
+          apiKey: this.apiKey,
+          ...(this.baseUrl ? { baseURL: this.baseUrl } : {}),
+        });
+        this.modelInstance = provider(this.modelName) as LanguageModel;
+        break;
+      }
+      case 'google': {
+        const { createGoogleGenerativeAI } = await import('@ai-sdk/google');
+        const provider = createGoogleGenerativeAI({
+          apiKey: this.apiKey,
+          ...(this.baseUrl ? { baseURL: this.baseUrl } : {}),
+        });
+        this.modelInstance = provider(this.modelName) as LanguageModel;
+        break;
+      }
+      default: {
+        // 'openai' or any OpenAI-compatible API (LiteLLM, Together, etc.)
+        const { createOpenAI } = await import('@ai-sdk/openai');
+        const provider = createOpenAI({
+          apiKey: this.apiKey || '',
+          ...(this.baseUrl ? { baseURL: this.baseUrl } : {}),
+        });
+        this.modelInstance = provider(this.modelName) as LanguageModel;
+        break;
+      }
+    }
+
+    return this.modelInstance;
   }
 
   /** Reset conversation history (call between scenarios) */
@@ -172,7 +216,7 @@ export class Brain {
   }
 
   /** Get current conversation history */
-  getHistory(): ChatCompletionMessageParam[] {
+  getHistory(): ModelMessage[] {
     return [...this.history];
   }
 
@@ -185,7 +229,7 @@ export class Brain {
    * Build the user message content parts — text + optional screenshot.
    * Multimodal when vision is enabled and screenshot is available.
    */
-  private buildUserContent(text: string, screenshot?: string): string | ChatCompletionContentPart[] {
+  private buildUserContent(text: string, screenshot?: string): UserContent {
     if (!this.visionEnabled || !screenshot) {
       return text;
     }
@@ -193,11 +237,9 @@ export class Brain {
     return [
       { type: 'text' as const, text },
       {
-        type: 'image_url' as const,
-        image_url: {
-          url: `data:image/jpeg;base64,${screenshot}`,
-          detail: 'low' as const, // 'low' = 65 tokens, 'high' = ~1k tokens
-        },
+        type: 'image' as const,
+        image: screenshot,
+        mediaType: 'image/jpeg',
       },
     ];
   }
@@ -206,7 +248,7 @@ export class Brain {
    * Compact conversation history: strip ELEMENTS blocks and screenshots
    * from all but the most recent observation.
    */
-  private compactHistory(): ChatCompletionMessageParam[] {
+  private compactHistory(): ModelMessage[] {
     if (this.history.length === 0) return [];
 
     return this.history.map((msg, idx) => {
@@ -218,25 +260,18 @@ export class Brain {
       // Handle multimodal content (array of parts)
       if (Array.isArray(msg.content)) {
         const compacted = msg.content
-          // Strip screenshots from old messages
-          .filter((part): part is ChatCompletionContentPart =>
-            typeof part === 'object' && 'type' in part && part.type !== 'image_url'
-          )
-          .map((part) => {
-            if (typeof part === 'object' && 'type' in part && part.type === 'text') {
-              return {
-                ...part,
-                text: this.stripElements(part.text),
-              };
-            }
-            return part;
-          });
-        return { ...msg, content: compacted };
+          // Keep only text parts (strip screenshots from old messages)
+          .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
+          .map((part) => ({
+            ...part,
+            text: this.stripElements(part.text),
+          }));
+        return { ...msg, content: compacted } as ModelMessage;
       }
 
       // Handle string content
       if (typeof msg.content === 'string') {
-        return { ...msg, content: this.stripElements(msg.content) };
+        return { ...msg, content: this.stripElements(msg.content) } as ModelMessage;
       }
 
       return msg;
@@ -288,31 +323,34 @@ ${state.snapshot}`;
       console.log(`[Brain] Turn ${turnNum} | URL: ${state.url} | Vision: ${!!state.screenshot && this.visionEnabled}`);
     }
 
-    const messages: ChatCompletionMessageParam[] = [
-      { role: 'system', content: SYSTEM_PROMPT },
+    const model = await this.getModel();
+
+    const messages: ModelMessage[] = [
       ...this.compactHistory(),
       { role: 'user', content: userContent },
     ];
 
-    const response = await this.client.chat.completions.create({
-      model: this.model,
+    const result = await generateText({
+      model,
+      system: SYSTEM_PROMPT,
       messages,
       temperature: 0,
-      max_tokens: 1000,
-    }, { timeout: this.llmTimeoutMs });
+      maxOutputTokens: 1000,
+      abortSignal: AbortSignal.timeout(this.llmTimeoutMs),
+    });
 
-    if (!response.choices?.length) {
-      throw new Error('Brain.decide: LLM returned empty choices — possible rate limit or model error');
+    const raw = result.text;
+    const tokensUsed = result.usage?.totalTokens;
+
+    if (!raw) {
+      throw new Error('Brain.decide: LLM returned empty response — possible rate limit or model error');
     }
-
-    const raw = response.choices[0]?.message?.content || '';
-    const tokensUsed = response.usage?.total_tokens;
 
     if (this.debug) {
       console.log('[Brain] Response:', raw.slice(0, 300));
     }
 
-    // Store text-only version in history (screenshots handled by compactHistory)
+    // Store in history
     this.history.push({ role: 'user', content: userContent });
     this.history.push({ role: 'assistant', content: raw });
 
@@ -330,9 +368,6 @@ ${state.snapshot}`;
    * Evaluate quality of the current page state.
    * Takes a screenshot and asks the LLM to rate the visual quality,
    * design, and professional polish.
-   *
-   * Used after completing a build to determine if the output is good enough
-   * or needs iteration.
    */
   async evaluate(state: PageState, goal: string): Promise<QualityEvaluation> {
     const textContent = `GOAL that was being worked on: ${goal}
@@ -345,24 +380,19 @@ Please evaluate the quality of this page/application.`;
 
     const userContent = this.buildUserContent(textContent, state.screenshot);
 
-    const messages: ChatCompletionMessageParam[] = [
-      { role: 'system', content: EVALUATE_PROMPT },
-      { role: 'user', content: userContent },
-    ];
+    const model = await this.getModel();
 
-    const response = await this.client.chat.completions.create({
-      model: this.model,
-      messages,
+    const result = await generateText({
+      model,
+      system: EVALUATE_PROMPT,
+      messages: [{ role: 'user', content: userContent }],
       temperature: 0,
-      max_tokens: 800,
-    }, { timeout: this.llmTimeoutMs });
+      maxOutputTokens: 800,
+      abortSignal: AbortSignal.timeout(this.llmTimeoutMs),
+    });
 
-    if (!response.choices?.length) {
-      throw new Error('Brain.evaluate: LLM returned empty choices — possible rate limit or model error');
-    }
-
-    const raw = response.choices[0]?.message?.content || '';
-    const tokensUsed = response.usage?.total_tokens;
+    const raw = result.text;
+    const tokensUsed = result.usage?.totalTokens;
 
     if (this.debug) {
       console.log('[Brain] Evaluation:', raw.slice(0, 300));
@@ -423,24 +453,19 @@ Audit this page for design quality, UX issues, and visual bugs.`;
 
     const userContent = this.buildUserContent(textContent, state.screenshot);
 
-    const messages: ChatCompletionMessageParam[] = [
-      { role: 'system', content: DESIGN_AUDIT_PROMPT },
-      { role: 'user', content: userContent },
-    ];
+    const model = await this.getModel();
 
-    const response = await this.client.chat.completions.create({
-      model: this.model,
-      messages,
+    const result = await generateText({
+      model,
+      system: DESIGN_AUDIT_PROMPT,
+      messages: [{ role: 'user', content: userContent }],
       temperature: 0,
-      max_tokens: 1500,
-    }, { timeout: this.llmTimeoutMs });
+      maxOutputTokens: 1500,
+      abortSignal: AbortSignal.timeout(this.llmTimeoutMs),
+    });
 
-    if (!response.choices?.length) {
-      throw new Error('Brain.auditDesign: LLM returned empty choices — possible rate limit or model error');
-    }
-
-    const raw = response.choices[0]?.message?.content || '';
-    const tokensUsed = response.usage?.total_tokens;
+    const raw = result.text;
+    const tokensUsed = result.usage?.totalTokens;
 
     if (this.debug) {
       console.log('[Brain] Design audit:', raw.slice(0, 300));

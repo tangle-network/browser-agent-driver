@@ -119,11 +119,13 @@ export interface Scenario {
 // ============================================================================
 
 export interface AgentConfig {
+  /** LLM provider: 'openai' (default), 'anthropic', or 'google' */
+  provider?: 'openai' | 'anthropic' | 'google';
   /** LLM model (default: gpt-4o) */
   model?: string;
   /** API key (defaults to OPENAI_API_KEY) */
   apiKey?: string;
-  /** Custom API base URL (for Anthropic, local models, etc.) */
+  /** Custom API base URL (for LiteLLM, local models, etc.) */
   baseUrl?: string;
   /** Enable debug logging */
   debug?: boolean;

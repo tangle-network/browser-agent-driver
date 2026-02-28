@@ -44,12 +44,17 @@
     "node": ">=18"
   },
   "peerDependencies": {
+    "@ai-sdk/anthropic": "^3.0.49",
+    "@ai-sdk/google": "^3.0.33",
     "playwright": "^1.40.0"
   },
   "dependencies": {
-    "openai": "^4.20.0"
+    "@ai-sdk/openai": "^3.0.36",
+    "ai": "^6.0.104"
   },
   "devDependencies": {
+    "@ai-sdk/anthropic": "^3.0.49",
+    "@ai-sdk/google": "^3.0.33",
     "@types/node": "^20.10.0",
     "playwright": "^1.40.0",
     "typescript": "^5.3.0"
