@@ -74,7 +74,12 @@ export {
   detectLoadingState,
 } from './recovery.js';
 
-// Trajectory memory + analysis
+// Memory system
+export { ProjectStore } from './memory/project-store.js';
+export { AppKnowledge } from './memory/knowledge.js';
+export type { Fact, KnowledgeData } from './memory/knowledge.js';
+export { SelectorCache } from './memory/selectors.js';
+export type { SelectorEntry } from './memory/selectors.js';
 export { TrajectoryStore } from './memory/store.js';
 export { TrajectoryAnalyzer } from './memory/analyzer.js';
 export type { RunAnalysis, ActionPattern, GoalPattern, TurnWaste } from './memory/analyzer.js';
