@@ -1,6 +1,6 @@
 {
   "name": "@tangle-network/agent-browser-driver",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "LLM-driven browser agent for UI automation, testing, and evaluation",
   "type": "module",
   "main": "./dist/index.js",
@@ -22,7 +22,9 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "keywords": [
     "agent",
@@ -60,6 +62,7 @@
     "@ai-sdk/google": "^3.0.33",
     "@types/node": "^20.10.0",
     "playwright": "^1.40.0",
-    "typescript": "^5.3.0"
+    "typescript": "^5.3.0",
+    "vitest": "^4.0.18"
   }
 }

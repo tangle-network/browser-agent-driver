@@ -15,38 +15,43 @@
 import { parseArgs } from 'node:util';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { loadConfig, mergeConfig, toAgentConfig } from './config.js';
+import type { DriverConfig } from './config.js';
 
 async function main(): Promise<void> {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
     options: {
+      // Config file
+      config: { type: 'string' },
+
       // Test specification
       goal: { type: 'string', short: 'g' },
       url: { type: 'string', short: 'u' },
       cases: { type: 'string', short: 'c' },
 
       // LLM configuration
-      model: { type: 'string', short: 'm', default: 'gpt-4o' },
-      provider: { type: 'string', default: 'openai' },
+      model: { type: 'string', short: 'm' },
+      provider: { type: 'string' },
       'api-key': { type: 'string' },
       'base-url': { type: 'string' },
 
       // Execution
-      concurrency: { type: 'string', default: '1' },
-      'max-turns': { type: 'string', default: '30' },
-      'screenshot-interval': { type: 'string', default: '5' },
-      headless: { type: 'boolean', default: true },
-      timeout: { type: 'string', default: '600000' },
+      concurrency: { type: 'string' },
+      'max-turns': { type: 'string' },
+      'screenshot-interval': { type: 'string' },
+      headless: { type: 'boolean' },
+      timeout: { type: 'string' },
 
       // Output
-      sink: { type: 'string', short: 's', default: './agent-results' },
+      sink: { type: 'string', short: 's' },
       json: { type: 'boolean', default: false },
       quiet: { type: 'boolean', short: 'q', default: false },
 
       // Feature flags
-      'goal-verification': { type: 'boolean', default: true },
-      'quality-threshold': { type: 'string', default: '0' },
-      vision: { type: 'boolean', default: true },
+      'goal-verification': { type: 'boolean' },
+      'quality-threshold': { type: 'string' },
+      vision: { type: 'boolean' },
       debug: { type: 'boolean', short: 'd', default: false },
 
       help: { type: 'boolean', short: 'h', default: false },
@@ -78,28 +83,45 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  // Load config file, then overlay CLI flags
+  const fileConfig = await loadConfig(values.config);
+
+  // Build CLI overrides (only set values that were explicitly passed)
+  const cliOverrides: Partial<DriverConfig> = {};
+  if (values.model) cliOverrides.model = values.model;
+  if (values.provider) cliOverrides.provider = values.provider as DriverConfig['provider'];
+  if (values['api-key']) cliOverrides.apiKey = values['api-key'];
+  if (values['base-url']) cliOverrides.baseUrl = values['base-url'];
+  if (values.concurrency) cliOverrides.concurrency = parseInt(values.concurrency, 10);
+  if (values['max-turns']) cliOverrides.maxTurns = parseInt(values['max-turns'], 10);
+  if (values['screenshot-interval']) cliOverrides.screenshotInterval = parseInt(values['screenshot-interval'], 10);
+  if (values.timeout) cliOverrides.timeoutMs = parseInt(values.timeout, 10);
+  if (values['quality-threshold']) cliOverrides.qualityThreshold = parseInt(values['quality-threshold'], 10);
+  if (values.sink) cliOverrides.outputDir = values.sink;
+  if (values.headless !== undefined) cliOverrides.headless = values.headless;
+  if (values.vision !== undefined) cliOverrides.vision = values.vision;
+  if (values['goal-verification'] !== undefined) cliOverrides.goalVerification = values['goal-verification'];
+
+  const driverConfig = mergeConfig(fileConfig, cliOverrides);
+
   // Dynamic imports — keeps startup fast and allows tree-shaking
   const { chromium } = await import('playwright');
   const { PlaywrightDriver } = await import('./drivers/playwright.js');
   const { TestRunner } = await import('./test-runner.js');
   const { FilesystemSink } = await import('./artifacts/filesystem-sink.js');
 
-  const concurrency = parseInt(values.concurrency!, 10);
-  const maxTurns = parseInt(values['max-turns']!, 10);
-  const screenshotInterval = parseInt(values['screenshot-interval']!, 10);
-  const timeoutMs = parseInt(values.timeout!, 10);
-  const qualityThreshold = parseInt(values['quality-threshold']!, 10);
+  const concurrency = driverConfig.concurrency ?? 1;
+  const maxTurns = driverConfig.maxTurns ?? 30;
+  const screenshotInterval = driverConfig.screenshotInterval ?? 5;
+  const timeoutMs = driverConfig.timeoutMs ?? 600_000;
   const quiet = values.quiet!;
   const debug = values.debug!;
+  const sinkDir = driverConfig.outputDir ?? './agent-results';
 
   const config = {
-    provider: values.provider as 'openai' | 'anthropic' | 'google',
-    model: values.model!,
-    apiKey: values['api-key'] || process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY,
-    baseUrl: values['base-url'] || process.env.LLM_BASE_URL,
-    vision: values.vision!,
-    goalVerification: values['goal-verification']!,
-    qualityThreshold,
+    ...toAgentConfig(driverConfig),
+    apiKey: driverConfig.apiKey || process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY,
+    baseUrl: driverConfig.baseUrl || process.env.LLM_BASE_URL,
     debug,
   };
 
@@ -135,20 +157,20 @@ async function main(): Promise<void> {
   if (!quiet) {
     console.log(`agent-driver v${JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf-8')).version}`);
     console.log(`Model: ${config.provider}/${config.model} | Tests: ${cases.length} | Concurrency: ${concurrency}`);
-    console.log(`Output: ${values.sink}`);
+    console.log(`Output: ${sinkDir}`);
     console.log('');
   }
 
   // Set up artifact sink
-  const sink = new FilesystemSink(path.resolve(values.sink!));
+  const sink = new FilesystemSink(path.resolve(sinkDir));
 
   // Set up browser
-  const browser = await chromium.launch({ headless: values.headless });
+  const browser = await chromium.launch({ headless: driverConfig.headless ?? true });
 
   const driverFactory = async () => {
     const context = await browser.newContext({
       viewport: { width: 1920, height: 1080 },
-      recordVideo: { dir: path.join(values.sink!, '_videos'), size: { width: 1920, height: 1080 } },
+      recordVideo: { dir: path.join(sinkDir, '_videos'), size: { width: 1920, height: 1080 } },
     });
     const page = await context.newPage();
     const driver = new PlaywrightDriver(page, {
@@ -213,6 +235,34 @@ async function main(): Promise<void> {
 
   const result = await runner.runSuite(cases);
 
+  // Write reports for each configured format
+  const { generateReport } = await import('./test-report.js');
+  const reporters = driverConfig.reporters ?? ['json'];
+  const reportDir = path.resolve(sinkDir);
+  fs.mkdirSync(reportDir, { recursive: true });
+
+  const formatMeta: Record<string, { ext: string; contentType: string }> = {
+    json: { ext: 'json', contentType: 'application/json' },
+    markdown: { ext: 'md', contentType: 'text/markdown' },
+    html: { ext: 'html', contentType: 'text/html' },
+    junit: { ext: 'xml', contentType: 'application/xml' },
+  };
+
+  for (const format of reporters) {
+    const meta = formatMeta[format];
+    if (!meta) continue;
+    try {
+      const report = generateReport(result, { format, includeTurns: format === 'markdown' });
+      const reportPath = path.join(reportDir, `report.${meta.ext}`);
+      fs.writeFileSync(reportPath, report);
+      if (!quiet) {
+        console.log(`Report: ${reportPath}`);
+      }
+    } catch {
+      // Report generation is best-effort
+    }
+  }
+
   // Also write report to stdout if JSON mode
   if (values.json && !quiet) {
     console.log(JSON.stringify(result, null, 2));
@@ -246,6 +296,7 @@ DOCKER:
     agent-driver run --cases /data/cases.json --sink /output/
 
 OPTIONS:
+      --config <path>         Path to config file (default: auto-detect)
   -g, --goal <text>           Natural language goal for single task
   -u, --url <url>             Starting URL
   -c, --cases <file>          JSON file with test cases array

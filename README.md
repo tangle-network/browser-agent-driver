@@ -11,6 +11,9 @@ LLM-driven browser automation agent. Observe page state via accessibility tree, 
 - **Conversation history** — LLM remembers previous turns for multi-step reasoning
 - **Trajectory memory** — stores successful runs for case-based reasoning on future tasks
 - **Test runner** — dependency-aware suite orchestration with ground-truth verification
+- **Config file** — `agent-browser-driver.config.ts` with `defineConfig()` for IDE autocomplete
+- **JUnit XML reporter** — native CI integration (GitHub Actions, Jenkins, GitLab)
+- **Webhook sink** — push results to Slack, Discord, or custom dashboards
 - **Design auditing** — systematic UI/UX flow auditing with structured findings
 - **Preview verification** — navigates into preview iframes to check for errors
 
@@ -60,29 +63,50 @@ console.log(`Completed in ${result.turns.length} turns, ${result.totalMs}ms`);
 await browser.close();
 ```
 
-## Configuration
+## Config File
+
+Create `agent-browser-driver.config.ts` in your project root:
 
 ```typescript
-interface AgentConfig {
-  model?: string;           // LLM model (default: gpt-4o)
-  apiKey?: string;          // OpenAI API key (default: OPENAI_API_KEY env)
-  baseUrl?: string;         // Custom API base URL
-  vision?: boolean;         // Enable vision/multimodal (default: true)
-  debug?: boolean;          // Enable debug logging
-  maxHistoryTurns?: number; // Conversation history limit (default: 10)
-  retries?: number;         // Retry count on failures (default: 3)
-  retryDelayMs?: number;    // Delay between retries (default: 1000)
-  qualityThreshold?: number; // Min quality score for auto-evaluate (0 = skip)
-  llmTimeoutMs?: number;    // Timeout per LLM request (default: 60000)
-}
+import { defineConfig } from '@tangle-network/agent-browser-driver';
 
-interface Scenario {
-  goal: string;             // Natural language goal
-  startUrl?: string;        // Starting URL
-  maxTurns?: number;        // Max cycles (default: 20)
-  signal?: AbortSignal;     // External cancellation
-}
+export default defineConfig({
+  provider: 'anthropic',
+  model: 'claude-sonnet-4-20250514',
+  headless: true,
+  concurrency: 4,
+  maxTurns: 30,
+  timeoutMs: 300_000,
+  outputDir: './test-results',
+  reporters: ['junit', 'html'],
+  memory: { enabled: true },
+});
 ```
+
+The CLI and programmatic API both auto-detect this file. CLI flags override config values. Supports `.ts`, `.js`, `.mjs`.
+
+### DriverConfig
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `provider` | `'openai' \| 'anthropic' \| 'google'` | `'openai'` | LLM provider |
+| `model` | `string` | `'gpt-4o'` | Model name |
+| `apiKey` | `string` | env var | API key |
+| `baseUrl` | `string` | — | Custom endpoint (LiteLLM, etc.) |
+| `headless` | `boolean` | `true` | Browser headless mode |
+| `viewport` | `{ width, height }` | `1920x1080` | Browser viewport |
+| `maxTurns` | `number` | `30` | Max turns per test |
+| `timeoutMs` | `number` | `600000` | Per-test timeout |
+| `concurrency` | `number` | `1` | Parallel workers |
+| `screenshotInterval` | `number` | `5` | Capture every N turns |
+| `vision` | `boolean` | `true` | Send screenshots to LLM |
+| `goalVerification` | `boolean` | `true` | Verify goal completion |
+| `qualityThreshold` | `number` | `0` | Min quality 1-10 (0=skip) |
+| `outputDir` | `string` | `'./agent-results'` | Artifact output dir |
+| `reporters` | `('json' \| 'markdown' \| 'html' \| 'junit')[]` | `['json']` | Report formats |
+| `sinks` | `ArtifactSink[]` | — | Custom artifact sinks |
+| `memory` | `{ enabled, dir }` | `disabled` | Trajectory memory |
+| `projects` | `Array<{ name, config, testDir }>` | — | Named project configs |
 
 ## Actions
 
@@ -132,6 +156,103 @@ const suite = await runner.runSuite([
 console.log(`Pass rate: ${(suite.summary.passRate * 100).toFixed(0)}%`);
 ```
 
+## CLI
+
+```bash
+# Single task
+agent-driver run --goal "Sign up for account" --url http://localhost:3000
+
+# Test suite with config file
+agent-driver run --cases ./cases.json
+
+# Override config with CLI flags
+agent-driver run --cases ./cases.json --model claude-sonnet-4-20250514 --concurrency 4
+
+# Explicit config path
+agent-driver run --config ./ci.config.ts --cases ./cases.json
+```
+
+## Reporters
+
+### JUnit XML (CI integration)
+
+```typescript
+import { generateReport } from '@tangle-network/agent-browser-driver';
+
+const xml = generateReport(suiteResult, { format: 'junit' });
+fs.writeFileSync('results.xml', xml);
+```
+
+Or use it directly:
+
+```typescript
+import { generateJUnitXml } from '@tangle-network/agent-browser-driver';
+
+const xml = generateJUnitXml(suiteResult);
+```
+
+Produces standard JUnit XML that GitHub Actions, Jenkins, and GitLab parse natively. Tests grouped by `testCase.category`, failures include verdict + last actions.
+
+### Other formats
+
+```typescript
+generateReport(suite, { format: 'json' });      // Full TestSuiteResult JSON
+generateReport(suite, { format: 'markdown' });   // Summary + per-test table
+generateReport(suite, { format: 'html' });       // Styled dashboard
+```
+
+## Artifact Sinks
+
+### FilesystemSink (built-in)
+
+```typescript
+import { FilesystemSink } from '@tangle-network/agent-browser-driver';
+
+const sink = new FilesystemSink('./results');
+// Writes: results/{testId}/turn-05.jpg, results/manifest.json
+```
+
+### WebhookSink
+
+POST artifact events to any URL (Slack, Discord, CI dashboard):
+
+```typescript
+import { WebhookSink } from '@tangle-network/agent-browser-driver';
+
+const sink = new WebhookSink({
+  url: 'https://hooks.slack.com/services/...',
+  headers: { Authorization: 'Bearer token' },
+  events: ['screenshot', 'report-json'],  // filter artifact types
+  includeData: false,                      // skip base64 payload
+  retries: 3,                              // exponential backoff
+});
+```
+
+On `put()`, POSTs:
+```json
+{ "event": "artifact", "testId": "signup", "type": "screenshot", "name": "turn-05.jpg", "sizeBytes": 45230 }
+```
+
+On `close()`, POSTs:
+```json
+{ "event": "suite:complete", "manifest": [...], "summary": { "total": 5, "passed": 4, "failed": 1 } }
+```
+
+Never throws — webhook failures are logged, not fatal.
+
+### CompositeSink
+
+Chain multiple sinks (write locally + POST to webhook):
+
+```typescript
+import { CompositeSink, FilesystemSink, WebhookSink } from '@tangle-network/agent-browser-driver';
+
+const sink = new CompositeSink([
+  new FilesystemSink('./results'),  // primary — URIs come from this one
+  new WebhookSink({ url: '...' }), // secondary
+]);
+```
+
 ## Custom Drivers
 
 Implement the `Driver` interface:
@@ -146,6 +267,14 @@ class MyDriver implements Driver {
   async screenshot?(): Promise<Buffer> { /* ... */ }
   async close?(): Promise<void> { /* ... */ }
 }
+```
+
+## Development
+
+```bash
+pnpm build       # TypeScript → dist/
+pnpm test        # vitest (49 unit tests, ~130ms)
+pnpm test:watch  # vitest watch mode
 ```
 
 ## License
