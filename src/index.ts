@@ -85,3 +85,14 @@ export type { SelectorEntry } from './memory/selectors.js';
 export { TrajectoryStore } from './memory/store.js';
 export { TrajectoryAnalyzer } from './memory/analyzer.js';
 export type { RunAnalysis, ActionPattern, GoalPattern, TurnWaste } from './memory/analyzer.js';
+
+// Artifact pipeline
+export type {
+  Artifact,
+  ArtifactSink,
+  ArtifactType,
+  ArtifactManifestEntry,
+  ProgressEvent,
+} from './artifacts/types.js';
+export { FilesystemSink } from './artifacts/filesystem-sink.js';
+export { CompositeSink } from './artifacts/composite-sink.js';

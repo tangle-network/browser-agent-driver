@@ -1,10 +1,13 @@
 {
   "name": "@tangle-network/agent-browser-driver",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "LLM-driven browser agent for UI automation, testing, and evaluation",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "agent-driver": "./dist/cli.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",

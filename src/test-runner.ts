@@ -17,12 +17,14 @@ import type {
   Turn,
 } from './types.js';
 import type { Driver } from './drivers/types.js';
+import type { ArtifactSink, ProgressEvent } from './artifacts/types.js';
 import { AgentRunner } from './runner.js';
 import { Brain } from './brain/index.js';
 import { TrajectoryStore } from './memory/store.js';
 import { TrajectoryAnalyzer, type RunAnalysis } from './memory/analyzer.js';
 import type { ProjectStore } from './memory/project-store.js';
 import { AppKnowledge } from './memory/knowledge.js';
+import { generateReport } from './test-report.js';
 
 const DEFAULT_MAX_TURNS = 30;
 
@@ -60,6 +62,13 @@ export interface TestRunnerOptions {
   onTestComplete?: (result: TestResult) => void;
   /** Called after each agent turn */
   onTurn?: (tc: TestCase, turn: Turn) => void;
+
+  /** Pluggable artifact storage — screenshots, video, reports flow through this */
+  artifactSink?: ArtifactSink;
+  /** Unified progress event stream for dashboards/CI/coordinators */
+  onProgress?: (event: ProgressEvent) => void;
+  /** Per-worker timeout in ms — stuck workers get force-terminated (default: none) */
+  workerTimeoutMs?: number;
 }
 
 export class TestRunner {
@@ -76,6 +85,9 @@ export class TestRunner {
   private onTestStart?: (tc: TestCase) => void;
   private onTestComplete?: (result: TestResult) => void;
   private onTurn?: (tc: TestCase, turn: Turn) => void;
+  private artifactSink?: ArtifactSink;
+  private onProgress?: (event: ProgressEvent) => void;
+  private workerTimeoutMs?: number;
 
   constructor(options: TestRunnerOptions) {
     if (!options.driver && !options.driverFactory) {
@@ -97,6 +109,9 @@ export class TestRunner {
     this.onTestStart = options.onTestStart;
     this.onTestComplete = options.onTestComplete;
     this.onTurn = options.onTurn;
+    this.artifactSink = options.artifactSink;
+    this.onProgress = options.onProgress;
+    this.workerTimeoutMs = options.workerTimeoutMs;
   }
 
   /** Run a single test case */
@@ -109,6 +124,7 @@ export class TestRunner {
     const startedAt = new Date();
     const screenshots: { turn: number; base64: string }[] = [];
     this.onTestStart?.(testCase);
+    this.onProgress?.({ type: 'test:start', testId: testCase.id, testName: testCase.name, workerId: 0 });
 
     // Run setup hook
     const page = activeDriver.getPage?.();
@@ -141,9 +157,33 @@ export class TestRunner {
         projectStore: this.projectStore,
         onTurn: (turn) => {
           this.onTurn?.(testCase, turn);
+          this.onProgress?.({
+            type: 'test:turn',
+            testId: testCase.id,
+            turn: turn.turn,
+            action: turn.action.action,
+            durationMs: turn.durationMs,
+            tokensUsed: turn.tokensUsed,
+          });
+
           if (this.screenshotInterval > 0 && turn.turn % this.screenshotInterval === 0) {
             if (turn.state.screenshot) {
               screenshots.push({ turn: turn.turn, base64: turn.state.screenshot });
+
+              // Emit screenshot through artifact sink
+              if (this.artifactSink) {
+                const buf = Buffer.from(turn.state.screenshot, 'base64');
+                this.artifactSink.put({
+                  type: 'screenshot',
+                  testId: testCase.id,
+                  name: `turn-${String(turn.turn).padStart(3, '0')}.jpg`,
+                  data: buf,
+                  contentType: 'image/jpeg',
+                  metadata: { turn: String(turn.turn), action: turn.action.action },
+                }).then(uri => {
+                  this.onProgress?.({ type: 'test:artifact', testId: testCase.id, artifactType: 'screenshot', uri });
+                }).catch(() => {}); // Best-effort
+              }
             }
           }
         },
@@ -224,7 +264,40 @@ export class TestRunner {
         screenshots: screenshots.length > 0 ? screenshots : undefined,
       };
 
+      // Emit video artifact if available
+      if (this.artifactSink && page) {
+        try {
+          const videoPath = await page.video?.()?.path?.();
+          if (videoPath) {
+            const fs = await import('node:fs');
+            if (fs.existsSync(videoPath)) {
+              const videoData = fs.readFileSync(videoPath);
+              const uri = await this.artifactSink.put({
+                type: 'video',
+                testId: testCase.id,
+                name: 'recording.webm',
+                data: videoData,
+                contentType: 'video/webm',
+                metadata: { durationMs: String(result.durationMs), turnsUsed: String(result.turnsUsed) },
+              });
+              this.onProgress?.({ type: 'test:artifact', testId: testCase.id, artifactType: 'video', uri });
+            }
+          }
+        } catch {
+          // Video capture is best-effort
+        }
+      }
+
       this.onTestComplete?.(result);
+      this.onProgress?.({
+        type: 'test:complete',
+        testId: testCase.id,
+        passed: result.verified,
+        verdict: result.verdict,
+        durationMs: result.durationMs,
+        turnsUsed: result.turnsUsed,
+        tokensUsed: result.tokensUsed,
+      });
       return result;
     } finally {
       if (testCase.teardown && page) {
@@ -239,11 +312,41 @@ export class TestRunner {
 
   /** Run a suite of test cases with dependency resolution and optional parallelism */
   async runSuite(cases: TestCase[]): Promise<TestSuiteResult> {
+    this.onProgress?.({ type: 'suite:start', totalTests: cases.length, concurrency: this.concurrency });
+
     let result: TestSuiteResult;
     if (this.concurrency > 1 && this.driverFactory) {
       result = await this.runParallel(cases);
     } else {
       result = await this.runSequential(cases);
+    }
+
+    // Emit reports as artifacts
+    if (this.artifactSink) {
+      try {
+        const jsonReport = generateReport(result, { format: 'json' });
+        const jsonUri = await this.artifactSink.put({
+          type: 'report-json',
+          testId: 'suite',
+          name: 'report.json',
+          data: Buffer.from(jsonReport, 'utf-8'),
+          contentType: 'application/json',
+          metadata: { model: result.model, timestamp: result.timestamp },
+        });
+        this.onProgress?.({ type: 'test:artifact', testId: 'suite', artifactType: 'report-json', uri: jsonUri });
+
+        const mdReport = generateReport(result, { format: 'markdown', includeTurns: true });
+        const mdUri = await this.artifactSink.put({
+          type: 'report-md',
+          testId: 'suite',
+          name: 'report.md',
+          data: Buffer.from(mdReport, 'utf-8'),
+          contentType: 'text/markdown',
+        });
+        this.onProgress?.({ type: 'test:artifact', testId: 'suite', artifactType: 'report-md', uri: mdUri });
+      } catch {
+        // Report emission is best-effort
+      }
     }
 
     // Post-suite memory operations
@@ -264,6 +367,33 @@ export class TestRunner {
         }
       });
     }
+
+    // Finalize artifact sink (writes manifest, flushes)
+    let manifestUri: string | undefined;
+    if (this.artifactSink) {
+      try {
+        const manifest = this.artifactSink.getManifest();
+        manifestUri = await this.artifactSink.put({
+          type: 'report-json',
+          testId: 'suite',
+          name: 'manifest.json',
+          data: Buffer.from(JSON.stringify(manifest, null, 2), 'utf-8'),
+          contentType: 'application/json',
+        });
+        await this.artifactSink.close?.();
+      } catch {
+        // Best-effort
+      }
+    }
+
+    this.onProgress?.({
+      type: 'suite:complete',
+      passed: result.summary.passed,
+      failed: result.summary.failed,
+      skipped: result.summary.skipped,
+      totalMs: result.summary.totalDurationMs,
+      manifestUri,
+    });
 
     return result;
   }
@@ -358,7 +488,17 @@ export class TestRunner {
 
         const driver = await this.driverFactory!();
         try {
-          const result = await this.runTest(tc, driver);
+          let result: TestResult;
+          if (this.workerTimeoutMs) {
+            const timeoutPromise = new Promise<TestResult>((resolve) => {
+              setTimeout(() => {
+                resolve(this.makeSkippedResult(tc, `Worker timed out after ${this.workerTimeoutMs}ms`));
+              }, this.workerTimeoutMs!);
+            });
+            result = await Promise.race([this.runTest(tc, driver), timeoutPromise]);
+          } else {
+            result = await this.runTest(tc, driver);
+          }
           completed.set(tc.id, result);
           results.push(result);
 

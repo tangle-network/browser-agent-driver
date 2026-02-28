@@ -1,0 +1,7 @@
+node_modules
+dist
+.git
+*.md
+PLAN.md
+.agent-memory
+agent-results
