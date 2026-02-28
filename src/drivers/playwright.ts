@@ -104,11 +104,19 @@ export class PlaywrightDriver implements Driver {
           return { success: true };
         }
 
-        case 'scroll':
-          await this.page.mouse.wheel(0, action.direction === 'down'
+        case 'scroll': {
+          const delta = action.direction === 'down'
             ? (action.amount ?? 500)
-            : -(action.amount ?? 500));
+            : -(action.amount ?? 500);
+          if (action.selector) {
+            // Scroll a specific container element
+            const container = this.snapshot.resolveLocator(this.page, action.selector);
+            await container.evaluate((el, d) => { el.scrollBy(0, d); }, delta);
+          } else {
+            await this.page.mouse.wheel(0, delta);
+          }
           return { success: true };
+        }
 
         case 'navigate':
           await this.page.goto(action.url, { timeout });
@@ -117,6 +125,14 @@ export class PlaywrightDriver implements Driver {
         case 'wait':
           await this.page.waitForTimeout(action.ms);
           return { success: true };
+
+        case 'runScript': {
+          const scriptResult = await this.page.evaluate(action.script);
+          const stringified = typeof scriptResult === 'string'
+            ? scriptResult
+            : JSON.stringify(scriptResult, null, 2);
+          return { success: true, error: undefined, data: stringified };
+        }
 
         case 'evaluate':
         case 'verifyPreview':

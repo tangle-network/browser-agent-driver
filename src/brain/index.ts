@@ -7,7 +7,7 @@
 
 import { generateText } from 'ai';
 import type { ModelMessage, LanguageModel } from 'ai';
-import type { Action, PageState, AgentConfig, DesignFinding } from '../types.js';
+import type { Action, PageState, AgentConfig, DesignFinding, GoalVerification } from '../types.js';
 
 const SYSTEM_PROMPT = `You are a senior staff engineer operating a browser via Playwright automation.
 
@@ -20,10 +20,11 @@ ACTIONS:
 - {"action": "press", "selector": "@REF", "key": "Enter"} (or Tab, Escape, ArrowDown, etc.)
 - {"action": "hover", "selector": "@REF"}
 - {"action": "select", "selector": "@REF", "value": "option-value"}
-- {"action": "scroll", "direction": "up" | "down", "amount": 500}
+- {"action": "scroll", "direction": "up" | "down", "amount": 500} — add "selector": "@REF" to scroll a specific container
 - {"action": "navigate", "url": "https://..."}
 - {"action": "wait", "ms": 1000}
 - {"action": "evaluate", "criteria": "Is the layout professional? Are colors consistent?"}
+- {"action": "runScript", "script": "document.querySelector('.count').textContent"} — run JS in page context and get the result. Use for reading content not in the a11y tree (canvas, computed styles, hidden state).
 - {"action": "verifyPreview"} — after the app builds, inspect the preview iframe. Returns URL, title, a11y tree, and errors. Use this AFTER you see a preview iframe on the page.
 - {"action": "complete", "result": "description of what was accomplished"}
 - {"action": "abort", "reason": "why you cannot continue"}
@@ -428,6 +429,94 @@ Please evaluate the quality of this page/application.`;
   }
 
   /**
+   * Verify whether the goal was actually achieved.
+   * Separate from quality evaluation — this checks goal completion, not polish.
+   * Uses a fresh LLM call (no conversation history) to avoid self-confirmation bias.
+   */
+  async verifyGoalCompletion(
+    state: PageState,
+    goal: string,
+    claimedResult: string,
+  ): Promise<GoalVerification> {
+    const textContent = `GOAL: ${goal}
+
+AGENT'S CLAIMED RESULT: ${claimedResult}
+
+CURRENT PAGE:
+URL: ${state.url}
+Title: ${state.title}
+
+ELEMENTS:
+${state.snapshot}
+
+Was the goal actually achieved? Analyze the current page state carefully.`;
+
+    const userContent = this.buildUserContent(textContent, state.screenshot);
+
+    const model = await this.getModel();
+
+    const result = await generateText({
+      model,
+      system: `You are verifying whether a browser automation agent actually achieved its goal.
+
+Analyze the page state (screenshot + accessibility tree) and determine if the stated goal was accomplished.
+
+Be STRICT — the agent may claim success prematurely. Check:
+1. Does the current page state show the goal was completed?
+2. Are there error messages, incomplete forms, or missing elements?
+3. Does the URL match what you'd expect after goal completion?
+4. Is the claimed result consistent with what's visible on the page?
+
+Respond with ONLY a JSON object:
+{
+  "achieved": true,
+  "confidence": 0.9,
+  "evidence": ["The dashboard shows the new item", "URL changed to /success"],
+  "missing": []
+}
+
+- achieved: true if the goal is clearly met, false if not or uncertain
+- confidence: 0.0 to 1.0 — how sure are you?
+- evidence: specific observations supporting your judgment
+- missing: what's still needed (empty array if achieved)`,
+      messages: [{ role: 'user', content: userContent }],
+      temperature: 0,
+      maxOutputTokens: 600,
+      abortSignal: AbortSignal.timeout(this.llmTimeoutMs),
+    });
+
+    const raw = result.text;
+
+    if (this.debug) {
+      console.log('[Brain] Goal verification:', raw.slice(0, 300));
+    }
+
+    try {
+      let text = raw.trim();
+      if (text.startsWith('```')) {
+        text = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+      }
+      const parsed = JSON.parse(text);
+      return {
+        achieved: parsed.achieved === true,
+        confidence: typeof parsed.confidence === 'number'
+          ? Math.max(0, Math.min(1, parsed.confidence))
+          : 0.5,
+        evidence: Array.isArray(parsed.evidence) ? parsed.evidence : [],
+        missing: Array.isArray(parsed.missing) ? parsed.missing : [],
+      };
+    } catch {
+      // Parse failure — assume not verified (conservative)
+      return {
+        achieved: false,
+        confidence: 0,
+        evidence: [],
+        missing: ['Failed to parse goal verification response'],
+      };
+    }
+  }
+
+  /**
    * Audit design quality of the current page state.
    * Uses vision to analyze layout, typography, spacing, contrast, and UX.
    * Returns structured findings with categories and severity levels.
@@ -583,7 +672,7 @@ Only include facts that are genuinely useful. Quality over quantity. Max 10 fact
 
     const VALID_ACTIONS = new Set([
       'click', 'type', 'press', 'hover', 'select',
-      'scroll', 'navigate', 'wait', 'evaluate',
+      'scroll', 'navigate', 'wait', 'evaluate', 'runScript',
       'verifyPreview', 'complete', 'abort',
     ]);
 
@@ -659,6 +748,8 @@ function validateAction(actionType: string, data: Record<string, unknown>): Acti
       return { action: 'wait', ms: num(data.ms, 1000) };
     case 'evaluate':
       return { action: 'evaluate', criteria: optStr('criteria') };
+    case 'runScript':
+      return { action: 'runScript', script: requireStr('script') };
     case 'verifyPreview':
       return { action: 'verifyPreview' };
     case 'complete':

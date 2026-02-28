@@ -15,6 +15,7 @@ export type {
   HoverAction,
   SelectAction,
   EvaluateAction,
+  RunScriptAction,
   VerifyPreviewAction,
   ScrollAction,
   NavigateAction,
@@ -37,6 +38,7 @@ export type {
   FlowAuditResult,
   DesignAuditReport,
   AuditFlow,
+  GoalVerification,
   PreviewVerification,
 } from './types.js';
 

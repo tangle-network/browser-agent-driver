@@ -7,6 +7,8 @@ import type { Action, PageState } from '../types.js';
 export interface ActionResult {
   success: boolean;
   error?: string;
+  /** Data returned by the action (e.g., runScript result) */
+  data?: string;
 }
 
 export interface Driver {

@@ -22,6 +22,8 @@ export interface ScrollAction {
   direction: 'up' | 'down';
   /** Scroll distance in pixels (default: 500) */
   amount?: number;
+  /** Optional selector for scrolling a specific container (default: viewport) */
+  selector?: string;
 }
 
 export interface NavigateAction {
@@ -61,6 +63,12 @@ export interface EvaluateAction {
   criteria: string;
 }
 
+export interface RunScriptAction {
+  action: 'runScript';
+  /** JavaScript expression to evaluate in page context */
+  script: string;
+}
+
 export interface VerifyPreviewAction {
   action: 'verifyPreview';
 }
@@ -80,6 +88,7 @@ export type Action =
   | NavigateAction
   | WaitAction
   | EvaluateAction
+  | RunScriptAction
   | VerifyPreviewAction
   | CompleteAction
   | AbortAction;
@@ -141,6 +150,8 @@ export interface AgentConfig {
   qualityThreshold?: number;
   /** Timeout per LLM request in ms (default: 60000) */
   llmTimeoutMs?: number;
+  /** Verify goal completion before accepting 'complete' action (default: true) */
+  goalVerification?: boolean;
 }
 
 // ============================================================================
@@ -191,6 +202,19 @@ export interface AgentResult {
     issues: string[];
     suggestions: string[];
   };
+  /** Goal achievement verification (if goalVerification is enabled) */
+  goalVerification?: GoalVerification;
+}
+
+export interface GoalVerification {
+  /** Did the LLM judge the goal as achieved? */
+  achieved: boolean;
+  /** Confidence 0-1 */
+  confidence: number;
+  /** Evidence supporting achievement */
+  evidence: string[];
+  /** Missing criteria (empty if achieved) */
+  missing: string[];
 }
 
 // ============================================================================

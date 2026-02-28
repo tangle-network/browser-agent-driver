@@ -305,15 +305,74 @@ export class AgentRunner {
           continue;
         }
 
+        // ── 5c. Handle runScript action ──
+        if (action.action === 'runScript') {
+          const page = this.driver.getPage?.();
+          if (page) {
+            try {
+              const scriptResult = await page.evaluate(action.script);
+              const stringified = typeof scriptResult === 'string'
+                ? scriptResult
+                : JSON.stringify(scriptResult, null, 2);
+              this.brain.injectFeedback(
+                `SCRIPT RESULT:\n${stringified ?? '(undefined)'}`
+              );
+            } catch (scriptErr: unknown) {
+              const msg = scriptErr instanceof Error ? scriptErr.message : String(scriptErr);
+              this.brain.injectFeedback(
+                `SCRIPT ERROR: ${msg}`
+              );
+            }
+          } else {
+            this.brain.injectFeedback(
+              'SCRIPT ERROR: Cannot access page — driver does not expose a Playwright page.'
+            );
+          }
+
+          turn.durationMs = Date.now() - turnStart;
+          turns.push(turn);
+          this.onTurn?.(turn);
+          continue;
+        }
+
         // ── 6. Check for terminal actions ──
         if (action.action === 'complete') {
-          // Quality gating: auto-evaluate before accepting completion
+          // Step 1: Goal verification — did the agent actually achieve the goal?
+          const shouldVerifyGoal = this.config.goalVerification !== false;
+          let goalResult: import('./types.js').GoalVerification | undefined;
+
+          if (shouldVerifyGoal) {
+            goalResult = await this.brain.verifyGoalCompletion(
+              state,
+              scenario.goal,
+              action.result || '',
+            );
+
+            if (this.config.debug) {
+              console.log(`[Runner] Goal verification: achieved=${goalResult.achieved}, confidence=${goalResult.confidence}`);
+            }
+
+            if (!goalResult.achieved) {
+              // Goal not met — reject completion and feed back what's missing
+              this.brain.injectFeedback(
+                `COMPLETION REJECTED — goal verification failed (confidence: ${goalResult.confidence.toFixed(2)}).\n` +
+                `Missing: ${goalResult.missing.join('; ')}\n` +
+                `Evidence reviewed: ${goalResult.evidence.join('; ')}\n` +
+                `The goal has NOT been achieved yet. Continue working.`
+              );
+              turn.durationMs = Date.now() - turnStart;
+              turns.push(turn);
+              this.onTurn?.(turn);
+              continue; // Don't complete — let agent iterate
+            }
+          }
+
+          // Step 2: Quality gating (optional) — is the result good enough?
           const qualityThreshold = this.config.qualityThreshold ?? 0;
           if (qualityThreshold > 0) {
             const evaluation = await this.brain.evaluate(state, scenario.goal);
 
             if (evaluation.score < qualityThreshold) {
-              // Below threshold — reject completion and let agent iterate
               if (this.config.debug) {
                 console.log(`[Runner] Quality ${evaluation.score}/${qualityThreshold} — rejecting completion`);
               }
@@ -326,10 +385,10 @@ export class AgentRunner {
               turn.durationMs = Date.now() - turnStart;
               turns.push(turn);
               this.onTurn?.(turn);
-              continue; // Don't complete — let agent iterate
+              continue;
             }
 
-            // Passed quality gate — include evaluation in result
+            // Both gates passed
             turns.push(turn);
             this.onTurn?.(turn);
             this.saveMemory();
@@ -345,9 +404,11 @@ export class AgentRunner {
                 issues: evaluation.issues,
                 suggestions: evaluation.suggestions,
               },
+              goalVerification: goalResult,
             };
           }
 
+          // Goal verified (or skipped), no quality gate
           turns.push(turn);
           this.onTurn?.(turn);
           this.saveMemory();
@@ -356,6 +417,7 @@ export class AgentRunner {
             result: action.result,
             turns,
             totalMs: Date.now() - startTime,
+            goalVerification: goalResult,
           };
         }
 
