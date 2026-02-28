@@ -1,6 +1,6 @@
 {
   "name": "@tangle-network/agent-browser-driver",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "LLM-driven browser agent for UI automation, testing, and evaluation",
   "type": "module",
   "main": "./dist/index.js",
