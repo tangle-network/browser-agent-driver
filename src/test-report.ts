@@ -3,9 +3,10 @@
  */
 
 import type { TestSuiteResult } from './types.js';
+import { generateJUnitXml } from './reporters/junit.js';
 
 export interface ReportOptions {
-  format: 'json' | 'markdown' | 'html';
+  format: 'json' | 'markdown' | 'html' | 'junit';
   /** Include last N turns per test in report */
   includeTurns?: boolean;
   /** Include screenshots in report */
@@ -20,6 +21,8 @@ export function generateReport(suite: TestSuiteResult, options: ReportOptions): 
       return generateMarkdownReport(suite, options);
     case 'html':
       return generateHtmlReport(suite);
+    case 'junit':
+      return generateJUnitXml(suite);
     default:
       throw new Error(`Unknown format: ${options.format}`);
   }

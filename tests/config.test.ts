@@ -1,0 +1,135 @@
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as os from 'node:os';
+import { defineConfig, defineTests, loadConfig, mergeConfig, toAgentConfig } from '../src/config.js';
+import type { DriverConfig } from '../src/config.js';
+
+describe('defineConfig', () => {
+  it('returns the same config object (identity function)', () => {
+    const config: DriverConfig = { model: 'gpt-4o', headless: true };
+    expect(defineConfig(config)).toBe(config);
+  });
+});
+
+describe('defineTests', () => {
+  it('returns the same test cases array (identity function)', () => {
+    const tests = [{ id: 'a', name: 'Test A', startUrl: 'http://localhost', goal: 'Do something' }];
+    expect(defineTests(tests)).toBe(tests);
+  });
+});
+
+describe('mergeConfig', () => {
+  it('merges scalar values with last-wins', () => {
+    const result = mergeConfig({ model: 'a' }, { model: 'b' });
+    expect(result.model).toBe('b');
+  });
+
+  it('deep merges objects (viewport, memory)', () => {
+    const result = mergeConfig(
+      { memory: { enabled: true, dir: '.mem' } },
+      { memory: { enabled: false } },
+    );
+    expect(result.memory).toEqual({ enabled: false, dir: '.mem' });
+  });
+
+  it('replaces arrays with last-wins for reporters', () => {
+    const result = mergeConfig(
+      { reporters: ['json'] },
+      { reporters: ['junit'] },
+    );
+    expect(result.reporters).toEqual(['junit']);
+  });
+
+  it('skips undefined values', () => {
+    const result = mergeConfig({ model: 'gpt-4o' }, { model: undefined });
+    expect(result.model).toBe('gpt-4o');
+  });
+
+  it('merges three configs in order', () => {
+    const result = mergeConfig(
+      { model: 'a', provider: 'openai' },
+      { model: 'b' },
+      { model: 'c', concurrency: 4 },
+    );
+    expect(result.model).toBe('c');
+    expect(result.provider).toBe('openai');
+    expect(result.concurrency).toBe(4);
+  });
+});
+
+describe('loadConfig', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'abd-config-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('returns defaults when no config file found in directory', async () => {
+    // loadConfig with no explicit path searches CWD for config files.
+    // In a temp dir with no config files, findConfigFile returns undefined → defaults.
+    const origCwd = process.cwd();
+    process.chdir(tmpDir);
+    try {
+      const config = await loadConfig();
+      expect(config).toBeDefined();
+      expect(config.model).toBe('gpt-4o'); // default
+      expect(config.headless).toBe(true);  // default
+    } finally {
+      process.chdir(origCwd);
+    }
+  });
+
+  it('loads config from an explicit .mjs path', async () => {
+    const configPath = path.join(tmpDir, 'test.config.mjs');
+    fs.writeFileSync(configPath, 'export default { model: "test-model", concurrency: 8 };\n');
+
+    const config = await loadConfig(configPath);
+    expect(config.model).toBe('test-model');
+    expect(config.concurrency).toBe(8);
+    // Defaults are merged in
+    expect(config.headless).toBe(true);
+  });
+
+  it('merges file config with defaults', async () => {
+    const configPath = path.join(tmpDir, 'test.config.mjs');
+    fs.writeFileSync(configPath, 'export default { provider: "anthropic" };\n');
+
+    const config = await loadConfig(configPath);
+    expect(config.provider).toBe('anthropic');
+    expect(config.maxTurns).toBe(30); // default
+    expect(config.vision).toBe(true); // default
+  });
+});
+
+describe('toAgentConfig', () => {
+  it('extracts AgentConfig fields from DriverConfig', () => {
+    const driverConfig: DriverConfig = {
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-20250514',
+      apiKey: 'sk-test',
+      vision: true,
+      goalVerification: false,
+      qualityThreshold: 7,
+      // These should NOT appear in AgentConfig
+      concurrency: 4,
+      headless: false,
+      outputDir: './results',
+    };
+
+    const agentConfig = toAgentConfig(driverConfig);
+    expect(agentConfig.provider).toBe('anthropic');
+    expect(agentConfig.model).toBe('claude-sonnet-4-20250514');
+    expect(agentConfig.apiKey).toBe('sk-test');
+    expect(agentConfig.vision).toBe(true);
+    expect(agentConfig.goalVerification).toBe(false);
+    expect(agentConfig.qualityThreshold).toBe(7);
+    // Verify no extra keys leaked through
+    expect('concurrency' in agentConfig).toBe(false);
+    expect('headless' in agentConfig).toBe(false);
+  });
+});

@@ -86,6 +86,13 @@ export { TrajectoryStore } from './memory/store.js';
 export { TrajectoryAnalyzer } from './memory/analyzer.js';
 export type { RunAnalysis, ActionPattern, GoalPattern, TurnWaste } from './memory/analyzer.js';
 
+// Configuration
+export { defineConfig, defineTests, loadConfig, mergeConfig, toAgentConfig } from './config.js';
+export type { DriverConfig } from './config.js';
+
+// JUnit reporter
+export { generateJUnitXml } from './reporters/junit.js';
+
 // Artifact pipeline
 export type {
   Artifact,
@@ -96,3 +103,5 @@ export type {
 } from './artifacts/types.js';
 export { FilesystemSink } from './artifacts/filesystem-sink.js';
 export { CompositeSink } from './artifacts/composite-sink.js';
+export { WebhookSink } from './artifacts/webhook-sink.js';
+export type { WebhookSinkOptions, WebhookPayload } from './artifacts/webhook-sink.js';
