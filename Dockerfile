@@ -6,7 +6,7 @@
 #   docker run -v ./cases.json:/data/cases.json -v ./out:/output \
 #     agent-driver run --cases /data/cases.json --sink /output/ --concurrency 4
 
-FROM mcr.microsoft.com/playwright:v1.52.0-noble
+FROM mcr.microsoft.com/playwright:v1.58.2-noble
 
 WORKDIR /app
 

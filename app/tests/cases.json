@@ -1,0 +1,27 @@
+[
+  {
+    "id": "signup-user-1",
+    "name": "Sign up first test user on ai.tangle.tools",
+    "goal": "Go to ai.tangle.tools and create a new account. Sign up with email 'agent-test-1@tangletest.dev' and password 'TangleTest2026!'. Complete the full signup flow. If email verification is required, note that and stop. After signup, you should land on a dashboard or project selection page.",
+    "startUrl": "https://ai.tangle.tools",
+    "maxTurns": 25,
+    "timeoutMs": 180000,
+    "priority": 0,
+    "category": "auth",
+    "tags": ["signup", "auth"],
+    "successDescription": "Account created successfully. User is signed in and can see the main interface."
+  },
+  {
+    "id": "fhenix-template-user-1",
+    "name": "Select Fhenix template and build a FHE counter dapp",
+    "goal": "You are signed in as agent-test-1@tangletest.dev (password: TangleTest2026!). If not already signed in, sign in first. Then start a new project using the 'Fhenix' template (it should be visible on the main page or in template selection). Once the template is loaded, use the AI chat to build a simple FHE-encrypted counter smart contract with: (1) an encrypted uint32 counter stored on-chain, (2) an increment function that adds 1 to the encrypted counter, (3) a decrypt function that lets the owner view the counter value, (4) a simple frontend page showing a 'Count' display and an 'Increment' button that calls the contract. Ask the AI to implement this step by step. Wait for the project to build and show a preview.",
+    "startUrl": "https://ai.tangle.tools",
+    "maxTurns": 40,
+    "timeoutMs": 600000,
+    "priority": 1,
+    "category": "build",
+    "tags": ["fhenix", "fhe", "template", "build"],
+    "dependsOn": ["signup-user-1"],
+    "successDescription": "A Fhenix FHE counter project is created with a working preview showing the counter UI."
+  }
+]
