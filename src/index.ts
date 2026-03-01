@@ -93,6 +93,10 @@ export type { DriverConfig } from './config.js';
 // JUnit reporter
 export { generateJUnitXml } from './reporters/junit.js';
 
+// Multi-actor sessions (coordinated multi-user browser testing)
+export { MultiActorSession, Actor } from './multi-actor.js';
+export type { ActorConfig, MultiActorSessionConfig } from './multi-actor.js';
+
 // Artifact pipeline
 export type {
   Artifact,
