@@ -20,6 +20,57 @@ interface RefEntry {
   name: string;
 }
 
+/** Parsed element with value for diffing */
+export interface ParsedElement {
+  ref: string;
+  role: string;
+  name: string;
+  value?: string;
+}
+
+/** Structured diff between two snapshots */
+export interface SnapshotDiff {
+  added: string[];
+  removed: string[];
+  changed: string[];
+  unchangedCount: number;
+}
+
+function diffSnapshots(
+  prev: Map<string, ParsedElement>,
+  curr: Map<string, ParsedElement>,
+): SnapshotDiff {
+  const added: string[] = [];
+  const removed: string[] = [];
+  const changed: string[] = [];
+
+  for (const [ref, el] of curr) {
+    const prevEl = prev.get(ref);
+    if (!prevEl) {
+      added.push(`+ ${el.role} "${el.name}" [ref=${ref}]`);
+    } else if (prevEl.value !== el.value) {
+      changed.push(`~ ${el.role} "${el.name}" [ref=${ref}] value: "${prevEl.value ?? ''}" → "${el.value ?? ''}"`);
+    }
+  }
+  for (const [ref, el] of prev) {
+    if (!curr.has(ref)) {
+      removed.push(`- ${el.role} "${el.name}" [ref=${ref}]`);
+    }
+  }
+
+  return { added, removed, changed, unchangedCount: curr.size - added.length - changed.length };
+}
+
+/** Format a SnapshotDiff as compact text for brain injection */
+function formatDiff(diff: SnapshotDiff): string {
+  const lines: string[] = [];
+  if (diff.added.length) lines.push('ADDED:', ...diff.added);
+  if (diff.removed.length) lines.push('REMOVED:', ...diff.removed);
+  if (diff.changed.length) lines.push('CHANGED:', ...diff.changed);
+  lines.push(`(${diff.unchangedCount} elements unchanged)`);
+  return lines.join('\n');
+}
+
 const INTERACTIVE_ROLES = new Set([
   'button', 'link', 'textbox', 'checkbox', 'radio',
   'combobox', 'listbox', 'menuitem', 'menuitemcheckbox',
@@ -48,6 +99,13 @@ export class AriaSnapshotHelper {
   /** Track how many times each base hash has been seen (for duplicate disambiguation) */
   private hashCounts = new Map<string, number>();
 
+  /** Previous snapshot's parsed elements for diffing */
+  private prevElements = new Map<string, ParsedElement>();
+  /** Current snapshot's parsed elements (populated during parseAriaSnapshot) */
+  private currElements = new Map<string, ParsedElement>();
+  /** Last computed diff (undefined on first observe) */
+  private lastDiff: SnapshotDiff | undefined;
+
   /** Clear refs -- call at the start of each observe() cycle */
   reset(): void {
     this.refMap.clear();
@@ -66,7 +124,18 @@ export class AriaSnapshotHelper {
 
     if (!rawSnapshot.trim()) return '(empty page)';
 
+    // Save previous elements before parsing new snapshot
+    this.prevElements = this.currElements;
+    this.currElements = new Map();
+
     let snapshot = this.parseAriaSnapshot(rawSnapshot);
+
+    // Compute diff after parsing (currElements is now populated)
+    if (this.prevElements.size > 0) {
+      this.lastDiff = diffSnapshots(this.prevElements, this.currElements);
+    } else {
+      this.lastDiff = undefined;
+    }
 
     // Augment with data-testid elements -- helps LLMs identify elements
     // that have no accessible name (e.g., icon-only buttons)
@@ -164,6 +233,15 @@ export class AriaSnapshotHelper {
 
         this.refMap.set(refId, { role, name: name || '' });
 
+        // Extract value for diff tracking
+        const valueMatch = rest.match(/\[value="([^"]*)"\]/);
+        this.currElements.set(refId, {
+          ref: refId,
+          role,
+          name: name || '',
+          value: valueMatch ? valueMatch[1] : undefined,
+        });
+
         const cleanRest = rest.replace(/:$/, '').trim();
         const colon = rest.trimEnd().endsWith(':') ? ':' : '';
         const nameStr = name ? ` "${name}"` : '';
@@ -176,6 +254,53 @@ export class AriaSnapshotHelper {
     }
 
     return result.join('\n');
+  }
+
+  /**
+   * Get the diff from the last buildSnapshot() call.
+   * Returns undefined on the first call (no previous snapshot to diff against).
+   */
+  getDiff(): string | undefined {
+    if (!this.lastDiff) return undefined;
+    return formatDiff(this.lastDiff);
+  }
+
+  /** Get the raw structured diff (for programmatic use) */
+  getRawDiff(): SnapshotDiff | undefined {
+    return this.lastDiff;
+  }
+
+  /**
+   * Format a snapshot in compact form: one line per element, ref-first,
+   * flat (no nesting), ~50-60% fewer tokens.
+   *
+   * Full format:
+   *   - button "Sign in" [ref=b2a1]
+   *   - textbox "Email" [ref=t3f0] [value=""]
+   *   - list "Nav" [ref=l1b2]:
+   *     - link "Home" [ref=la3c]
+   *
+   * Compact format:
+   *   @b2a1 button "Sign in"
+   *   @t3f0 textbox "Email" val=""
+   *   @l1b2 list "Nav"
+   *   @la3c link "Home"
+   */
+  static formatCompact(snapshot: string): string {
+    const lines = snapshot.split('\n');
+    const compact: string[] = [];
+
+    for (const line of lines) {
+      const match = line.match(/\s*-\s+(\w+)\s+"([^"]*)"?\s*\[ref=(\w+)\](.*)?$/);
+      if (!match) continue;
+
+      const [, role, name, ref, rest] = match;
+      const valueMatch = rest?.match(/\[value="([^"]*)"\]/);
+      const value = valueMatch ? ` val="${valueMatch[1]}"` : '';
+      compact.push(`@${ref} ${role} "${name}"${value}`);
+    }
+
+    return compact.join('\n');
   }
 }
 

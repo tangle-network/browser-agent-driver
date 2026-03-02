@@ -4,3 +4,5 @@ dist/
 *.tsbuildinfo
 sandbox-results/
 test-artifact-output/
+.env
+agent-results/

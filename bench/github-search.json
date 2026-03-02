@@ -1,0 +1,10 @@
+[
+  {
+    "id": "hn-browse",
+    "name": "Browse Hacker News front page and navigate",
+    "goal": "You are on Hacker News. First, use runScript to extract the titles and point counts of the top 5 stories. Then click the 'More' link at the bottom to load page 2. Then use 'complete' to report all the data you collected: the 5 titles and their points.",
+    "startUrl": "https://news.ycombinator.com",
+    "maxTurns": 6,
+    "timeoutMs": 90000
+  }
+]
