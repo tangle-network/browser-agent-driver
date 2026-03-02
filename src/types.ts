@@ -106,6 +106,8 @@ export interface PageState {
   snapshot: string;
   /** Screenshot as base64 JPEG (optional, for debugging) */
   screenshot?: string;
+  /** Diff from previous snapshot (undefined on first observe) */
+  snapshotDiff?: string;
 }
 
 // ============================================================================

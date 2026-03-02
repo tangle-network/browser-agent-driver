@@ -6,9 +6,10 @@
  */
 
 import type { Page } from 'playwright';
-import type { Driver, ActionResult } from './types.js';
+import type { Driver, ActionResult, ResourceBlockingOptions } from './types.js';
 import type { Action, PageState } from '../types.js';
 import { AriaSnapshotHelper, dismissOverlays } from './snapshot.js';
+import { ANALYTICS_PATTERNS, IMAGE_PATTERNS, MEDIA_PATTERNS } from './block-patterns.js';
 
 export interface PlaywrightDriverOptions {
   /** Action timeout in ms */
@@ -29,6 +30,49 @@ export class PlaywrightDriver implements Driver {
 
   getPage(): Page {
     return this.page;
+  }
+
+  /**
+   * Set up resource blocking to speed up page loads by aborting unnecessary requests.
+   * Call before first navigation for best results.
+   */
+  async setupResourceBlocking(options: ResourceBlockingOptions): Promise<void> {
+    const urlPatterns: string[] = [];
+
+    if (options.blockImages) urlPatterns.push(...IMAGE_PATTERNS);
+    if (options.blockMedia) urlPatterns.push(...MEDIA_PATTERNS);
+    if (options.blockAnalytics) urlPatterns.push(...ANALYTICS_PATTERNS);
+    if (options.blockPatterns) urlPatterns.push(...options.blockPatterns);
+
+    if (urlPatterns.length === 0) return;
+
+    const blockImages = options.blockImages ?? false;
+    const blockMedia = options.blockMedia ?? false;
+
+    await this.page.route('**/*', async (route) => {
+      const url = route.request().url();
+      const type = route.request().resourceType();
+
+      // Fast path: check resource type
+      if (blockImages && type === 'image') {
+        await route.abort();
+        return;
+      }
+      if (blockMedia && type === 'media') {
+        await route.abort();
+        return;
+      }
+
+      // URL pattern matching
+      for (const pattern of urlPatterns) {
+        if (url.includes(pattern)) {
+          await route.abort();
+          return;
+        }
+      }
+
+      await route.continue();
+    });
   }
 
   async observe(): Promise<PageState> {
@@ -53,7 +97,9 @@ export class PlaywrightDriver implements Driver {
       screenshot = buf.toString('base64');
     }
 
-    return { url, title, snapshot: snapshotText, screenshot };
+    const snapshotDiff = this.snapshot.getDiff();
+
+    return { url, title, snapshot: snapshotText, screenshot, snapshotDiff };
   }
 
   async screenshot(): Promise<Buffer> {

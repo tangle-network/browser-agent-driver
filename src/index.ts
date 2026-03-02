@@ -43,10 +43,12 @@ export type {
 } from './types.js';
 
 // Driver interface + implementations
-export type { Driver, ActionResult } from './drivers/types.js';
+export type { Driver, ActionResult, ResourceBlockingOptions } from './drivers/types.js';
 export { PlaywrightDriver } from './drivers/playwright.js';
 export type { PlaywrightDriverOptions } from './drivers/playwright.js';
 export { AriaSnapshotHelper, StaleRefError, dismissOverlays } from './drivers/snapshot.js';
+export type { ParsedElement, SnapshotDiff } from './drivers/snapshot.js';
+export { ANALYTICS_PATTERNS, IMAGE_PATTERNS, MEDIA_PATTERNS } from './drivers/block-patterns.js';
 
 // Brain (LLM decision engine)
 export { Brain } from './brain/index.js';

@@ -9,6 +9,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { AgentConfig, TestCase } from './types.js';
 import type { ArtifactSink } from './artifacts/types.js';
+import type { ResourceBlockingOptions } from './drivers/types.js';
 
 export interface DriverConfig {
   // LLM
@@ -35,6 +36,9 @@ export interface DriverConfig {
   outputDir?: string;
   reporters?: Array<'json' | 'markdown' | 'html' | 'junit'>;
   sinks?: ArtifactSink[];
+
+  // Resource blocking
+  resourceBlocking?: ResourceBlockingOptions;
 
   // Memory
   memory?: {

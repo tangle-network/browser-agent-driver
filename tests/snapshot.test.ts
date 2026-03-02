@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { AriaSnapshotHelper, StaleRefError } from '../src/drivers/snapshot.js';
+import { ANALYTICS_PATTERNS, IMAGE_PATTERNS, MEDIA_PATTERNS } from '../src/drivers/block-patterns.js';
 
 /**
  * Since AriaSnapshotHelper.parseAriaSnapshot is private, we test it
@@ -177,6 +178,171 @@ describe('AriaSnapshotHelper', () => {
     it('handles empty availableRefs', () => {
       const err = new StaleRefError('xyz', []);
       expect(err.message).toContain('none');
+    });
+  });
+
+  describe('getDiff (snapshot diffing)', () => {
+    it('returns undefined on first buildSnapshot', async () => {
+      const helper = new AriaSnapshotHelper();
+      await helper.buildSnapshot(mockPage('- button "Sign in"'));
+      expect(helper.getDiff()).toBeUndefined();
+    });
+
+    it('detects added elements', async () => {
+      const helper = new AriaSnapshotHelper();
+      await helper.buildSnapshot(mockPage('- button "Sign in"'));
+
+      helper.reset();
+      await helper.buildSnapshot(mockPage('- button "Sign in"\n- link "Register"'));
+
+      const diff = helper.getDiff();
+      expect(diff).toBeDefined();
+      expect(diff).toContain('ADDED:');
+      expect(diff).toContain('link "Register"');
+    });
+
+    it('detects removed elements', async () => {
+      const helper = new AriaSnapshotHelper();
+      await helper.buildSnapshot(mockPage('- button "Sign in"\n- link "Register"'));
+
+      helper.reset();
+      await helper.buildSnapshot(mockPage('- button "Sign in"'));
+
+      const diff = helper.getDiff();
+      expect(diff).toBeDefined();
+      expect(diff).toContain('REMOVED:');
+      expect(diff).toContain('link "Register"');
+    });
+
+    it('detects changed values', async () => {
+      const helper = new AriaSnapshotHelper();
+      await helper.buildSnapshot(mockPage('- textbox "Email" [value=""]'));
+
+      helper.reset();
+      await helper.buildSnapshot(mockPage('- textbox "Email" [value="test@example.com"]'));
+
+      const diff = helper.getDiff();
+      expect(diff).toBeDefined();
+      expect(diff).toContain('CHANGED:');
+      expect(diff).toContain('test@example.com');
+    });
+
+    it('reports unchanged count', async () => {
+      const helper = new AriaSnapshotHelper();
+      await helper.buildSnapshot(mockPage('- button "Save"\n- button "Cancel"'));
+
+      helper.reset();
+      await helper.buildSnapshot(mockPage('- button "Save"\n- button "Cancel"'));
+
+      const diff = helper.getDiff();
+      expect(diff).toBeDefined();
+      expect(diff).toContain('2 elements unchanged');
+    });
+
+    it('returns raw structured diff via getRawDiff', async () => {
+      const helper = new AriaSnapshotHelper();
+      await helper.buildSnapshot(mockPage('- button "Save"'));
+
+      helper.reset();
+      await helper.buildSnapshot(mockPage('- button "Save"\n- link "Help"'));
+
+      const raw = helper.getRawDiff();
+      expect(raw).toBeDefined();
+      expect(raw!.added).toHaveLength(1);
+      expect(raw!.removed).toHaveLength(0);
+      expect(raw!.changed).toHaveLength(0);
+      expect(raw!.unchangedCount).toBe(1);
+    });
+  });
+
+  describe('formatCompact', () => {
+    it('produces compact format from full snapshot', async () => {
+      const helper = new AriaSnapshotHelper();
+      const snapshot = await helper.buildSnapshot(mockPage(
+        '- button "Sign in"\n- textbox "Email" [value=""]\n- list "Nav":\n  - link "Home"',
+      ));
+
+      const compact = AriaSnapshotHelper.formatCompact(snapshot);
+      const lines = compact.split('\n');
+
+      // Should have entries for all ref'd elements
+      expect(lines.length).toBeGreaterThanOrEqual(3);
+
+      // Each line starts with @ref
+      for (const line of lines) {
+        expect(line).toMatch(/^@\w+ \w+ "/);
+      }
+
+      // Check ref-first format
+      expect(compact).toContain('button "Sign in"');
+      expect(compact).toContain('textbox "Email"');
+      expect(compact).toContain('val=""');
+      expect(compact).toContain('link "Home"');
+    });
+
+    it('strips tree indentation (flat output)', async () => {
+      const helper = new AriaSnapshotHelper();
+      const snapshot = await helper.buildSnapshot(mockPage(
+        '- list "Nav":\n  - link "Home"\n  - link "About"',
+      ));
+
+      const compact = AriaSnapshotHelper.formatCompact(snapshot);
+
+      // No indentation in compact format
+      for (const line of compact.split('\n')) {
+        expect(line).not.toMatch(/^\s/);
+      }
+    });
+
+    it('returns empty string for snapshot with no ref elements', () => {
+      const compact = AriaSnapshotHelper.formatCompact('- text "hello"\n- paragraph "world"');
+      expect(compact).toBe('');
+    });
+  });
+
+  describe('resource blocking patterns', () => {
+    it('exports non-empty analytics patterns', () => {
+      expect(ANALYTICS_PATTERNS.length).toBeGreaterThan(50);
+      expect(ANALYTICS_PATTERNS).toContain('google-analytics.com');
+      expect(ANALYTICS_PATTERNS).toContain('segment.io');
+      expect(ANALYTICS_PATTERNS).toContain('mixpanel.com');
+    });
+
+    it('exports image patterns', () => {
+      expect(IMAGE_PATTERNS).toContain('.png');
+      expect(IMAGE_PATTERNS).toContain('.jpg');
+      expect(IMAGE_PATTERNS).toContain('.webp');
+    });
+
+    it('exports media patterns', () => {
+      expect(MEDIA_PATTERNS).toContain('.mp4');
+      expect(MEDIA_PATTERNS).toContain('.mp3');
+      expect(MEDIA_PATTERNS).toContain('.webm');
+    });
+
+    it('analytics patterns match expected URLs', () => {
+      const testUrls = [
+        'https://www.google-analytics.com/analytics.js',
+        'https://cdn.segment.com/analytics.min.js',
+        'https://cdn.amplitude.com/libs/amplitude-8.js',
+        'https://static.hotjar.com/c/hotjar-123.js',
+      ];
+      for (const url of testUrls) {
+        const blocked = ANALYTICS_PATTERNS.some(p => url.includes(p));
+        expect(blocked).toBe(true);
+      }
+    });
+
+    it('does not block regular URLs', () => {
+      const safeUrls = [
+        'https://example.com/api/data',
+        'https://cdn.example.com/app.js',
+        'https://mysite.com/styles.css',
+      ];
+      for (const url of safeUrls) {
+        const blocked = ANALYTICS_PATTERNS.some(p => url.includes(p));
+        expect(blocked).toBe(false);
+      }
     });
   });
 });

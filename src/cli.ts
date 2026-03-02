@@ -54,6 +54,11 @@ async function main(): Promise<void> {
       vision: { type: 'boolean' },
       debug: { type: 'boolean', short: 'd', default: false },
 
+      // Resource blocking
+      'block-analytics': { type: 'boolean', default: false },
+      'block-images': { type: 'boolean', default: false },
+      'block-media': { type: 'boolean', default: false },
+
       help: { type: 'boolean', short: 'h', default: false },
       version: { type: 'boolean', short: 'v', default: false },
     },
@@ -101,6 +106,15 @@ async function main(): Promise<void> {
   if (values.headless !== undefined) cliOverrides.headless = values.headless;
   if (values.vision !== undefined) cliOverrides.vision = values.vision;
   if (values['goal-verification'] !== undefined) cliOverrides.goalVerification = values['goal-verification'];
+
+  // Resource blocking
+  if (values['block-analytics'] || values['block-images'] || values['block-media']) {
+    cliOverrides.resourceBlocking = {
+      blockAnalytics: values['block-analytics'] || undefined,
+      blockImages: values['block-images'] || undefined,
+      blockMedia: values['block-media'] || undefined,
+    };
+  }
 
   const driverConfig = mergeConfig(fileConfig, cliOverrides);
 
@@ -177,6 +191,10 @@ async function main(): Promise<void> {
       captureScreenshots: config.vision,
       screenshotQuality: 50,
     });
+    // Apply resource blocking if configured
+    if (driverConfig.resourceBlocking) {
+      await driver.setupResourceBlocking(driverConfig.resourceBlocking);
+    }
     // Wrap in a Driver that properly tears down context on close
     const wrappedDriver: import('./drivers/types.js').Driver = {
       observe: () => driver.observe(),
@@ -318,6 +336,9 @@ OPTIONS:
       --no-goal-verification  Skip goal verification
       --vision                Enable vision/screenshots (default: true)
       --no-vision             Disable vision
+      --block-analytics       Block analytics/tracking scripts
+      --block-images          Block image loading
+      --block-media           Block media loading (video, audio)
   -d, --debug                 Enable debug logging
   -h, --help                  Show this help
   -v, --version               Show version

@@ -8,6 +8,7 @@
 import { generateText } from 'ai';
 import type { ModelMessage, LanguageModel } from 'ai';
 import type { Action, PageState, AgentConfig, DesignFinding, GoalVerification } from '../types.js';
+import { AriaSnapshotHelper } from '../drivers/snapshot.js';
 
 const SYSTEM_PROMPT = `You are a senior staff engineer operating a browser via Playwright automation.
 
@@ -282,7 +283,17 @@ export class Brain {
   private stripElements(text: string): string {
     return text.replace(
       /ELEMENTS:\n[\s\S]*?(?=\n\n|What action should you take\?|$)/,
-      'ELEMENTS:\n[previous snapshot — see current observation]'
+      (_match) => {
+        // Extract the snapshot text from the ELEMENTS block
+        const snapshotStart = _match.indexOf('\n');
+        if (snapshotStart === -1) return 'ELEMENTS:\n[previous snapshot]';
+        const snapshotText = _match.slice(snapshotStart + 1);
+        const compact = AriaSnapshotHelper.formatCompact(snapshotText);
+        if (compact.length > 0) {
+          return `ELEMENTS (compact):\n${compact}`;
+        }
+        return 'ELEMENTS:\n[previous snapshot]';
+      },
     );
   }
 
@@ -310,6 +321,11 @@ Title: ${state.title}
 
 ELEMENTS:
 ${state.snapshot}`;
+
+    // Append snapshot diff when available and compact (< 30% of full snapshot)
+    if (state.snapshotDiff && state.snapshotDiff.length < state.snapshot.length * 0.3) {
+      textContent += `\n\nSNAPSHOT CHANGES (since last turn):\n${state.snapshotDiff}`;
+    }
 
     if (extraContext) {
       textContent += `\n\n${extraContext}`;
