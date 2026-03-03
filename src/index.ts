@@ -91,6 +91,8 @@ export type { RunAnalysis, ActionPattern, GoalPattern, TurnWaste } from './memor
 // Configuration
 export { defineConfig, defineTests, loadConfig, mergeConfig, toAgentConfig } from './config.js';
 export type { DriverConfig } from './config.js';
+export { buildBrowserLaunchPlan } from './browser-launch.js';
+export type { BrowserLaunchPlan, BuildBrowserLaunchPlanOptions } from './browser-launch.js';
 
 // JUnit reporter
 export { generateJUnitXml } from './reporters/junit.js';

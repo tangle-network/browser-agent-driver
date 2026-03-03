@@ -17,6 +17,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { loadConfig, mergeConfig, toAgentConfig } from './config.js';
 import type { DriverConfig } from './config.js';
+import { buildBrowserLaunchPlan } from './browser-launch.js';
 
 async function main(): Promise<void> {
   const { values, positionals } = parseArgs({
@@ -42,6 +43,9 @@ async function main(): Promise<void> {
       'screenshot-interval': { type: 'string' },
       headless: { type: 'boolean' },
       timeout: { type: 'string' },
+      extension: { type: 'string', multiple: true },
+      'user-data-dir': { type: 'string' },
+      wallet: { type: 'boolean' },
 
       // Output
       sink: { type: 'string', short: 's' },
@@ -106,17 +110,23 @@ async function main(): Promise<void> {
   if (values.headless !== undefined) cliOverrides.headless = values.headless;
   if (values.vision !== undefined) cliOverrides.vision = values.vision;
   if (values['goal-verification'] !== undefined) cliOverrides.goalVerification = values['goal-verification'];
+  if (values.extension?.length || values['user-data-dir'] || values.wallet !== undefined) {
+    cliOverrides.wallet = {};
+    if (values.extension?.length) cliOverrides.wallet.extensionPaths = values.extension;
+    if (values['user-data-dir']) cliOverrides.wallet.userDataDir = values['user-data-dir'];
+    if (values.wallet !== undefined) cliOverrides.wallet.enabled = values.wallet;
+  }
 
   // Resource blocking
   if (values['block-analytics'] || values['block-images'] || values['block-media']) {
-    cliOverrides.resourceBlocking = {
-      blockAnalytics: values['block-analytics'] || undefined,
-      blockImages: values['block-images'] || undefined,
-      blockMedia: values['block-media'] || undefined,
-    };
+    cliOverrides.resourceBlocking = {};
+    if (values['block-analytics']) cliOverrides.resourceBlocking.blockAnalytics = true;
+    if (values['block-images']) cliOverrides.resourceBlocking.blockImages = true;
+    if (values['block-media']) cliOverrides.resourceBlocking.blockMedia = true;
   }
 
   const driverConfig = mergeConfig(fileConfig, cliOverrides);
+  const launchPlan = buildBrowserLaunchPlan(driverConfig);
 
   // Dynamic imports — keeps startup fast and allows tree-shaking
   const { chromium } = await import('playwright');
@@ -124,7 +134,7 @@ async function main(): Promise<void> {
   const { TestRunner } = await import('./test-runner.js');
   const { FilesystemSink } = await import('./artifacts/filesystem-sink.js');
 
-  const concurrency = driverConfig.concurrency ?? 1;
+  const concurrency = launchPlan.concurrency;
   const maxTurns = driverConfig.maxTurns ?? 30;
   const screenshotInterval = driverConfig.screenshotInterval ?? 5;
   const timeoutMs = driverConfig.timeoutMs ?? 600_000;
@@ -169,6 +179,9 @@ async function main(): Promise<void> {
   }
 
   if (!quiet) {
+    for (const warning of launchPlan.warnings) {
+      console.warn(`Warning: ${warning}`);
+    }
     console.log(`agent-driver v${JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf-8')).version}`);
     console.log(`Model: ${config.provider}/${config.model} | Tests: ${cases.length} | Concurrency: ${concurrency}`);
     console.log(`Output: ${sinkDir}`);
@@ -177,14 +190,41 @@ async function main(): Promise<void> {
 
   // Set up artifact sink
   const sink = new FilesystemSink(path.resolve(sinkDir));
+  const videoDir = path.join(sinkDir, '_videos');
+  const viewport = launchPlan.viewport;
 
   // Set up browser
-  const browser = await chromium.launch({ headless: driverConfig.headless ?? true });
+  let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
+  let persistentContext: Awaited<ReturnType<typeof chromium.launchPersistentContext>> | undefined;
+
+  if (launchPlan.walletMode) {
+    for (const extensionPath of launchPlan.extensionPaths) {
+      if (!fs.existsSync(extensionPath)) {
+        throw new Error(`Wallet extension path does not exist: ${extensionPath}`);
+      }
+    }
+
+    const userDataDir = launchPlan.userDataDir ?? path.resolve('.agent-wallet-profile');
+    fs.mkdirSync(userDataDir, { recursive: true });
+
+    persistentContext = await chromium.launchPersistentContext(userDataDir, {
+      channel: 'chromium',
+      headless: false,
+      args: launchPlan.browserArgs,
+      viewport,
+      recordVideo: { dir: videoDir, size: viewport },
+    });
+  } else {
+    browser = await chromium.launch({
+      headless: launchPlan.headless,
+      args: launchPlan.browserArgs,
+    });
+  }
 
   const driverFactory = async () => {
-    const context = await browser.newContext({
-      viewport: { width: 1920, height: 1080 },
-      recordVideo: { dir: path.join(sinkDir, '_videos'), size: { width: 1920, height: 1080 } },
+    const context = persistentContext ?? await browser!.newContext({
+      viewport,
+      recordVideo: { dir: videoDir, size: viewport },
     });
     const page = await context.newPage();
     const driver = new PlaywrightDriver(page, {
@@ -203,7 +243,9 @@ async function main(): Promise<void> {
       screenshot: () => driver.screenshot(),
       async close() {
         await page.close().catch(() => {});
-        await context.close().catch(() => {});
+        if (!persistentContext) {
+          await context.close().catch(() => {});
+        }
       },
     };
     return wrappedDriver;
@@ -288,7 +330,11 @@ async function main(): Promise<void> {
 
   // Cleanup
   await singleDriver?.close?.();
-  await browser.close();
+  if (persistentContext) {
+    await persistentContext.close();
+  } else {
+    await browser?.close();
+  }
 
   // Exit code based on results
   process.exit(result.summary.failed > 0 ? 1 : 0);
@@ -327,6 +373,9 @@ OPTIONS:
       --screenshot-interval <n>  Capture every N turns (default: 5)
       --headless              Run browser headless (default: true)
       --no-headless           Show browser window
+      --wallet               Enable wallet mode (persistent Chromium profile)
+      --extension <path>     Load unpacked wallet/browser extension (repeatable)
+      --user-data-dir <dir>  Persistent profile directory for wallet sessions
       --timeout <ms>          Per-test timeout in ms (default: 600000)
   -s, --sink <dir>            Output directory for artifacts (default: ./agent-results)
       --json                  Output progress as JSON lines (for piping)

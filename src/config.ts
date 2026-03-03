@@ -22,6 +22,11 @@ export interface DriverConfig {
   headless?: boolean;
   viewport?: { width: number; height: number };
   browserArgs?: string[];
+  wallet?: {
+    enabled?: boolean;
+    extensionPaths?: string[];
+    userDataDir?: string;
+  };
 
   // Execution
   maxTurns?: number;
@@ -136,7 +141,10 @@ export function mergeConfig(...configs: Partial<DriverConfig>[]): DriverConfig {
         !Array.isArray(existing)
       ) {
         // Shallow merge objects (memory, viewport)
-        result[key] = { ...(existing as Record<string, unknown>), ...(value as Record<string, unknown>) };
+        const cleanedObject = Object.fromEntries(
+          Object.entries(value as Record<string, unknown>).filter(([, nestedValue]) => nestedValue !== undefined),
+        );
+        result[key] = { ...(existing as Record<string, unknown>), ...cleanedObject };
       } else {
         // Scalars and arrays (reporters, browserArgs, projects): last wins
         result[key] = value;

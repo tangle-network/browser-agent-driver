@@ -95,6 +95,8 @@ The CLI and programmatic API both auto-detect this file. CLI flags override conf
 | `baseUrl` | `string` | — | Custom endpoint (LiteLLM, etc.) |
 | `headless` | `boolean` | `true` | Browser headless mode |
 | `viewport` | `{ width, height }` | `1920x1080` | Browser viewport |
+| `browserArgs` | `string[]` | `[]` | Extra Chromium launch args |
+| `wallet` | `{ enabled?, extensionPaths?, userDataDir? }` | — | Persistent Chromium profile + extension mode |
 | `maxTurns` | `number` | `30` | Max turns per test |
 | `timeoutMs` | `number` | `600000` | Per-test timeout |
 | `concurrency` | `number` | `1` | Parallel workers |
@@ -105,8 +107,44 @@ The CLI and programmatic API both auto-detect this file. CLI flags override conf
 | `outputDir` | `string` | `'./agent-results'` | Artifact output dir |
 | `reporters` | `('json' \| 'markdown' \| 'html' \| 'junit')[]` | `['json']` | Report formats |
 | `sinks` | `ArtifactSink[]` | — | Custom artifact sinks |
+| `resourceBlocking` | `ResourceBlockingOptions` | — | Block analytics/images/media for faster tests |
 | `memory` | `{ enabled, dir }` | `disabled` | Trajectory memory |
-| `projects` | `Array<{ name, config, testDir }>` | — | Named project configs |
+| `projects` | `Array<{ name, config, testDir, testMatch }>` | — | Named project configs |
+
+## Wallet Automation (Extensions)
+
+For wallet flows (MetaMask, Rabby, etc.), use persistent Chromium context mode.
+
+```typescript
+import { defineConfig } from '@tangle-network/agent-browser-driver';
+
+export default defineConfig({
+  headless: false,
+  concurrency: 1,
+  wallet: {
+    enabled: true,
+    extensionPaths: ['./extensions/metamask'],
+    userDataDir: './.agent-wallet-profile',
+  },
+});
+```
+
+CLI equivalent:
+
+```bash
+agent-driver run \
+  --cases ./wallet-cases.json \
+  --wallet \
+  --extension ./extensions/metamask \
+  --user-data-dir ./.agent-wallet-profile \
+  --no-headless
+```
+
+Notes:
+- Wallet mode uses `chromium.launchPersistentContext(...)`.
+- Concurrency is forced to `1` in wallet mode.
+- Headless is forced off in wallet mode.
+- Use a dedicated automation profile dir, not your everyday Chrome profile.
 
 ## Actions
 
@@ -170,6 +208,9 @@ agent-driver run --cases ./cases.json --model claude-sonnet-4-20250514 --concurr
 
 # Explicit config path
 agent-driver run --config ./ci.config.ts --cases ./cases.json
+
+# Wallet mode with extension
+agent-driver run --cases ./wallet-cases.json --wallet --extension ./extensions/metamask --no-headless
 ```
 
 ## Reporters

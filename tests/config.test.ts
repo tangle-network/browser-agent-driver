@@ -56,6 +56,18 @@ describe('mergeConfig', () => {
     expect(result.provider).toBe('openai');
     expect(result.concurrency).toBe(4);
   });
+
+  it('preserves nested object keys when override has undefined values', () => {
+    const result = mergeConfig(
+      { wallet: { enabled: true, userDataDir: '.wallet-profile' } },
+      { wallet: { enabled: undefined, extensionPaths: ['wallet-ext'] } },
+    );
+    expect(result.wallet).toEqual({
+      enabled: true,
+      userDataDir: '.wallet-profile',
+      extensionPaths: ['wallet-ext'],
+    });
+  });
 });
 
 describe('loadConfig', () => {
