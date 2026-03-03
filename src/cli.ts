@@ -127,6 +127,20 @@ async function main(): Promise<void> {
 
   const driverConfig = mergeConfig(fileConfig, cliOverrides);
   const launchPlan = buildBrowserLaunchPlan(driverConfig);
+  const quiet = values.quiet!;
+
+  for (const warning of launchPlan.warnings) {
+    if (!quiet) {
+      console.warn(`Warning: ${warning}`);
+    }
+  }
+
+  if (launchPlan.errors.length > 0) {
+    for (const error of launchPlan.errors) {
+      console.error(`Error: ${error}`);
+    }
+    process.exit(1);
+  }
 
   // Dynamic imports — keeps startup fast and allows tree-shaking
   const { chromium } = await import('playwright');
@@ -138,7 +152,6 @@ async function main(): Promise<void> {
   const maxTurns = driverConfig.maxTurns ?? 30;
   const screenshotInterval = driverConfig.screenshotInterval ?? 5;
   const timeoutMs = driverConfig.timeoutMs ?? 600_000;
-  const quiet = values.quiet!;
   const debug = values.debug!;
   const sinkDir = driverConfig.outputDir ?? './agent-results';
 
@@ -179,9 +192,6 @@ async function main(): Promise<void> {
   }
 
   if (!quiet) {
-    for (const warning of launchPlan.warnings) {
-      console.warn(`Warning: ${warning}`);
-    }
     console.log(`agent-driver v${JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf-8')).version}`);
     console.log(`Model: ${config.provider}/${config.model} | Tests: ${cases.length} | Concurrency: ${concurrency}`);
     console.log(`Output: ${sinkDir}`);
