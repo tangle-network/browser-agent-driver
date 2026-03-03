@@ -10,10 +10,13 @@ export interface BrowserLaunchPlan {
   extensionPaths: string[];
   userDataDir?: string;
   warnings: string[];
+  errors: string[];
 }
 
 export interface BuildBrowserLaunchPlanOptions {
   cwd?: string;
+  platform?: NodeJS.Platform;
+  env?: NodeJS.ProcessEnv;
 }
 
 function resolveMaybeRelativePath(value: string, cwd: string): string {
@@ -30,7 +33,10 @@ export function buildBrowserLaunchPlan(
   options: BuildBrowserLaunchPlanOptions = {},
 ): BrowserLaunchPlan {
   const cwd = options.cwd ?? process.cwd();
+  const platform = options.platform ?? process.platform;
+  const env = options.env ?? process.env;
   const warnings: string[] = [];
+  const errors: string[] = [];
 
   const viewport = config.viewport ?? { width: 1920, height: 1080 };
   const requestedConcurrency = config.concurrency ?? 1;
@@ -50,13 +56,38 @@ export function buildBrowserLaunchPlan(
   let headless = requestedHeadless;
   if (walletMode && headless) {
     headless = false;
-    warnings.push('Wallet mode requires headed Chromium. Forcing headless=false.');
+    warnings.push('Wallet mode requires a visible Chromium window for extensions. Overriding headless=true to headless=false.');
   }
 
   let concurrency = requestedConcurrency;
-  if (walletMode && concurrency > 1) {
+  if (walletMode && concurrency !== 1) {
     concurrency = 1;
-    warnings.push('Wallet mode is single-session. Forcing concurrency=1.');
+    warnings.push(`Wallet mode is single-session. Overriding concurrency=${requestedConcurrency} to concurrency=1.`);
+  }
+
+  if (walletMode && platform === 'linux') {
+    const display = env.DISPLAY?.trim() ?? '';
+    const waylandDisplay = env.WAYLAND_DISPLAY?.trim() ?? '';
+    const hasDisplay = display.length > 0;
+    const hasWaylandDisplay = waylandDisplay.length > 0;
+
+    if (!hasDisplay && !hasWaylandDisplay) {
+      errors.push(
+        'Wallet mode on Linux requires a display server, but neither DISPLAY nor WAYLAND_DISPLAY is set. Start an X11/Wayland session or use xvfb-run, then retry.',
+      );
+    }
+
+    if (hasDisplay && !(env.XAUTHORITY?.trim())) {
+      warnings.push(
+        'DISPLAY is set but XAUTHORITY is not. If Chromium cannot connect to X11, export XAUTHORITY to your active session auth file.',
+      );
+    }
+
+    if (hasWaylandDisplay && !(env.XDG_RUNTIME_DIR?.trim())) {
+      warnings.push(
+        'WAYLAND_DISPLAY is set but XDG_RUNTIME_DIR is not. If Chromium cannot connect to Wayland, set XDG_RUNTIME_DIR for your session.',
+      );
+    }
   }
 
   const browserArgs = [...(config.browserArgs ?? [])];
@@ -75,5 +106,6 @@ export function buildBrowserLaunchPlan(
     extensionPaths,
     userDataDir,
     warnings,
+    errors,
   };
 }

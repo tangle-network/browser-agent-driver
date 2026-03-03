@@ -31,6 +31,8 @@ const DEFAULT_MAX_TURNS = 30;
 export interface TestRunnerOptions {
   /** Agent configuration (model, API key, vision, etc.) */
   config?: AgentConfig;
+  /** Default per-test timeout in ms when a case omits timeoutMs */
+  defaultTimeoutMs?: number;
 
   /** Single driver for sequential execution */
   driver?: Driver;
@@ -88,6 +90,7 @@ export class TestRunner {
   private artifactSink?: ArtifactSink;
   private onProgress?: (event: ProgressEvent) => void;
   private workerTimeoutMs?: number;
+  private defaultTimeoutMs?: number;
 
   constructor(options: TestRunnerOptions) {
     if (!options.driver && !options.driverFactory) {
@@ -112,6 +115,9 @@ export class TestRunner {
     this.artifactSink = options.artifactSink;
     this.onProgress = options.onProgress;
     this.workerTimeoutMs = options.workerTimeoutMs;
+    // Backward-compat: honor non-typed timeoutMs on config if explicitly set by library users.
+    this.defaultTimeoutMs = options.defaultTimeoutMs
+      ?? ((options.config as AgentConfig & { timeoutMs?: number } | undefined)?.timeoutMs);
   }
 
   /** Run a single test case */
@@ -196,7 +202,7 @@ export class TestRunner {
       }
 
       // Run with timeout + abort signal
-      const timeoutMs = testCase.timeoutMs;
+      const timeoutMs = this.resolveTimeoutMs(testCase);
       const abortController = timeoutMs && timeoutMs > 0 ? new AbortController() : undefined;
 
       const runPromise = runner.run({
@@ -436,14 +442,25 @@ export class TestRunner {
 
   private async runParallel(cases: TestCase[]): Promise<TestSuiteResult> {
     const sorted = [...cases].sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99));
+    const knownCaseIds = new Set(sorted.map((c) => c.id));
     const results: TestResult[] = [];
     const completed = new Map<string, TestResult>();
     const pending = new Set(sorted.map((c) => c.id));
+    let activeRuns = 0;
     let stopped = false;
 
     const tryDequeue = (): TestCase | null => {
       for (const tc of sorted) {
         if (!pending.has(tc.id)) continue;
+
+        const missingDeps = (tc.dependsOn ?? []).filter((dep) => !knownCaseIds.has(dep));
+        if (missingDeps.length > 0) {
+          pending.delete(tc.id);
+          const skipped = this.makeSkippedResult(tc, `Dependencies not found: ${missingDeps.join(', ')}`);
+          completed.set(tc.id, skipped);
+          results.push(skipped);
+          return tryDequeue();
+        }
 
         // Check if dependencies are met
         if (tc.dependsOn?.length) {
@@ -476,26 +493,58 @@ export class TestRunner {
       return null;
     };
 
+    const markUnresolvablePending = (): void => {
+      if (pending.size === 0) return;
+
+      for (const tc of sorted) {
+        if (!pending.has(tc.id)) continue;
+        pending.delete(tc.id);
+
+        const unresolvedDeps = (tc.dependsOn ?? []).filter((dep) => {
+          const depResult = completed.get(dep);
+          if (!depResult) return true;
+          return !depResult.verified;
+        });
+        const reason = unresolvedDeps.length > 0
+          ? `Unresolvable dependencies (cycle or unmet): ${unresolvedDeps.join(', ')}`
+          : 'Unresolvable dependency graph (no runnable tests remain)';
+        const skipped = this.makeSkippedResult(tc, reason);
+        completed.set(tc.id, skipped);
+        results.push(skipped);
+      }
+    };
+
     const worker = async (): Promise<void> => {
       while (!stopped) {
         const tc = tryDequeue();
         if (!tc) {
           if (pending.size === 0) return;
+          if (activeRuns === 0) {
+            markUnresolvablePending();
+            continue;
+          }
           // Wait for dependencies to resolve
           await new Promise((r) => setTimeout(r, 100));
           continue;
         }
 
-        const driver = await this.driverFactory!();
+        activeRuns += 1;
+        let driver: Driver | undefined;
         try {
+          driver = await this.driverFactory!();
           let result: TestResult;
           if (this.workerTimeoutMs) {
+            let timeoutId: ReturnType<typeof setTimeout> | undefined;
             const timeoutPromise = new Promise<TestResult>((resolve) => {
-              setTimeout(() => {
+              timeoutId = setTimeout(() => {
                 resolve(this.makeSkippedResult(tc, `Worker timed out after ${this.workerTimeoutMs}ms`));
               }, this.workerTimeoutMs!);
             });
-            result = await Promise.race([this.runTest(tc, driver), timeoutPromise]);
+            try {
+              result = await Promise.race([this.runTest(tc, driver), timeoutPromise]);
+            } finally {
+              if (timeoutId) clearTimeout(timeoutId);
+            }
           } else {
             result = await this.runTest(tc, driver);
           }
@@ -506,7 +555,8 @@ export class TestRunner {
             stopped = true;
           }
         } finally {
-          await driver.close?.();
+          activeRuns = Math.max(0, activeRuns - 1);
+          await driver?.close?.();
         }
       }
     };
@@ -657,6 +707,11 @@ export class TestRunner {
       return `Dependencies not met: ${unmet.join(', ')}`;
     }
     return undefined;
+  }
+
+  private resolveTimeoutMs(testCase: TestCase): number | undefined {
+    if (testCase.timeoutMs !== undefined) return testCase.timeoutMs;
+    return this.defaultTimeoutMs;
   }
 
   private makeSkippedResult(tc: TestCase, reason: string): TestResult {
