@@ -31,6 +31,8 @@ const DEFAULT_MAX_TURNS = 30;
 export interface TestRunnerOptions {
   /** Agent configuration (model, API key, vision, etc.) */
   config?: AgentConfig;
+  /** Default per-test timeout in ms when a case omits timeoutMs */
+  defaultTimeoutMs?: number;
 
   /** Single driver for sequential execution */
   driver?: Driver;
@@ -88,6 +90,7 @@ export class TestRunner {
   private artifactSink?: ArtifactSink;
   private onProgress?: (event: ProgressEvent) => void;
   private workerTimeoutMs?: number;
+  private defaultTimeoutMs?: number;
 
   constructor(options: TestRunnerOptions) {
     if (!options.driver && !options.driverFactory) {
@@ -112,6 +115,9 @@ export class TestRunner {
     this.artifactSink = options.artifactSink;
     this.onProgress = options.onProgress;
     this.workerTimeoutMs = options.workerTimeoutMs;
+    // Backward-compat: honor non-typed timeoutMs on config if explicitly set by library users.
+    this.defaultTimeoutMs = options.defaultTimeoutMs
+      ?? ((options.config as AgentConfig & { timeoutMs?: number } | undefined)?.timeoutMs);
   }
 
   /** Run a single test case */
@@ -705,7 +711,7 @@ export class TestRunner {
 
   private resolveTimeoutMs(testCase: TestCase): number | undefined {
     if (testCase.timeoutMs !== undefined) return testCase.timeoutMs;
-    return (this.config as AgentConfig & { timeoutMs?: number }).timeoutMs;
+    return this.defaultTimeoutMs;
   }
 
   private makeSkippedResult(tc: TestCase, reason: string): TestResult {

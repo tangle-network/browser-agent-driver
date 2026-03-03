@@ -269,6 +269,7 @@ async function main(): Promise<void> {
 
   const runner = new TestRunner({
     config,
+    defaultTimeoutMs: timeoutMs,
     driver: singleDriver,
     driverFactory: concurrency > 1 ? driverFactory : undefined,
     concurrency,

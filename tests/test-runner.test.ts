@@ -58,7 +58,8 @@ describe('TestRunner hardening', () => {
 
     const runner = new TestRunner({
       driver: makeDriver(),
-      config: { model: 'gpt-4o', timeoutMs: 25 } as unknown as { model: string; timeoutMs: number },
+      config: { model: 'gpt-4o' },
+      defaultTimeoutMs: 25,
     });
 
     const promise = runner.runTest(makeCase({ id: 'fallback-timeout', timeoutMs: undefined }));
@@ -76,7 +77,8 @@ describe('TestRunner hardening', () => {
 
     const runner = new TestRunner({
       driver: makeDriver(),
-      config: { model: 'gpt-4o', timeoutMs: 100 } as unknown as { model: string; timeoutMs: number },
+      config: { model: 'gpt-4o' },
+      defaultTimeoutMs: 100,
     });
 
     const promise = runner.runTest(makeCase({ id: 'case-timeout', timeoutMs: 10 }));
