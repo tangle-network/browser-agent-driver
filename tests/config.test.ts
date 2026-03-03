@@ -5,6 +5,8 @@ import * as os from 'node:os';
 import { defineConfig, defineTests, loadConfig, mergeConfig, toAgentConfig } from '../src/config.js';
 import type { DriverConfig } from '../src/config.js';
 
+const DEFINE_CONFIG_IMPORT_URL = new URL('../src/config.ts', import.meta.url).href;
+
 describe('defineConfig', () => {
   it('returns the same config object (identity function)', () => {
     const config: DriverConfig = { model: 'gpt-4o', headless: true };
@@ -115,6 +117,68 @@ describe('loadConfig', () => {
     expect(config.provider).toBe('anthropic');
     expect(config.maxTurns).toBe(30); // default
     expect(config.vision).toBe(true); // default
+  });
+
+  it('loads config from an explicit .ts path that uses defineConfig', async () => {
+    const configPath = path.join(tmpDir, 'agent-browser-driver.config.ts');
+    fs.writeFileSync(
+      configPath,
+      [
+        `import { defineConfig } from ${JSON.stringify(DEFINE_CONFIG_IMPORT_URL)};`,
+        'export default defineConfig({',
+        '  model: "ts-config-model",',
+        '  browserArgs: ["--lang=en-US"],',
+        '  wallet: {',
+        '    enabled: true,',
+        '    extensionPaths: ["./extensions/metamask"],',
+        '    userDataDir: "./.wallet-profile",',
+        '  },',
+        '});',
+      ].join('\n'),
+    );
+
+    const config = await loadConfig(configPath);
+    expect(config.model).toBe('ts-config-model');
+    expect(config.browserArgs).toEqual(['--lang=en-US']);
+    expect(config.wallet).toEqual({
+      enabled: true,
+      extensionPaths: ['./extensions/metamask'],
+      userDataDir: './.wallet-profile',
+    });
+    // Defaults still merge in
+    expect(config.headless).toBe(true);
+  });
+
+  it('auto-discovers agent-browser-driver.config.ts from parent directories', async () => {
+    const projectRoot = path.join(tmpDir, 'project');
+    const nestedDir = path.join(projectRoot, 'packages', 'web');
+    fs.mkdirSync(nestedDir, { recursive: true });
+
+    const configPath = path.join(projectRoot, 'agent-browser-driver.config.ts');
+    fs.writeFileSync(
+      configPath,
+      [
+        `import { defineConfig } from ${JSON.stringify(DEFINE_CONFIG_IMPORT_URL)};`,
+        'export default defineConfig({ model: "auto-discovered-ts", concurrency: 3 });',
+      ].join('\n'),
+    );
+
+    const origCwd = process.cwd();
+    process.chdir(nestedDir);
+    try {
+      const config = await loadConfig();
+      expect(config.model).toBe('auto-discovered-ts');
+      expect(config.concurrency).toBe(3);
+    } finally {
+      process.chdir(origCwd);
+    }
+  });
+
+  it('throws when config file contains invalid syntax', async () => {
+    const configPath = path.join(tmpDir, 'broken.config.mjs');
+    fs.writeFileSync(configPath, 'export default { model: "broken",;\n');
+
+    await expect(loadConfig(configPath)).rejects.toThrow();
   });
 });
 
