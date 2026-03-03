@@ -24,6 +24,32 @@ npm install @tangle-network/agent-browser-driver
 npm install -D playwright  # peer dependency
 ```
 
+## Publishing
+
+Automated npm publishing is configured in:
+- `.github/workflows/publish-npm.yml`
+
+Triggers:
+- GitHub Release published (`vX.Y.Z`)
+- Manual `workflow_dispatch`
+
+Release flow:
+1. Bump `package.json` version.
+2. Merge to `main`.
+3. Create/publish GitHub Release tag `v<same-version>`.
+4. Workflow runs build/tests and publishes to npm (`npm publish --provenance --access public`).
+
+### One-time npm Trusted Publishing (OIDC) setup
+
+In npm package settings for `@tangle-network/agent-browser-driver`:
+1. Add trusted publisher.
+2. Provider: GitHub Actions.
+3. Owner: `tangle-network`.
+4. Repository: `agent-browser-driver`.
+5. Workflow file: `publish-npm.yml`.
+
+After this is configured, no long-lived npm token is required.
+
 ## Quick Start
 
 ```typescript
