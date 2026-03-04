@@ -21,8 +21,12 @@ LLM-driven browser automation agent. Observe page state via accessibility tree, 
 
 ```bash
 npm install @tangle-network/agent-browser-driver
+# or
+pnpm add @tangle-network/agent-browser-driver
 npm install -D playwright  # peer dependency
 ```
+
+Package: https://www.npmjs.com/package/@tangle-network/agent-browser-driver
 
 ## Publishing
 
