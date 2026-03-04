@@ -123,10 +123,12 @@ The CLI and programmatic API both auto-detect this file. CLI flags override conf
 | `model` | `string` | `'gpt-4o'` | Model name |
 | `apiKey` | `string` | env var | API key |
 | `baseUrl` | `string` | — | Custom endpoint (LiteLLM, etc.) |
+| `browser` | `'chromium' \| 'firefox' \| 'webkit'` | `'chromium'` | Browser engine for execution |
 | `headless` | `boolean` | `true` | Browser headless mode |
 | `viewport` | `{ width, height }` | `1920x1080` | Browser viewport |
 | `browserArgs` | `string[]` | `[]` | Extra Chromium launch args |
 | `wallet` | `{ enabled?, extensionPaths?, userDataDir?, autoApprove?, password?, preflight? }` | — | Persistent Chromium profile + extension mode with optional prompt auto-approval and origin preflight |
+| `storageState` | `string` | — | Playwright storage state JSON path (pre-authenticated session) |
 | `maxTurns` | `number` | `30` | Max turns per test |
 | `timeoutMs` | `number` | `600000` | Per-test timeout |
 | `concurrency` | `number` | `1` | Parallel workers |
@@ -250,13 +252,32 @@ agent-driver run --goal "Sign up for account" --url http://localhost:3000
 agent-driver run --cases ./cases.json
 
 # Override config with CLI flags
-agent-driver run --cases ./cases.json --model claude-sonnet-4-20250514 --concurrency 4
+agent-driver run --cases ./cases.json --model claude-sonnet-4-20250514 --concurrency 4 --browser firefox
+
+# Run with an already-authenticated browser session
+agent-driver run --goal "Open settings" --url https://ai.tangle.tools --storage-state ./.auth/ai-tangle-tools.json
 
 # Explicit config path
 agent-driver run --config ./ci.config.ts --cases ./cases.json
 
 # Wallet mode with extension
 agent-driver run --cases ./wallet-cases.json --wallet --extension ./extensions/metamask --no-headless
+```
+
+### Authenticated Session Reuse
+
+Save a logged-in browser state once:
+
+```bash
+pnpm auth:save-state https://ai.tangle.tools ./.auth/ai-tangle-tools.json
+```
+
+Then reuse it in runs:
+
+```bash
+agent-driver run --goal "Create a project and verify preview" \
+  --url https://ai.tangle.tools \
+  --storage-state ./.auth/ai-tangle-tools.json
 ```
 
 ## Reporters

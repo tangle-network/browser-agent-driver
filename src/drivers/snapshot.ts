@@ -71,7 +71,7 @@ function formatDiff(diff: SnapshotDiff): string {
   return lines.join('\n');
 }
 
-const INTERACTIVE_ROLES = new Set([
+export const INTERACTIVE_ROLES = new Set([
   'button', 'link', 'textbox', 'checkbox', 'radio',
   'combobox', 'listbox', 'menuitem', 'menuitemcheckbox',
   'menuitemradio', 'option', 'searchbox', 'slider',
@@ -82,7 +82,7 @@ const INTERACTIVE_ROLES = new Set([
  * Generate a short deterministic hash from role+name.
  * Produces a 3-4 char hex string (e.g. "b3f", "1a2c").
  */
-function stableHash(role: string, name: string): string {
+export function stableHash(role: string, name: string): string {
   const str = `${role}:${name}`;
   let h = 0x811c9dc5; // FNV-1a offset basis
   for (let i = 0; i < str.length; i++) {
@@ -110,6 +110,33 @@ export class AriaSnapshotHelper {
   reset(): void {
     this.refMap.clear();
     this.hashCounts.clear();
+  }
+
+  /**
+   * Import refs and elements from an external source (e.g., CDP snapshot).
+   *
+   * Populates the internal refMap and currElements so that resolveLocator()
+   * and getDiff() work identically to the Playwright ariaSnapshot path.
+   */
+  importCdpRefs(
+    refMap: Map<string, { role: string; name: string }>,
+    elements: Map<string, ParsedElement>,
+  ): void {
+    // Save previous elements for diffing
+    this.prevElements = this.currElements;
+    this.currElements = new Map(elements);
+
+    // Import refs into our refMap
+    for (const [refId, entry] of refMap) {
+      this.refMap.set(refId, { role: entry.role, name: entry.name });
+    }
+
+    // Compute diff
+    if (this.prevElements.size > 0) {
+      this.lastDiff = diffSnapshots(this.prevElements, this.currElements);
+    } else {
+      this.lastDiff = undefined;
+    }
   }
 
   /**

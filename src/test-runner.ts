@@ -73,6 +73,32 @@ export interface TestRunnerOptions {
   workerTimeoutMs?: number;
 }
 
+interface RunTestOptions {
+  signal?: AbortSignal;
+}
+
+function combineAbortSignals(signals: Array<AbortSignal | undefined>): AbortSignal | undefined {
+  const active = signals.filter((s): s is AbortSignal => !!s);
+  if (active.length === 0) return undefined;
+  if (active.length === 1) return active[0];
+
+  const controller = new AbortController();
+  const onAbort = (event: Event) => {
+    const target = event.target as AbortSignal;
+    controller.abort(target.reason || 'Cancelled');
+  };
+
+  for (const signal of active) {
+    if (signal.aborted) {
+      controller.abort(signal.reason || 'Cancelled');
+      return controller.signal;
+    }
+    signal.addEventListener('abort', onAbort, { once: true });
+  }
+
+  return controller.signal;
+}
+
 export class TestRunner {
   private config: AgentConfig;
   private driver: Driver | undefined;
@@ -91,6 +117,7 @@ export class TestRunner {
   private onProgress?: (event: ProgressEvent) => void;
   private workerTimeoutMs?: number;
   private defaultTimeoutMs?: number;
+  private pendingArtifactOps: Set<Promise<unknown>> = new Set();
 
   constructor(options: TestRunnerOptions) {
     if (!options.driver && !options.driverFactory) {
@@ -121,7 +148,7 @@ export class TestRunner {
   }
 
   /** Run a single test case */
-  async runTest(testCase: TestCase, driver?: Driver): Promise<TestResult> {
+  async runTest(testCase: TestCase, driver?: Driver, options?: RunTestOptions): Promise<TestResult> {
     const activeDriver = driver || this.driver;
     if (!activeDriver) {
       throw new Error('No driver available — provide driver or driverFactory');
@@ -179,7 +206,7 @@ export class TestRunner {
               // Emit screenshot through artifact sink
               if (this.artifactSink) {
                 const buf = Buffer.from(turn.state.screenshot, 'base64');
-                this.artifactSink.put({
+                const pending = this.artifactSink.put({
                   type: 'screenshot',
                   testId: testCase.id,
                   name: `turn-${String(turn.turn).padStart(3, '0')}.jpg`,
@@ -189,6 +216,7 @@ export class TestRunner {
                 }).then(uri => {
                   this.onProgress?.({ type: 'test:artifact', testId: testCase.id, artifactType: 'screenshot', uri });
                 }).catch(() => {}); // Best-effort
+                this.trackArtifactOp(pending);
               }
             }
           }
@@ -203,21 +231,22 @@ export class TestRunner {
 
       // Run with timeout + abort signal
       const timeoutMs = this.resolveTimeoutMs(testCase);
-      const abortController = timeoutMs && timeoutMs > 0 ? new AbortController() : undefined;
+      const timeoutAbortController = timeoutMs && timeoutMs > 0 ? new AbortController() : undefined;
+      const combinedSignal = combineAbortSignals([timeoutAbortController?.signal, options?.signal]);
 
       const runPromise = runner.run({
         goal,
         startUrl: testCase.startUrl,
         maxTurns: testCase.maxTurns ?? DEFAULT_MAX_TURNS,
-        signal: abortController?.signal,
+        signal: combinedSignal,
       });
 
       let agentResult: AgentResult;
-      if (timeoutMs && timeoutMs > 0 && abortController) {
+      if (timeoutMs && timeoutMs > 0 && timeoutAbortController) {
         let timer: ReturnType<typeof setTimeout> | undefined;
         const timeoutPromise = new Promise<AgentResult>((resolve) => {
           timer = setTimeout(() => {
-            abortController.abort(`Test timed out after ${timeoutMs}ms`);
+            timeoutAbortController.abort(`Test timed out after ${timeoutMs}ms`);
             resolve({
               success: false,
               reason: `Test timed out after ${timeoutMs}ms`,
@@ -233,12 +262,13 @@ export class TestRunner {
       }
 
       // Ground-truth verification
-      let verified = true;
+      // Default to agent outcome when no explicit criteria are provided.
+      let verified = agentResult.success;
       let criteriaResults: CriterionResult[] | undefined;
 
       if (testCase.successCriteria?.length && page) {
         criteriaResults = await this.verifyCriteria(testCase.successCriteria, page);
-        verified = criteriaResults.every((c) => c.passed);
+        verified = agentResult.success && criteriaResults.every((c) => c.passed);
       }
 
       // Save trajectory if memory enabled
@@ -330,6 +360,7 @@ export class TestRunner {
     // Emit reports as artifacts
     if (this.artifactSink) {
       try {
+        await this.flushArtifactOps();
         const jsonReport = generateReport(result, { format: 'json' });
         const jsonUri = await this.artifactSink.put({
           type: 'report-json',
@@ -446,8 +477,8 @@ export class TestRunner {
     const results: TestResult[] = [];
     const completed = new Map<string, TestResult>();
     const pending = new Set(sorted.map((c) => c.id));
-    let activeRuns = 0;
     let stopped = false;
+    let runningCount = 0;
 
     const tryDequeue = (): TestCase | null => {
       for (const tc of sorted) {
@@ -519,7 +550,7 @@ export class TestRunner {
         const tc = tryDequeue();
         if (!tc) {
           if (pending.size === 0) return;
-          if (activeRuns === 0) {
+          if (runningCount === 0) {
             markUnresolvablePending();
             continue;
           }
@@ -528,22 +559,28 @@ export class TestRunner {
           continue;
         }
 
-        activeRuns += 1;
-        let driver: Driver | undefined;
+        runningCount += 1;
+        const driver = await this.driverFactory!();
         try {
-          driver = await this.driverFactory!();
           let result: TestResult;
           if (this.workerTimeoutMs) {
-            let timeoutId: ReturnType<typeof setTimeout> | undefined;
+            const workerAbortController = new AbortController();
+            const runPromise = this.runTest(tc, driver, { signal: workerAbortController.signal });
+            let timeout: ReturnType<typeof setTimeout> | undefined;
             const timeoutPromise = new Promise<TestResult>((resolve) => {
-              timeoutId = setTimeout(() => {
+              timeout = setTimeout(() => {
+                workerAbortController.abort(`Worker timed out after ${this.workerTimeoutMs}ms`);
                 resolve(this.makeSkippedResult(tc, `Worker timed out after ${this.workerTimeoutMs}ms`));
-              }, this.workerTimeoutMs!);
+              }, this.workerTimeoutMs);
             });
             try {
-              result = await Promise.race([this.runTest(tc, driver), timeoutPromise]);
+              result = await Promise.race([runPromise, timeoutPromise]);
+              if (result.skipped) {
+                // Keep background promise from surfacing unhandled rejections.
+                runPromise.catch(() => {});
+              }
             } finally {
-              if (timeoutId) clearTimeout(timeoutId);
+              if (timeout) clearTimeout(timeout);
             }
           } else {
             result = await this.runTest(tc, driver);
@@ -552,11 +589,21 @@ export class TestRunner {
           results.push(result);
 
           if (!result.verified && this.stopOnFailure) {
-            stopped = true;
+            if (!stopped) {
+              stopped = true;
+              for (const remainingId of [...pending]) {
+                const remaining = sorted.find((c) => c.id === remainingId);
+                if (!remaining) continue;
+                pending.delete(remaining.id);
+                const skipped = this.makeSkippedResult(remaining, `Stopped after failure in ${tc.id}`);
+                completed.set(remaining.id, skipped);
+                results.push(skipped);
+              }
+            }
           }
         } finally {
-          activeRuns = Math.max(0, activeRuns - 1);
-          await driver?.close?.();
+          runningCount = Math.max(0, runningCount - 1);
+          await driver.close?.();
         }
       }
     };
@@ -816,6 +863,18 @@ export class TestRunner {
         totalDurationMs: durations.reduce((sum, d) => sum + d, 0),
       },
     };
+  }
+
+  private trackArtifactOp(p: Promise<unknown>): void {
+    this.pendingArtifactOps.add(p);
+    p.finally(() => {
+      this.pendingArtifactOps.delete(p);
+    }).catch(() => {});
+  }
+
+  private async flushArtifactOps(): Promise<void> {
+    if (this.pendingArtifactOps.size === 0) return;
+    await Promise.allSettled([...this.pendingArtifactOps]);
   }
 }
 

@@ -29,7 +29,8 @@ export class FilesystemSink implements ArtifactSink {
     fs.mkdirSync(dir, { recursive: true });
 
     const filePath = path.join(dir, artifact.name);
-    fs.writeFileSync(filePath, artifact.data);
+    const data = this.resolveArtifactData(artifact, filePath);
+    fs.writeFileSync(filePath, data);
 
     const uri = `file://${path.resolve(filePath)}`;
 
@@ -39,7 +40,7 @@ export class FilesystemSink implements ArtifactSink {
       name: artifact.name,
       uri,
       contentType: artifact.contentType,
-      sizeBytes: artifact.data.length,
+      sizeBytes: data.length,
       metadata: artifact.metadata,
     });
 
@@ -54,5 +55,38 @@ export class FilesystemSink implements ArtifactSink {
     // Write manifest as final artifact
     const manifestPath = path.join(this.baseDir, 'manifest.json');
     fs.writeFileSync(manifestPath, JSON.stringify(this.manifest, null, 2));
+  }
+
+  private resolveArtifactData(artifact: Artifact, filePath: string): Buffer {
+    if (artifact.type !== 'video' || artifact.data.length > 0) {
+      return artifact.data;
+    }
+
+    // Playwright can report the video file before bytes are fully flushed.
+    // Fall back to the non-empty capture under {sink}/_videos when available.
+    const fallback = this.findLatestNonEmptyVideo(path.dirname(path.dirname(filePath)));
+    return fallback ?? artifact.data;
+  }
+
+  private findLatestNonEmptyVideo(rootDir: string): Buffer | null {
+    const videosDir = path.join(rootDir, '_videos');
+    if (!fs.existsSync(videosDir)) return null;
+
+    const candidates = fs.readdirSync(videosDir)
+      .filter((entry) => entry.endsWith('.webm'))
+      .map((entry) => {
+        const p = path.join(videosDir, entry);
+        const stat = fs.statSync(p);
+        return {
+          path: p,
+          size: stat.size,
+          mtimeMs: stat.mtimeMs,
+        };
+      })
+      .filter((entry) => entry.size > 0)
+      .sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+    if (candidates.length === 0) return null;
+    return fs.readFileSync(candidates[0].path);
   }
 }

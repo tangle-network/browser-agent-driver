@@ -12,7 +12,7 @@ WORKDIR /app
 
 # Install deps and build
 COPY package.json package-lock.json ./
-RUN npm ci --ignore-scripts
+RUN npm ci
 
 COPY tsconfig.json ./
 COPY src/ ./src/

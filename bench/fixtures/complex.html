@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Complex Dashboard - Benchmark Fixture</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui; margin: 0; display: flex; min-height: 100vh; }
+    .sidebar { width: 240px; background: #1a1a2e; color: white; padding: 16px; }
+    .sidebar h2 { font-size: 14px; text-transform: uppercase; color: #888; margin-top: 24px; }
+    .sidebar a { display: block; color: #ccc; text-decoration: none; padding: 8px 12px; border-radius: 4px; margin: 2px 0; }
+    .sidebar a:hover { background: #16213e; }
+    .main { flex: 1; padding: 24px; background: #f5f5f5; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+    .search { padding: 8px 16px; width: 300px; border: 1px solid #ddd; border-radius: 4px; }
+    .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px; }
+    .card { background: white; border-radius: 8px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .card h3 { margin: 0 0 8px; }
+    table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; }
+    th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid #eee; }
+    th { background: #f8f8f8; font-weight: 600; }
+    .btn { padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; }
+    .btn-primary { background: #0066cc; color: white; }
+    .btn-danger { background: #cc3333; color: white; }
+    .btn-secondary { background: #e0e0e0; color: #333; }
+    .tabs { display: flex; border-bottom: 2px solid #ddd; margin-bottom: 16px; }
+    .tab { padding: 8px 16px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; background: none; border-top: none; border-left: none; border-right: none; }
+    .tab.active { border-bottom-color: #0066cc; color: #0066cc; }
+    .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
+    .badge-green { background: #d4edda; color: #155724; }
+    .badge-yellow { background: #fff3cd; color: #856404; }
+    .badge-red { background: #f8d7da; color: #721c24; }
+    select { padding: 6px 12px; border: 1px solid #ddd; border-radius: 4px; }
+    .checkbox-group label { display: block; padding: 4px 0; }
+  </style>
+</head>
+<body>
+  <!-- Sidebar Navigation -->
+  <aside class="sidebar" aria-label="Sidebar">
+    <h1 style="font-size: 18px; margin: 0 0 24px;">Dashboard</h1>
+    <h2>Main</h2>
+    <nav aria-label="Main navigation">
+      <a href="/dashboard" data-testid="nav-dashboard">Dashboard</a>
+      <a href="/analytics" data-testid="nav-analytics">Analytics</a>
+      <a href="/reports" data-testid="nav-reports">Reports</a>
+      <a href="/users" data-testid="nav-users">Users</a>
+      <a href="/settings" data-testid="nav-settings">Settings</a>
+    </nav>
+    <h2>Resources</h2>
+    <nav aria-label="Resources navigation">
+      <a href="/docs">Documentation</a>
+      <a href="/api">API Reference</a>
+      <a href="/changelog">Changelog</a>
+      <a href="/support">Support</a>
+    </nav>
+    <h2>Account</h2>
+    <nav aria-label="Account navigation">
+      <a href="/profile">Profile</a>
+      <a href="/billing">Billing</a>
+      <a href="/team">Team</a>
+      <a href="/logout">Logout</a>
+    </nav>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="main">
+    <div class="header">
+      <h1>Analytics Dashboard</h1>
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <input type="search" class="search" placeholder="Search..." aria-label="Search" data-testid="search-input">
+        <select aria-label="Time range" data-testid="time-range">
+          <option value="7d">Last 7 days</option>
+          <option value="30d">Last 30 days</option>
+          <option value="90d">Last 90 days</option>
+          <option value="1y">Last year</option>
+        </select>
+        <button class="btn btn-primary" data-testid="export-btn">Export</button>
+        <button class="btn btn-secondary" data-testid="refresh-btn">Refresh</button>
+      </div>
+    </div>
+
+    <!-- Metric Cards -->
+    <div class="cards">
+      <div class="card">
+        <h3>Total Users</h3>
+        <p style="font-size: 32px; font-weight: bold; margin: 0;">12,847</p>
+        <p style="color: green; margin: 4px 0;">+12.5% from last month</p>
+      </div>
+      <div class="card">
+        <h3>Active Sessions</h3>
+        <p style="font-size: 32px; font-weight: bold; margin: 0;">3,421</p>
+        <p style="color: green; margin: 4px 0;">+8.2% from last month</p>
+      </div>
+      <div class="card">
+        <h3>Revenue</h3>
+        <p style="font-size: 32px; font-weight: bold; margin: 0;">$48,290</p>
+        <p style="color: red; margin: 4px 0;">-2.1% from last month</p>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div role="tablist" aria-label="Data views">
+      <button role="tab" class="tab active" aria-selected="true" data-testid="tab-overview">Overview</button>
+      <button role="tab" class="tab" aria-selected="false" data-testid="tab-users">Users</button>
+      <button role="tab" class="tab" aria-selected="false" data-testid="tab-revenue">Revenue</button>
+      <button role="tab" class="tab" aria-selected="false" data-testid="tab-events">Events</button>
+    </div>
+
+    <!-- Data Table -->
+    <table aria-label="User activity">
+      <thead>
+        <tr>
+          <th><input type="checkbox" aria-label="Select all"></th>
+          <th>User</th>
+          <th>Email</th>
+          <th>Status</th>
+          <th>Last Active</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><input type="checkbox" aria-label="Select Alice Johnson"></td>
+          <td>Alice Johnson</td>
+          <td>alice@example.com</td>
+          <td><span class="badge badge-green">Active</span></td>
+          <td>2 min ago</td>
+          <td>
+            <button class="btn btn-secondary" data-testid="edit-alice">Edit</button>
+            <button class="btn btn-danger" data-testid="delete-alice">Delete</button>
+          </td>
+        </tr>
+        <tr>
+          <td><input type="checkbox" aria-label="Select Bob Smith"></td>
+          <td>Bob Smith</td>
+          <td>bob@example.com</td>
+          <td><span class="badge badge-yellow">Idle</span></td>
+          <td>1 hour ago</td>
+          <td>
+            <button class="btn btn-secondary">Edit</button>
+            <button class="btn btn-danger">Delete</button>
+          </td>
+        </tr>
+        <tr>
+          <td><input type="checkbox" aria-label="Select Carol Davis"></td>
+          <td>Carol Davis</td>
+          <td>carol@example.com</td>
+          <td><span class="badge badge-green">Active</span></td>
+          <td>5 min ago</td>
+          <td>
+            <button class="btn btn-secondary">Edit</button>
+            <button class="btn btn-danger">Delete</button>
+          </td>
+        </tr>
+        <tr>
+          <td><input type="checkbox" aria-label="Select Dave Wilson"></td>
+          <td>Dave Wilson</td>
+          <td>dave@example.com</td>
+          <td><span class="badge badge-red">Suspended</span></td>
+          <td>3 days ago</td>
+          <td>
+            <button class="btn btn-secondary">Edit</button>
+            <button class="btn btn-danger">Delete</button>
+          </td>
+        </tr>
+        <tr>
+          <td><input type="checkbox" aria-label="Select Eve Brown"></td>
+          <td>Eve Brown</td>
+          <td>eve@example.com</td>
+          <td><span class="badge badge-green">Active</span></td>
+          <td>Just now</td>
+          <td>
+            <button class="btn btn-secondary">Edit</button>
+            <button class="btn btn-danger">Delete</button>
+          </td>
+        </tr>
+        <tr>
+          <td><input type="checkbox" aria-label="Select Frank Miller"></td>
+          <td>Frank Miller</td>
+          <td>frank@example.com</td>
+          <td><span class="badge badge-yellow">Idle</span></td>
+          <td>30 min ago</td>
+          <td>
+            <button class="btn btn-secondary">Edit</button>
+            <button class="btn btn-danger">Delete</button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Pagination -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px;">
+      <span>Showing 1-6 of 128 users</span>
+      <div style="display: flex; gap: 4px;">
+        <button class="btn btn-secondary" disabled>Previous</button>
+        <button class="btn btn-primary">1</button>
+        <button class="btn btn-secondary">2</button>
+        <button class="btn btn-secondary">3</button>
+        <button class="btn btn-secondary">...</button>
+        <button class="btn btn-secondary">22</button>
+        <button class="btn btn-secondary">Next</button>
+      </div>
+    </div>
+
+    <!-- Filter Panel -->
+    <details style="margin-top: 24px; background: white; border-radius: 8px; padding: 16px;">
+      <summary style="cursor: pointer; font-weight: 600;">Advanced Filters</summary>
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 16px;">
+        <div>
+          <label for="filter-status">Status</label>
+          <select id="filter-status" style="width: 100%;" data-testid="filter-status">
+            <option value="">All</option>
+            <option value="active">Active</option>
+            <option value="idle">Idle</option>
+            <option value="suspended">Suspended</option>
+          </select>
+        </div>
+        <div>
+          <label for="filter-role">Role</label>
+          <select id="filter-role" style="width: 100%;" data-testid="filter-role">
+            <option value="">All</option>
+            <option value="admin">Admin</option>
+            <option value="editor">Editor</option>
+            <option value="viewer">Viewer</option>
+          </select>
+        </div>
+        <div>
+          <label for="filter-date">Date Range</label>
+          <input type="date" id="filter-date" style="width: 100%;" data-testid="filter-date">
+        </div>
+        <div class="checkbox-group">
+          <label><input type="checkbox" data-testid="filter-verified"> Verified only</label>
+          <label><input type="checkbox" data-testid="filter-premium"> Premium only</label>
+          <label><input type="checkbox" data-testid="filter-2fa"> 2FA enabled</label>
+        </div>
+        <div style="display: flex; align-items: end; gap: 8px;">
+          <button class="btn btn-primary" data-testid="apply-filters">Apply Filters</button>
+          <button class="btn btn-secondary" data-testid="reset-filters">Reset</button>
+        </div>
+      </div>
+    </details>
+  </main>
+
+  <!-- Hidden modal for benchmarking overlay detection -->
+  <div class="modal" role="dialog" aria-label="Confirm action" id="confirm-modal">
+    <div style="background: white; border-radius: 8px; padding: 24px; max-width: 400px; margin: 100px auto;">
+      <h2>Confirm Delete</h2>
+      <p>Are you sure you want to delete this user?</p>
+      <button class="btn btn-danger">Delete</button>
+      <button class="btn btn-secondary" aria-label="Close">Cancel</button>
+    </div>
+  </div>
+</body>
+</html>

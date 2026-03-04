@@ -82,4 +82,28 @@ describe('FilesystemSink', () => {
     expect(m1).not.toBe(m2);
     expect(m1).toEqual(m2);
   });
+
+  it('falls back to non-empty _videos capture when video artifact payload is empty', async () => {
+    const sink = new FilesystemSink(tmpDir);
+    const videosDir = path.join(tmpDir, '_videos');
+    fs.mkdirSync(videosDir, { recursive: true });
+    fs.writeFileSync(path.join(videosDir, 'latest.webm'), Buffer.from('REALWEBM'));
+
+    const uri = await sink.put(makeArtifact({
+      type: 'video',
+      testId: 'video-case',
+      name: 'recording.webm',
+      data: Buffer.alloc(0),
+      contentType: 'video/webm',
+    }));
+
+    const resolvedPath = path.join(tmpDir, 'video-case', 'recording.webm');
+    expect(uri).toBe(`file://${path.resolve(resolvedPath)}`);
+    expect(fs.readFileSync(resolvedPath).toString()).toBe('REALWEBM');
+
+    const manifest = sink.getManifest();
+    expect(manifest).toHaveLength(1);
+    expect(manifest[0].type).toBe('video');
+    expect(manifest[0].sizeBytes).toBe(Buffer.from('REALWEBM').length);
+  });
 });

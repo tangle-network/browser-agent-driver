@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Multi-Step Form - Benchmark Fixture</title>
+  <style>
+    body { font-family: system-ui; max-width: 700px; margin: 40px auto; padding: 0 20px; }
+    .step { display: none; }
+    .step.active { display: block; }
+    fieldset { border: 1px solid #ddd; border-radius: 8px; padding: 20px; margin-bottom: 16px; }
+    legend { font-weight: 600; padding: 0 8px; }
+    label { display: block; margin: 12px 0 4px; font-weight: 500; }
+    input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+    textarea { height: 80px; resize: vertical; }
+    .radio-group label, .checkbox-group label { display: flex; align-items: center; gap: 8px; font-weight: normal; }
+    .radio-group label input, .checkbox-group label input { width: auto; }
+    .actions { display: flex; justify-content: space-between; margin-top: 20px; }
+    button { padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+    .btn-next { background: #0066cc; color: white; }
+    .btn-back { background: #e0e0e0; color: #333; }
+    .btn-submit { background: #28a745; color: white; }
+    .progress { display: flex; gap: 4px; margin-bottom: 24px; }
+    .progress-step { flex: 1; height: 4px; background: #ddd; border-radius: 2px; }
+    .progress-step.done { background: #0066cc; }
+    .progress-step.current { background: #0066cc; opacity: 0.5; }
+    #result { display: none; background: #d4edda; border: 1px solid #c3e6cb; border-radius: 8px; padding: 20px; margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <h1>Create Account</h1>
+  <div class="progress" aria-label="Form progress">
+    <div class="progress-step done" aria-label="Step 1: Personal Info"></div>
+    <div class="progress-step current" aria-label="Step 2: Contact"></div>
+    <div class="progress-step" aria-label="Step 3: Preferences"></div>
+    <div class="progress-step" aria-label="Step 4: Review"></div>
+  </div>
+
+  <!-- Step 1: Personal Info -->
+  <div class="step active" id="step1" role="group" aria-label="Personal Information">
+    <fieldset>
+      <legend>Personal Information</legend>
+      <label for="firstName">First Name</label>
+      <input id="firstName" type="text" data-testid="first-name" required>
+      <label for="lastName">Last Name</label>
+      <input id="lastName" type="text" data-testid="last-name" required>
+      <label for="dob">Date of Birth</label>
+      <input id="dob" type="date" data-testid="dob">
+      <div class="radio-group" role="radiogroup" aria-label="Gender">
+        <label><input type="radio" name="gender" value="male"> Male</label>
+        <label><input type="radio" name="gender" value="female"> Female</label>
+        <label><input type="radio" name="gender" value="other"> Other</label>
+        <label><input type="radio" name="gender" value="prefer-not"> Prefer not to say</label>
+      </div>
+    </fieldset>
+    <div class="actions">
+      <span></span>
+      <button class="btn-next" data-testid="next-1" onclick="showStep(2)">Next</button>
+    </div>
+  </div>
+
+  <!-- Step 2: Contact -->
+  <div class="step" id="step2" role="group" aria-label="Contact Details">
+    <fieldset>
+      <legend>Contact Details</legend>
+      <label for="email">Email Address</label>
+      <input id="email" type="email" data-testid="email" required>
+      <label for="phone">Phone Number</label>
+      <input id="phone" type="tel" data-testid="phone">
+      <label for="address">Street Address</label>
+      <input id="address" type="text" data-testid="address">
+      <label for="city">City</label>
+      <input id="city" type="text" data-testid="city">
+      <label for="state">State</label>
+      <select id="state" data-testid="state">
+        <option value="">Select state...</option>
+        <option value="CA">California</option>
+        <option value="NY">New York</option>
+        <option value="TX">Texas</option>
+        <option value="FL">Florida</option>
+        <option value="WA">Washington</option>
+      </select>
+      <label for="zip">ZIP Code</label>
+      <input id="zip" type="text" data-testid="zip" pattern="[0-9]{5}">
+    </fieldset>
+    <div class="actions">
+      <button class="btn-back" data-testid="back-2" onclick="showStep(1)">Back</button>
+      <button class="btn-next" data-testid="next-2" onclick="showStep(3)">Next</button>
+    </div>
+  </div>
+
+  <!-- Step 3: Preferences -->
+  <div class="step" id="step3" role="group" aria-label="Preferences">
+    <fieldset>
+      <legend>Preferences</legend>
+      <label for="plan">Plan</label>
+      <select id="plan" data-testid="plan">
+        <option value="free">Free</option>
+        <option value="pro">Pro ($9/mo)</option>
+        <option value="team">Team ($29/mo)</option>
+        <option value="enterprise">Enterprise (Contact us)</option>
+      </select>
+      <div class="checkbox-group" style="margin-top: 16px;">
+        <p style="font-weight: 500; margin-bottom: 8px;">Notifications</p>
+        <label><input type="checkbox" data-testid="notify-email" checked> Email notifications</label>
+        <label><input type="checkbox" data-testid="notify-sms"> SMS notifications</label>
+        <label><input type="checkbox" data-testid="notify-push"> Push notifications</label>
+        <label><input type="checkbox" data-testid="notify-weekly"> Weekly digest</label>
+      </div>
+      <label for="bio">Bio</label>
+      <textarea id="bio" data-testid="bio" placeholder="Tell us about yourself..."></textarea>
+      <label for="website">Website</label>
+      <input id="website" type="url" data-testid="website" placeholder="https://">
+      <div class="checkbox-group" style="margin-top: 16px;">
+        <label><input type="checkbox" data-testid="terms" required> I agree to the Terms of Service</label>
+        <label><input type="checkbox" data-testid="privacy"> I agree to the Privacy Policy</label>
+        <label><input type="checkbox" data-testid="marketing"> Send me marketing emails</label>
+      </div>
+    </fieldset>
+    <div class="actions">
+      <button class="btn-back" data-testid="back-3" onclick="showStep(2)">Back</button>
+      <button class="btn-submit" data-testid="submit" onclick="submitForm()">Create Account</button>
+    </div>
+  </div>
+
+  <div id="result" role="alert">
+    <h2>Account Created!</h2>
+    <p>Your account has been successfully created. Check your email for verification.</p>
+    <button data-testid="go-dashboard" onclick="alert('Dashboard')">Go to Dashboard</button>
+  </div>
+
+  <script>
+    function showStep(n) {
+      document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+      document.getElementById('step' + n).classList.add('active');
+      document.querySelectorAll('.progress-step').forEach((s, i) => {
+        s.className = 'progress-step' + (i < n - 1 ? ' done' : i === n - 1 ? ' current' : '');
+      });
+    }
+    function submitForm() {
+      document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+      document.getElementById('result').style.display = 'block';
+    }
+  </script>
+</body>
+</html>
