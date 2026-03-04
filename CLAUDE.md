@@ -2,6 +2,19 @@
 
 Agent Browser Driver product operating guidance (greenfield, high-ROI, no overengineering).
 
+## Reliability Spec Rating
+
+Rating: **9/10**
+
+Why:
+- Strong focus on measurable outcomes (pass rate, duration, cost, artifacts).
+- Correct promotion rule (no reliability regression).
+- Correct separation of default behavior vs experiments.
+
+Gap to 10/10:
+- Needs strict, always-on run discipline doc for repeatable daily execution.
+- Needs explicit scoped target statement: 100% on defined benchmark tiers.
+
 ## Mission
 
 This project is a general-purpose agentic browser automation tool.
@@ -57,6 +70,18 @@ Non-goals:
 
 3. Promotion rule:
 - No pass-rate regression vs control, plus meaningful latency/token improvement.
+
+4. Success target:
+- Tier 1 (deterministic/local fixtures): 100% required.
+- Tier 2 (staging/auth core flows): move to 100% through bug closure.
+- Tier 3 (open web variability): tracked separately; not allowed to regress Tier 1/2.
+
+## Execution Standard
+
+1. Operate as reliability engineering, not feature exploration.
+2. Assume failures are fixable engineering defects.
+3. Change one variable at a time; always compare against control.
+4. Ship only changes that improve or preserve success rate.
 
 ## Rollback Plan
 
