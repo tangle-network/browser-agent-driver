@@ -45,10 +45,14 @@ export type {
 // Driver interface + implementations
 export type { Driver, ActionResult, ResourceBlockingOptions } from './drivers/types.js';
 export { PlaywrightDriver } from './drivers/playwright.js';
-export type { PlaywrightDriverOptions } from './drivers/playwright.js';
-export { AriaSnapshotHelper, StaleRefError, dismissOverlays } from './drivers/snapshot.js';
+export type { PlaywrightDriverOptions, ObserveTiming } from './drivers/playwright.js';
+export { AriaSnapshotHelper, StaleRefError, dismissOverlays, stableHash, INTERACTIVE_ROLES } from './drivers/snapshot.js';
 export type { ParsedElement, SnapshotDiff } from './drivers/snapshot.js';
 export { ANALYTICS_PATTERNS, IMAGE_PATTERNS, MEDIA_PATTERNS } from './drivers/block-patterns.js';
+export { buildCdpSnapshot } from './drivers/cdp-snapshot.js';
+export type { CdpSnapshotResult } from './drivers/cdp-snapshot.js';
+export { getPageMetadata } from './drivers/cdp-page-state.js';
+export type { PageMetadata } from './drivers/cdp-page-state.js';
 
 // Brain (LLM decision engine)
 export { Brain } from './brain/index.js';

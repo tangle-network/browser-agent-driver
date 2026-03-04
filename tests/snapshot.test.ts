@@ -300,6 +300,99 @@ describe('AriaSnapshotHelper', () => {
     });
   });
 
+  describe('importCdpRefs', () => {
+    it('populates refMap so resolveLocator works', async () => {
+      const helper = new AriaSnapshotHelper();
+      const page = mockPage('');
+
+      const refMap = new Map([
+        ['b1a2', { role: 'button', name: 'OK' }],
+      ]);
+      const elements = new Map([
+        ['b1a2', { ref: 'b1a2', role: 'button', name: 'OK' }],
+      ]);
+
+      helper.importCdpRefs(refMap, elements);
+
+      // Should resolve without throwing
+      const locator = helper.resolveLocator(page, '@b1a2');
+      expect(locator).toBeDefined();
+    });
+
+    it('throws StaleRefError for unknown refs after importCdpRefs', () => {
+      const helper = new AriaSnapshotHelper();
+      const page = mockPage('');
+
+      const refMap = new Map([
+        ['b1a2', { role: 'button', name: 'OK' }],
+      ]);
+      const elements = new Map([
+        ['b1a2', { ref: 'b1a2', role: 'button', name: 'OK' }],
+      ]);
+
+      helper.importCdpRefs(refMap, elements);
+
+      expect(() => helper.resolveLocator(page, '@missing')).toThrow(StaleRefError);
+    });
+
+    it('computes diff between CDP snapshots', () => {
+      const helper = new AriaSnapshotHelper();
+
+      // First snapshot
+      const refMap1 = new Map([
+        ['b1', { role: 'button', name: 'Save' }],
+      ]);
+      const elements1 = new Map([
+        ['b1', { ref: 'b1', role: 'button', name: 'Save' }],
+      ]);
+      helper.importCdpRefs(refMap1, elements1);
+
+      // No diff on first import
+      expect(helper.getDiff()).toBeUndefined();
+
+      helper.reset();
+
+      // Second snapshot with an added element
+      const refMap2 = new Map([
+        ['b1', { role: 'button', name: 'Save' }],
+        ['l1', { role: 'link', name: 'Help' }],
+      ]);
+      const elements2 = new Map([
+        ['b1', { ref: 'b1', role: 'button', name: 'Save' }],
+        ['l1', { ref: 'l1', role: 'link', name: 'Help' }],
+      ]);
+      helper.importCdpRefs(refMap2, elements2);
+
+      const diff = helper.getDiff();
+      expect(diff).toBeDefined();
+      expect(diff).toContain('ADDED:');
+      expect(diff).toContain('link "Help"');
+    });
+
+    it('detects value changes via importCdpRefs', () => {
+      const helper = new AriaSnapshotHelper();
+
+      // First snapshot
+      helper.importCdpRefs(
+        new Map([['t1', { role: 'textbox', name: 'Email' }]]),
+        new Map([['t1', { ref: 't1', role: 'textbox', name: 'Email', value: '' }]]),
+      );
+
+      helper.reset();
+
+      // Second snapshot: value changed
+      helper.importCdpRefs(
+        new Map([['t1', { role: 'textbox', name: 'Email' }]]),
+        new Map([['t1', { ref: 't1', role: 'textbox', name: 'Email', value: 'test@example.com' }]]),
+      );
+
+      const diff = helper.getDiff();
+      expect(diff).toBeDefined();
+      expect(diff).toContain('CHANGED:');
+      expect(diff).toContain('test@example.com');
+    });
+  });
+
   describe('resource blocking patterns', () => {
     it('exports non-empty analytics patterns', () => {
       expect(ANALYTICS_PATTERNS.length).toBeGreaterThan(50);

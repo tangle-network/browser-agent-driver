@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Simple Page - Benchmark Fixture</title>
+  <style>
+    body { font-family: system-ui; max-width: 600px; margin: 40px auto; padding: 0 20px; }
+    button { padding: 8px 16px; margin: 4px; cursor: pointer; }
+    input { padding: 8px; margin: 4px; width: 200px; }
+    nav a { margin-right: 12px; color: #0066cc; }
+  </style>
+</head>
+<body>
+  <h1>Simple Test Page</h1>
+  <nav aria-label="Main">
+    <a href="/about">About</a>
+    <a href="/contact">Contact</a>
+    <a href="/help">Help</a>
+  </nav>
+  <form>
+    <label for="email">Email</label>
+    <input id="email" type="email" placeholder="you@example.com" data-testid="email-input">
+    <label for="password">Password</label>
+    <input id="password" type="password" placeholder="password" data-testid="password-input">
+    <button type="submit" data-testid="login-btn">Sign in</button>
+    <button type="button" data-testid="register-btn">Register</button>
+  </form>
+  <p>Welcome to the simple test page. This has ~10 interactive elements.</p>
+</body>
+</html>
