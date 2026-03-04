@@ -1,6 +1,10 @@
 name: Publish NPM
 
 on:
+  push:
+    tags:
+      - 'v*'
+      - 'agent-browser-driver-v*'
   release:
     types: [published]
   workflow_dispatch:
@@ -25,7 +29,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: '22'
           cache: pnpm
           registry-url: https://registry.npmjs.org
 
@@ -38,15 +42,29 @@ jobs:
       - name: Test
         run: pnpm test
 
-      - name: Ensure release tag matches package version
-        if: github.event_name == 'release'
+      - name: Ensure tag matches package version
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'release'
         run: |
-          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          REF_NAME="${GITHUB_REF_NAME}"
+          TAG_VERSION=""
+          if [[ "$REF_NAME" == agent-browser-driver-v* ]]; then
+            TAG_VERSION="${REF_NAME#agent-browser-driver-v}"
+          elif [[ "$REF_NAME" == v* ]]; then
+            TAG_VERSION="${REF_NAME#v}"
+          fi
+
+          if [ -z "$TAG_VERSION" ]; then
+            echo "Could not derive version from ref '$REF_NAME'"
+            exit 1
+          fi
+
           PKG_VERSION="$(node -p "require('./package.json').version")"
           if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
-            echo "Release tag version ($TAG_VERSION) does not match package.json version ($PKG_VERSION)"
+            echo "Tag version ($TAG_VERSION) does not match package.json version ($PKG_VERSION)"
             exit 1
           fi
 
       - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish --provenance --access public
