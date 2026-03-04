@@ -22,13 +22,13 @@ describe('buildBrowserLaunchPlan', () => {
     }, { cwd: '/repo', platform: 'darwin' });
 
     expect(plan.walletMode).toBe(true);
-    expect(plan.headless).toBe(false);
+    expect(plan.headless).toBe(true);
     expect(plan.concurrency).toBe(1);
     expect(plan.extensionPaths).toEqual(['/repo/extensions/metamask']);
     expect(plan.browserArgs).toContain('--disable-extensions-except=/repo/extensions/metamask');
     expect(plan.browserArgs).toContain('--load-extension=/repo/extensions/metamask');
     expect(plan.warnings).toEqual([
-      'Wallet mode requires a visible Chromium window for extensions. Overriding headless=true to headless=false.',
+      'Wallet mode is running headless. Extension compatibility depends on your Chromium build; use headed mode if wallet prompts fail.',
       'Wallet mode is single-session. Overriding concurrency=4 to concurrency=1.',
     ]);
     expect(plan.errors).toEqual([]);
