@@ -30,13 +30,13 @@ Automated npm publishing is configured in:
 - `.github/workflows/publish-npm.yml`
 
 Triggers:
-- GitHub Release published (`vX.Y.Z`)
-- Manual `workflow_dispatch`
+- Push tag `agent-browser-driver-vX.Y.Z`
+- Manual `workflow_dispatch` with `version` input
 
 Release flow:
 1. Bump `package.json` version.
 2. Merge to `main`.
-3. Create/publish GitHub Release tag `v<same-version>`.
+3. Push tag `agent-browser-driver-v<same-version>`.
 4. Workflow runs build/tests and publishes to npm (`npm publish --provenance --access public`).
 
 ### One-time npm Trusted Publishing (OIDC) setup
