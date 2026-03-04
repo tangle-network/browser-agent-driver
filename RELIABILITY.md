@@ -11,6 +11,8 @@ Goal: drive task completion to 100% on scoped benchmark tiers with minimal compl
 ## Daily Loop
 
 1. Run baseline control (`single-model`) on Tier 1 + Tier 2.
+Command:
+`npm run reliability:scorecard -- --root ./agent-results --out ./agent-results/reliability-scorecard.json`
 2. Aggregate failures by class:
 - `max_turns`
 - `auth_or_redirect`

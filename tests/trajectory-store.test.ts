@@ -12,6 +12,7 @@ function writeTrajectory(dir: string, t: Trajectory): void {
 function makeTrajectory(input: {
   id: string;
   goal: string;
+  origin?: string;
   durationMs: number;
   timestamp: string;
   verified: boolean[];
@@ -19,6 +20,7 @@ function makeTrajectory(input: {
   return {
     id: input.id,
     goal: input.goal,
+    origin: input.origin,
     success: true,
     durationMs: input.durationMs,
     model: 'gpt-5.2',
@@ -93,5 +95,36 @@ describe('TrajectoryStore scoring', () => {
 
     const match = store.findBestMatch('coinbase partner flow');
     expect(match?.id).toBe('fresh');
+  });
+
+  it('enforces origin-scoped matching when origin is provided', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'abd-traj-origin-'));
+    const now = new Date().toISOString();
+
+    writeTrajectory(tmpDir, makeTrajectory({
+      id: 'same-goal-wrong-origin',
+      goal: 'complete signup flow',
+      origin: 'https://other.example.com',
+      durationMs: 8_000,
+      timestamp: now,
+      verified: [true, true],
+    }));
+    writeTrajectory(tmpDir, makeTrajectory({
+      id: 'same-goal-right-origin',
+      goal: 'complete signup flow',
+      origin: 'https://app.example.com',
+      durationMs: 12_000,
+      timestamp: now,
+      verified: [true, true],
+    }));
+
+    const store = new TrajectoryStore(tmpDir, {
+      similarityThreshold: 0.1,
+      enableScoring: true,
+      ttlDays: 30,
+    });
+
+    const match = store.findBestMatch('complete signup flow', { origin: 'https://app.example.com/signup' });
+    expect(match?.id).toBe('same-goal-right-origin');
   });
 });

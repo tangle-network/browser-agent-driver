@@ -99,6 +99,15 @@ function combineAbortSignals(signals: Array<AbortSignal | undefined>): AbortSign
   return controller.signal;
 }
 
+function getOrigin(url?: string): string | undefined {
+  if (!url) return undefined;
+  try {
+    return new URL(url).origin;
+  } catch {
+    return undefined;
+  }
+}
+
 export class TestRunner {
   private config: AgentConfig;
   private driver: Driver | undefined;
@@ -172,7 +181,9 @@ export class TestRunner {
       // Look up reference trajectory
       let referenceTrajectory: string | undefined;
       if (this.store) {
-        const match = this.store.findBestMatch(testCase.goal);
+        const match = this.store.findBestMatch(testCase.goal, {
+          origin: getOrigin(testCase.startUrl),
+        });
         if (match) {
           referenceTrajectory = this.store.formatAsReference(match);
         }
@@ -282,6 +293,7 @@ export class TestRunner {
           agentResult.turns,
           verified && agentResult.success,
           this.config.model || 'unknown',
+          { origin: getOrigin(testCase.startUrl) },
         );
       }
 

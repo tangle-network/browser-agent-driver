@@ -361,6 +361,8 @@ export interface Trajectory {
   id: string;
   /** Goal that was achieved */
   goal: string;
+  /** Normalized origin for environment scoping (e.g. https://app.example.com) */
+  origin?: string;
   /** Steps taken */
   steps: TrajectoryStep[];
   /** Whether this trajectory succeeded */

@@ -17,6 +17,14 @@ export interface TrajectoryStoreOptions {
   ttlDays?: number;
 }
 
+export interface TrajectorySaveOptions {
+  origin?: string;
+}
+
+export interface TrajectoryMatchOptions {
+  origin?: string;
+}
+
 export class TrajectoryStore {
   private storePath: string;
   private cache: Trajectory[] | null = null;
@@ -39,10 +47,12 @@ export class TrajectoryStore {
   }
 
   /** Save a trajectory from a completed agent run */
-  save(goal: string, turns: Turn[], success: boolean, model: string): Trajectory {
+  save(goal: string, turns: Turn[], success: boolean, model: string, options: TrajectorySaveOptions = {}): Trajectory {
+    const normalizedOrigin = normalizeOrigin(options.origin);
     const trajectory: Trajectory = {
       id: `traj_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       goal,
+      origin: normalizedOrigin,
       steps: turns
         .filter((t) => t.action.action !== 'complete' && t.action.action !== 'abort')
         .map((t) => ({
@@ -82,15 +92,23 @@ export class TrajectoryStore {
   }
 
   /** Find the best matching trajectory for a goal */
-  findBestMatch(goal: string): Trajectory | null {
+  findBestMatch(goal: string, options: TrajectoryMatchOptions = {}): Trajectory | null {
     const now = Date.now();
     const maxAgeMs = this.ttlDays * 24 * 60 * 60 * 1000;
-    const trajectories = this.loadAll().filter((t) => {
+    let trajectories = this.loadAll().filter((t) => {
       if (!t.success) return false;
       const ts = Date.parse(t.timestamp);
       if (Number.isNaN(ts)) return true;
       return now - ts <= maxAgeMs;
     });
+
+    const requestedOrigin = normalizeOrigin(options.origin);
+    if (requestedOrigin) {
+      trajectories = trajectories.filter((trajectory) =>
+        normalizeOrigin(trajectory.origin) === requestedOrigin,
+      );
+    }
+
     if (trajectories.length === 0) return null;
 
     const scored = trajectories.map((trajectory) => {
@@ -147,6 +165,15 @@ export class TrajectoryStore {
     }
 
     return lines.join('\n');
+  }
+}
+
+function normalizeOrigin(origin?: string): string | undefined {
+  if (!origin) return undefined;
+  try {
+    return new URL(origin).origin;
+  } catch {
+    return undefined;
   }
 }
 
