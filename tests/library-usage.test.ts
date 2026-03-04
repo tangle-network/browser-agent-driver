@@ -53,7 +53,7 @@ describe('library usage', () => {
     const plan = buildBrowserLaunchPlan(config, { cwd: '/repo' });
 
     expect(plan.walletMode).toBe(true);
-    expect(plan.headless).toBe(false);
+    expect(plan.headless).toBe(true);
     expect(plan.concurrency).toBe(1);
     expect(plan.extensionPaths).toEqual(['/repo/extensions/metamask']);
     expect(plan.userDataDir).toBe('/repo/.wallet-profile');

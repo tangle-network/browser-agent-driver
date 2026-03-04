@@ -26,6 +26,32 @@ export interface DriverConfig {
     enabled?: boolean;
     extensionPaths?: string[];
     userDataDir?: string;
+    autoApprove?: boolean;
+    password?: string;
+    tickMs?: number;
+    actionSelectors?: string[];
+    promptPaths?: string[];
+    connectSelectors?: string[];
+    connectorSelectors?: string[];
+    preflight?: {
+      enabled?: boolean;
+      seedUrls?: string[];
+      requestAccounts?: boolean;
+      clearStorage?: boolean;
+      accountsTimeoutMs?: number;
+      maxChainSwitchAttempts?: number;
+      chain?: {
+        id?: number;
+        hex?: string;
+        rpcUrl?: string;
+        name?: string;
+        nativeCurrency?: {
+          name: string;
+          symbol: string;
+          decimals: number;
+        };
+      };
+    };
   };
 
   // Execution

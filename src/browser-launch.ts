@@ -55,8 +55,9 @@ export function buildBrowserLaunchPlan(
 
   let headless = requestedHeadless;
   if (walletMode && headless) {
-    headless = false;
-    warnings.push('Wallet mode requires a visible Chromium window for extensions. Overriding headless=true to headless=false.');
+    warnings.push(
+      'Wallet mode is running headless. Extension compatibility depends on your Chromium build; use headed mode if wallet prompts fail.',
+    );
   }
 
   let concurrency = requestedConcurrency;
@@ -65,7 +66,7 @@ export function buildBrowserLaunchPlan(
     warnings.push(`Wallet mode is single-session. Overriding concurrency=${requestedConcurrency} to concurrency=1.`);
   }
 
-  if (walletMode && platform === 'linux') {
+  if (walletMode && platform === 'linux' && !headless) {
     const display = env.DISPLAY?.trim() ?? '';
     const waylandDisplay = env.WAYLAND_DISPLAY?.trim() ?? '';
     const hasDisplay = display.length > 0;

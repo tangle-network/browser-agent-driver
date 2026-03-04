@@ -18,6 +18,7 @@ import * as path from 'node:path';
 import { loadConfig, mergeConfig, toAgentConfig } from './config.js';
 import type { DriverConfig } from './config.js';
 import { buildBrowserLaunchPlan } from './browser-launch.js';
+import { runWalletPreflight, startWalletAutoApprover } from './wallet/automation.js';
 
 async function main(): Promise<void> {
   const { values, positionals } = parseArgs({
@@ -46,6 +47,12 @@ async function main(): Promise<void> {
       extension: { type: 'string', multiple: true },
       'user-data-dir': { type: 'string' },
       wallet: { type: 'boolean' },
+      'wallet-auto-approve': { type: 'boolean' },
+      'wallet-password': { type: 'string' },
+      'wallet-seed-url': { type: 'string', multiple: true },
+      'wallet-preflight': { type: 'boolean' },
+      'wallet-chain-id': { type: 'string' },
+      'wallet-chain-rpc-url': { type: 'string' },
 
       // Output
       sink: { type: 'string', short: 's' },
@@ -110,11 +117,54 @@ async function main(): Promise<void> {
   if (values.headless !== undefined) cliOverrides.headless = values.headless;
   if (values.vision !== undefined) cliOverrides.vision = values.vision;
   if (values['goal-verification'] !== undefined) cliOverrides.goalVerification = values['goal-verification'];
-  if (values.extension?.length || values['user-data-dir'] || values.wallet !== undefined) {
+  if (
+    values.extension?.length ||
+    values['user-data-dir'] ||
+    values.wallet !== undefined ||
+    values['wallet-auto-approve'] !== undefined ||
+    values['wallet-password'] ||
+    values['wallet-seed-url']?.length ||
+    values['wallet-preflight'] !== undefined ||
+    values['wallet-chain-id'] ||
+    values['wallet-chain-rpc-url']
+  ) {
     cliOverrides.wallet = {};
     if (values.extension?.length) cliOverrides.wallet.extensionPaths = values.extension;
     if (values['user-data-dir']) cliOverrides.wallet.userDataDir = values['user-data-dir'];
     if (values.wallet !== undefined) cliOverrides.wallet.enabled = values.wallet;
+    if (values['wallet-auto-approve'] !== undefined) {
+      cliOverrides.wallet.autoApprove = values['wallet-auto-approve'];
+    }
+    if (values['wallet-password']) {
+      cliOverrides.wallet.password = values['wallet-password'];
+    }
+    if (
+      values['wallet-seed-url']?.length ||
+      values['wallet-preflight'] !== undefined ||
+      values['wallet-chain-id'] ||
+      values['wallet-chain-rpc-url']
+    ) {
+      cliOverrides.wallet.preflight = {};
+      if (values['wallet-seed-url']?.length) {
+        cliOverrides.wallet.preflight.seedUrls = values['wallet-seed-url'];
+      }
+      if (values['wallet-preflight'] !== undefined) {
+        cliOverrides.wallet.preflight.enabled = values['wallet-preflight'];
+      }
+      if (values['wallet-chain-id'] || values['wallet-chain-rpc-url']) {
+        cliOverrides.wallet.preflight.chain = {};
+        if (values['wallet-chain-id']) {
+          const parsedChainId = parseInt(values['wallet-chain-id'], 10);
+          if (!Number.isFinite(parsedChainId)) {
+            throw new Error(`Invalid --wallet-chain-id value: ${values['wallet-chain-id']}`);
+          }
+          cliOverrides.wallet.preflight.chain.id = parsedChainId;
+        }
+        if (values['wallet-chain-rpc-url']) {
+          cliOverrides.wallet.preflight.chain.rpcUrl = values['wallet-chain-rpc-url'];
+        }
+      }
+    }
   }
 
   // Resource blocking
@@ -206,6 +256,7 @@ async function main(): Promise<void> {
   // Set up browser
   let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
   let persistentContext: Awaited<ReturnType<typeof chromium.launchPersistentContext>> | undefined;
+  let stopWalletAutoApprover: (() => void) | undefined;
 
   if (launchPlan.walletMode) {
     for (const extensionPath of launchPlan.extensionPaths) {
@@ -224,6 +275,46 @@ async function main(): Promise<void> {
       viewport,
       recordVideo: { dir: videoDir, size: viewport },
     });
+
+    const walletConfig = driverConfig.wallet ?? {};
+    const shouldAutoApprove = walletConfig.autoApprove ?? true;
+    if (shouldAutoApprove) {
+      stopWalletAutoApprover = await startWalletAutoApprover(persistentContext, {
+        password: walletConfig.password,
+        tickMs: walletConfig.tickMs,
+        actionSelectors: walletConfig.actionSelectors,
+      });
+    }
+
+    const preflightEnabled = walletConfig.preflight?.enabled ?? true;
+    const preflightSeedUrls =
+      walletConfig.preflight?.seedUrls && walletConfig.preflight.seedUrls.length > 0
+        ? walletConfig.preflight.seedUrls
+        : [...new Set(cases.map((testCase) => testCase.startUrl).filter(Boolean))];
+
+    if (preflightEnabled && preflightSeedUrls.length > 0) {
+      const preflight = await runWalletPreflight(persistentContext, {
+        seedUrls: preflightSeedUrls,
+        password: walletConfig.password,
+        actionSelectors: walletConfig.actionSelectors,
+        promptPaths: walletConfig.promptPaths,
+        connectSelectors: walletConfig.connectSelectors,
+        connectorSelectors: walletConfig.connectorSelectors,
+        requestAccounts: walletConfig.preflight?.requestAccounts,
+        accountsTimeoutMs: walletConfig.preflight?.accountsTimeoutMs,
+        maxChainSwitchAttempts: walletConfig.preflight?.maxChainSwitchAttempts,
+        chain: walletConfig.preflight?.chain,
+        log: quiet ? undefined : (message) => console.log(`[wallet] ${message}`),
+      });
+
+      if (!preflight.ok) {
+        const failed = preflight.results.find((resultEntry) => !resultEntry.ready);
+        const details = failed?.details ?? 'unknown reason';
+        throw new Error(
+          `Wallet preflight failed for ${preflight.failedUrl ?? 'unknown origin'} (${details})`,
+        );
+      }
+    }
   } else {
     browser = await chromium.launch({
       headless: launchPlan.headless,
@@ -341,6 +432,7 @@ async function main(): Promise<void> {
 
   // Cleanup
   await singleDriver?.close?.();
+  stopWalletAutoApprover?.();
   if (persistentContext) {
     await persistentContext.close();
   } else {
@@ -387,6 +479,12 @@ OPTIONS:
       --wallet               Enable wallet mode (persistent Chromium profile)
       --extension <path>     Load unpacked wallet/browser extension (repeatable)
       --user-data-dir <dir>  Persistent profile directory for wallet sessions
+      --wallet-auto-approve  Enable extension prompt auto-approval (default: true in wallet mode)
+      --wallet-password <v>  Wallet unlock password for auto-approval/preflight
+      --wallet-preflight     Run wallet origin preflight before tests (default: true in wallet mode)
+      --wallet-seed-url <u>  Preflight URL to authorize/switch-chain (repeatable)
+      --wallet-chain-id <n>  Target chain ID for preflight switch/add
+      --wallet-chain-rpc-url <u>  RPC URL for preflight wallet_addEthereumChain
       --timeout <ms>          Per-test timeout in ms (default: 600000)
   -s, --sink <dir>            Output directory for artifacts (default: ./agent-results)
       --json                  Output progress as JSON lines (for piping)
