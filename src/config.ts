@@ -12,6 +12,8 @@ import type { ArtifactSink } from './artifacts/types.js';
 import type { ResourceBlockingOptions } from './drivers/types.js';
 
 export interface DriverConfig {
+  browser?: 'chromium' | 'firefox' | 'webkit';
+
   // LLM
   provider?: 'openai' | 'anthropic' | 'google';
   model?: string;
@@ -53,6 +55,8 @@ export interface DriverConfig {
       };
     };
   };
+  /** Playwright storageState file path for pre-authenticated sessions */
+  storageState?: string;
 
   // Execution
   maxTurns?: number;
@@ -67,6 +71,10 @@ export interface DriverConfig {
   outputDir?: string;
   reporters?: Array<'json' | 'markdown' | 'html' | 'junit'>;
   sinks?: ArtifactSink[];
+
+  // Performance
+  /** Disable CDP fast-path for observe() (fall back to Playwright ariaSnapshot) */
+  disableCdp?: boolean;
 
   // Resource blocking
   resourceBlocking?: ResourceBlockingOptions;
@@ -87,6 +95,7 @@ export interface DriverConfig {
 }
 
 const DEFAULTS: DriverConfig = {
+  browser: 'chromium',
   provider: 'openai',
   model: 'gpt-4o',
   headless: true,

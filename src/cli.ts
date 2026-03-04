@@ -23,6 +23,7 @@ import { runWalletPreflight, startWalletAutoApprover } from './wallet/automation
 async function main(): Promise<void> {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
+    allowNegative: true,
     options: {
       // Config file
       config: { type: 'string' },
@@ -39,6 +40,8 @@ async function main(): Promise<void> {
       'base-url': { type: 'string' },
 
       // Execution
+      browser: { type: 'string' },
+      'storage-state': { type: 'string' },
       concurrency: { type: 'string' },
       'max-turns': { type: 'string' },
       'screenshot-interval': { type: 'string' },
@@ -108,6 +111,8 @@ async function main(): Promise<void> {
   if (values.provider) cliOverrides.provider = values.provider as DriverConfig['provider'];
   if (values['api-key']) cliOverrides.apiKey = values['api-key'];
   if (values['base-url']) cliOverrides.baseUrl = values['base-url'];
+  if (values.browser) cliOverrides.browser = values.browser as DriverConfig['browser'];
+  if (values['storage-state']) cliOverrides.storageState = values['storage-state'];
   if (values.concurrency) cliOverrides.concurrency = parseInt(values.concurrency, 10);
   if (values['max-turns']) cliOverrides.maxTurns = parseInt(values['max-turns'], 10);
   if (values['screenshot-interval']) cliOverrides.screenshotInterval = parseInt(values['screenshot-interval'], 10);
@@ -193,7 +198,7 @@ async function main(): Promise<void> {
   }
 
   // Dynamic imports — keeps startup fast and allows tree-shaking
-  const { chromium } = await import('playwright');
+  const { chromium, firefox, webkit } = await import('playwright');
   const { PlaywrightDriver } = await import('./drivers/playwright.js');
   const { TestRunner } = await import('./test-runner.js');
   const { FilesystemSink } = await import('./artifacts/filesystem-sink.js');
@@ -202,6 +207,7 @@ async function main(): Promise<void> {
   const maxTurns = driverConfig.maxTurns ?? 30;
   const screenshotInterval = driverConfig.screenshotInterval ?? 5;
   const timeoutMs = driverConfig.timeoutMs ?? 600_000;
+  const browserName = driverConfig.browser ?? 'chromium';
   const debug = values.debug!;
   const sinkDir = driverConfig.outputDir ?? './agent-results';
 
@@ -241,9 +247,9 @@ async function main(): Promise<void> {
     }];
   }
 
-  if (!quiet) {
+  if (!quiet && !values.json) {
     console.log(`agent-driver v${JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf-8')).version}`);
-    console.log(`Model: ${config.provider}/${config.model} | Tests: ${cases.length} | Concurrency: ${concurrency}`);
+    console.log(`Model: ${config.provider}/${config.model} | Browser: ${browserName} | Tests: ${cases.length} | Concurrency: ${concurrency}`);
     console.log(`Output: ${sinkDir}`);
     console.log('');
   }
@@ -252,9 +258,22 @@ async function main(): Promise<void> {
   const sink = new FilesystemSink(path.resolve(sinkDir));
   const videoDir = path.join(sinkDir, '_videos');
   const viewport = launchPlan.viewport;
+  const storageStatePath = driverConfig.storageState
+    ? path.resolve(driverConfig.storageState)
+    : undefined;
+
+  if (storageStatePath && !fs.existsSync(storageStatePath)) {
+    console.error(`Error: storage state file not found: ${storageStatePath}`);
+    process.exit(1);
+  }
+
+  if (launchPlan.walletMode && browserName !== 'chromium') {
+    console.error('Error: wallet mode currently supports Chromium only. Set --browser chromium.');
+    process.exit(1);
+  }
 
   // Set up browser
-  let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
+  let browser: Awaited<ReturnType<typeof chromium.launch>> | Awaited<ReturnType<typeof firefox.launch>> | Awaited<ReturnType<typeof webkit.launch>> | undefined;
   let persistentContext: Awaited<ReturnType<typeof chromium.launchPersistentContext>> | undefined;
   let stopWalletAutoApprover: (() => void) | undefined;
 
@@ -316,9 +335,15 @@ async function main(): Promise<void> {
       }
     }
   } else {
-    browser = await chromium.launch({
+    const browserType = browserName === 'firefox'
+      ? firefox
+      : browserName === 'webkit'
+        ? webkit
+        : chromium;
+
+    browser = await browserType.launch({
       headless: launchPlan.headless,
-      args: launchPlan.browserArgs,
+      ...(browserName === 'chromium' ? { args: launchPlan.browserArgs } : {}),
     });
   }
 
@@ -326,11 +351,13 @@ async function main(): Promise<void> {
     const context = persistentContext ?? await browser!.newContext({
       viewport,
       recordVideo: { dir: videoDir, size: viewport },
+      storageState: storageStatePath,
     });
     const page = await context.newPage();
     const driver = new PlaywrightDriver(page, {
       captureScreenshots: config.vision,
       screenshotQuality: 50,
+      disableCdp: driverConfig.disableCdp,
     });
     // Apply resource blocking if configured
     if (driverConfig.resourceBlocking) {
@@ -343,6 +370,7 @@ async function main(): Promise<void> {
       getPage: () => driver.getPage?.(),
       screenshot: () => driver.screenshot(),
       async close() {
+        await driver.close().catch(() => {});
         await page.close().catch(() => {});
         if (!persistentContext) {
           await context.close().catch(() => {});
@@ -367,11 +395,11 @@ async function main(): Promise<void> {
     screenshotInterval,
     artifactSink: sink,
     onProgress: (event) => {
-      if (quiet) return;
       if (values.json) {
         console.log(JSON.stringify(event));
         return;
       }
+      if (quiet) return;
       switch (event.type) {
         case 'test:start':
           console.log(`  ▶ ${event.testName}`);
@@ -395,52 +423,58 @@ async function main(): Promise<void> {
     },
   });
 
-  const result = await runner.runSuite(cases);
+  let result: import('./types.js').TestSuiteResult | undefined;
+  let runError: unknown;
 
-  // Write reports for each configured format
-  const { generateReport } = await import('./test-report.js');
-  const reporters = driverConfig.reporters ?? ['json'];
-  const reportDir = path.resolve(sinkDir);
-  fs.mkdirSync(reportDir, { recursive: true });
+  try {
+    result = await runner.runSuite(cases);
 
-  const formatMeta: Record<string, { ext: string; contentType: string }> = {
-    json: { ext: 'json', contentType: 'application/json' },
-    markdown: { ext: 'md', contentType: 'text/markdown' },
-    html: { ext: 'html', contentType: 'text/html' },
-    junit: { ext: 'xml', contentType: 'application/xml' },
-  };
+    // Write reports for each configured format
+    const { generateReport } = await import('./test-report.js');
+    const reporters = driverConfig.reporters ?? ['json'];
+    const reportDir = path.resolve(sinkDir);
+    fs.mkdirSync(reportDir, { recursive: true });
 
-  for (const format of reporters) {
-    const meta = formatMeta[format];
-    if (!meta) continue;
-    try {
-      const report = generateReport(result, { format, includeTurns: format === 'markdown' });
-      const reportPath = path.join(reportDir, `report.${meta.ext}`);
-      fs.writeFileSync(reportPath, report);
-      if (!quiet) {
-        console.log(`Report: ${reportPath}`);
+    const formatMeta: Record<string, { ext: string; contentType: string }> = {
+      json: { ext: 'json', contentType: 'application/json' },
+      markdown: { ext: 'md', contentType: 'text/markdown' },
+      html: { ext: 'html', contentType: 'text/html' },
+      junit: { ext: 'xml', contentType: 'application/xml' },
+    };
+
+    for (const format of reporters) {
+      const meta = formatMeta[format];
+      if (!meta) continue;
+      try {
+        const report = generateReport(result, { format, includeTurns: format === 'markdown' });
+        const reportPath = path.join(reportDir, `report.${meta.ext}`);
+        fs.writeFileSync(reportPath, report);
+        if (!quiet && !values.json) {
+          console.log(`Report: ${reportPath}`);
+        }
+      } catch {
+        // Report generation is best-effort
       }
-    } catch {
-      // Report generation is best-effort
     }
+
+    // Also write report to stdout if JSON mode
+    if (values.json && !quiet) {
+      console.log(JSON.stringify(result, null, 2));
+    }
+  } catch (err) {
+    runError = err;
+  } finally {
+    await singleDriver?.close?.().catch(() => {});
+    stopWalletAutoApprover?.();
+    await persistentContext?.close().catch(() => {});
+    await browser?.close().catch(() => {});
   }
 
-  // Also write report to stdout if JSON mode
-  if (values.json && !quiet) {
-    console.log(JSON.stringify(result, null, 2));
+  if (runError) {
+    throw runError;
   }
 
-  // Cleanup
-  await singleDriver?.close?.();
-  stopWalletAutoApprover?.();
-  if (persistentContext) {
-    await persistentContext.close();
-  } else {
-    await browser?.close();
-  }
-
-  // Exit code based on results
-  process.exit(result.summary.failed > 0 ? 1 : 0);
+  process.exit((result?.summary.failed ?? 1) > 0 ? 1 : 0);
 }
 
 function printHelp(): void {
@@ -471,6 +505,8 @@ OPTIONS:
       --provider <name>       LLM provider: openai, anthropic, google (default: openai)
       --api-key <key>         API key (or set OPENAI_API_KEY / ANTHROPIC_API_KEY)
       --base-url <url>        Custom LLM endpoint (e.g., LiteLLM proxy)
+      --browser <name>        Browser: chromium, firefox, webkit (default: chromium)
+      --storage-state <file>  Playwright storage state JSON for pre-authenticated session
       --concurrency <n>       Parallel workers (default: 1)
       --max-turns <n>         Max turns per test (default: 30)
       --screenshot-interval <n>  Capture every N turns (default: 5)
