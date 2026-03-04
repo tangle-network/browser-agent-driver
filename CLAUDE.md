@@ -2,6 +2,18 @@
 
 Agent Browser Driver product operating guidance (greenfield, high-ROI, no overengineering).
 
+## Mission
+
+This project is a general-purpose agentic browser automation tool.
+
+Primary objective:
+- reliable and performant completion of real user outcomes
+- for both persona-driven workflows and direct task-driven inputs
+
+Non-goals:
+- over-specializing for a single app
+- adding features that increase complexity without measurable completion gains
+
 ## Product Defaults (Ship)
 
 1. Reliability over novelty:
