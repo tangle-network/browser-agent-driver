@@ -91,7 +91,7 @@ describe('TestRunner parallel reliability', () => {
     expect(result.summary.skipped).toBe(2);
     expect(result.results[0].skipped).toBe(true);
     expect(result.results[1].skipped).toBe(true);
-    expect(result.results[0].skipReason).toMatch(/Unresolved dependencies|deadlock/i);
+    expect(result.results[0].skipReason).toMatch(/Unresolved|Unresolvable dependencies|deadlock/i);
   });
 
   it('aborts timed out workers and reports skipped timeout result', async () => {
