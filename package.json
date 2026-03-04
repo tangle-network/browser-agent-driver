@@ -29,6 +29,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "auth:save-state": "node ./scripts/save-storage-state.mjs",
+    "skills:install": "node ./scripts/install-skills.mjs",
+    "baseline:modes": "node ./scripts/run-mode-baseline.mjs",
+    "baseline:track": "node ./scripts/run-scenario-track.mjs",
     "bench:observe": "tsx bench/observe-bench.ts",
     "bench:agent": "tsx bench/agent-bench.ts"
   },

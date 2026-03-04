@@ -130,7 +130,10 @@ export class TestRunner {
     this.stopOnFailure = options.stopOnFailure ?? false;
     this.projectStore = options.projectStore;
     this.store = options.enableMemory
-      ? new TrajectoryStore(options.trajectoryStorePath)
+      ? new TrajectoryStore(options.trajectoryStorePath, {
+        enableScoring: this.config.traceScoring === true,
+        ttlDays: this.config.traceTtlDays ?? 30,
+      })
       : null;
     // Auto-load hints from project store if available
     this.feedbackHints = options.feedbackHints ?? options.projectStore?.loadHints() ?? undefined;

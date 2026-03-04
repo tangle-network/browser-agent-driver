@@ -15,10 +15,71 @@
 import { parseArgs } from 'node:util';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import type { BrowserContext } from 'playwright';
 import { loadConfig, mergeConfig, toAgentConfig } from './config.js';
 import type { DriverConfig } from './config.js';
 import { buildBrowserLaunchPlan } from './browser-launch.js';
 import { runWalletPreflight, startWalletAutoApprover } from './wallet/automation.js';
+import { isPersonaId, listPersonaIds, withPersonaDirective } from './personas.js';
+
+type RunMode = 'fast-explore' | 'full-evidence';
+const RUN_MODES: RunMode[] = ['fast-explore', 'full-evidence'];
+
+type StorageStateFile = {
+  cookies?: Array<{
+    name: string;
+    value: string;
+    domain: string;
+    path: string;
+    expires?: number;
+    httpOnly?: boolean;
+    secure?: boolean;
+    sameSite?: 'Strict' | 'Lax' | 'None';
+  }>;
+  origins?: Array<{
+    origin: string;
+    localStorage?: Array<{ name: string; value: string }>;
+  }>;
+};
+
+async function applyStorageStateToPersistentContext(context: BrowserContext, storageStatePath?: string): Promise<void> {
+  if (!storageStatePath) return;
+
+  const parsed = JSON.parse(fs.readFileSync(storageStatePath, 'utf-8')) as StorageStateFile;
+  const cookies = parsed.cookies ?? [];
+  if (cookies.length > 0) {
+    await context.addCookies(cookies);
+  }
+
+  const origins = parsed.origins ?? [];
+  if (origins.length === 0) return;
+
+  const existingPages = context.pages();
+  const page = existingPages[0] ?? await context.newPage();
+  const createdTempPage = existingPages.length === 0;
+
+  try {
+    for (const originState of origins) {
+      if (!originState?.origin || !Array.isArray(originState.localStorage) || originState.localStorage.length === 0) {
+        continue;
+      }
+      await page.goto(originState.origin, { waitUntil: 'domcontentloaded' }).catch(() => {});
+      await page.evaluate((entries) => {
+        for (const entry of entries) {
+          try {
+            localStorage.setItem(entry.name, entry.value);
+          } catch {
+            // Best effort: some origins may block storage writes.
+          }
+        }
+      }, originState.localStorage);
+    }
+  } finally {
+    if (createdTempPage) {
+      await page.close().catch(() => {});
+    }
+  }
+}
 
 async function main(): Promise<void> {
   const { values, positionals } = parseArgs({
@@ -36,6 +97,11 @@ async function main(): Promise<void> {
       // LLM configuration
       model: { type: 'string', short: 'm' },
       provider: { type: 'string' },
+      'model-adaptive': { type: 'boolean' },
+      'nav-model': { type: 'string' },
+      'nav-provider': { type: 'string' },
+      persona: { type: 'string' },
+      mode: { type: 'string' },
       'api-key': { type: 'string' },
       'base-url': { type: 'string' },
 
@@ -56,6 +122,8 @@ async function main(): Promise<void> {
       'wallet-preflight': { type: 'boolean' },
       'wallet-chain-id': { type: 'string' },
       'wallet-chain-rpc-url': { type: 'string' },
+      memory: { type: 'boolean' },
+      'memory-dir': { type: 'string' },
 
       // Output
       sink: { type: 'string', short: 's' },
@@ -65,6 +133,8 @@ async function main(): Promise<void> {
       // Feature flags
       'goal-verification': { type: 'boolean' },
       'quality-threshold': { type: 'string' },
+      'trace-scoring': { type: 'boolean' },
+      'trace-ttl-days': { type: 'string' },
       vision: { type: 'boolean' },
       debug: { type: 'boolean', short: 'd', default: false },
 
@@ -105,10 +175,19 @@ async function main(): Promise<void> {
   // Load config file, then overlay CLI flags
   const fileConfig = await loadConfig(values.config);
 
+  const mode = values.mode;
+  if (mode && !RUN_MODES.includes(mode as RunMode)) {
+    console.error(`Error: unknown mode "${mode}". Valid modes: ${RUN_MODES.join(', ')}`);
+    process.exit(1);
+  }
+
   // Build CLI overrides (only set values that were explicitly passed)
   const cliOverrides: Partial<DriverConfig> = {};
   if (values.model) cliOverrides.model = values.model;
   if (values.provider) cliOverrides.provider = values.provider as DriverConfig['provider'];
+  if (values['model-adaptive'] !== undefined) cliOverrides.adaptiveModelRouting = values['model-adaptive'];
+  if (values['nav-model']) cliOverrides.navModel = values['nav-model'];
+  if (values['nav-provider']) cliOverrides.navProvider = values['nav-provider'] as DriverConfig['navProvider'];
   if (values['api-key']) cliOverrides.apiKey = values['api-key'];
   if (values['base-url']) cliOverrides.baseUrl = values['base-url'];
   if (values.browser) cliOverrides.browser = values.browser as DriverConfig['browser'];
@@ -118,6 +197,13 @@ async function main(): Promise<void> {
   if (values['screenshot-interval']) cliOverrides.screenshotInterval = parseInt(values['screenshot-interval'], 10);
   if (values.timeout) cliOverrides.timeoutMs = parseInt(values.timeout, 10);
   if (values['quality-threshold']) cliOverrides.qualityThreshold = parseInt(values['quality-threshold'], 10);
+  if (values['trace-scoring'] !== undefined || values['trace-ttl-days']) {
+    cliOverrides.memory = {
+      ...(cliOverrides.memory ?? {}),
+    };
+    if (values['trace-scoring'] !== undefined) cliOverrides.memory.traceScoring = values['trace-scoring'];
+    if (values['trace-ttl-days']) cliOverrides.memory.traceTtlDays = parseInt(values['trace-ttl-days'], 10);
+  }
   if (values.sink) cliOverrides.outputDir = values.sink;
   if (values.headless !== undefined) cliOverrides.headless = values.headless;
   if (values.vision !== undefined) cliOverrides.vision = values.vision;
@@ -171,6 +257,13 @@ async function main(): Promise<void> {
       }
     }
   }
+  if (values.memory !== undefined || values['memory-dir']) {
+    cliOverrides.memory = {
+      ...(cliOverrides.memory ?? {}),
+    };
+    if (values.memory !== undefined) cliOverrides.memory.enabled = values.memory;
+    if (values['memory-dir']) cliOverrides.memory.dir = values['memory-dir'];
+  }
 
   // Resource blocking
   if (values['block-analytics'] || values['block-images'] || values['block-media']) {
@@ -178,6 +271,24 @@ async function main(): Promise<void> {
     if (values['block-analytics']) cliOverrides.resourceBlocking.blockAnalytics = true;
     if (values['block-images']) cliOverrides.resourceBlocking.blockImages = true;
     if (values['block-media']) cliOverrides.resourceBlocking.blockMedia = true;
+  }
+
+  // Mode presets apply only when equivalent flags were not explicitly set.
+  if (mode === 'fast-explore') {
+    if (values.vision === undefined) cliOverrides.vision = false;
+    if (!values['screenshot-interval']) cliOverrides.screenshotInterval = 0;
+    if (values['goal-verification'] === undefined) cliOverrides.goalVerification = true;
+    if (values['quality-threshold'] === undefined) cliOverrides.qualityThreshold = 0;
+    if (!values['block-analytics'] && !values['block-images'] && !values['block-media']) {
+      cliOverrides.resourceBlocking = {
+        ...(cliOverrides.resourceBlocking ?? {}),
+        blockAnalytics: true,
+      };
+    }
+  } else if (mode === 'full-evidence') {
+    if (values.vision === undefined) cliOverrides.vision = true;
+    if (!values['screenshot-interval']) cliOverrides.screenshotInterval = 3;
+    if (values['goal-verification'] === undefined) cliOverrides.goalVerification = true;
   }
 
   const driverConfig = mergeConfig(fileConfig, cliOverrides);
@@ -247,9 +358,32 @@ async function main(): Promise<void> {
     }];
   }
 
+  const persona = values.persona;
+  if (persona) {
+    if (!isPersonaId(persona)) {
+      console.error(
+        `Error: unknown persona "${persona}". ` +
+        `Valid personas: ${listPersonaIds().join(', ')}`
+      );
+      process.exit(1);
+    }
+    cases = cases.map((c) => ({
+      ...c,
+      goal: withPersonaDirective({
+        persona,
+        goal: c.goal,
+        startUrl: c.startUrl,
+      }),
+    }));
+  }
+
   if (!quiet && !values.json) {
     console.log(`agent-driver v${JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf-8')).version}`);
     console.log(`Model: ${config.provider}/${config.model} | Browser: ${browserName} | Tests: ${cases.length} | Concurrency: ${concurrency}`);
+    if (mode) console.log(`Mode: ${mode}`);
+    if (config.adaptiveModelRouting) {
+      console.log(`Adaptive routing: ON (nav=${config.navProvider || config.provider}/${config.navModel || config.model})`);
+    }
     console.log(`Output: ${sinkDir}`);
     console.log('');
   }
@@ -294,6 +428,7 @@ async function main(): Promise<void> {
       viewport,
       recordVideo: { dir: videoDir, size: viewport },
     });
+    await applyStorageStateToPersistentContext(persistentContext, storageStatePath);
 
     const walletConfig = driverConfig.wallet ?? {};
     const shouldAutoApprove = walletConfig.autoApprove ?? true;
@@ -391,6 +526,8 @@ async function main(): Promise<void> {
     defaultTimeoutMs: timeoutMs,
     driver: singleDriver,
     driverFactory: concurrency > 1 ? driverFactory : undefined,
+    enableMemory: driverConfig.memory?.enabled === true,
+    trajectoryStorePath: driverConfig.memory?.dir,
     concurrency,
     screenshotInterval,
     artifactSink: sink,
@@ -487,10 +624,13 @@ USAGE:
 SINGLE TASK:
   agent-driver run --goal "Sign up for account" --url http://localhost:3000
   agent-driver run -g "Build a todo app" -u http://localhost:5173 -m claude-sonnet-4-20250514
+  agent-driver run --goal "Create Coinbase blueprint and verify preview" --url https://ai.tangle.tools --persona alice-blueprint-builder
+  agent-driver run --goal "Create partner project and verify preview works" --url https://ai.tangle.tools --persona auto
+  agent-driver run --goal "Explore key routes quickly" --url https://example.com --mode fast-explore
 
 TEST SUITE:
   agent-driver run --cases ./cases.json --concurrency 4
-  agent-driver run --cases ./cases.json --sink ./results/ --model gpt-4o
+  agent-driver run --cases ./cases.json --sink ./results/ --model gpt-5.2
 
 DOCKER:
   docker run -v ./cases.json:/data/cases.json -v ./out:/output \\
@@ -501,8 +641,13 @@ OPTIONS:
   -g, --goal <text>           Natural language goal for single task
   -u, --url <url>             Starting URL
   -c, --cases <file>          JSON file with test cases array
-  -m, --model <name>          LLM model (default: gpt-4o)
+  -m, --model <name>          LLM model (default: gpt-5.2)
       --provider <name>       LLM provider: openai, anthropic, google (default: openai)
+      --model-adaptive        Enable adaptive model routing for decide() turns
+      --nav-model <name>      Fast navigation model for adaptive routing
+      --nav-provider <name>   Provider for nav model (default: same as --provider)
+      --persona <id>          Append persona directive (${listPersonaIds().join(', ')})
+      --mode <name>           Mode preset: ${RUN_MODES.join(', ')}
       --api-key <key>         API key (or set OPENAI_API_KEY / ANTHROPIC_API_KEY)
       --base-url <url>        Custom LLM endpoint (e.g., LiteLLM proxy)
       --browser <name>        Browser: chromium, firefox, webkit (default: chromium)
@@ -521,11 +666,15 @@ OPTIONS:
       --wallet-seed-url <u>  Preflight URL to authorize/switch-chain (repeatable)
       --wallet-chain-id <n>  Target chain ID for preflight switch/add
       --wallet-chain-rpc-url <u>  RPC URL for preflight wallet_addEthereumChain
+      --memory               Enable trajectory memory reuse
+      --memory-dir <dir>     Memory directory (default: .agent-memory)
       --timeout <ms>          Per-test timeout in ms (default: 600000)
   -s, --sink <dir>            Output directory for artifacts (default: ./agent-results)
       --json                  Output progress as JSON lines (for piping)
   -q, --quiet                 Suppress all output
       --quality-threshold <n> Min quality score 1-10 (default: 0 = skip)
+      --trace-scoring         Enable trajectory scoring for reference trace selection
+      --trace-ttl-days <n>    Retention window for scored traces (default: 30)
       --goal-verification     Verify goal completion (default: true)
       --no-goal-verification  Skip goal verification
       --vision                Enable vision/screenshots (default: true)

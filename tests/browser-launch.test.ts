@@ -34,16 +34,18 @@ describe('buildBrowserLaunchPlan', () => {
     expect(plan.errors).toEqual([]);
   });
 
-  it('enables wallet mode when userDataDir is set, even without extension paths', () => {
+  it('does not enable wallet mode when only userDataDir is set', () => {
     const plan = buildBrowserLaunchPlan({
       headless: false,
       wallet: { userDataDir: '.wallet-profile' },
     }, { cwd: '/repo', platform: 'darwin' });
 
-    expect(plan.walletMode).toBe(true);
+    expect(plan.walletMode).toBe(false);
     expect(plan.userDataDir).toBe('/repo/.wallet-profile');
     expect(plan.browserArgs).toEqual([]);
-    expect(plan.warnings).toEqual([]);
+    expect(plan.warnings).toEqual([
+      'wallet.userDataDir is set but wallet mode is disabled; this directory is ignored unless --wallet or --extension is provided.',
+    ]);
     expect(plan.errors).toEqual([]);
   });
 

@@ -17,6 +17,10 @@ import { ANALYTICS_PATTERNS, IMAGE_PATTERNS, MEDIA_PATTERNS } from './block-patt
 import { buildCdpSnapshot } from './cdp-snapshot.js';
 import { getPageMetadata } from './cdp-page-state.js';
 
+function isPointerInterceptError(error: string): boolean {
+  return /intercepts pointer events|subtree intercepts pointer events|not receiving pointer events/i.test(error);
+}
+
 /** Phase-level timing breakdown for observe() */
 export interface ObserveTiming {
   /** Total observe() time in ms */
@@ -298,22 +302,40 @@ export class PlaywrightDriver implements Driver {
       switch (action.action) {
         case 'click': {
           const locator = this.snapshot.resolveLocator(this.page, action.selector);
-          await this.withOverlayRecovery(async () => {
-            await locator.click({ timeout });
-          });
+          try {
+            await this.withOverlayRecovery(async () => {
+              await locator.click({ timeout });
+            });
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            if (!isPointerInterceptError(message)) throw err;
+            // Fallback for sticky overlays/sidebars that still intercept pointer events.
+            await locator.click({ timeout, force: true });
+          }
           return { success: true };
         }
 
         case 'type': {
           const locator = this.snapshot.resolveLocator(this.page, action.selector);
-          await this.withOverlayRecovery(async () => {
-            await locator.click({ timeout });
+          try {
+            await this.withOverlayRecovery(async () => {
+              await locator.click({ timeout });
+              await locator.fill(action.text, { timeout });
+              await locator.evaluate((el) => {
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+              });
+            });
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            if (!isPointerInterceptError(message)) throw err;
+            await locator.click({ timeout, force: true });
             await locator.fill(action.text, { timeout });
             await locator.evaluate((el) => {
               el.dispatchEvent(new Event('input', { bubbles: true }));
               el.dispatchEvent(new Event('change', { bubbles: true }));
             });
-          });
+          }
           return { success: true };
         }
 

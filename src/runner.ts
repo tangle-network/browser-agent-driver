@@ -151,11 +151,27 @@ export class AgentRunner {
 
           if (recovery) {
             if (this.config.debug) {
-              console.log(`[Runner] Recovery triggered: ${recovery.strategy}${recovery.forceAction ? ` (force: ${recovery.forceAction})` : ''}`);
+              const forced = recovery.forceBrowserAction
+                ? ` (force: ${recovery.forceBrowserAction.action})`
+                : recovery.forceAction
+                  ? ` (force: ${recovery.forceAction})`
+                  : '';
+              console.log(`[Runner] Recovery triggered: ${recovery.strategy}${forced}`);
             }
 
             // Execute concrete recovery action before injecting feedback
-            if (recovery.forceAction) {
+            if (recovery.forceBrowserAction) {
+              try {
+                await this.driver.execute(recovery.forceBrowserAction);
+              } catch (recoveryErr) {
+                if (this.config.debug) {
+                  console.log(
+                    `[Runner] Recovery ${recovery.forceBrowserAction.action} failed: ` +
+                    `${recoveryErr instanceof Error ? recoveryErr.message : recoveryErr}`
+                  );
+                }
+              }
+            } else if (recovery.forceAction) {
               try {
                 switch (recovery.forceAction) {
                   case 'reload':

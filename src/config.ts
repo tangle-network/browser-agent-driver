@@ -17,6 +17,9 @@ export interface DriverConfig {
   // LLM
   provider?: 'openai' | 'anthropic' | 'google';
   model?: string;
+  adaptiveModelRouting?: boolean;
+  navModel?: string;
+  navProvider?: 'openai' | 'anthropic' | 'google';
   apiKey?: string;
   baseUrl?: string;
 
@@ -83,6 +86,8 @@ export interface DriverConfig {
   memory?: {
     enabled?: boolean;
     dir?: string;
+    traceScoring?: boolean;
+    traceTtlDays?: number;
   };
 
   // Projects (like vitest/playwright)
@@ -97,7 +102,8 @@ export interface DriverConfig {
 const DEFAULTS: DriverConfig = {
   browser: 'chromium',
   provider: 'openai',
-  model: 'gpt-4o',
+  model: 'gpt-5.2',
+  adaptiveModelRouting: false,
   headless: true,
   viewport: { width: 1920, height: 1080 },
   maxTurns: 30,
@@ -109,7 +115,7 @@ const DEFAULTS: DriverConfig = {
   qualityThreshold: 0,
   outputDir: './agent-results',
   reporters: ['json'],
-  memory: { enabled: false, dir: '.agent-memory' },
+  memory: { enabled: false, dir: '.agent-memory', traceScoring: false, traceTtlDays: 30 },
 };
 
 /** Identity function for type inference and IDE autocomplete in config files */
@@ -195,11 +201,16 @@ export function toAgentConfig(config: DriverConfig): AgentConfig {
   return {
     provider: config.provider,
     model: config.model,
+    adaptiveModelRouting: config.adaptiveModelRouting,
+    navModel: config.navModel,
+    navProvider: config.navProvider,
     apiKey: config.apiKey,
     baseUrl: config.baseUrl,
     vision: config.vision,
     goalVerification: config.goalVerification,
     qualityThreshold: config.qualityThreshold,
+    traceScoring: config.memory?.traceScoring,
+    traceTtlDays: config.memory?.traceTtlDays,
   };
 }
 

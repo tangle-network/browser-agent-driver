@@ -11,14 +11,28 @@ import { join } from 'path';
 import type { Trajectory, Turn, Action } from '../types.js';
 import { snapshotHash } from '../recovery.js';
 
+export interface TrajectoryStoreOptions {
+  similarityThreshold?: number;
+  enableScoring?: boolean;
+  ttlDays?: number;
+}
+
 export class TrajectoryStore {
   private storePath: string;
   private cache: Trajectory[] | null = null;
   private similarityThreshold: number;
+  private enableScoring: boolean;
+  private ttlDays: number;
 
-  constructor(storePath?: string, similarityThreshold = 0.5) {
+  constructor(storePath?: string, thresholdOrOptions: number | TrajectoryStoreOptions = 0.5) {
+    const opts = typeof thresholdOrOptions === 'number'
+      ? { similarityThreshold: thresholdOrOptions }
+      : thresholdOrOptions;
+
     this.storePath = storePath || join(process.cwd(), '.trajectories');
-    this.similarityThreshold = similarityThreshold;
+    this.similarityThreshold = opts.similarityThreshold ?? 0.5;
+    this.enableScoring = opts.enableScoring === true;
+    this.ttlDays = opts.ttlDays ?? 30;
     if (!existsSync(this.storePath)) {
       mkdirSync(this.storePath, { recursive: true });
     }
@@ -69,22 +83,54 @@ export class TrajectoryStore {
 
   /** Find the best matching trajectory for a goal */
   findBestMatch(goal: string): Trajectory | null {
-    const trajectories = this.loadAll().filter((t) => t.success);
+    const now = Date.now();
+    const maxAgeMs = this.ttlDays * 24 * 60 * 60 * 1000;
+    const trajectories = this.loadAll().filter((t) => {
+      if (!t.success) return false;
+      const ts = Date.parse(t.timestamp);
+      if (Number.isNaN(ts)) return true;
+      return now - ts <= maxAgeMs;
+    });
     if (trajectories.length === 0) return null;
 
-    // Score each trajectory by goal similarity
-    const scored = trajectories.map((t) => ({
-      trajectory: t,
-      score: goalSimilarity(goal, t.goal),
-    }));
+    const scored = trajectories.map((trajectory) => {
+      const similarity = goalSimilarity(goal, trajectory.goal);
+      const score = this.enableScoring
+        ? this.computeScore(similarity, trajectory, now)
+        : similarity;
+      return { trajectory, score, similarity };
+    });
 
     scored.sort((a, b) => b.score - a.score);
 
-    if (scored[0].score > this.similarityThreshold) {
+    if (scored[0].similarity > this.similarityThreshold) {
       return scored[0].trajectory;
     }
 
     return null;
+  }
+
+  private computeScore(similarity: number, trajectory: Trajectory, nowMs: number): number {
+    const recency = this.computeRecencyScore(trajectory.timestamp, nowMs);
+    const durationScore = 1 / (1 + trajectory.durationMs / 60_000);
+    const verificationScore = this.computeVerificationScore(trajectory);
+
+    // Weighted blend tuned for stable reuse:
+    // similarity dominates, then recency, then execution quality proxies.
+    return (similarity * 0.6) + (recency * 0.2) + (durationScore * 0.1) + (verificationScore * 0.1);
+  }
+
+  private computeRecencyScore(timestamp: string, nowMs: number): number {
+    const ts = Date.parse(timestamp);
+    if (Number.isNaN(ts)) return 0.5;
+    const ageDays = Math.max(0, (nowMs - ts) / (24 * 60 * 60 * 1000));
+    return Math.exp(-ageDays / 14);
+  }
+
+  private computeVerificationScore(trajectory: Trajectory): number {
+    if (trajectory.steps.length === 0) return 0.5;
+    const verified = trajectory.steps.filter((step) => step.verified === true).length;
+    return verified / trajectory.steps.length;
   }
 
   /** Format a trajectory as a human-readable reference for the brain */

@@ -1,0 +1,16 @@
+{
+  "name": "agent-browser-driver-skills",
+  "version": "0.1.0",
+  "skills": [
+    {
+      "name": "agent-browser-driver-testing",
+      "path": "skills/agent-browser-driver-testing",
+      "description": "How to run reliable real E2E browser-agent tests with evidence and recovery-first goals."
+    },
+    {
+      "name": "agent-friendly-app-design",
+      "path": "skills/agent-friendly-app-design",
+      "description": "How to design app UX/markup that remains fast and robust for general browser agents."
+    }
+  ]
+}

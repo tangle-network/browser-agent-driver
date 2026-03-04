@@ -132,8 +132,14 @@ export interface Scenario {
 export interface AgentConfig {
   /** LLM provider: 'openai' (default), 'anthropic', or 'google' */
   provider?: 'openai' | 'anthropic' | 'google';
-  /** LLM model (default: gpt-4o) */
+  /** LLM model (default: gpt-5.2) */
   model?: string;
+  /** Enable adaptive model routing for decide() (default: false) */
+  adaptiveModelRouting?: boolean;
+  /** Fast navigation model used when adaptive routing is enabled */
+  navModel?: string;
+  /** Provider for navModel (defaults to provider) */
+  navProvider?: 'openai' | 'anthropic' | 'google';
   /** API key (defaults to OPENAI_API_KEY) */
   apiKey?: string;
   /** Custom API base URL (for LiteLLM, local models, etc.) */
@@ -154,6 +160,10 @@ export interface AgentConfig {
   llmTimeoutMs?: number;
   /** Verify goal completion before accepting 'complete' action (default: true) */
   goalVerification?: boolean;
+  /** Enable trajectory scoring when selecting reference traces (default: false) */
+  traceScoring?: boolean;
+  /** Retention window for trajectory scoring in days (default: 30) */
+  traceTtlDays?: number;
 }
 
 // ============================================================================

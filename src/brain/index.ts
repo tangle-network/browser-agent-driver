@@ -57,12 +57,16 @@ RULES:
 9. For complex goals, break them into clear plan steps and track progress
 10. Use "evaluate" when you need to assess visual quality, layout, or design
 11. After the app builds and a preview is visible, use "verifyPreview" to check for errors before completing
+12. BLOCKER-FIRST POLICY: if a modal, limit, quota, permission, or error dialog blocks progress, resolve THAT first before continuing the main goal
+13. For quota/limit blockers, use an unblock ladder: open manage path -> clean up old test resources if needed -> retry the original action
+14. If the same action triggers the same blocker twice, switch strategy immediately (different button/path), do not repeat blind retries
 
 REASONING FRAMEWORK — before choosing an action:
 1. What is the current state vs. the goal state? What is missing?
 2. What is the smallest action that makes progress toward the goal?
 3. If multiple elements could match, prefer the one closest to the user-visible label
 4. If an action just failed, identify WHY it failed before trying again
+5. Ask: "Is there a blocker preventing progress right now?" If yes, clear blocker first, then continue goal plan
 
 EXAMPLE 1 — Multi-step form fill (use actual refs from ELEMENTS, not these placeholders):
 {"plan":["Navigate to signup page","Fill email field","Fill password field","Click submit","Verify success"],"currentStep":1,"action":{"action":"type","selector":"@REF","text":"user@example.com"},"reasoning":"I see the signup form with email input [ref=...] and password input [ref=...]. Starting with email since it is the first required field.","expectedEffect":"Email field should show 'user@example.com'"}
@@ -152,9 +156,12 @@ export interface QualityEvaluation {
 type UserContent = string | Array<{ type: 'text'; text: string } | { type: 'image'; image: string; mediaType: string }>;
 
 export class Brain {
-  private modelInstance: LanguageModel | null = null;
-  private provider: string;
+  private modelCache = new Map<string, LanguageModel>();
+  private provider: 'openai' | 'anthropic' | 'google';
   private modelName: string;
+  private adaptiveModelRouting: boolean;
+  private navModelName?: string;
+  private navProvider?: 'openai' | 'anthropic' | 'google';
   private apiKey?: string;
   private baseUrl?: string;
   private debug: boolean;
@@ -166,7 +173,10 @@ export class Brain {
   constructor(config: AgentConfig = {}) {
     this.llmTimeoutMs = config.llmTimeoutMs ?? 60_000;
     this.provider = config.provider || 'openai';
-    this.modelName = config.model || 'gpt-4o';
+    this.modelName = config.model || 'gpt-5.2';
+    this.adaptiveModelRouting = config.adaptiveModelRouting === true;
+    this.navModelName = config.navModel;
+    this.navProvider = config.navProvider;
     this.apiKey = config.apiKey || process.env.OPENAI_API_KEY;
     this.baseUrl = config.baseUrl;
     this.debug = config.debug || false;
@@ -174,18 +184,28 @@ export class Brain {
     this.visionEnabled = config.vision !== false;
   }
 
-  /** Lazily create the LLM model instance based on provider config */
-  private async getModel(): Promise<LanguageModel> {
-    if (this.modelInstance) return this.modelInstance;
+  private shouldSendTemperature(modelName = this.modelName): boolean {
+    // OpenAI GPT-5 reasoning family currently rejects explicit temperature.
+    return !/^gpt-5(?:[.-]|$)/i.test(modelName);
+  }
 
-    switch (this.provider) {
+  /** Lazily create the LLM model instance based on provider config */
+  private async getModel(selection?: { provider?: 'openai' | 'anthropic' | 'google'; model?: string }): Promise<LanguageModel> {
+    const providerName = selection?.provider || this.provider;
+    const modelName = selection?.model || this.modelName;
+    const cacheKey = `${providerName}:${modelName}`;
+    const cached = this.modelCache.get(cacheKey);
+    if (cached) return cached;
+
+    let model: LanguageModel;
+    switch (providerName) {
       case 'anthropic': {
         const { createAnthropic } = await import('@ai-sdk/anthropic');
         const provider = createAnthropic({
           apiKey: this.apiKey,
           ...(this.baseUrl ? { baseURL: this.baseUrl } : {}),
         });
-        this.modelInstance = provider(this.modelName) as LanguageModel;
+        model = provider(modelName) as LanguageModel;
         break;
       }
       case 'google': {
@@ -194,7 +214,7 @@ export class Brain {
           apiKey: this.apiKey,
           ...(this.baseUrl ? { baseURL: this.baseUrl } : {}),
         });
-        this.modelInstance = provider(this.modelName) as LanguageModel;
+        model = provider(modelName) as LanguageModel;
         break;
       }
       default: {
@@ -204,12 +224,40 @@ export class Brain {
           apiKey: this.apiKey || '',
           ...(this.baseUrl ? { baseURL: this.baseUrl } : {}),
         });
-        this.modelInstance = provider(this.modelName) as LanguageModel;
+        model = provider(modelName) as LanguageModel;
         break;
       }
     }
 
-    return this.modelInstance;
+    this.modelCache.set(cacheKey, model);
+    return model;
+  }
+
+  private shouldUseNavigationModel(
+    state: PageState,
+    extraContext?: string,
+    turnInfo?: { current: number; max: number },
+  ): boolean {
+    if (!this.adaptiveModelRouting || !this.navModelName) return false;
+    if (turnInfo && turnInfo.current > 4) return false;
+
+    const combined = `${extraContext || ''}\n${state.snapshot}`.toLowerCase();
+    const blockerPatterns = [
+      /blocker/,
+      /quota/,
+      /limit reached/,
+      /modal/,
+      /permission/,
+      /verification failed/,
+      /stuck/,
+      /captcha/,
+      /unauthorized/,
+      /forbidden/,
+      /terminal access required/,
+      /subscribe to a plan/,
+      /run failed/,
+    ];
+    return !blockerPatterns.some((p) => p.test(combined));
   }
 
   /** Reset conversation history (call between scenarios) */
@@ -334,13 +382,23 @@ ${state.snapshot}`;
     textContent += '\n\nWhat action should you take?';
 
     const userContent = this.buildUserContent(textContent, state.screenshot);
+    const useNavModel = this.shouldUseNavigationModel(state, extraContext, turnInfo);
+    const effectiveProvider = useNavModel ? (this.navProvider || this.provider) : this.provider;
+    const effectiveModel = useNavModel ? (this.navModelName || this.modelName) : this.modelName;
 
     if (this.debug) {
       const turnNum = Math.floor(this.history.length / 2) + 1;
       console.log(`[Brain] Turn ${turnNum} | URL: ${state.url} | Vision: ${!!state.screenshot && this.visionEnabled}`);
+      if (this.adaptiveModelRouting) {
+        const mode = useNavModel ? 'nav-model' : 'primary-model';
+        console.log(`[Brain] Model route: ${mode} (${effectiveProvider}/${effectiveModel})`);
+      }
     }
 
-    const model = await this.getModel();
+    const model = await this.getModel({
+      provider: effectiveProvider,
+      model: effectiveModel,
+    });
 
     const messages: ModelMessage[] = [
       ...this.compactHistory(),
@@ -351,7 +409,7 @@ ${state.snapshot}`;
       model,
       system: SYSTEM_PROMPT,
       messages,
-      temperature: 0,
+      ...(this.shouldSendTemperature(effectiveModel) ? { temperature: 0 } : {}),
       maxOutputTokens: 1000,
       abortSignal: AbortSignal.timeout(this.llmTimeoutMs),
     });
@@ -403,7 +461,7 @@ Please evaluate the quality of this page/application.`;
       model,
       system: EVALUATE_PROMPT,
       messages: [{ role: 'user', content: userContent }],
-      temperature: 0,
+      ...(this.shouldSendTemperature() ? { temperature: 0 } : {}),
       maxOutputTokens: 800,
       abortSignal: AbortSignal.timeout(this.llmTimeoutMs),
     });
@@ -496,7 +554,7 @@ Respond with ONLY a JSON object:
 - evidence: specific observations supporting your judgment
 - missing: what's still needed (empty array if achieved)`,
       messages: [{ role: 'user', content: userContent }],
-      temperature: 0,
+      ...(this.shouldSendTemperature() ? { temperature: 0 } : {}),
       maxOutputTokens: 600,
       abortSignal: AbortSignal.timeout(this.llmTimeoutMs),
     });
@@ -564,7 +622,7 @@ Audit this page for design quality, UX issues, and visual bugs.`;
       model,
       system: DESIGN_AUDIT_PROMPT,
       messages: [{ role: 'user', content: userContent }],
-      temperature: 0,
+      ...(this.shouldSendTemperature() ? { temperature: 0 } : {}),
       maxOutputTokens: 1500,
       abortSignal: AbortSignal.timeout(this.llmTimeoutMs),
     });
@@ -648,7 +706,7 @@ Only include facts that are genuinely useful. Quality over quantity. Max 10 fact
         role: 'user',
         content: `Domain: ${domain}\n\nTrajectory:\n${trajectoryText}`,
       }],
-      temperature: 0,
+      ...(this.shouldSendTemperature() ? { temperature: 0 } : {}),
       maxOutputTokens: 800,
       abortSignal: AbortSignal.timeout(this.llmTimeoutMs),
     });
@@ -716,9 +774,13 @@ Only include facts that are genuinely useful. Quality over quantity. Max 10 fact
         currentStep: typeof parsed.currentStep === 'number' ? parsed.currentStep : undefined,
         expectedEffect: parsed.expectedEffect || parsed.expected_effect,
       };
-    } catch {
+    } catch (err) {
+      const parseError = err instanceof Error ? err.message : String(err);
       return {
-        action: { action: 'abort', reason: `Failed to parse LLM response: ${raw}` },
+        // Do not hard-abort the scenario on transient JSON formatting issues.
+        // Waiting one turn lets the loop continue and recover on the next model call.
+        action: { action: 'wait', ms: 1000 },
+        reasoning: `Malformed LLM JSON response (${parseError}). Retrying next turn.`,
       };
     }
   }
