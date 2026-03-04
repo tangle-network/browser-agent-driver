@@ -126,7 +126,7 @@ The CLI and programmatic API both auto-detect this file. CLI flags override conf
 | `headless` | `boolean` | `true` | Browser headless mode |
 | `viewport` | `{ width, height }` | `1920x1080` | Browser viewport |
 | `browserArgs` | `string[]` | `[]` | Extra Chromium launch args |
-| `wallet` | `{ enabled?, extensionPaths?, userDataDir? }` | — | Persistent Chromium profile + extension mode |
+| `wallet` | `{ enabled?, extensionPaths?, userDataDir?, autoApprove?, password?, preflight? }` | — | Persistent Chromium profile + extension mode with optional prompt auto-approval and origin preflight |
 | `maxTurns` | `number` | `30` | Max turns per test |
 | `timeoutMs` | `number` | `600000` | Per-test timeout |
 | `concurrency` | `number` | `1` | Parallel workers |
@@ -155,6 +155,15 @@ export default defineConfig({
     enabled: true,
     extensionPaths: ['./extensions/metamask'],
     userDataDir: './.agent-wallet-profile',
+    autoApprove: true,
+    password: process.env.AGENT_WALLET_PASSWORD,
+    preflight: {
+      enabled: true,
+      chain: {
+        id: 31337,
+        rpcUrl: 'http://127.0.0.1:8545',
+      },
+    },
   },
 });
 ```
@@ -167,6 +176,11 @@ agent-driver run \
   --wallet \
   --extension ./extensions/metamask \
   --user-data-dir ./.agent-wallet-profile \
+  --wallet-auto-approve \
+  --wallet-password "$AGENT_WALLET_PASSWORD" \
+  --wallet-preflight \
+  --wallet-chain-id 31337 \
+  --wallet-chain-rpc-url http://127.0.0.1:8545 \
   --no-headless
 ```
 
@@ -174,6 +188,8 @@ Notes:
 - Wallet mode uses `chromium.launchPersistentContext(...)`.
 - Concurrency is forced to `1` in wallet mode.
 - Headless is forced off in wallet mode.
+- Auto-approval can unlock and approve wallet extension prompts across popup/notification/home pages.
+- Preflight can authorize accounts + switch/add chain before test turns begin.
 - Use a dedicated automation profile dir, not your everyday Chrome profile.
 
 ## Actions

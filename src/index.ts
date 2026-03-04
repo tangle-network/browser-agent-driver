@@ -94,6 +94,26 @@ export type { DriverConfig } from './config.js';
 export { buildBrowserLaunchPlan } from './browser-launch.js';
 export type { BrowserLaunchPlan, BuildBrowserLaunchPlanOptions } from './browser-launch.js';
 
+// Wallet automation helpers
+export {
+  DEFAULT_WALLET_ACTION_SELECTORS,
+  DEFAULT_CONNECT_SELECTORS,
+  DEFAULT_CONNECTOR_SELECTORS,
+  DEFAULT_PROMPT_PATHS,
+  resolveWalletExtensionId,
+  startWalletAutoApprover,
+  settleWalletPrompts,
+  runWalletOriginPreflight,
+  runWalletPreflight,
+} from './wallet/automation.js';
+export type {
+  WalletAutomationOptions,
+  WalletPreflightChainTarget,
+  WalletPreflightOptions,
+  WalletOriginPreflightResult,
+  WalletPreflightResult,
+} from './wallet/automation.js';
+
 // JUnit reporter
 export { generateJUnitXml } from './reporters/junit.js';
 
