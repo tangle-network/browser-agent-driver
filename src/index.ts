@@ -77,9 +77,11 @@ export { DesignAuditor, generateDesignAuditReport } from './design-audit.js';
 // Recovery
 export {
   analyzeRecovery,
+  detectBlockingModal,
   detectStuck,
   detectSelectorFailures,
   detectLoadingState,
+  parseSnapshotElements,
 } from './recovery.js';
 
 // Memory system
@@ -89,6 +91,7 @@ export type { Fact, KnowledgeData } from './memory/knowledge.js';
 export { SelectorCache } from './memory/selectors.js';
 export type { SelectorEntry } from './memory/selectors.js';
 export { TrajectoryStore } from './memory/store.js';
+export type { TrajectoryStoreOptions } from './memory/store.js';
 export { TrajectoryAnalyzer } from './memory/analyzer.js';
 export type { RunAnalysis, ActionPattern, GoalPattern, TurnWaste } from './memory/analyzer.js';
 
@@ -124,6 +127,10 @@ export { generateJUnitXml } from './reporters/junit.js';
 // Multi-actor sessions (coordinated multi-user browser testing)
 export { MultiActorSession, Actor } from './multi-actor.js';
 export type { ActorConfig, MultiActorSessionConfig } from './multi-actor.js';
+
+// Persona directives
+export { PERSONA_IDS, getPersonaDirective, withPersonaDirective, isPersonaId, listPersonaIds } from './personas.js';
+export type { PersonaId, PersonaDirectiveInput } from './personas.js';
 
 // Artifact pipeline
 export type {

@@ -8,7 +8,7 @@
  * - Blocking overlays
  */
 
-import type { PageState, Turn } from './types.js';
+import type { Action, PageState, Turn } from './types.js';
 
 export interface RecoveryContext {
   /** Recent turns for pattern analysis */
@@ -28,6 +28,14 @@ export interface RecoveryAction {
   waitMs?: number;
   /** Concrete action for the runner to execute before continuing */
   forceAction?: 'reload' | 'escape' | 'scrollTop';
+  /** Optional direct browser action to execute before continuing */
+  forceBrowserAction?: Action;
+}
+
+export interface SnapshotElement {
+  role: string;
+  name: string;
+  ref: string;
 }
 
 /**
@@ -84,12 +92,192 @@ export function detectLoadingState(snapshot: string): boolean {
   return loadingPatterns.some((p) => p.test(snapshot));
 }
 
+/** Parse interactive elements from a snapshot into role/name/ref triples. */
+export function parseSnapshotElements(snapshot: string): SnapshotElement[] {
+  const elements: SnapshotElement[] = [];
+  const lines = snapshot.split('\n');
+
+  for (const line of lines) {
+    const match = line.match(/^\s*-\s+([a-zA-Z0-9_-]+)(?:\s+"([^"]*)")?.*\[ref=([^\]]+)\]/);
+    if (!match) continue;
+    const [, role, name = '', ref] = match;
+    elements.push({ role: role.toLowerCase(), name: name.trim(), ref: ref.trim() });
+  }
+
+  return elements;
+}
+
+function pickRefByName(elements: SnapshotElement[], patterns: RegExp[]): string | undefined {
+  for (const pattern of patterns) {
+    const match = elements.find((el) =>
+      (el.role === 'button' || el.role === 'link' || el.role === 'menuitem') &&
+      pattern.test(el.name.toLowerCase())
+    );
+    if (match) return match.ref;
+  }
+  return undefined;
+}
+
+function detectQuotaLimitText(snapshotLower: string): boolean {
+  const patterns = [
+    /project limit/,
+    /limit reached/,
+    /quota/,
+    /usage limit/,
+    /maximum .* reached/,
+    /too many .* projects/,
+    /upgrade .* plan/,
+    /free up .* project/,
+  ];
+  return patterns.some((p) => p.test(snapshotLower));
+}
+
+export interface BlockingModalDetection {
+  kind: 'quota-limit' | 'blocking-modal';
+  strategy: string;
+  feedback: string;
+  action?: Action;
+  forceAction?: 'escape';
+}
+
+/**
+ * Detect blocking dialogs/modals and suggest an immediate remediation action.
+ * This is intentionally deterministic so common blockers are handled without
+ * waiting for the LLM to rediscover basic escape hatches every run.
+ */
+export function detectBlockingModal(snapshot: string): BlockingModalDetection | null {
+  const snapshotLower = snapshot.toLowerCase();
+  const hasDialog = /(?:^|\n)\s*-\s*(?:dialog|alertdialog)\b/i.test(snapshot);
+  const hasModalWord = /\bmodal\b/i.test(snapshot);
+
+  if (!hasDialog && !hasModalWord && !detectQuotaLimitText(snapshotLower)) {
+    return null;
+  }
+
+  const elements = parseSnapshotElements(snapshot);
+
+  const confirmDeleteRef = pickRefByName(elements, [
+    /^delete$/,
+    /^yes,\s*delete$/,
+    /^confirm$/,
+    /^remove$/,
+  ]);
+  const looksLikeProjectDeleteConfirm =
+    /(?:delete|remove).*(?:project|item)/.test(snapshotLower) ||
+    /are you sure/.test(snapshotLower) ||
+    /permanently delete/.test(snapshotLower);
+  if (looksLikeProjectDeleteConfirm && confirmDeleteRef) {
+    return {
+      kind: 'blocking-modal',
+      strategy: 'modal-confirm-delete',
+      feedback:
+        'BLOCKER SUBSTEP: A delete-confirmation modal is present. Confirming deletion to complete quota cleanup, then continue the main goal.',
+      action: { action: 'click', selector: `@${confirmDeleteRef}` },
+    };
+  }
+
+  // Prefer non-destructive exits first, then cleanup actions if required.
+  if (detectQuotaLimitText(snapshotLower)) {
+    const manageRef = pickRefByName(elements, [
+      /manage projects?/,
+      /view projects?/,
+      /open projects?/,
+      /go to projects?/,
+      /existing projects?/,
+      /project settings/,
+      /billing/,
+      /upgrade/,
+    ]);
+    if (manageRef) {
+      return {
+        kind: 'quota-limit',
+        strategy: 'quota-limit-manage',
+        feedback:
+          'BLOCKER: A quota/limit dialog is blocking progress. Opening the project/plan management path. ' +
+          'Resolve the limit (remove/archive old test items or upgrade) and then retry the original goal action.',
+        action: { action: 'click', selector: `@${manageRef}` },
+      };
+    }
+
+    const cleanupRef = pickRefByName(elements, [
+      /delete\s+(?:a\s+)?project/,
+      /remove\s+(?:an?\s+)?project/,
+      /archive\s+(?:an?\s+)?project/,
+      /free up .*project/,
+      /delete oldest project/,
+      /remove oldest project/,
+      /clear old projects?/,
+    ]);
+    if (cleanupRef) {
+      return {
+        kind: 'quota-limit',
+        strategy: 'quota-limit-cleanup',
+        feedback:
+          'BLOCKER: A quota/limit dialog is blocking progress. A cleanup action was selected to free capacity. ' +
+          'After cleanup, confirm the blocker is gone and continue with the main goal.',
+        action: { action: 'click', selector: `@${cleanupRef}` },
+      };
+    }
+
+    return {
+      kind: 'quota-limit',
+      strategy: 'quota-limit-escape',
+      feedback:
+        'BLOCKER: Quota/limit dialog detected but no clear management button was found. ' +
+        'Dismissing the dialog; then navigate to project/settings areas to free capacity and retry.',
+      forceAction: 'escape',
+    };
+  }
+
+  const closeRef = pickRefByName(elements, [
+    /^close$/,
+    /dismiss/,
+    /cancel/,
+    /not now/,
+    /maybe later/,
+    /^ok$/,
+    /^got it$/,
+    /^continue$/,
+    /skip/,
+  ]);
+  if (closeRef) {
+    return {
+      kind: 'blocking-modal',
+      strategy: 'modal-dismiss-click',
+      feedback:
+        'BLOCKER: A dialog/modal is obstructing interaction. Dismiss it first, then continue with the goal.',
+      action: { action: 'click', selector: `@${closeRef}` },
+    };
+  }
+
+  return {
+    kind: 'blocking-modal',
+    strategy: 'modal-present-no-force',
+    feedback:
+      'BLOCKER: A dialog/modal is present. Do not interact with background page elements. ' +
+      'Choose an explicit action inside this modal first (close, cancel, confirm, or required primary action).',
+  };
+}
+
 /**
  * Analyze the current state and return a recovery action if needed.
  * Returns null if no recovery is warranted.
  */
 export function analyzeRecovery(ctx: RecoveryContext): RecoveryAction | null {
   const { recentTurns, currentState, consecutiveErrors } = ctx;
+
+  // Strategy 0: Blocker modal/dialog handling — run before stuck detection.
+  // Without this, repeated blocked actions often look like generic "stuck".
+  const blockingModal = detectBlockingModal(currentState.snapshot);
+  if (blockingModal) {
+    return {
+      strategy: blockingModal.strategy,
+      feedback: blockingModal.feedback,
+      forceAction: blockingModal.forceAction,
+      forceBrowserAction: blockingModal.action,
+      waitMs: 500,
+    };
+  }
 
   // Strategy 1: Stuck detection — same page for 3+ turns (check BEFORE loading,
   // because a stuck loading state should escalate to reload, not just wait again)
@@ -136,7 +324,7 @@ export function analyzeRecovery(ctx: RecoveryContext): RecoveryAction | null {
       feedback:
         'Multiple actions have failed. The selectors may be stale or elements may be obscured. ' +
         'Look carefully at the current ELEMENTS list and choose a different element. ' +
-        'Consider dismissing any overlay first.',
+        'If a dialog is present, dismiss or resolve it before retrying.',
     };
   }
 

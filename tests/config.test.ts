@@ -91,7 +91,7 @@ describe('loadConfig', () => {
     try {
       const config = await loadConfig();
       expect(config).toBeDefined();
-      expect(config.model).toBe('gpt-4o'); // default
+      expect(config.model).toBe('gpt-5.2'); // default
       expect(config.headless).toBe(true);  // default
     } finally {
       process.chdir(origCwd);

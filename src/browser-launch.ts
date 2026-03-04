@@ -26,7 +26,7 @@ function resolveMaybeRelativePath(value: string, cwd: string): string {
 
 /**
  * Build an execution plan for browser launch behavior.
- * Wallet mode is enabled when wallet.enabled, wallet.extensionPaths, or wallet.userDataDir is set.
+ * Wallet mode is enabled when wallet.enabled or wallet.extensionPaths are set.
  */
 export function buildBrowserLaunchPlan(
   config: DriverConfig,
@@ -51,7 +51,10 @@ export function buildBrowserLaunchPlan(
     ? resolveMaybeRelativePath(walletConfig.userDataDir, cwd)
     : undefined;
 
-  const walletMode = Boolean(walletConfig?.enabled) || extensionPaths.length > 0 || Boolean(userDataDir);
+  const walletMode = Boolean(walletConfig?.enabled) || extensionPaths.length > 0;
+  if (!walletMode && userDataDir) {
+    warnings.push('wallet.userDataDir is set but wallet mode is disabled; this directory is ignored unless --wallet or --extension is provided.');
+  }
 
   let headless = requestedHeadless;
   if (walletMode && headless) {

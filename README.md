@@ -8,6 +8,7 @@ LLM-driven browser automation agent. Observe page state via accessibility tree, 
 - **Multimodal vision** — screenshots + a11y tree sent to the LLM for layout-aware decisions
 - **Post-action verification** — checks expected effects after each action
 - **Stuck detection + recovery** — auto-detects loops and triggers recovery strategies
+- **Adaptive blocker recovery** — detects dialogs (quota/limit/modals), performs deterministic unblock actions, then resumes the goal
 - **Conversation history** — LLM remembers previous turns for multi-step reasoning
 - **Trajectory memory** — stores successful runs for case-based reasoning on future tasks
 - **Test runner** — dependency-aware suite orchestration with ground-truth verification
@@ -27,6 +28,24 @@ npm install -D playwright  # peer dependency
 ```
 
 Package: https://www.npmjs.com/package/@tangle-network/agent-browser-driver
+
+## Skills Pack
+
+This repository ships versioned Codex skills under `skills/` for:
+- test execution discipline (`agent-browser-driver-testing`)
+- agent-friendly product UX conventions (`agent-friendly-app-design`)
+
+Install locally:
+
+```bash
+npm run skills:install
+```
+
+Custom destination:
+
+```bash
+npm run skills:install -- --out /absolute/path/to/skills
+```
 
 ## Publishing
 
@@ -70,7 +89,7 @@ const driver = new PlaywrightDriver(page, {
 const runner = new AgentRunner({
   driver,
   config: {
-    model: 'gpt-4o',
+    model: 'gpt-5.2',
     debug: true,
     maxHistoryTurns: 15,
     retries: 3,
@@ -120,14 +139,17 @@ The CLI and programmatic API both auto-detect this file. CLI flags override conf
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `provider` | `'openai' \| 'anthropic' \| 'google'` | `'openai'` | LLM provider |
-| `model` | `string` | `'gpt-4o'` | Model name |
+| `model` | `string` | `'gpt-5.2'` | Model name |
+| `adaptiveModelRouting` | `boolean` | `false` | Route early navigation turns to `navModel` |
+| `navModel` | `string` | — | Fast model used when adaptive routing is enabled |
+| `navProvider` | `'openai' \| 'anthropic' \| 'google'` | same as `provider` | Provider for `navModel` |
 | `apiKey` | `string` | env var | API key |
 | `baseUrl` | `string` | — | Custom endpoint (LiteLLM, etc.) |
 | `browser` | `'chromium' \| 'firefox' \| 'webkit'` | `'chromium'` | Browser engine for execution |
 | `headless` | `boolean` | `true` | Browser headless mode |
 | `viewport` | `{ width, height }` | `1920x1080` | Browser viewport |
 | `browserArgs` | `string[]` | `[]` | Extra Chromium launch args |
-| `wallet` | `{ enabled?, extensionPaths?, userDataDir?, autoApprove?, password?, preflight? }` | — | Persistent Chromium profile + extension mode with optional prompt auto-approval and origin preflight |
+| `wallet` | `{ enabled?, extensionPaths?, userDataDir?, autoApprove?, password?, preflight? }` | — | Extension mode for wallet/crypto flows (Chromium persistent context) with optional prompt auto-approval and preflight |
 | `storageState` | `string` | — | Playwright storage state JSON path (pre-authenticated session) |
 | `maxTurns` | `number` | `30` | Max turns per test |
 | `timeoutMs` | `number` | `600000` | Per-test timeout |
@@ -140,8 +162,17 @@ The CLI and programmatic API both auto-detect this file. CLI flags override conf
 | `reporters` | `('json' \| 'markdown' \| 'html' \| 'junit')[]` | `['json']` | Report formats |
 | `sinks` | `ArtifactSink[]` | — | Custom artifact sinks |
 | `resourceBlocking` | `ResourceBlockingOptions` | — | Block analytics/images/media for faster tests |
-| `memory` | `{ enabled, dir }` | `disabled` | Trajectory memory |
+| `memory` | `{ enabled, dir, traceScoring, traceTtlDays }` | `disabled` | Trajectory memory + scored trace selection |
 | `projects` | `Array<{ name, config, testDir, testMatch }>` | — | Named project configs |
+
+### Built-in Personas
+
+- `alice-blueprint-builder`: persona directive for realistic product flows with:
+- adaptive blocker handling
+- settings/model/provider discovery heuristics
+- partner route hints (`/partner/coinbase`, `/partner/succinct`, `/partner/tangle`)
+- substantive completion criteria (usable output, not toy chat turns)
+- `auto`: derives an adaptive persona directive from your `goal` + `url` (recommended for out-of-box usage)
 
 ## Wallet Automation (Extensions)
 
@@ -187,7 +218,10 @@ agent-driver run \
 ```
 
 Notes:
+- Wallet mode is activated only by `wallet.enabled` or `wallet.extensionPaths`.
+- `wallet.userDataDir` only configures profile path once wallet mode is active.
 - Wallet mode uses `chromium.launchPersistentContext(...)`.
+- `--storage-state` is applied in wallet mode and non-wallet mode.
 - Concurrency is forced to `1` in wallet mode.
 - Headless is forced off in wallet mode.
 - Auto-approval can unlock and approve wallet extension prompts across popup/notification/home pages.
@@ -213,6 +247,15 @@ The LLM can choose from:
 | `complete` | Goal achieved |
 | `abort` | Cannot continue |
 
+## Recovery Strategy Notes
+
+The runner applies deterministic recovery before each turn:
+
+- **Blocker-first**: if a modal/dialog is detected, it is resolved before normal goal actions continue.
+- **Quota/limit dialogs**: recovery prefers management paths first (`Manage projects`, `Billing`, etc.), then cleanup actions (`Delete/Remove/Archive`) if required.
+- **Fallback dismissal**: if no actionable button is found, `Escape` is used to close overlays.
+- **Stuck/selector failures**: existing stuck and selector-failure strategies still apply after blocker recovery.
+
 ## Test Runner
 
 Run structured test suites with ground-truth verification:
@@ -222,7 +265,7 @@ import { TestRunner } from '@tangle-network/agent-browser-driver';
 
 const runner = new TestRunner({
   driver,
-  config: { model: 'gpt-4o', vision: true },
+  config: { model: 'gpt-5.2', vision: true },
   enableMemory: true,
 });
 
@@ -278,7 +321,90 @@ Then reuse it in runs:
 agent-driver run --goal "Create a project and verify preview" \
   --url https://ai.tangle.tools \
   --storage-state ./.auth/ai-tangle-tools.json
+
+# Persona-driven flow
+agent-driver run \
+  --goal "Create a Coinbase blueprint project and verify usable output" \
+  --url https://ai.tangle.tools \
+  --storage-state ./.auth/ai-tangle-tools.json \
+  --persona alice-blueprint-builder
+
+# Auto persona flow (no manual persona writing)
+agent-driver run \
+  --goal "Build a partner template app and verify preview works" \
+  --url https://ai.tangle.tools \
+  --storage-state ./.auth/ai-tangle-tools.json \
+  --persona auto
+
+# Mode presets
+agent-driver run --goal "Map key routes fast" --url https://ai.tangle.tools --mode fast-explore
+agent-driver run --goal "Run signoff flow with rich evidence" --url https://ai.tangle.tools --mode full-evidence
 ```
+
+### Run Modes
+
+- `fast-explore`: optimized for speed. Defaults to `--no-vision`, `--screenshot-interval 0`, analytics blocking on, goal verification on.
+- `full-evidence`: optimized for release/signoff evidence. Defaults to `--vision`, `--screenshot-interval 3`, goal verification on.
+- Mode presets only apply defaults; explicit CLI flags still take precedence.
+
+### Adaptive Model Routing (Feature Flag)
+
+Use a faster model for early navigation turns, while keeping your primary model for blocker/verification-heavy turns:
+
+```bash
+agent-driver run \
+  --goal "Complete flow" \
+  --url https://ai.tangle.tools \
+  --model gpt-5.2 \
+  --model-adaptive \
+  --nav-model gpt-4.1-mini
+```
+
+- `--model-adaptive`: enable routing for `decide()` turns.
+- `--nav-model`: model used for early non-blocker navigation turns.
+- `--nav-provider`: optional provider override for nav model.
+
+### Trace Scoring (Feature Flag)
+
+Enable scored trajectory reuse (requires memory mode):
+
+```bash
+agent-driver run \
+  --goal "Complete flow" \
+  --url https://ai.tangle.tools \
+  --memory \
+  --memory-dir ./.agent-memory \
+  --trace-scoring \
+  --trace-ttl-days 30
+```
+
+### Baseline Mode Comparison
+
+Run the same goal in both modes and emit a comparison summary:
+
+```bash
+npm run baseline:modes -- \
+  --goal "Navigate to /partner/coinbase and verify Coinbase templates are visible" \
+  --url https://ai.tangle.tools \
+  --storage-state ./.auth/ai-tangle-tools.json \
+  --model gpt-5.2 \
+  --max-turns 35
+```
+
+Outputs `baseline-summary.json` under `./agent-results/mode-baseline-<timestamp>/`.
+
+### Scenario Track Baseline
+
+Run multi-scenario mode comparisons from a case track file:
+
+```bash
+npm run baseline:track -- \
+  --cases ./bench/scenarios/cases/staging-auth-ai-tangle.json \
+  --storage-state ./.auth/ai-tangle-tools.json \
+  --model gpt-5.2
+```
+
+Outputs `track-summary.json` under `./agent-results/track-<timestamp>/`.
 
 ## Reporters
 

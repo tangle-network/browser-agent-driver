@@ -1,0 +1,16 @@
+[
+  {
+    "id": "local-form-multistep",
+    "name": "Local fixture: multistep form",
+    "startUrl": "__FIXTURE_BASE_URL__/form.html",
+    "goal": "Fill first name John and last name Doe, proceed to contact step, enter john@example.com, proceed, accept terms, and submit account creation.",
+    "maxTurns": 20
+  },
+  {
+    "id": "local-dashboard-edit-export",
+    "name": "Local fixture: dashboard edit/export",
+    "startUrl": "__FIXTURE_BASE_URL__/complex.html",
+    "goal": "Open Users tab, click Edit on Alice Johnson row, then click Export.",
+    "maxTurns": 20
+  }
+]

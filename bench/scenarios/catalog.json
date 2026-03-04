@@ -1,0 +1,113 @@
+{
+  "version": "2026-03-04",
+  "tracks": [
+    {
+      "id": "local-deterministic",
+      "ci_required": true,
+      "description": "Controlled fixtures for regression and speed baselines."
+    },
+    {
+      "id": "staging-auth",
+      "ci_required": false,
+      "description": "Owned app E2E flows with auth/session state."
+    },
+    {
+      "id": "public-web",
+      "ci_required": false,
+      "description": "Public websites for generalization checks; internet drift expected."
+    },
+    {
+      "id": "restricted-manual",
+      "ci_required": false,
+      "description": "High-risk or policy-sensitive tasks; human-in-loop only."
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "local-form-multistep",
+      "track": "local-deterministic",
+      "category": "form-completion",
+      "startUrl": "__FIXTURE_BASE_URL__/form.html",
+      "goal": "Fill first/last name, proceed through steps, accept terms, and submit account creation.",
+      "requiresAuth": false,
+      "hintsRequired": false,
+      "ciEligible": true
+    },
+    {
+      "id": "local-dashboard-edit-export",
+      "track": "local-deterministic",
+      "category": "product-usage",
+      "startUrl": "__FIXTURE_BASE_URL__/complex.html",
+      "goal": "Open Users tab, edit Alice row, then trigger Export.",
+      "requiresAuth": false,
+      "hintsRequired": false,
+      "ciEligible": true
+    },
+    {
+      "id": "ai-tangle-coinbase-template",
+      "track": "staging-auth",
+      "category": "product-usage",
+      "startUrl": "https://ai.tangle.tools",
+      "goal": "Reach /partner/coinbase and verify Coinbase templates are visible with concrete evidence.",
+      "requiresAuth": true,
+      "authMode": "storage-state",
+      "hintsRequired": false,
+      "ciEligible": false
+    },
+    {
+      "id": "ai-tangle-blocker-recovery",
+      "track": "staging-auth",
+      "category": "blocker-recovery",
+      "startUrl": "https://ai.tangle.tools",
+      "goal": "Attempt template start, resolve project-limit or modal blockers if present, and continue to a verified output state.",
+      "requiresAuth": true,
+      "authMode": "storage-state",
+      "hintsRequired": false,
+      "ciEligible": false
+    },
+    {
+      "id": "public-docs-research",
+      "track": "public-web",
+      "category": "research",
+      "startUrl": "https://developer.mozilla.org",
+      "goal": "Find a target API reference page and extract a specified fact with source evidence.",
+      "requiresAuth": false,
+      "hintsRequired": false,
+      "ciEligible": false
+    },
+    {
+      "id": "public-list-scrape",
+      "track": "public-web",
+      "category": "scraping",
+      "startUrl": "https://news.ycombinator.com",
+      "goal": "Extract top N story titles and URLs into structured output.",
+      "requiresAuth": false,
+      "hintsRequired": false,
+      "ciEligible": false
+    },
+    {
+      "id": "gmail-signup-consumer",
+      "track": "restricted-manual",
+      "category": "auth",
+      "startUrl": "https://accounts.google.com/signup",
+      "goal": "Create a new account and verify mailbox access.",
+      "requiresAuth": false,
+      "hintsRequired": false,
+      "ciEligible": false,
+      "manualOnly": true,
+      "restrictionReason": "Captcha/phone verification and policy sensitivity."
+    },
+    {
+      "id": "third-party-api-key-provisioning",
+      "track": "restricted-manual",
+      "category": "auth",
+      "startUrl": "__PROVIDER_CONSOLE_URL__",
+      "goal": "Create account and generate API key for external provider.",
+      "requiresAuth": false,
+      "hintsRequired": false,
+      "ciEligible": false,
+      "manualOnly": true,
+      "restrictionReason": "ToS/legal/security handling required; avoid unattended automation."
+    }
+  ]
+}
