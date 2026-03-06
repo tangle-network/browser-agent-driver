@@ -74,6 +74,7 @@ export interface DriverConfig {
   retryDelayMs?: number;
   screenshotInterval?: number;
   vision?: boolean;
+  visionStrategy?: 'always' | 'never' | 'auto';
   goalVerification?: boolean;
   qualityThreshold?: number;
   microPlan?: {
@@ -263,6 +264,7 @@ export function toAgentConfig(config: DriverConfig): AgentConfig {
     retries: config.retries,
     retryDelayMs: config.retryDelayMs,
     vision: config.vision,
+    visionStrategy: config.visionStrategy,
     goalVerification: config.goalVerification,
     qualityThreshold: config.qualityThreshold,
     microPlan: config.microPlan

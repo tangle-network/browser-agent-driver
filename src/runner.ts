@@ -301,6 +301,11 @@ export class AgentRunner {
         if (searchResultsGuidance) {
           extraContext += `\n${searchResultsGuidance}\n`;
         }
+        const visibleLinkMatch = getVisibleLinkRecommendation(state, scenario.goal, scenario.allowedDomains);
+        const visibleLinkRecommendation = buildVisibleLinkRecommendation(state, scenario.goal, scenario.allowedDomains);
+        if (visibleLinkRecommendation) {
+          extraContext += `\n${visibleLinkRecommendation}\n`;
+        }
         const searchScoutFeedback = await this.buildSearchResultsScoutFeedback(
           state,
           scenario.goal,
@@ -479,10 +484,30 @@ export class AgentRunner {
           extraContext += `\nVERIFICATION FAILED: ${lastTurn.verificationFailure}\nYour last action did NOT produce the expected effect. Try a different approach.\n`;
         }
 
+        const forceVision = shouldEscalateVision({
+          config: this.config,
+          state,
+          turns,
+          scenario,
+          currentTurn: i,
+          maxTurns,
+          supervisorSignalSeverity: supervisorSignal.severity,
+          extraContext,
+        });
+        const decisionState = forceVision
+          ? await this.attachDecisionScreenshot(state)
+          : state;
+
         // ── 4. Decide (with retry) ──
         const decideStartedAt = Date.now();
         const decision = await withRetry(
-          () => this.brain.decide(scenario.goal, state, extraContext || undefined, { current: i, max: maxTurns }),
+          () => this.brain.decide(
+            scenario.goal,
+            decisionState,
+            extraContext || undefined,
+            { current: i, max: maxTurns },
+            { forceVision },
+          ),
           retries,
           retryDelayMs,
           (attempt, err) => {
@@ -497,11 +522,19 @@ export class AgentRunner {
           this.onPhaseTiming?.('decide', phaseTimings.firstDecideMs);
         }
 
-        const { action, nextActions, raw, reasoning, plan, currentStep, expectedEffect, tokensUsed } = decision;
+        let { action, nextActions, raw, reasoning, plan, currentStep, expectedEffect, tokensUsed } = decision;
+        const visibleLinkOverride = chooseVisibleLinkOverride(state, action, visibleLinkMatch);
+        if (visibleLinkOverride) {
+          this.brain.injectFeedback(visibleLinkOverride.feedback);
+          action = { action: 'click', selector: visibleLinkOverride.ref };
+          reasoning = `${reasoning}\n[POLICY OVERRIDE] ${visibleLinkOverride.feedback}`;
+          expectedEffect = 'URL should change';
+          nextActions = [];
+        }
 
         const turn: Turn = {
           turn: i,
-          state,
+          state: decisionState,
           action,
           rawLLMResponse: raw,
           reasoning,
@@ -854,6 +887,21 @@ export class AgentRunner {
           }
         }
 
+        const domainBoundaryViolation = await this.enforceAllowedDomainBoundary(state, scenario);
+        if (domainBoundaryViolation) {
+          this.brain.injectFeedback(domainBoundaryViolation);
+          turn.error = domainBoundaryViolation;
+          turn.durationMs = Date.now() - turnStart;
+          consecutiveErrors++;
+          totalErrors++;
+          if (executedActions.length > 1) {
+            turn.executedActions = executedActions;
+          }
+          turns.push(turn);
+          this.onTurn?.(turn);
+          continue;
+        }
+
         // ── 8. Post-action verification ──
         if (expectedEffect && !turn.error) {
           const verifyResult = await this.verifyEffect(expectedEffect, state);
@@ -1136,6 +1184,42 @@ export class AgentRunner {
       'Choose a result from an allowed host instead, even if the snippet text looks relevant.',
     ].join(' ');
   }
+
+  private async enforceAllowedDomainBoundary(
+    preActionState: PageState,
+    scenario: Scenario,
+  ): Promise<string | undefined> {
+    if (!scenario.allowedDomains || scenario.allowedDomains.length === 0) return undefined;
+
+    const postState = await this.driver.observe().catch(() => preActionState);
+    const currentHost = safeHostname(postState.url);
+    if (!currentHost) return undefined;
+
+    const allowedHosts = scenario.allowedDomains.map((domain) => domain.toLowerCase());
+    if (allowedHosts.includes(currentHost)) return undefined;
+
+    const previousHost = safeHostname(preActionState.url);
+    if (previousHost && allowedHosts.includes(previousHost)) {
+      await this.driver.execute({ action: 'navigate', url: preActionState.url }).catch(() => {});
+    } else if (scenario.startUrl) {
+      await this.driver.execute({ action: 'navigate', url: scenario.startUrl }).catch(() => {});
+    }
+
+    return [
+      `Boundary violation: landed on ${postState.url}, but the allowed host set is ${allowedHosts.join(', ')}.`,
+      'Return to an allowed host and continue from there; do not rely on disallowed subdomains even if their snippet looks relevant.',
+    ].join(' ');
+  }
+
+  private async attachDecisionScreenshot(state: PageState): Promise<PageState> {
+    if (state.screenshot || !this.driver.screenshot) return state;
+    try {
+      const screenshot = await this.driver.screenshot();
+      return { ...state, screenshot: screenshot.toString('base64') };
+    } catch {
+      return state;
+    }
+  }
 }
 
 export function buildGoalVerificationClaim(claimedResult: string, evidence: string[]): string {
@@ -1257,14 +1341,7 @@ export function rankSearchCandidates(
   candidates: Array<{ title: string; href: string }>,
   allowedDomains?: string[],
 ): Array<{ title: string; href: string; score: number }> {
-  const lowerGoal = goal.toLowerCase();
-  const keywords = lowerGoal
-    .replace(/[^a-z0-9\s-]/g, ' ')
-    .split(/\s+/)
-    .filter(Boolean)
-    .filter((token) => token.length >= 4)
-    .filter((token) => !new Set(['site', 'find', 'information', 'extract', 'first', 'related', 'using', 'feature']).has(token));
-  const wantsPressRelease = /\bpress release\b|\bnews release\b/.test(lowerGoal);
+  const signals = extractGoalSignals(goal);
 
   const allowedHosts = new Set((allowedDomains ?? []).map((domain) => domain.toLowerCase()));
   return candidates
@@ -1272,10 +1349,13 @@ export function rankSearchCandidates(
       const haystack = `${candidate.title} ${candidate.href}`.toLowerCase();
       let score = 0;
       const host = safeHostname(candidate.href);
-      for (const keyword of keywords) {
+      for (const keyword of signals.keywords) {
         if (haystack.includes(keyword)) score += 2;
       }
-      if (wantsPressRelease && /\bpress[- ]release\b|\bnews[- ]release\b/.test(haystack)) {
+      for (const phrase of signals.exactPhrases) {
+        if (haystack.includes(phrase)) score += 4;
+      }
+      if (signals.wantsPressRelease && /\bpress[- ]release\b|\bnews[- ]release\b/.test(haystack)) {
         score += 6;
       }
       if (/\/news-events\/news-releases\//.test(haystack)) {
@@ -1297,12 +1377,210 @@ export function rankSearchCandidates(
     .slice(0, 5);
 }
 
+export function buildVisibleLinkRecommendation(
+  state: PageState,
+  goal: string,
+  allowedDomains?: string[],
+): string {
+  const top = getVisibleLinkRecommendation(state, goal, allowedDomains);
+  if (!top || top.score < 6) return '';
+
+  const candidates = extractSnapshotLinkCandidates(state.snapshot, goal);
+  const ranked = rankVisibleLinkCandidates(goal, candidates);
+
+  return [
+    'VISIBLE LINK RECOMMENDATION:',
+    `Prefer clicking ${top.ref} (${top.text}) because it is the strongest visible first-party match for the requested topic/content type.`,
+    ...ranked.slice(1, 3).map((candidate, index) => `Backup ${index + 1}: ${candidate.ref} (${candidate.text})`),
+  ].join('\n');
+}
+
+function getVisibleLinkRecommendation(
+  state: PageState,
+  goal: string,
+  allowedDomains?: string[],
+): { ref: string; text: string; score: number } | undefined {
+  const currentHost = safeHostname(state.url);
+  if (allowedDomains && allowedDomains.length > 0 && currentHost && !allowedDomains.map((domain) => domain.toLowerCase()).includes(currentHost)) {
+    return undefined;
+  }
+
+  const candidates = extractSnapshotLinkCandidates(state.snapshot, goal);
+  if (candidates.length === 0) return undefined;
+
+  const ranked = rankVisibleLinkCandidates(goal, candidates);
+  return ranked[0];
+}
+
+function extractSnapshotLinkCandidates(snapshot: string, goal: string): Array<{ ref: string; text: string }> {
+  const source = selectRelevantSnapshotSection(snapshot, goal);
+  const candidates: Array<{ ref: string; text: string }> = [];
+  const pattern = /- link "([^"]+)" \[ref=([^\]]+)\]/g;
+  for (const match of source.matchAll(pattern)) {
+    const text = match[1]?.replace(/\s+/g, ' ').trim();
+    const ref = match[2]?.trim();
+    if (!text || !ref || text.length < 12) continue;
+    candidates.push({ ref: `@${ref}`, text });
+    if (candidates.length >= 24) break;
+  }
+  return candidates;
+}
+
+function rankVisibleLinkCandidates(
+  goal: string,
+  candidates: Array<{ ref: string; text: string }>,
+): Array<{ ref: string; text: string; score: number }> {
+  const signals = extractGoalSignals(goal);
+
+  return candidates
+    .map((candidate) => {
+      const haystack = candidate.text.toLowerCase();
+      let score = 0;
+      for (const keyword of signals.keywords) {
+        if (haystack.includes(keyword)) score += 2;
+      }
+      for (const phrase of signals.exactPhrases) {
+        if (haystack.includes(phrase)) score += 4;
+      }
+      if (signals.wantsPressRelease && /\bpress release\b|\bnews release\b|\bnews releases\b/.test(haystack)) {
+        score += 6;
+      }
+      if (hasFullDate(haystack)) {
+        score += 5;
+      } else if (/\b\d{4}\b/.test(haystack)) {
+        score += 1;
+      }
+      if (/all news releases/.test(haystack)) {
+        score += 2;
+      }
+      if (signals.wantsPressRelease && /\bnih research matters\b|\bnews in health\b|\bcatalyst\b|\bcalendar of events\b|\bsocial media\b/.test(haystack)) {
+        score -= 8;
+      }
+      return { ...candidate, score };
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5);
+}
+
+function chooseVisibleLinkOverride(
+  state: PageState,
+  action: Action,
+  recommendation: { ref: string; text: string; score: number } | undefined,
+): { ref: string; feedback: string } | undefined {
+  if (!recommendation || recommendation.score < 10) return undefined;
+  if (!isFirstPartyContentHub(state)) return undefined;
+  if (!isSearchAction(state, action)) return undefined;
+  if (action.action === 'click' && action.selector === recommendation.ref) return undefined;
+
+  return {
+    ref: recommendation.ref,
+    feedback: `A high-confidence first-party link is already visible on this page. Do not search again; click ${recommendation.ref} (${recommendation.text}) instead.`,
+  };
+}
+
+function isSearchAction(state: PageState, action: Action): boolean {
+  if (!('selector' in action) || !action.selector?.startsWith('@')) return false;
+  const element = findElementForRef(state.snapshot, action.selector)?.toLowerCase() ?? '';
+  return element.includes('searchbox') || element.includes('search');
+}
+
+function isFirstPartyContentHub(state: PageState): boolean {
+  const url = state.url.toLowerCase();
+  const snapshot = state.snapshot.toLowerCase();
+  return (
+    url.includes('/news-events') &&
+    snapshot.includes('recent news releases')
+  );
+}
+
+function selectRelevantSnapshotSection(snapshot: string, goal: string): string {
+  const lowerGoal = goal.toLowerCase();
+  if (!/\bpress release\b|\bnews release\b/.test(lowerGoal) || !snapshot.toLowerCase().includes('recent news releases')) {
+    return snapshot;
+  }
+
+  const lines = snapshot.split('\n');
+  const start = lines.findIndex((line) => line.toLowerCase().includes('recent news releases'));
+  if (start === -1) return snapshot;
+  let end = lines.findIndex((line, index) => index > start && line.toLowerCase().includes('all news releases'));
+  if (end === -1) end = Math.min(lines.length, start + 16);
+  return lines.slice(start, end + 1).join('\n');
+}
+
+function extractGoalSignals(goal: string): { keywords: string[]; exactPhrases: string[]; wantsPressRelease: boolean } {
+  const lowerGoal = goal.toLowerCase();
+  const exactPhrases = Array.from(
+    new Set(
+      [...lowerGoal.matchAll(/"([^"]{3,})"/g)]
+        .map((match) => match[1]?.trim())
+        .filter((phrase): phrase is string => Boolean(phrase)),
+    ),
+  );
+  const stopwords = new Set([
+    'site', 'find', 'information', 'extract', 'first', 'related', 'using', 'feature', 'their',
+    'title', 'publication', 'date', 'only', 'https', 'http', 'achieve', 'task', 'other',
+    'achievable', 'with', 'just', 'navigation', 'from', 'this', 'search', 'result', 'results',
+    'click', 'visit', 'page', 'pages', 'requested', 'current', 'through', 'would', 'should',
+  ]);
+  const keywords = Array.from(
+    new Set(
+      lowerGoal
+        .replace(/[^a-z0-9\s-]/g, ' ')
+        .split(/\s+/)
+        .filter(Boolean)
+        .filter((token) => token.length >= 4)
+        .filter((token) => !stopwords.has(token)),
+    ),
+  );
+  const wantsPressRelease = /\bpress release\b|\bnews release\b/.test(lowerGoal);
+  return { keywords, exactPhrases, wantsPressRelease };
+}
+
+function hasFullDate(text: string): boolean {
+  return /\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2},\s+\d{4}\b/i.test(text);
+}
+
 function safeHostname(url: string): string | undefined {
   try {
     return new URL(url).hostname.toLowerCase();
   } catch {
     return undefined;
   }
+}
+
+function shouldEscalateVision(input: {
+  config: AgentConfig;
+  state: PageState;
+  turns: Turn[];
+  scenario: Scenario;
+  currentTurn: number;
+  maxTurns: number;
+  supervisorSignalSeverity: 'none' | 'soft' | 'hard';
+  extraContext: string;
+}): boolean {
+  const strategy = input.config.visionStrategy ?? (input.config.vision !== false ? 'always' : 'never');
+  if (strategy === 'never') return false;
+  if (strategy === 'always') return true;
+
+  const pageText = `${input.state.url}\n${input.state.title}\n${input.state.snapshot}`.toLowerCase();
+  const recentTurns = input.turns.slice(-2);
+  const recentError = recentTurns.some((turn) => Boolean(turn.error || turn.verificationFailure));
+  const searchLike = /\bsearch\b|\bsearch results\b/.test(pageText);
+  const modalLike = /\bdialog\b|\bmodal\b|\boverlay\b|\bmenu\b/.test(pageText);
+  const constrainedTask = Array.isArray(input.scenario.allowedDomains) && input.scenario.allowedDomains.length > 0;
+  const lowTurns = input.maxTurns - input.currentTurn <= 2;
+  const visibleRecommendation = input.extraContext.includes('VISIBLE LINK RECOMMENDATION');
+  const repeatedLocation =
+    recentTurns.length >= 2 &&
+    recentTurns.every((turn) => turn.state.url === input.state.url);
+  const stalledSearch = searchLike && (repeatedLocation || recentError || input.currentTurn >= 6);
+
+  return recentError
+    || modalLike
+    || lowTurns
+    || input.supervisorSignalSeverity !== 'none'
+    || stalledSearch
+    || (constrainedTask && searchLike && !visibleRecommendation && recentError);
 }
 
 function pushGoalVerificationEvidence(target: string[], entry: string): void {

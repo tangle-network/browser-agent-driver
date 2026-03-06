@@ -9,7 +9,7 @@ import { generateText } from 'ai';
 import type { ModelMessage, LanguageModel } from 'ai';
 import type { Action, PageState, AgentConfig, DesignFinding, GoalVerification } from '../types.js';
 import { AriaSnapshotHelper } from '../drivers/snapshot.js';
-import { resolveProviderModelName } from '../provider-defaults.js';
+import { resolveProviderApiKey, resolveProviderModelName } from '../provider-defaults.js';
 import { buildFirstPartyBoundaryNote } from '../domain-policy.js';
 
 const SYSTEM_PROMPT = `You are a senior staff engineer operating a browser via Playwright automation.
@@ -186,12 +186,13 @@ export class Brain {
   private adaptiveModelRouting: boolean;
   private navModelName?: string;
   private navProvider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code';
-  private apiKey?: string;
+  private explicitApiKey?: string;
   private baseUrl?: string;
   private debug: boolean;
   private history: ModelMessage[] = [];
   private maxHistoryTurns: number;
   private visionEnabled: boolean;
+  private visionStrategy: 'always' | 'never' | 'auto';
   private llmTimeoutMs: number;
   private compactFirstTurn: boolean;
   private systemPrompt: string;
@@ -203,12 +204,13 @@ export class Brain {
     this.adaptiveModelRouting = config.adaptiveModelRouting === true;
     this.navModelName = config.navModel;
     this.navProvider = config.navProvider;
-    this.apiKey = config.apiKey || process.env.OPENAI_API_KEY;
+    this.explicitApiKey = config.apiKey;
     this.baseUrl = config.baseUrl;
     this.systemPrompt = config.systemPrompt || SYSTEM_PROMPT;
     this.debug = config.debug || false;
     this.maxHistoryTurns = config.maxHistoryTurns || 10;
     this.visionEnabled = config.vision !== false;
+    this.visionStrategy = config.visionStrategy ?? (this.visionEnabled ? 'always' : 'never');
     this.compactFirstTurn = config.compactFirstTurn === true;
   }
 
@@ -233,6 +235,7 @@ export class Brain {
   private async getModel(selection?: { provider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code'; model?: string }): Promise<LanguageModel> {
     const providerName = selection?.provider || this.provider;
     const modelName = resolveProviderModelName(providerName, selection?.model || this.modelName);
+    const apiKey = resolveProviderApiKey(providerName, this.explicitApiKey);
     const cacheKey = `${providerName}:${modelName}`;
     const cached = this.modelCache.get(cacheKey);
     if (cached) return cached;
@@ -242,7 +245,7 @@ export class Brain {
       case 'anthropic': {
         const { createAnthropic } = await import('@ai-sdk/anthropic');
         const provider = createAnthropic({
-          apiKey: this.apiKey,
+          apiKey,
           ...(this.baseUrl ? { baseURL: this.baseUrl } : {}),
         });
         model = provider(modelName) as LanguageModel;
@@ -251,7 +254,7 @@ export class Brain {
       case 'google': {
         const { createGoogleGenerativeAI } = await import('@ai-sdk/google');
         const provider = createGoogleGenerativeAI({
-          apiKey: this.apiKey,
+          apiKey,
           ...(this.baseUrl ? { baseURL: this.baseUrl } : {}),
         });
         model = provider(modelName) as LanguageModel;
@@ -260,7 +263,7 @@ export class Brain {
       case 'codex-cli': {
         const { codexExec } = await import('ai-sdk-provider-codex-cli');
         const env: Record<string, string> = {};
-        if (this.apiKey) env.OPENAI_API_KEY = this.apiKey;
+        if (apiKey) env.OPENAI_API_KEY = apiKey;
         model = codexExec(modelName, {
           allowNpx: process.env.CODEX_ALLOW_NPX !== '0',
           skipGitRepoCheck: true,
@@ -272,7 +275,7 @@ export class Brain {
       case 'claude-code': {
         const { createClaudeCode } = await import('ai-sdk-provider-claude-code');
         const env: Record<string, string> = {};
-        if (this.apiKey) env.ANTHROPIC_API_KEY = this.apiKey;
+        if (apiKey) env.ANTHROPIC_API_KEY = apiKey;
         const provider = createClaudeCode({
           defaultSettings: {
             ...(process.env.CLAUDE_CODE_CLI_PATH ? { pathToClaudeCodeExecutable: process.env.CLAUDE_CODE_CLI_PATH } : {}),
@@ -286,7 +289,7 @@ export class Brain {
         // 'openai' or any OpenAI-compatible API (LiteLLM, Together, etc.)
         const { createOpenAI } = await import('@ai-sdk/openai');
         const provider = createOpenAI({
-          apiKey: this.apiKey || '',
+          apiKey: apiKey || '',
           ...(this.baseUrl ? { baseURL: this.baseUrl } : {}),
         });
         model = provider(modelName) as LanguageModel;
@@ -344,8 +347,12 @@ export class Brain {
    * Build the user message content parts — text + optional screenshot.
    * Multimodal when vision is enabled and screenshot is available.
    */
-  private buildUserContent(text: string, screenshot?: string): UserContent {
-    if (!this.visionEnabled || !screenshot) {
+  private buildUserContent(text: string, screenshot?: string, forceVision = false): UserContent {
+    const shouldUseVision = !!screenshot && (
+      this.visionStrategy === 'always'
+      || (this.visionStrategy === 'auto' && forceVision)
+    );
+    if (!shouldUseVision) {
       return text;
     }
 
@@ -414,7 +421,8 @@ export class Brain {
     goal: string,
     state: PageState,
     extraContext?: string,
-    turnInfo?: { current: number; max: number }
+    turnInfo?: { current: number; max: number },
+    options?: { forceVision?: boolean }
   ): Promise<BrainDecision> {
     const useCompactFirstTurn = this.compactFirstTurn && turnInfo?.current === 1;
     const visibleSnapshot = useCompactFirstTurn
@@ -453,14 +461,17 @@ ${visibleSnapshot}`;
 
     textContent += '\n\nWhat action should you take?';
 
-    const userContent = this.buildUserContent(textContent, state.screenshot);
+    const userContent = this.buildUserContent(textContent, state.screenshot, options?.forceVision === true);
     const useNavModel = this.shouldUseNavigationModel(state, extraContext, turnInfo);
     const effectiveProvider = useNavModel ? (this.navProvider || this.provider) : this.provider;
     const effectiveModel = useNavModel ? (this.navModelName || this.modelName) : this.modelName;
 
     if (this.debug) {
       const turnNum = Math.floor(this.history.length / 2) + 1;
-      console.log(`[Brain] Turn ${turnNum} | URL: ${state.url} | Vision: ${!!state.screenshot && this.visionEnabled}`);
+      const usingVision = !!state.screenshot && (
+        this.visionStrategy === 'always' || (this.visionStrategy === 'auto' && options?.forceVision === true)
+      );
+      console.log(`[Brain] Turn ${turnNum} | URL: ${state.url} | Vision: ${usingVision}`);
       if (this.adaptiveModelRouting) {
         const mode = useNavModel ? 'nav-model' : 'primary-model';
         console.log(`[Brain] Model route: ${mode} (${effectiveProvider}/${effectiveModel})`);
@@ -524,7 +535,7 @@ Title: ${state.title}
 
 Please evaluate the quality of this page/application.`;
 
-    const userContent = this.buildUserContent(textContent, state.screenshot);
+    const userContent = this.buildUserContent(textContent, state.screenshot, true);
 
     const model = await this.getModel();
 
@@ -596,7 +607,7 @@ ${state.snapshot}${siteBoundaryNote ? `\n\n${siteBoundaryNote}` : ''}
 
 Was the goal actually achieved? Analyze the current page state carefully.`;
 
-    const userContent = this.buildUserContent(textContent, state.screenshot);
+    const userContent = this.buildUserContent(textContent, state.screenshot, true);
 
     const model = await this.getModel();
 
@@ -684,7 +695,7 @@ ${state.snapshot}
 
 Audit this page for design quality, UX issues, and visual bugs.`;
 
-    const userContent = this.buildUserContent(textContent, state.screenshot);
+    const userContent = this.buildUserContent(textContent, state.screenshot, true);
 
     const model = await this.getModel();
 

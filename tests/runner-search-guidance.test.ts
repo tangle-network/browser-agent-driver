@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildSearchResultsGuidance, rankSearchCandidates } from '../src/runner.js';
+import { buildSearchResultsGuidance, buildVisibleLinkRecommendation, rankSearchCandidates } from '../src/runner.js';
 
 describe('buildSearchResultsGuidance', () => {
   it('returns structured extraction guidance on search result pages for extraction goals', () => {
@@ -62,5 +62,28 @@ describe('buildSearchResultsGuidance', () => {
 
     expect(ranked[0]?.href).toBe('https://www.nih.gov/news-events/news-releases/new-findings-alzheimer-disease');
     expect(ranked[1]?.href).toBe('https://www.nimh.nih.gov/news/press-release-alzheimer');
+  });
+
+  it('recommends a visible first-party release link instead of re-searching', () => {
+    const recommendation = buildVisibleLinkRecommendation(
+      {
+        url: 'https://www.nih.gov/news-events',
+        title: 'News & Events',
+        snapshot: [
+          '- heading "Recent News Releases" [ref=h7dd]',
+          '- link "Automated CT scan analysis could fast-track clinical assessments March 4, 2026 — NIH-funded research suggests AI-powered tool could streamline diagnoses and unveil early markers for chronic disease." [ref=lfad]:',
+          '- searchbox "Search" [ref=s28e8]:',
+          '- link "Study measuring changes in protein structure establishes new class of Alzheimer’s biomarkers February 27, 2026 — NIH-funded insights into Alzheimer’s biology could help with early diagnosis, future clinical trials." [ref=l1a78]:',
+          '- link "All news releases »" [ref=l2baa]',
+          '- link "NIH Research Matters A weekly update of research advances from the National Institutes of Health." [ref=l9e3]:',
+        ].join('\n'),
+      },
+      'Use the site’s search feature to find information on "Alzheimer\'s disease" and extract the title and publication date of the first related press release.',
+      ['www.nih.gov'],
+    );
+
+    expect(recommendation).toContain('@l1a78');
+    expect(recommendation).toContain('first-party match');
+    expect(recommendation).not.toContain('@l9e3');
   });
 });

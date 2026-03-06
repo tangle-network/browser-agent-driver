@@ -338,6 +338,9 @@ export class TestRunner {
         criteriaResults = await this.verifyCriteria(testCase.successCriteria, page);
         verified = agentResult.success && criteriaResults.every((c) => c.passed);
       }
+      if (!agentResult.success) {
+        verified = false;
+      }
 
       // Save trajectory if memory enabled
       const tokensUsed = agentResult.turns.reduce((sum, t) => sum + (t.tokensUsed || 0), 0);
@@ -400,14 +403,14 @@ export class TestRunner {
       this.onProgress?.({
         type: 'test:complete',
         testId: testCase.id,
-        passed: result.verified,
+        passed: result.verified && result.agentSuccess,
         verdict: result.verdict,
         durationMs: result.durationMs,
         turnsUsed: result.turnsUsed,
         tokensUsed: result.tokensUsed,
       });
       runtimeOutcome = {
-        passed: result.verified,
+        passed: result.verified && result.agentSuccess,
         verdict: result.verdict,
         durationMs: result.durationMs,
         turnsUsed: result.turnsUsed,
@@ -938,7 +941,7 @@ export class TestRunner {
   private buildSuiteResult(results: TestResult[]): TestSuiteResult {
     const nonSkipped = results.filter((r) => !r.skipped);
     const durations = nonSkipped.map((r) => r.durationMs).sort((a, b) => a - b);
-    const passed = nonSkipped.filter((r) => r.verified).length;
+    const passed = nonSkipped.filter((r) => r.verified && r.agentSuccess).length;
 
     return {
       model: this.config.model || 'unknown',

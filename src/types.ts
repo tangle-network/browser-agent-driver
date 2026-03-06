@@ -152,6 +152,8 @@ export interface AgentConfig {
   debug?: boolean;
   /** Enable vision/multimodal (screenshots sent to LLM). Default: true */
   vision?: boolean;
+  /** Vision policy: always, never, or auto-escalate on ambiguous/stalled states */
+  visionStrategy?: 'always' | 'never' | 'auto';
   /** Max conversation history turns to keep (default: 10) */
   maxHistoryTurns?: number;
   /** Number of retries on transient failures (default: 3) */

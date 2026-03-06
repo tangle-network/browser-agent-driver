@@ -348,20 +348,56 @@ Recent wins that fit this model:
 - script-backed extraction acceptance
 - `.env` and benchmark config integrity fixes
 
+### Delivery Tracker
+
+This is the canonical finish-line tracker. Work is done only when every item here is complete and verified.
+
+| Track | Status | Done when | Verification |
+| --- | --- | --- | --- |
+| Tier 1 deterministic fixtures | Pending | Stable at 100% on repeated local runs | `npm run bench:tier1:gate` |
+| Tier 2 authenticated core flows | Pending | Stable at 100% with real auth state and complete artifacts | `npm run bench:tier2:gate` |
+| Tier 3 public-web `reach3` baseline | Verified baseline | At least 5 repeated seeded runs with no case below 80% pass and no structural false-positive class open | `npm run baseline:track -- --cases ./bench/scenarios/cases/webbench-reachable3-max20-timeout120.json --benchmark-profile webbench --model gpt-5.2 --modes fast-explore` |
+| Search/domain policy correctness | Verified baseline | Disallowed-host clicks and false-positive completions are blocked deterministically | repeated NIH runs + targeted tests |
+| Artifact completeness | Verified baseline | Every serious run emits report, manifest, and recording | artifact completeness checks in baseline/gate summaries |
+| Cost and turn efficiency | In progress | Median turns, duration, and token cost are non-regressive on the promoted slice | repeated baseline summaries |
+| Vision challenger | In progress | Vision-based policy must beat or match the baseline on repeated seeded runs before promotion | challenger-only repeated runs; not baseline |
+| Product path readiness | Pending | Winning execution path is wired cleanly into app -> worker -> orchestrator -> artifacts | end-to-end dogfood run with video/report |
+
+### Current Scoreboard
+
+Current honest status:
+- repeated `reach3` control is now green across 5 repeated runs
+- current repeated control sample: Yale `5/5`, Alberta `5/5`, NIH `5/5`
+- Tier 3 is now good enough to support promotion decisions on this slice
+- selective `auto` vision is currently a challenger only; it regressed on NIH and is not baseline-ready
+- cost variance remains open, especially on Alberta and NIH
+
+Current best evidence:
+- clean corrected `reach3`: `./agent-results/reach3-contenthub-v4-1772786683/track-summary.json`
+- repeated `reach3`: `./agent-results/reach3-contenthub-v4-repeat-1772786885/`
+- repeated control medians:
+  - Yale (`webbench-2204`): `5/5`, median `28.9s`, median `5` turns, median `27.2k` tokens
+  - NIH (`webbench-2605`): `5/5`, median `77.9s`, median `12` turns, median `185.8k` tokens
+  - Alberta (`webbench-32`): `5/5`, median `50.2s`, median `7` turns, median `56.3k` tokens
+
+Exit rule:
+- do not call the browser agent production-ready until Tier 1 is green, Tier 2 is green, and repeated Tier 3 control runs are stable enough to support promotion decisions
+
 ### Immediate Priorities
 
 P0:
-- add first-turn phase timing to reports
-- add waste accounting to reports
-- rerun the current `reach3` slice repeatedly
+- keep the guarded non-vision path as baseline until a challenger beats it cleanly
+- reduce Alberta cost variance without regressing pass rate
+- reduce NIH token burn while preserving the `5/5` pass rate
 
 P1:
-- eliminate the highest-frequency wasted-turn pattern
-- stabilize NIH-class search tasks at the target budget
-- classify remaining zero-turn failures as startup, provider, or runner defects
+- reduce wasted-turn variance on Yale and Alberta after NIH is stable
+- raise Tier 2 authenticated coverage with the same artifact standards
+- add CI-style summary output for repeated control runs so promotion evidence is one artifact, not manual aggregation
 
 P2:
 - resume supervisor and policy challenger experiments only after the slice is stable
+- keep vision as a challenger until it shows repeated non-regressive gains
 - wire the winning execution path cleanly into the app stack
 
 Candidate experiments to queue after the current slice is stable:

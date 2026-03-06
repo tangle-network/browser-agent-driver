@@ -7,7 +7,7 @@ import type {
   SupervisorSignal,
   Turn,
 } from '../types.js';
-import { resolveProviderModelName } from '../provider-defaults.js';
+import { resolveProviderApiKey, resolveProviderModelName } from '../provider-defaults.js';
 
 export interface SupervisorCriticInput {
   goal: string;
@@ -284,11 +284,12 @@ async function getModel(config: {
   baseUrl?: string;
 }): Promise<LanguageModel> {
   const modelName = resolveProviderModelName(config.provider, config.model);
+  const apiKey = resolveProviderApiKey(config.provider, config.apiKey);
   switch (config.provider) {
     case 'anthropic': {
       const { createAnthropic } = await import('@ai-sdk/anthropic');
       const provider = createAnthropic({
-        apiKey: config.apiKey,
+        apiKey,
         ...(config.baseUrl ? { baseURL: config.baseUrl } : {}),
       });
       return provider(modelName) as LanguageModel;
@@ -296,7 +297,7 @@ async function getModel(config: {
     case 'google': {
       const { createGoogleGenerativeAI } = await import('@ai-sdk/google');
       const provider = createGoogleGenerativeAI({
-        apiKey: config.apiKey,
+        apiKey,
         ...(config.baseUrl ? { baseURL: config.baseUrl } : {}),
       });
       return provider(modelName) as LanguageModel;
@@ -304,7 +305,7 @@ async function getModel(config: {
     case 'codex-cli': {
       const { codexExec } = await import('ai-sdk-provider-codex-cli');
       const env: Record<string, string> = {};
-      if (config.apiKey) env.OPENAI_API_KEY = config.apiKey;
+      if (apiKey) env.OPENAI_API_KEY = apiKey;
       return codexExec(modelName, {
         allowNpx: process.env.CODEX_ALLOW_NPX !== '0',
         skipGitRepoCheck: true,
@@ -315,7 +316,7 @@ async function getModel(config: {
     case 'claude-code': {
       const { createClaudeCode } = await import('ai-sdk-provider-claude-code');
       const env: Record<string, string> = {};
-      if (config.apiKey) env.ANTHROPIC_API_KEY = config.apiKey;
+      if (apiKey) env.ANTHROPIC_API_KEY = apiKey;
       const provider = createClaudeCode({
         defaultSettings: {
           ...(process.env.CLAUDE_CODE_CLI_PATH ? { pathToClaudeCodeExecutable: process.env.CLAUDE_CODE_CLI_PATH } : {}),
@@ -327,7 +328,7 @@ async function getModel(config: {
     default: {
       const { createOpenAI } = await import('@ai-sdk/openai');
       const provider = createOpenAI({
-        apiKey: config.apiKey || '',
+        apiKey: apiKey || '',
         ...(config.baseUrl ? { baseURL: config.baseUrl } : {}),
       });
       return provider(modelName) as LanguageModel;

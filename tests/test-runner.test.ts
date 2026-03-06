@@ -201,6 +201,35 @@ describe('TestRunner hardening', () => {
       zeroTurnFailureClass: 'provider_or_credentials',
       startupReason: "Incorrect API key provided: ''",
     });
+    expect(result.verified).toBe(false);
+  });
+
+  it('never counts agent failure as a passing suite result', async () => {
+    mockRun.mockResolvedValue({
+      success: false,
+      reason: "Incorrect API key provided: ''",
+      turns: [
+        {
+          turn: 1,
+          state: { url: 'https://example.com', title: 'Example', snapshot: '- heading "Example Domain"' },
+          action: { action: 'wait', ms: 1000 },
+          error: "Incorrect API key provided: ''",
+        },
+      ],
+      totalMs: 5,
+    });
+
+    const runner = new TestRunner({
+      driver: makeDriver(),
+      config: { model: 'gpt-4o' },
+    });
+
+    const suite = await runner.runSuite([makeCase({ id: 'failed-suite-case' })]);
+
+    expect(suite.results[0]?.agentSuccess).toBe(false);
+    expect(suite.results[0]?.verified).toBe(false);
+    expect(suite.summary.passed).toBe(0);
+    expect(suite.summary.failed).toBe(1);
   });
 
   it('preserves partial turns when the overall test times out', async () => {

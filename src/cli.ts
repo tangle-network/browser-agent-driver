@@ -22,7 +22,7 @@ import type { DriverConfig } from './config.js';
 import { buildBrowserLaunchPlan } from './browser-launch.js';
 import { runWalletPreflight, startWalletAutoApprover } from './wallet/automation.js';
 import { isPersonaId, listPersonaIds, withPersonaDirective } from './personas.js';
-import { resolveProviderModelName } from './provider-defaults.js';
+import { resolveProviderApiKey, resolveProviderModelName } from './provider-defaults.js';
 import { loadLocalEnvFiles } from './env-loader.js';
 
 type RunMode = 'fast-explore' | 'full-evidence';
@@ -149,6 +149,7 @@ async function main(): Promise<void> {
       'trace-scoring': { type: 'boolean' },
       'trace-ttl-days': { type: 'string' },
       vision: { type: 'boolean' },
+      'vision-strategy': { type: 'string' },
       debug: { type: 'boolean', short: 'd', default: false },
 
       // Resource blocking
@@ -242,6 +243,7 @@ async function main(): Promise<void> {
   if (values.sink) cliOverrides.outputDir = values.sink;
   if (values.headless !== undefined) cliOverrides.headless = values.headless;
   if (values.vision !== undefined) cliOverrides.vision = values.vision;
+  if (values['vision-strategy']) cliOverrides.visionStrategy = values['vision-strategy'] as DriverConfig['visionStrategy'];
   if (values['goal-verification'] !== undefined) cliOverrides.goalVerification = values['goal-verification'];
   if (
     values.extension?.length ||
@@ -782,6 +784,7 @@ OPTIONS:
   -u, --url <url>             Starting URL
   -c, --cases <file>          JSON file with test cases array
       --allowed-domains <csv> Comma-separated host allowlist (e.g. www.nih.gov,docs.foo.com)
+      --vision-strategy <m>   Vision policy: always, never, auto
   -m, --model <name>          LLM model (default: gpt-5.2)
       --provider <name>       LLM provider: openai, anthropic, google, codex-cli, claude-code (default: openai)
       --model-adaptive        Enable adaptive model routing for decide() turns
@@ -853,27 +856,6 @@ ENVIRONMENT VARIABLES:
   CODEX_ALLOW_NPX      Set to 0 to disable npx fallback for --provider codex-cli
   CLAUDE_CODE_CLI_PATH Optional Claude CLI binary path for --provider claude-code
 `);
-}
-
-function resolveProviderApiKey(
-  provider: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code',
-  explicitApiKey?: string,
-): string | undefined {
-  if (explicitApiKey) return explicitApiKey;
-
-  if (provider === 'anthropic' || provider === 'claude-code') {
-    return process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY;
-  }
-
-  if (provider === 'google') {
-    return process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY;
-  }
-
-  if (provider === 'codex-cli') {
-    return process.env.OPENAI_API_KEY;
-  }
-
-  return process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY;
 }
 
 function parseAllowedDomains(value: string | undefined): string[] | undefined {
