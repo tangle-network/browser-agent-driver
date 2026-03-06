@@ -1134,16 +1134,34 @@ export class AgentRunner {
       const candidates = await page.evaluate(() => {
         const items: Array<{ title: string; href: string }> = [];
         const seen = new Set<string>();
-        for (const link of Array.from(document.querySelectorAll('a[href]'))) {
-          const anchor = link as HTMLAnchorElement;
+        const selectors = [
+          'main a[href]',
+          '[role="main"] a[href]',
+          'article a[href]',
+          '.search-results a[href]',
+          '#search-results a[href]',
+          '.results a[href]',
+          'ol a[href]',
+        ];
+        const fallbackLinks = Array.from(document.querySelectorAll('a[href]'));
+        const links = selectors
+          .flatMap((selector) => Array.from(document.querySelectorAll(selector)))
+          .concat(fallbackLinks);
+        const noisePattern = /\b(next|previous|page \d+|show more|show fewer|filter|sort|home|contact|privacy|accessibility|search)\b/i;
+
+        for (const node of links) {
+          const anchor = node as HTMLAnchorElement;
           const href = anchor.href?.trim();
-          const title = link.textContent?.replace(/\s+/g, ' ').trim();
-          if (!href || !title || title.length < 12) continue;
+          const title = (anchor.innerText || anchor.textContent || '').replace(/\s+/g, ' ').trim();
+          if (!href || !title || title.length < 12 || title.length > 220) continue;
+          if (href.startsWith('javascript:') || href.startsWith('mailto:') || href.includes('#')) continue;
+          if (href.includes('results.aspx') && !/open government|dataset|data|news release|press release/i.test(title)) continue;
+          if (noisePattern.test(title) && !/open government|dataset|data|news release|press release/i.test(title)) continue;
           const key = `${title}::${href}`;
           if (seen.has(key)) continue;
           seen.add(key);
           items.push({ title, href });
-          if (items.length >= 8) break;
+          if (items.length >= 24) break;
         }
         return items;
       });

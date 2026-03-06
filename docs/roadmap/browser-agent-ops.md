@@ -355,7 +355,7 @@ This is the canonical finish-line tracker. Work is done only when every item her
 | Track | Status | Done when | Verification |
 | --- | --- | --- | --- |
 | Tier 1 deterministic fixtures | Pending | Stable at 100% on repeated local runs | `npm run bench:tier1:gate` |
-| Tier 2 authenticated core flows | Pending | Stable at 100% with real auth state and complete artifacts | `npm run bench:tier2:gate` |
+| Tier 2 authenticated core flows | Pending | Stable at 100% with real auth state and complete artifacts across repeated runs | `npm run bench:tier2:repeat -- --storage-state ./.auth/ai-tangle-tools.json` |
 | Tier 3 public-web `reach3` baseline | Verified baseline | At least 5 repeated seeded runs with no case below 80% pass and no structural false-positive class open | `npm run bench:tier3:gate -- --existing-root ./agent-results/reach3-contenthub-v4-repeat-1772786885` |
 | Search/domain policy correctness | Verified baseline | Disallowed-host clicks and false-positive completions are blocked deterministically | repeated NIH runs + targeted tests |
 | Artifact completeness | Verified baseline | Every serious run emits report, manifest, and recording | artifact completeness checks in baseline/gate summaries |
@@ -370,7 +370,8 @@ Current honest status:
 - current repeated control sample: Yale `5/5`, Alberta `5/5`, NIH `5/5`
 - Tier 3 is now good enough to support promotion decisions on this slice
 - selective `auto` vision is currently a challenger only; it regressed on NIH and is not baseline-ready
-- cost variance remains open, especially on Alberta and NIH
+- cost variance remains open, but Alberta search-path variance is improved after the main-area search scout change
+- Tier 2 now has a repeated-gate command path; what remains is running it with real auth state and promoting the resulting artifact
 
 Current best evidence:
 - clean corrected `reach3`: `./agent-results/reach3-contenthub-v4-1772786683/track-summary.json`
@@ -388,8 +389,8 @@ Exit rule:
 
 P0:
 - keep the guarded non-vision path as baseline until a challenger beats it cleanly
-- reduce Alberta cost variance without regressing pass rate
 - reduce NIH token burn while preserving the `5/5` pass rate
+- run Tier 2 repeated gate with real auth state and publish the summary artifact
 
 P1:
 - reduce wasted-turn variance on Yale and Alberta after NIH is stable
