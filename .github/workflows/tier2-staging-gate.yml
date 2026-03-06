@@ -45,12 +45,13 @@ jobs:
           printf '%s' "${AI_TANGLE_STORAGE_STATE}" > ./.auth/ai-tangle-tools.json
           node -e "JSON.parse(require('node:fs').readFileSync('./.auth/ai-tangle-tools.json','utf8'))"
 
-      - name: Run staging gate
+      - name: Run repeated staging gate
         run: |
-          pnpm bench:tier2:gate -- \
+          pnpm bench:tier2:repeat -- \
             --out ./agent-results/tier2-staging \
             --model gpt-5.2 \
             --storage-state ./.auth/ai-tangle-tools.json \
+            --repetitions 2 \
             --min-full-pass-rate 1 \
             --min-fast-pass-rate 1 \
             --max-avg-turns 45 \

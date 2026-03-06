@@ -1,0 +1,50 @@
+name: Tier3 Public Gate
+
+on:
+  schedule:
+    - cron: '0 11 * * *'
+  workflow_dispatch:
+
+jobs:
+  tier3-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+      - name: Verify OpenAI key
+        run: |
+          if [ -z "${OPENAI_API_KEY}" ]; then
+            echo "OPENAI_API_KEY secret is required for Tier3 public gate."
+            exit 1
+          fi
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+      - name: Run Tier3 public gate
+        run: |
+          pnpm bench:tier3:gate -- \
+            --out ./agent-results/tier3-public \
+            --model gpt-5.2 \
+            --repetitions 3 \
+            --benchmark-profile webbench \
+            --modes fast-explore \
+            --min-case-pass-rate 0.8 \
+            --min-overall-pass-rate 0.8
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+      - name: Upload Tier3 artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tier3-public-results
+          path: ./agent-results/tier3-public

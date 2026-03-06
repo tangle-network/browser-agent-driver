@@ -355,7 +355,7 @@ This is the canonical finish-line tracker. Work is done only when every item her
 | Track | Status | Done when | Verification |
 | --- | --- | --- | --- |
 | Tier 1 deterministic fixtures | Pending | Stable at 100% on repeated local runs | `npm run bench:tier1:gate` |
-| Tier 2 authenticated core flows | In progress | Stable at 100% with real auth state and complete artifacts across repeated runs | `npm run bench:tier2:repeat -- --storage-state ./.auth/ai-tangle-tools.json` |
+| Tier 2 authenticated core flows | Verified baseline | Stable at 100% with real auth state and complete artifacts across repeated runs | `npm run bench:tier2:repeat -- --storage-state ./.auth/ai-tangle-tools.json` |
 | Tier 3 public-web `reach3` baseline | Verified baseline | At least 5 repeated seeded runs with no case below 80% pass and no structural false-positive class open | `npm run bench:tier3:gate -- --existing-root ./agent-results/reach3-contenthub-v4-repeat-1772786885` |
 | Search/domain policy correctness | Verified baseline | Disallowed-host clicks and false-positive completions are blocked deterministically | repeated NIH runs + targeted tests |
 | Artifact completeness | Verified baseline | Every serious run emits report, manifest, and recording | artifact completeness checks in baseline/gate summaries |
@@ -371,19 +371,19 @@ Current honest status:
 - Tier 3 is now good enough to support promotion decisions on this slice
 - selective `auto` vision is currently a challenger only; it regressed on NIH and is not baseline-ready
 - cost variance remains open, but Alberta search-path variance is improved after the main-area search scout change
-- Tier 2 now has a repeated-gate command path and a real auth state; single-gate evidence is green on focused repros, but repeated promotion evidence is still pending
-- authenticated staging currently favors `full-evidence` over `fast-explore`; fast-explore is non-regressive on targeted repros but not yet the promoted default for Tier 2
+- Tier 2 repeated authenticated control is now green across three valid repetitions
+- authenticated staging still favors `full-evidence` over `fast-explore` on the Coinbase template-verification case; `fast-explore` is pass-stable but cost-negative there
 
 Current best evidence:
 - clean corrected `reach3`: `./agent-results/reach3-contenthub-v4-1772786683/track-summary.json`
 - repeated `reach3`: `./agent-results/reach3-contenthub-v4-repeat-1772786885/`
 - executable Tier 3 summary: `./agent-results/reach3-contenthub-v4-repeat-1772786885/tier3-gate-summary.json`
-- Tier 2 template single-gate evidence:
-  - `./agent-results/tier2-single-postcompletion-1772791577/ai-tangle-coinbase-template/full-evidence/suite/report.json`
-  - `./agent-results/tier2-single-postcompletion-1772791577/ai-tangle-coinbase-template/fast-explore/suite/report.json`
-- Tier 2 blocker-recovery evidence:
-  - `./agent-results/tier2-blocker-completion-fix-1772791360/full-evidence/suite/report.json`
-  - `./agent-results/tier2-blocker-fast-repro-1772791891/report.json`
+- Tier 2 repeated authenticated summary: `./agent-results/tier2-repeat-green-1772792440/tier2-repeat-summary.json`
+- Tier 2 repeated authenticated markdown: `./agent-results/tier2-repeat-green-1772792440/tier2-repeat-summary.md`
+- Tier 2 validated repetition summaries:
+  - `./agent-results/tier2-repeat-green-1772792440/rep-1/tier2-gate-summary.json`
+  - `./agent-results/tier2-repeat-green-1772792440/rep-2/tier2-gate-summary.json`
+  - `./agent-results/tier2-repeat-green-1772792440/rep-3/tier2-gate-summary.json`
 - repeated control medians:
   - Yale (`webbench-2204`): `5/5`, median `28.9s`, median `5` turns, median `27.2k` tokens
   - NIH (`webbench-2605`): `5/5`, median `77.9s`, median `12` turns, median `185.8k` tokens
@@ -397,14 +397,14 @@ Exit rule:
 P0:
 - keep the guarded non-vision path as baseline until a challenger beats it cleanly
 - reduce NIH token burn while preserving the `5/5` pass rate
-- run Tier 2 repeated gate with real auth state and publish the summary artifact
-- keep `full-evidence` as the Tier 2 default until `fast-explore` stops being cost/regression-negative on authenticated flows
+- keep `full-evidence` as the Tier 2 default until `fast-explore` stops being cost/regression-negative on authenticated template flows
 
 P1:
+- get Tier 1 deterministic fixtures to verified baseline
 - reduce wasted-turn variance on Yale and Alberta after NIH is stable
 - raise Tier 2 authenticated coverage with the same artifact standards
-- add CI-style summary output for repeated control runs so promotion evidence is one artifact, not manual aggregation
-- commit the Tier 3 gate command into CI once Tier 2 is ready to run alongside it
+- Tier 2 CI should use the repeated gate path, not the single gate path
+- add a dedicated Tier 3 gate workflow alongside the existing nightly sample
 
 P2:
 - resume supervisor and policy challenger experiments only after the slice is stable
