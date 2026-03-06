@@ -50,6 +50,7 @@ npm run skills:install -- --out /absolute/path/to/skills
 
 ## Research Notes
 
+- Canonical operating roadmap: [docs/roadmap/browser-agent-ops.md](./docs/roadmap/browser-agent-ops.md)
 - Competitive analysis and product-direction memo: [docs/research/competitor-analysis-2026-03.md](./docs/research/competitor-analysis-2026-03.md)
 
 ## Publishing

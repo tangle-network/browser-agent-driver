@@ -7,6 +7,9 @@ Agent Browser Driver product operating guidance (greenfield, high-ROI, no overen
 This file is the canonical in-repo agent operating contract for this project.
 Use this `CLAUDE.md` as the source of truth instead of `AGENTS.md`.
 
+Canonical roadmap and promotion policy:
+- [docs/roadmap/browser-agent-ops.md](/Users/drew/webb/agent-browser-driver/docs/roadmap/browser-agent-ops.md)
+
 ## Mechanical Enforcement
 
 Required mechanical gates for code changes:
