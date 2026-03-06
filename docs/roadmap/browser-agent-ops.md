@@ -354,7 +354,7 @@ This is the canonical finish-line tracker. Work is done only when every item her
 
 | Track | Status | Done when | Verification |
 | --- | --- | --- | --- |
-| Tier 1 deterministic fixtures | Pending | Stable at 100% on repeated local runs | `npm run bench:tier1:gate` |
+| Tier 1 deterministic fixtures | Verified baseline | Stable at 100% on repeated local runs | `npm run bench:tier1:gate` |
 | Tier 2 authenticated core flows | Verified baseline | Stable at 100% with real auth state and complete artifacts across repeated runs | `npm run bench:tier2:repeat -- --storage-state ./.auth/ai-tangle-tools.json` |
 | Tier 3 public-web `reach3` baseline | Verified baseline | At least 5 repeated seeded runs with no case below 80% pass and no structural false-positive class open | `npm run bench:tier3:gate -- --existing-root ./agent-results/reach3-contenthub-v4-repeat-1772786885` |
 | Search/domain policy correctness | Verified baseline | Disallowed-host clicks and false-positive completions are blocked deterministically | repeated NIH runs + targeted tests |
@@ -366,6 +366,7 @@ This is the canonical finish-line tracker. Work is done only when every item her
 ### Current Scoreboard
 
 Current honest status:
+- Tier 1 deterministic control is green on the promoted local fixture set
 - repeated `reach3` control is now green across 5 repeated runs
 - current repeated control sample: Yale `5/5`, Alberta `5/5`, NIH `5/5`
 - Tier 3 is now good enough to support promotion decisions on this slice
@@ -375,6 +376,8 @@ Current honest status:
 - authenticated staging still favors `full-evidence` over `fast-explore` on the Coinbase template-verification case; `fast-explore` is pass-stable but cost-negative there
 
 Current best evidence:
+- Tier 1 deterministic summary: `./agent-results/tier1-green-1772794410/tier1-gate-summary.json`
+- Tier 1 deterministic markdown: `./agent-results/tier1-green-1772794410/tier1-gate-summary.md`
 - clean corrected `reach3`: `./agent-results/reach3-contenthub-v4-1772786683/track-summary.json`
 - repeated `reach3`: `./agent-results/reach3-contenthub-v4-repeat-1772786885/`
 - executable Tier 3 summary: `./agent-results/reach3-contenthub-v4-repeat-1772786885/tier3-gate-summary.json`
@@ -400,11 +403,10 @@ P0:
 - keep `full-evidence` as the Tier 2 default until `fast-explore` stops being cost/regression-negative on authenticated template flows
 
 P1:
-- get Tier 1 deterministic fixtures to verified baseline
 - reduce wasted-turn variance on Yale and Alberta after NIH is stable
 - raise Tier 2 authenticated coverage with the same artifact standards
-- Tier 2 CI should use the repeated gate path, not the single gate path
-- add a dedicated Tier 3 gate workflow alongside the existing nightly sample
+- reduce `fast-explore` cost and turn variance on authenticated template verification before considering it a Tier 2 default
+- keep Tier 2 repeated gate and Tier 3 public gate healthy in CI
 
 P2:
 - resume supervisor and policy challenger experiments only after the slice is stable
