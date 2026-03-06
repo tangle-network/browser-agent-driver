@@ -130,8 +130,8 @@ export interface Scenario {
 // ============================================================================
 
 export interface AgentConfig {
-  /** LLM provider: 'openai' (default), 'anthropic', or 'google' */
-  provider?: 'openai' | 'anthropic' | 'google';
+  /** LLM provider: 'openai' (default), 'anthropic', 'google', 'codex-cli', or 'claude-code' */
+  provider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code';
   /** LLM model (default: gpt-5.2) */
   model?: string;
   /** Enable adaptive model routing for decide() (default: false) */
@@ -139,11 +139,13 @@ export interface AgentConfig {
   /** Fast navigation model used when adaptive routing is enabled */
   navModel?: string;
   /** Provider for navModel (defaults to provider) */
-  navProvider?: 'openai' | 'anthropic' | 'google';
+  navProvider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code';
   /** API key (defaults to OPENAI_API_KEY) */
   apiKey?: string;
   /** Custom API base URL (for LiteLLM, local models, etc.) */
   baseUrl?: string;
+  /** Optional override for the default browser-agent system prompt */
+  systemPrompt?: string;
   /** Enable debug logging */
   debug?: boolean;
   /** Enable vision/multimodal (screenshots sent to LLM). Default: true */
@@ -164,6 +166,71 @@ export interface AgentConfig {
   traceScoring?: boolean;
   /** Retention window for trajectory scoring in days (default: 30) */
   traceTtlDays?: number;
+  /** Optional micro-planning: execute small follow-up actions within a turn */
+  microPlan?: MicroPlanConfig;
+  /** Optional supervisor that can intervene when the run is hard-stalled */
+  supervisor?: SupervisorConfig;
+  /** Runtime observability artifacts (console/network/trace) */
+  observability?: ObservabilityConfig;
+}
+
+export interface ObservabilityConfig {
+  /** Enable runtime observability artifacts (default: true) */
+  enabled?: boolean;
+  /** Capture browser console warnings/errors and page errors (default: true) */
+  captureConsole?: boolean;
+  /** Capture failed requests and HTTP 4xx/5xx responses (default: true) */
+  captureNetwork?: boolean;
+  /** Trace capture policy (default: 'on-failure') */
+  tracePolicy?: 'off' | 'on-failure' | 'always';
+  /** Max console/page error entries persisted per test (default: 200) */
+  maxConsoleEntries?: number;
+  /** Max network entries persisted per test (default: 200) */
+  maxNetworkEntries?: number;
+}
+
+export interface MicroPlanConfig {
+  /** Enable multi-action micro plans (default: false) */
+  enabled?: boolean;
+  /** Max actions to execute in one turn including primary action (default: 2) */
+  maxActionsPerTurn?: number;
+}
+
+export interface SupervisorConfig {
+  /** Enable supervisor interventions (default: true in config defaults) */
+  enabled?: boolean;
+  /** Optional model override for supervisor reasoning */
+  model?: string;
+  /** Optional provider override for supervisor model */
+  provider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code';
+  /** Allow the supervisor to inspect the current screenshot when available */
+  useVision?: boolean;
+  /** Minimum completed turns before supervisor can intervene */
+  minTurnsBeforeInvoke?: number;
+  /** Cooldown turns between supervisor interventions */
+  cooldownTurns?: number;
+  /** Hard cap on interventions per run */
+  maxInterventions?: number;
+  /** Number of recent turns used to determine hard-stall conditions */
+  hardStallWindow?: number;
+}
+
+export interface SupervisorSignal {
+  severity: 'none' | 'soft' | 'hard';
+  reasons: string[];
+  repeatedActionCount: number;
+  unchangedTurns: number;
+  errorTurns: number;
+  verificationFailures: number;
+}
+
+export interface SupervisorDirective {
+  decision: 'none' | 'inject_feedback' | 'force_action' | 'abort';
+  feedback?: string;
+  action?: Action;
+  reason?: string;
+  confidence?: number;
+  raw?: string;
 }
 
 // ============================================================================
@@ -180,6 +247,8 @@ export interface Turn {
   reasoning?: string;
   /** Multi-step plan from brain */
   plan?: string[];
+  /** Actual action sequence executed this turn (primary action first) */
+  executedActions?: Action[];
   /** Current step in the plan */
   currentStep?: number;
   /** Expected effect of the action (for verification) */

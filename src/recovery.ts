@@ -140,6 +140,13 @@ export interface BlockingModalDetection {
   forceAction?: 'escape';
 }
 
+export interface TerminalBlockerDetection {
+  kind: 'network-unreachable' | 'bot-challenge';
+  strategy: 'terminal-network-error' | 'terminal-bot-challenge';
+  reason: string;
+  evidence: string[];
+}
+
 /**
  * Detect blocking dialogs/modals and suggest an immediate remediation action.
  * This is intentionally deterministic so common blockers are handled without
@@ -257,6 +264,62 @@ export function detectBlockingModal(snapshot: string): BlockingModalDetection | 
       'BLOCKER: A dialog/modal is present. Do not interact with background page elements. ' +
       'Choose an explicit action inside this modal first (close, cancel, confirm, or required primary action).',
   };
+}
+
+/**
+ * Detect blockers that should terminate the run immediately.
+ * These are conditions the agent cannot reliably resolve by trying more actions.
+ */
+export function detectTerminalBlocker(state: PageState): TerminalBlockerDetection | null {
+  const url = state.url || '';
+  const title = state.title || '';
+  const snapshot = state.snapshot || '';
+  const haystack = `${url}\n${title}\n${snapshot}`.toLowerCase();
+
+  const networkPatterns: Array<[string, RegExp]> = [
+    ['chrome-error-url', /^chrome-error:\/\//i],
+    ['site-unreachable', /\bthis site can['’]t be reached\b/i],
+    ['name-not-resolved', /\berr_name_not_resolved\b/i],
+    ['connection-failed', /\berr_(?:connection|internet|address)_/i],
+    ['dns-failure', /\bdns_probe_finished\b/i],
+    ['network-error', /\bnetwork error\b/i],
+  ];
+  const networkHits = networkPatterns
+    .filter(([, pattern]) => pattern.test(haystack))
+    .map(([name]) => name);
+  if (networkHits.length > 0) {
+    return {
+      kind: 'network-unreachable',
+      strategy: 'terminal-network-error',
+      reason:
+        'Terminal blocker: destination is unreachable from the current browser environment.',
+      evidence: networkHits,
+    };
+  }
+
+  const botPatterns: Array<[string, RegExp]> = [
+    ['verify-human', /\bverify you are human\b/i],
+    ['captcha', /\bcaptcha\b/i],
+    ['cloudflare-attention', /\battention required\b/i],
+    ['cloudflare-just-a-moment', /\bjust a moment\b/i],
+    ['cloudflare-security-verification', /\bperforming security verification\b/i],
+    ['cloudflare-secure-connection', /\bchecking if the site connection is secure\b/i],
+    ['cloudflare-checking', /\bchecking your browser before accessing\b/i],
+    ['cf-challenge', /\bcf[-_ ]challenge\b/i],
+    ['turnstile', /\bturnstile\b/i],
+  ];
+  const botHits = botPatterns.filter(([, pattern]) => pattern.test(haystack)).map(([name]) => name);
+  if (botHits.length > 0) {
+    return {
+      kind: 'bot-challenge',
+      strategy: 'terminal-bot-challenge',
+      reason:
+        'Terminal blocker: anti-bot challenge detected; automated completion is not supported for this flow.',
+      evidence: botHits,
+    };
+  }
+
+  return null;
 }
 
 /**

@@ -45,4 +45,15 @@ describe('persona directives', () => {
     expect(directive).toContain('settings');
     expect(directive).toContain('run/preview');
   });
+
+  it('uses generic web guidance for non-tangle sites', () => {
+    const directive = getPersonaDirective('auto', {
+      goal: 'Find the first related press release title and publication date',
+      startUrl: 'https://www.nih.gov',
+    });
+
+    expect(directive).toContain('Adaptive web operator');
+    expect(directive).not.toContain('/partner/coinbase');
+    expect(directive).not.toContain('dashboard/list views');
+  });
 });

@@ -1,0 +1,122 @@
+[
+  {
+    "id": "webbench-2204",
+    "name": "WebBench read #2204",
+    "startUrl": "https://www.yale.edu",
+    "goal": "Navigate to the \"About Yale\" section and summarize Yale University's mission statement in your own words.\nOnly use http://yale.edu to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.yale.edu for this task.",
+    "maxTurns": 35,
+    "tags": [
+      "webbench",
+      "read",
+      "www.yale.edu"
+    ]
+  },
+  {
+    "id": "webbench-2556",
+    "name": "WebBench read #2556",
+    "startUrl": "https://www.johnlewis.com",
+    "goal": "Use the product search function to look up “organic cotton towels” and extract the customer review section summary for the top-listed item.\nOnly use https://www.johnlewis.com/ to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.johnlewis.com for this task.",
+    "maxTurns": 35,
+    "tags": [
+      "webbench",
+      "read",
+      "www.johnlewis.com"
+    ]
+  },
+  {
+    "id": "webbench-332",
+    "name": "WebBench read #332",
+    "startUrl": "https://www.crunchyroll.com",
+    "goal": "Navigate to the details page of the anime \"One Piece\" and extract the available language and subtitle options.\nOnly use http://crunchyroll.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.crunchyroll.com for this task.",
+    "maxTurns": 35,
+    "tags": [
+      "webbench",
+      "read",
+      "www.crunchyroll.com"
+    ]
+  },
+  {
+    "id": "webbench-2605",
+    "name": "WebBench read #2605",
+    "startUrl": "https://www.nih.gov",
+    "goal": "Use the site’s search feature to find information on \"Alzheimer's disease\" and extract the title and publication date of the first related press release.\nOnly use https://www.nih.gov/ to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.nih.gov for this task.",
+    "maxTurns": 35,
+    "tags": [
+      "webbench",
+      "read",
+      "www.nih.gov"
+    ]
+  },
+  {
+    "id": "webbench-750",
+    "name": "WebBench read #750",
+    "startUrl": "https://www.harpersbazaar.com",
+    "goal": "Navigate to Harper’s Bazaar’s homepage and list the titles of the three most recent articles featured on the site.\nOnly use http://harpersbazaar.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.harpersbazaar.com for this task.",
+    "maxTurns": 35,
+    "tags": [
+      "webbench",
+      "read",
+      "www.harpersbazaar.com"
+    ]
+  },
+  {
+    "id": "webbench-100",
+    "name": "WebBench read #100",
+    "startUrl": "https://apkpure.com",
+    "goal": "Browse the \"Games\" category and extract the names of the top 5 action games currently featured on APKPure.\nOnly use http://apkpure.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use apkpure.com for this task.",
+    "maxTurns": 35,
+    "tags": [
+      "webbench",
+      "read",
+      "apkpure.com"
+    ]
+  },
+  {
+    "id": "webbench-32",
+    "name": "WebBench read #32",
+    "startUrl": "https://www.alberta.ca",
+    "goal": "Visit the Open Government portal on Alberta.ca and list the different categories of public datasets available for download.\nOnly use http://alberta.ca to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.alberta.ca for this task.",
+    "maxTurns": 35,
+    "tags": [
+      "webbench",
+      "read",
+      "www.alberta.ca"
+    ]
+  },
+  {
+    "id": "webbench-425",
+    "name": "WebBench read #425",
+    "startUrl": "https://www.encyclopedia.com",
+    "goal": "Search for \"Artificial Intelligence\" and list any related news or magazine articles or media referenced on the entry.\nOnly use http://encyclopedia.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.encyclopedia.com for this task.",
+    "maxTurns": 35,
+    "tags": [
+      "webbench",
+      "read",
+      "www.encyclopedia.com"
+    ]
+  },
+  {
+    "id": "webbench-197",
+    "name": "WebBench read #197",
+    "startUrl": "https://www.cambridge.org",
+    "goal": "Use Cambridge to search for articles related to \"climate education\" and list the titles of the first 5 articles displayed.\nOnly use http://cambridge.org to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.cambridge.org for this task.",
+    "maxTurns": 35,
+    "tags": [
+      "webbench",
+      "read",
+      "www.cambridge.org"
+    ]
+  },
+  {
+    "id": "webbench-143",
+    "name": "WebBench read #143",
+    "startUrl": "https://www.bbc.com",
+    "goal": "Navigate to the Live section and give me the first topic that has \"Trump\" in it\nOnly use http://bbc.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.bbc.com for this task.",
+    "maxTurns": 35,
+    "tags": [
+      "webbench",
+      "read",
+      "www.bbc.com"
+    ]
+  }
+]

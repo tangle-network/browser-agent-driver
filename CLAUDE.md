@@ -2,6 +2,22 @@
 
 Agent Browser Driver product operating guidance (greenfield, high-ROI, no overengineering).
 
+## Canonical Contract
+
+This file is the canonical in-repo agent operating contract for this project.
+Use this `CLAUDE.md` as the source of truth instead of `AGENTS.md`.
+
+## Mechanical Enforcement
+
+Required mechanical gates for code changes:
+- `pnpm lint` (type-check lint pass)
+- `pnpm check:boundaries` (architecture boundary enforcement)
+- `pnpm test`
+- Tier1 deterministic gate workflow on pull requests and `main`
+- Tier2 staging gate workflow on pull requests and `main` when staging secrets are available
+
+No policy-only merge approvals: these checks must pass in CI.
+
 ## Reliability Spec Rating
 
 Rating: **9/10**
@@ -76,12 +92,86 @@ Non-goals:
 - Tier 2 (staging/auth core flows): move to 100% through bug closure.
 - Tier 3 (open web variability): tracked separately; not allowed to regress Tier 1/2.
 
+## Recent Lessons (2026-03-04)
+
+1. Terminal blockers must fail fast:
+- Detect `chrome-error://` and bot challenges early.
+- Abort immediately with explicit reason; do not burn 5-20 turns retrying impossible flows.
+
+2. Benchmark hygiene:
+- Auto-load `.env.local` / `.env` in benchmark scripts.
+- Fail early when model requires `OPENAI_API_KEY` and key is missing.
+
+3. Dataset discipline:
+- Separate unreachable/challenge-gated websites from core reliability scorecards.
+- Track them as environment-constraint benchmarks, not core agent capability regressions.
+
+## Recent Lessons (2026-03-05)
+
+1. Provider-key correctness is mandatory:
+- API key selection must follow provider (`anthropic` should not pick `OPENAI_API_KEY` by precedence).
+- Misrouted keys create false infrastructure failures and invalidate benchmark conclusions.
+
+2. Throughput-first benchmark mode:
+- For broad WebBench sweeps, run fast-explore-only first to maximize sample count and CI quality.
+- Reserve full-evidence runs for final signoff and artifact capture on shortlisted cases.
+
+3. Control-loop vision matters:
+- If the worker can see the page but the supervisor cannot, recovery quality is artificially capped.
+- Supervisor should consume screenshot context when available, but remain measurable behind a config flag.
+
+4. Use competitors as baselines, not product substitutes:
+- External browser agents are valuable reference systems and benchmark controls.
+- Keep core execution, artifacts, and promotion logic inside this repo.
+
+5. WebBench startup reliability:
+- If first-turn LLM calls can consume the whole case budget, benchmark conclusions are invalid.
+- For broad WebBench sweeps, prefer lower per-call timeouts and fewer retries before changing prompts or policies.
+- For promotion-grade GPT-5 WebBench studies, prefer outer experiment concurrency `1` unless a lower-contention calibration run proves otherwise.
+
 ## Execution Standard
 
 1. Operate as reliability engineering, not feature exploration.
 2. Assume failures are fixable engineering defects.
 3. Change one variable at a time; always compare against control.
 4. Ship only changes that improve or preserve success rate.
+5. Run `bench:tier1:gate` before merging reliability changes.
+6. Run `bench:classify` on experiment output and prioritize the top failure class.
+
+## Cost-First Experiment Order
+
+1. Start with fast-explore-only sweeps for broad hypothesis testing.
+2. Promote to dual-mode (`full-evidence,fast-explore`) only for shortlisted winning variants.
+3. Never run high-repetition full-evidence sweeps before fast-explore indicates uplift.
+4. Treat unresolved provider quota/auth issues as experiment blockers and stop early.
+7. For reliability-affecting changes, create an execution plan from `exec-plans/TEMPLATE.md`.
+8. Runtime observability must remain on unless there is a measured reason to disable it.
+
+## Closed-Loop Improvement (RL-Style Discipline)
+
+1. Treat each hypothesis as a challenger spec, never as an ad-hoc code tweak.
+2. Run seeded AB (`ab:experiment --seed <fixed>`) so repetition ordering is reproducible.
+3. Compare by confidence-aware clean delta (bootstrap CI), not point estimate only.
+4. Promote only when clean CI lower bound is positive and Tier1/Tier2 gates remain non-regressive.
+5. Keep memory isolated per run (`memory-isolation=per-run`) during benchmark experiments.
+6. Use `research:cycle` to rank challengers and pick one winner per cycle.
+
+## Parallelism Policy
+
+1. Parallelize inside a single seeded experiment first:
+- Use `ab:experiment` concurrency for repetitions/arms.
+- Use scenario concurrency only up to the point where browser/network contention does not distort results.
+
+2. Do not run multiple unrelated research cycles in parallel by default:
+- It increases token-rate variance, browser contention, anti-bot risk, and result-attribution noise.
+
+3. Outer-loop parallelism is allowed only when all are true:
+- same model family and provider quotas are well below limit
+- separate output roots and memory scopes are enforced
+- target sites do not share auth/session state
+- the goal is throughput, not a promotion decision
+
+4. Promotion decisions should come from one clean, controlled experiment at a time.
 
 ## Rollback Plan
 

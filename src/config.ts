@@ -12,16 +12,19 @@ import type { ArtifactSink } from './artifacts/types.js';
 import type { ResourceBlockingOptions } from './drivers/types.js';
 
 export interface DriverConfig {
+  /** Execution profile preset (applies launch/runtime defaults) */
+  profile?: 'default' | 'stealth' | 'benchmark-webbench' | 'benchmark-webvoyager';
   browser?: 'chromium' | 'firefox' | 'webkit';
 
   // LLM
-  provider?: 'openai' | 'anthropic' | 'google';
+  provider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code';
   model?: string;
   adaptiveModelRouting?: boolean;
   navModel?: string;
-  navProvider?: 'openai' | 'anthropic' | 'google';
+  navProvider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code';
   apiKey?: string;
   baseUrl?: string;
+  systemPrompt?: string;
 
   // Browser
   headless?: boolean;
@@ -65,10 +68,25 @@ export interface DriverConfig {
   maxTurns?: number;
   timeoutMs?: number;
   concurrency?: number;
+  llmTimeoutMs?: number;
+  retries?: number;
+  retryDelayMs?: number;
   screenshotInterval?: number;
   vision?: boolean;
   goalVerification?: boolean;
   qualityThreshold?: number;
+  microPlan?: {
+    enabled?: boolean;
+    maxActionsPerTurn?: number;
+  };
+  observability?: {
+    enabled?: boolean;
+    captureConsole?: boolean;
+    captureNetwork?: boolean;
+    tracePolicy?: 'off' | 'on-failure' | 'always';
+    maxConsoleEntries?: number;
+    maxNetworkEntries?: number;
+  };
 
   // Output
   outputDir?: string;
@@ -90,6 +108,17 @@ export interface DriverConfig {
     traceTtlDays?: number;
   };
 
+  supervisor?: {
+    enabled?: boolean;
+    model?: string;
+    provider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code';
+    useVision?: boolean;
+    minTurnsBeforeInvoke?: number;
+    cooldownTurns?: number;
+    maxInterventions?: number;
+    hardStallWindow?: number;
+  };
+
   // Projects (like vitest/playwright)
   projects?: Array<{
     name: string;
@@ -109,13 +138,33 @@ const DEFAULTS: DriverConfig = {
   maxTurns: 30,
   timeoutMs: 600_000,
   concurrency: 1,
+  llmTimeoutMs: 60_000,
+  retries: 3,
+  retryDelayMs: 1000,
   screenshotInterval: 5,
   vision: true,
   goalVerification: true,
   qualityThreshold: 0,
+  microPlan: { enabled: false, maxActionsPerTurn: 2 },
+  observability: {
+    enabled: true,
+    captureConsole: true,
+    captureNetwork: true,
+    tracePolicy: 'on-failure',
+    maxConsoleEntries: 200,
+    maxNetworkEntries: 200,
+  },
   outputDir: './agent-results',
   reporters: ['json'],
   memory: { enabled: false, dir: '.agent-memory', traceScoring: false, traceTtlDays: 30 },
+  supervisor: {
+    enabled: true,
+    useVision: true,
+    minTurnsBeforeInvoke: 5,
+    cooldownTurns: 3,
+    maxInterventions: 2,
+    hardStallWindow: 4,
+  },
 };
 
 /** Identity function for type inference and IDE autocomplete in config files */
@@ -206,11 +255,45 @@ export function toAgentConfig(config: DriverConfig): AgentConfig {
     navProvider: config.navProvider,
     apiKey: config.apiKey,
     baseUrl: config.baseUrl,
+    ...(config.systemPrompt ? { systemPrompt: config.systemPrompt } : {}),
+    llmTimeoutMs: config.llmTimeoutMs,
+    retries: config.retries,
+    retryDelayMs: config.retryDelayMs,
     vision: config.vision,
     goalVerification: config.goalVerification,
     qualityThreshold: config.qualityThreshold,
+    microPlan: config.microPlan
+      ? {
+          enabled: config.microPlan.enabled,
+          maxActionsPerTurn: config.microPlan.maxActionsPerTurn,
+        }
+      : undefined,
+    observability: config.observability
+      ? {
+          enabled: config.observability.enabled,
+          captureConsole: config.observability.captureConsole,
+          captureNetwork: config.observability.captureNetwork,
+          tracePolicy: config.observability.tracePolicy,
+          maxConsoleEntries: config.observability.maxConsoleEntries,
+          maxNetworkEntries: config.observability.maxNetworkEntries,
+        }
+      : undefined,
     traceScoring: config.memory?.traceScoring,
     traceTtlDays: config.memory?.traceTtlDays,
+    ...(config.supervisor
+      ? {
+          supervisor: {
+            enabled: config.supervisor.enabled,
+            model: config.supervisor.model,
+            provider: config.supervisor.provider,
+            useVision: config.supervisor.useVision,
+            minTurnsBeforeInvoke: config.supervisor.minTurnsBeforeInvoke,
+            cooldownTurns: config.supervisor.cooldownTurns,
+            maxInterventions: config.supervisor.maxInterventions,
+            hardStallWindow: config.supervisor.hardStallWindow,
+          },
+        }
+      : {}),
   };
 }
 

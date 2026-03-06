@@ -27,6 +27,12 @@
     .tab { padding: 8px 16px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; background: none; border-top: none; border-left: none; border-right: none; }
     .tab.active { border-bottom-color: #0066cc; color: #0066cc; }
     .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; }
+    .status-panel { margin: 12px 0 16px; padding: 12px; border-radius: 8px; background: #ffffff; border: 1px solid #e3e8f3; color: #1f2a44; }
+    .status-panel h2 { margin: 0 0 8px; font-size: 14px; text-transform: uppercase; color: #516182; letter-spacing: 0.04em; }
+    .status-row { display: flex; gap: 8px; align-items: baseline; font-size: 14px; }
+    .status-label { color: #6a7390; min-width: 90px; }
+    .status-value { font-weight: 600; }
+    tr[data-edited="true"] { background: #eef6ff; }
     .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
     .badge-green { background: #d4edda; color: #155724; }
     .badge-yellow { background: #fff3cd; color: #856404; }
@@ -44,7 +50,7 @@
       <a href="/dashboard" data-testid="nav-dashboard">Dashboard</a>
       <a href="/analytics" data-testid="nav-analytics">Analytics</a>
       <a href="/reports" data-testid="nav-reports">Reports</a>
-      <a href="/users" data-testid="nav-users">Users</a>
+      <a href="/users" data-testid="nav-users">User Admin</a>
       <a href="/settings" data-testid="nav-settings">Settings</a>
     </nav>
     <h2>Resources</h2>
@@ -106,6 +112,21 @@
       <button role="tab" class="tab" aria-selected="false" data-testid="tab-revenue">Revenue</button>
       <button role="tab" class="tab" aria-selected="false" data-testid="tab-events">Events</button>
     </div>
+    <section class="status-panel" aria-label="Workflow status">
+      <h2>Workflow status</h2>
+      <div class="status-row">
+        <span class="status-label">Active Tab</span>
+        <span id="status-active-tab" class="status-value" role="status" aria-live="polite" data-testid="status-active-tab">Overview</span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">Last Action</span>
+        <span id="status-last-action" class="status-value" role="status" aria-live="polite" data-testid="status-last-action">Ready</span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">Export</span>
+        <span id="status-export" class="status-value" role="status" aria-live="polite" data-testid="status-export">Not started</span>
+      </div>
+    </section>
 
     <!-- Data Table -->
     <table aria-label="User activity">
@@ -120,7 +141,7 @@
         </tr>
       </thead>
       <tbody>
-        <tr>
+        <tr id="row-alice">
           <td><input type="checkbox" aria-label="Select Alice Johnson"></td>
           <td>Alice Johnson</td>
           <td>alice@example.com</td>
@@ -251,5 +272,71 @@
       <button class="btn btn-secondary" aria-label="Close">Cancel</button>
     </div>
   </div>
+  <script>
+    (function () {
+      const tabs = Array.from(document.querySelectorAll('[role="tab"]'));
+      const usersTab = document.querySelector('[data-testid="tab-users"]');
+      const editAliceButton = document.querySelector('[data-testid="edit-alice"]');
+      const exportButton = document.querySelector('[data-testid="export-btn"]');
+      const statusActiveTab = document.getElementById('status-active-tab');
+      const statusLastAction = document.getElementById('status-last-action');
+      const statusExport = document.getElementById('status-export');
+      const aliceRow = document.getElementById('row-alice');
+
+      let activeTab = 'Overview';
+      let editedUser = '';
+
+      function setActiveTab(tabName) {
+        activeTab = tabName;
+        tabs.forEach((tabEl) => {
+          const isActive = tabEl.textContent.trim() === tabName;
+          tabEl.classList.toggle('active', isActive);
+          tabEl.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        });
+        if (statusActiveTab) statusActiveTab.textContent = tabName;
+      }
+
+      tabs.forEach((tabEl) => {
+        tabEl.addEventListener('click', function () {
+          const tabName = tabEl.textContent.trim();
+          setActiveTab(tabName);
+          if (statusLastAction) statusLastAction.textContent = `Opened ${tabName} tab`;
+        });
+      });
+
+      if (editAliceButton) {
+        editAliceButton.addEventListener('click', function () {
+          if (activeTab !== 'Users') {
+            if (statusLastAction) statusLastAction.textContent = 'Open Users tab before editing';
+            return;
+          }
+          editedUser = 'Alice Johnson';
+          if (aliceRow) aliceRow.setAttribute('data-edited', 'true');
+          if (statusLastAction) statusLastAction.textContent = `Editing ${editedUser}`;
+        });
+      }
+
+      if (exportButton) {
+        exportButton.addEventListener('click', function () {
+          if (activeTab !== 'Users') {
+            if (statusExport) statusExport.textContent = 'Blocked: Users tab required';
+            if (statusLastAction) statusLastAction.textContent = 'Export blocked outside Users tab';
+            return;
+          }
+          if (!editedUser) {
+            if (statusExport) statusExport.textContent = 'Blocked: edit a user first';
+            if (statusLastAction) statusLastAction.textContent = 'Export blocked before edit';
+            return;
+          }
+          if (statusLastAction) statusLastAction.textContent = `Export started for ${editedUser}`;
+          if (statusExport) statusExport.textContent = `Exporting ${editedUser}...`;
+          window.setTimeout(function () {
+            if (statusExport) statusExport.textContent = `Export complete for ${editedUser}`;
+            if (statusLastAction) statusLastAction.textContent = `Export complete for ${editedUser}`;
+          }, 450);
+        });
+      }
+    })();
+  </script>
 </body>
 </html>

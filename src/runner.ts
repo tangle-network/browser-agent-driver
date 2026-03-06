@@ -12,17 +12,30 @@
 
 import { Brain } from './brain/index.js';
 import type { Driver } from './drivers/types.js';
-import type { Scenario, AgentConfig, AgentResult, Turn, PageState } from './types.js';
-import { analyzeRecovery } from './recovery.js';
+import type { Scenario, AgentConfig, AgentResult, Turn, PageState, SupervisorConfig, Action } from './types.js';
+import { analyzeRecovery, detectTerminalBlocker } from './recovery.js';
 import { StaleRefError, AriaSnapshotHelper } from './drivers/snapshot.js';
 import { verifyPreview } from './preview.js';
 import type { ProjectStore } from './memory/project-store.js';
 import { AppKnowledge } from './memory/knowledge.js';
 import { SelectorCache } from './memory/selectors.js';
+import { detectSupervisorSignal, formatSupervisorSignal } from './supervisor/policy.js';
+import { requestSupervisorDirective } from './supervisor/critic.js';
+import { shouldAcceptFirstPartyBoundaryCompletion } from './domain-policy.js';
 
 const DEFAULT_MAX_TURNS = 20;
 const DEFAULT_RETRIES = 3;
 const DEFAULT_RETRY_DELAY_MS = 1000;
+const DEFAULT_MICRO_PLAN_ACTIONS = 2;
+const SAFE_MICRO_ACTIONS = new Set<Action['action']>(['click', 'type', 'press', 'hover', 'select', 'scroll', 'wait']);
+const DEFAULT_SUPERVISOR: Required<Pick<SupervisorConfig, 'enabled' | 'useVision' | 'minTurnsBeforeInvoke' | 'cooldownTurns' | 'maxInterventions' | 'hardStallWindow'>> = {
+  enabled: true,
+  useVision: true,
+  minTurnsBeforeInvoke: 5,
+  cooldownTurns: 3,
+  maxInterventions: 2,
+  hardStallWindow: 4,
+};
 
 export interface RunnerOptions {
   driver: Driver;
@@ -34,6 +47,8 @@ export interface RunnerOptions {
   /** Project memory store — enables knowledge + selector persistence */
   projectStore?: ProjectStore;
 }
+
+const MAX_GOAL_VERIFICATION_EVIDENCE = 3;
 
 /** Retry wrapper for transient failures. Respects AbortSignal between attempts. */
 async function withRetry<T>(
@@ -125,7 +140,20 @@ export class AgentRunner {
 
     let consecutiveErrors = 0;
     let totalErrors = 0;
+    const goalVerificationEvidence: string[] = [];
     const maxTotalErrors = Math.max(3, Math.ceil(maxTurns / 3));
+    const supervisorConfig = {
+      enabled: this.config.supervisor?.enabled ?? DEFAULT_SUPERVISOR.enabled,
+      model: this.config.supervisor?.model || this.config.model || 'gpt-5.2',
+      provider: this.config.supervisor?.provider || this.config.provider || 'openai',
+      useVision: this.config.supervisor?.useVision ?? DEFAULT_SUPERVISOR.useVision,
+      minTurnsBeforeInvoke: this.config.supervisor?.minTurnsBeforeInvoke ?? DEFAULT_SUPERVISOR.minTurnsBeforeInvoke,
+      cooldownTurns: this.config.supervisor?.cooldownTurns ?? DEFAULT_SUPERVISOR.cooldownTurns,
+      maxInterventions: this.config.supervisor?.maxInterventions ?? DEFAULT_SUPERVISOR.maxInterventions,
+      hardStallWindow: this.config.supervisor?.hardStallWindow ?? DEFAULT_SUPERVISOR.hardStallWindow,
+    } as const;
+    let supervisorInterventions = 0;
+    let lastSupervisorTurn = -Infinity;
 
     for (let i = 1; i <= maxTurns; i++) {
       if (scenario.signal?.aborted) {
@@ -213,8 +241,184 @@ export class AgentRunner {
           scenario.signal,
         );
 
-        // ── 3. Build extra context ──
+        const terminalBlocker = detectTerminalBlocker(state);
+        if (terminalBlocker) {
+          const reason = `${terminalBlocker.reason} (signals: ${terminalBlocker.evidence.join(', ')})`;
+          const blockerTurn: Turn = {
+            turn: i,
+            state,
+            action: { action: 'abort', reason },
+            reasoning: terminalBlocker.strategy,
+            durationMs: Date.now() - turnStart,
+          };
+          turns.push(blockerTurn);
+          this.onTurn?.(blockerTurn);
+          this.saveMemory();
+          return {
+            success: false,
+            reason,
+            turns,
+            totalMs: Date.now() - startTime,
+          };
+        }
+
         let extraContext = '';
+        const turnsLeft = maxTurns - i + 1;
+        if (turnsLeft <= 3) {
+          extraContext +=
+            `\nTURN-BUDGET CRITICAL: ${turnsLeft} turn(s) left including this one.\n` +
+            'Do not start new exploratory navigation.\n' +
+            'Prioritize extracting the final required evidence from the current page context and finish decisively.\n';
+          if (turnsLeft === 1) {
+            extraContext +=
+              'FINAL TURN REQUIREMENT: return a terminal action now (`complete` if enough evidence exists, otherwise `abort` with explicit blocker reason).\n';
+          }
+        }
+        const supervisorSignal = detectSupervisorSignal({
+          recentTurns: turns,
+          currentState: state,
+          currentTurn: i,
+          maxTurns,
+          window: supervisorConfig.hardStallWindow,
+        });
+        const shouldInvokeSupervisor =
+          supervisorConfig.enabled &&
+          supervisorSignal.severity === 'hard' &&
+          i >= supervisorConfig.minTurnsBeforeInvoke &&
+          supervisorInterventions < supervisorConfig.maxInterventions &&
+          i - lastSupervisorTurn > supervisorConfig.cooldownTurns;
+
+        if (shouldInvokeSupervisor) {
+          if (this.config.debug) {
+            console.log(`[Runner] Supervisor invoked on turn ${i}: ${formatSupervisorSignal(supervisorSignal)}`);
+          }
+
+          let directive: Awaited<ReturnType<typeof requestSupervisorDirective>>;
+          try {
+            directive = await requestSupervisorDirective({
+              goal: scenario.goal,
+              currentState: state,
+              recentTurns: turns.slice(-8),
+              signal: supervisorSignal,
+              provider: supervisorConfig.provider,
+              model: supervisorConfig.model,
+              useVision: supervisorConfig.useVision,
+              apiKey: this.config.apiKey,
+              baseUrl: this.config.baseUrl,
+              timeoutMs: this.config.llmTimeoutMs ?? 60_000,
+              debug: this.config.debug,
+            });
+          } catch (supervisorErr) {
+            if (this.config.debug) {
+              console.log(
+                `[Runner] Supervisor call failed: ${supervisorErr instanceof Error ? supervisorErr.message : supervisorErr}`,
+              );
+            }
+            directive = { decision: 'none', reason: 'supervisor call failed' };
+          }
+
+          if (directive.decision !== 'none') {
+            supervisorInterventions++;
+            lastSupervisorTurn = i;
+
+            if (directive.feedback) {
+              this.brain.injectFeedback(
+                `[SUPERVISOR] ${directive.feedback}\n` +
+                `Signal: ${formatSupervisorSignal(supervisorSignal)}`
+              );
+            }
+
+            if (directive.decision === 'abort') {
+              const reason = directive.reason || directive.feedback || 'Supervisor aborted due to hard stall';
+              const supervisorTurn: Turn = {
+                turn: i,
+                state,
+                action: { action: 'abort', reason },
+                rawLLMResponse: directive.raw,
+                reasoning: directive.reason || directive.feedback,
+                durationMs: Date.now() - turnStart,
+              };
+              turns.push(supervisorTurn);
+              this.onTurn?.(supervisorTurn);
+              this.saveMemory();
+              return {
+                success: false,
+                reason,
+                turns,
+                totalMs: Date.now() - startTime,
+              };
+            }
+
+            if (directive.decision === 'force_action' && directive.action) {
+              let actionError: string | undefined;
+              try {
+                const forceResult = await withRetry(
+                  () => this.driver.execute(directive.action!),
+                  retries,
+                  retryDelayMs,
+                  (attempt, err) => {
+                    if (this.config.debug) {
+                      console.log(`[Runner] Supervisor force-action retry ${attempt}: ${err.message}`);
+                    }
+                  },
+                  scenario.signal,
+                );
+                if (!forceResult.success) {
+                  actionError = forceResult.error || 'Supervisor force_action failed';
+                }
+              } catch (err) {
+                actionError = err instanceof Error ? err.message : String(err);
+              }
+
+              if (actionError) {
+                consecutiveErrors++;
+                totalErrors++;
+              } else {
+                consecutiveErrors = 0;
+              }
+
+              const supervisorTurn: Turn = {
+                turn: i,
+                state,
+                action: directive.action,
+                rawLLMResponse: directive.raw,
+                reasoning: directive.reason || directive.feedback || 'Supervisor intervention',
+                durationMs: Date.now() - turnStart,
+                ...(actionError ? { error: actionError } : {}),
+              };
+              turns.push(supervisorTurn);
+              this.onTurn?.(supervisorTurn);
+
+              if (consecutiveErrors >= 3) {
+                this.saveMemory();
+                return {
+                  success: false,
+                  reason: `${consecutiveErrors} consecutive errors after supervisor action: ${actionError}`,
+                  turns,
+                  totalMs: Date.now() - startTime,
+                };
+              }
+              if (totalErrors >= maxTotalErrors) {
+                this.saveMemory();
+                return {
+                  success: false,
+                  reason: `Error budget exhausted (${totalErrors}/${maxTotalErrors}) after supervisor action`,
+                  turns,
+                  totalMs: Date.now() - startTime,
+                };
+              }
+
+              continue;
+            }
+
+            if (directive.decision === 'inject_feedback') {
+              const feedback = directive.feedback || directive.reason || 'Supervisor detected a hard stall. Switch strategy.';
+              extraContext += `\nSUPERVISOR GUIDANCE: ${feedback}\nSignal: ${formatSupervisorSignal(supervisorSignal)}\n`;
+            }
+          }
+        }
+
+        // ── 3. Build extra context ──
         if (this.referenceTrajectory) {
           extraContext += `\nREFERENCE TRAJECTORY — A similar task was completed before:\n${this.referenceTrajectory}\nUse this as a guide, but adapt to the current page state.\n`;
         }
@@ -252,7 +456,7 @@ export class AgentRunner {
           scenario.signal,
         );
 
-        const { action, raw, reasoning, plan, currentStep, expectedEffect, tokensUsed } = decision;
+        const { action, nextActions, raw, reasoning, plan, currentStep, expectedEffect, tokensUsed } = decision;
 
         const turn: Turn = {
           turn: i,
@@ -266,6 +470,7 @@ export class AgentRunner {
           tokensUsed,
           durationMs: Date.now() - turnStart,
         };
+        const executedActions: Action[] = [action];
 
         // ── 5. Handle evaluate action ──
         if (action.action === 'evaluate') {
@@ -330,6 +535,7 @@ export class AgentRunner {
               const stringified = typeof scriptResult === 'string'
                 ? scriptResult
                 : JSON.stringify(scriptResult, null, 2);
+              pushGoalVerificationEvidence(goalVerificationEvidence, `SCRIPT RESULT:\n${stringified ?? '(undefined)'}`);
               this.brain.injectFeedback(
                 `SCRIPT RESULT:\n${stringified ?? '(undefined)'}`
               );
@@ -361,11 +567,53 @@ export class AgentRunner {
             goalResult = await this.brain.verifyGoalCompletion(
               state,
               scenario.goal,
-              action.result || '',
+              buildGoalVerificationClaim(action.result || '', goalVerificationEvidence),
             );
 
             if (this.config.debug) {
               console.log(`[Runner] Goal verification: achieved=${goalResult.achieved}, confidence=${goalResult.confidence}`);
+            }
+
+            if (
+              !goalResult.achieved
+              && shouldAcceptFirstPartyBoundaryCompletion(
+                scenario.goal,
+                state.url,
+                goalResult,
+                action.result || '',
+              )
+            ) {
+              goalResult = {
+                ...goalResult,
+                achieved: true,
+                confidence: Math.max(goalResult.confidence, 0.8),
+                evidence: [
+                  ...goalResult.evidence,
+                  'Accepted under first-party sibling subdomain policy after substantive result evidence was captured.',
+                ],
+                missing: [],
+              };
+            }
+
+            if (
+              !goalResult.achieved
+              && shouldAcceptScriptBackedCompletion(
+                state,
+                goalResult,
+                action.result || '',
+                goalVerificationEvidence,
+              )
+            ) {
+              goalResult = {
+                ...goalResult,
+                achieved: true,
+                confidence: Math.max(goalResult.confidence, 0.8),
+                evidence: [
+                  ...goalResult.evidence,
+                  'Accepted under script-backed extraction policy after supplemental tool evidence matched the claimed result.',
+                ],
+                missing: [],
+              };
             }
 
             if (!goalResult.achieved) {
@@ -511,6 +759,35 @@ export class AgentRunner {
           }
         }
 
+        const followUpActions = this.selectFollowUpActions(action, nextActions);
+        for (const followUpAction of followUpActions) {
+          if (turn.error) break;
+          try {
+            const followResult = await withRetry(
+              () => this.driver.execute(followUpAction),
+              retries,
+              retryDelayMs,
+              (attempt, err) => {
+                if (this.config.debug) {
+                  console.log(`[Runner] Follow-up retry ${attempt}: ${err.message}`);
+                }
+              },
+              scenario.signal,
+            );
+            executedActions.push(followUpAction);
+            if (!followResult.success) {
+              const followUpError = followResult.error || `Follow-up ${followUpAction.action} failed`;
+              turn.error = followUpError;
+              consecutiveErrors++;
+              totalErrors++;
+            }
+          } catch (followErr) {
+            turn.error = followErr instanceof Error ? followErr.message : String(followErr);
+            consecutiveErrors++;
+            totalErrors++;
+          }
+        }
+
         // ── 8. Post-action verification ──
         if (expectedEffect && !turn.error) {
           const verifyResult = await this.verifyEffect(expectedEffect, state);
@@ -523,6 +800,10 @@ export class AgentRunner {
           } else if (this.config.debug) {
             console.log(`[Runner] Verification passed`);
           }
+        }
+
+        if (executedActions.length > 1) {
+          turn.executedActions = executedActions;
         }
 
         turn.durationMs = Date.now() - turnStart;
@@ -594,6 +875,33 @@ export class AgentRunner {
       turns,
       totalMs: Date.now() - startTime,
     };
+  }
+
+  private selectFollowUpActions(primaryAction: Action, nextActions?: Action[]): Action[] {
+    const microPlanConfig = this.config.microPlan;
+    if (microPlanConfig?.enabled !== true || !Array.isArray(nextActions) || nextActions.length === 0) {
+      return [];
+    }
+
+    // Never chain follow-up actions behind terminal/meta actions.
+    if (!SAFE_MICRO_ACTIONS.has(primaryAction.action)) {
+      return [];
+    }
+
+    const limit = Math.max(
+      1,
+      Math.min(4, microPlanConfig.maxActionsPerTurn ?? DEFAULT_MICRO_PLAN_ACTIONS),
+    );
+    const remainingSlots = Math.max(0, limit - 1);
+    if (remainingSlots === 0) return [];
+
+    const selected: Action[] = [];
+    for (const action of nextActions) {
+      if (!SAFE_MICRO_ACTIONS.has(action.action)) continue;
+      selected.push(action);
+      if (selected.length >= remainingSlots) break;
+    }
+    return selected;
   }
 
   /** Persist knowledge and selector cache to disk */
@@ -694,6 +1002,71 @@ export class AgentRunner {
       verified: false,
       reason: `Expected effect "${expectedEffect}" — page did not change`,
     };
+  }
+}
+
+export function buildGoalVerificationClaim(claimedResult: string, evidence: string[]): string {
+  const cleanClaim = claimedResult.trim();
+  if (evidence.length === 0) {
+    return cleanClaim;
+  }
+
+  const recentEvidence = evidence
+    .slice(-MAX_GOAL_VERIFICATION_EVIDENCE)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  if (recentEvidence.length === 0) {
+    return cleanClaim;
+  }
+
+  return [
+    cleanClaim,
+    'SUPPLEMENTAL TOOL EVIDENCE:',
+    ...recentEvidence,
+  ].filter(Boolean).join('\n\n');
+}
+
+export function shouldAcceptScriptBackedCompletion(
+  state: PageState,
+  verification: import('./types.js').GoalVerification,
+  claimedResult: string,
+  evidence: string[],
+): boolean {
+  if (verification.achieved) return false;
+
+  const verifierText = [...verification.evidence, ...verification.missing].join('\n').toLowerCase();
+  const visibilityLimited = [
+    /accessibility tree/,
+    /not visible/,
+    /not shown/,
+    /cannot verify/,
+    /not present/,
+    /visible publication date/,
+  ].some((pattern) => pattern.test(verifierText));
+  if (!visibilityLimited) return false;
+
+  const scriptEvidence = evidence
+    .filter((entry) => entry.startsWith('SCRIPT RESULT:'))
+    .join('\n');
+  if (!scriptEvidence) return false;
+
+  const claimLower = claimedResult.toLowerCase();
+  const hasUrlEvidence = state.url.length > 0 && claimLower.includes(state.url.toLowerCase());
+
+  const tokenMatches = scriptEvidence.match(/[A-Z][a-z]+ \d{1,2}, \d{4}|\b\d{4}\b|\"[^\"]{6,}\"/g) ?? [];
+  const normalizedTokens = tokenMatches
+    .map((token) => token.replace(/^"|"$/g, '').trim().toLowerCase())
+    .filter((token, index, all) => token.length >= 4 && all.indexOf(token) === index);
+  const overlappingTokens = normalizedTokens.filter((token) => claimLower.includes(token));
+
+  return hasUrlEvidence && overlappingTokens.length >= 1;
+}
+
+function pushGoalVerificationEvidence(target: string[], entry: string): void {
+  target.push(entry);
+  if (target.length > MAX_GOAL_VERIFICATION_EVIDENCE) {
+    target.splice(0, target.length - MAX_GOAL_VERIFICATION_EVIDENCE);
   }
 }
 

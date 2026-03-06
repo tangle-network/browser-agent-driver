@@ -188,6 +188,9 @@ describe('toAgentConfig', () => {
       provider: 'anthropic',
       model: 'claude-sonnet-4-20250514',
       apiKey: 'sk-test',
+      llmTimeoutMs: 20000,
+      retries: 1,
+      retryDelayMs: 250,
       vision: true,
       goalVerification: false,
       qualityThreshold: 7,
@@ -201,11 +204,68 @@ describe('toAgentConfig', () => {
     expect(agentConfig.provider).toBe('anthropic');
     expect(agentConfig.model).toBe('claude-sonnet-4-20250514');
     expect(agentConfig.apiKey).toBe('sk-test');
+    expect(agentConfig.llmTimeoutMs).toBe(20000);
+    expect(agentConfig.retries).toBe(1);
+    expect(agentConfig.retryDelayMs).toBe(250);
     expect(agentConfig.vision).toBe(true);
     expect(agentConfig.goalVerification).toBe(false);
     expect(agentConfig.qualityThreshold).toBe(7);
     // Verify no extra keys leaked through
     expect('concurrency' in agentConfig).toBe(false);
     expect('headless' in agentConfig).toBe(false);
+  });
+
+  it('maps supervisor config into AgentConfig', () => {
+    const driverConfig: DriverConfig = {
+      provider: 'openai',
+      model: 'gpt-5.2',
+      supervisor: {
+        enabled: true,
+        model: 'gpt-5.2-mini',
+        provider: 'openai',
+        useVision: false,
+        minTurnsBeforeInvoke: 4,
+        cooldownTurns: 2,
+        maxInterventions: 3,
+        hardStallWindow: 5,
+      },
+    };
+
+    const agentConfig = toAgentConfig(driverConfig);
+    expect(agentConfig.supervisor).toEqual({
+      enabled: true,
+      model: 'gpt-5.2-mini',
+      provider: 'openai',
+      useVision: false,
+      minTurnsBeforeInvoke: 4,
+      cooldownTurns: 2,
+      maxInterventions: 3,
+      hardStallWindow: 5,
+    });
+  });
+
+  it('maps microPlan config into AgentConfig', () => {
+    const driverConfig: DriverConfig = {
+      model: 'gpt-5.2',
+      microPlan: {
+        enabled: true,
+        maxActionsPerTurn: 3,
+      },
+    };
+
+    const agentConfig = toAgentConfig(driverConfig);
+    expect(agentConfig.microPlan).toEqual({
+      enabled: true,
+      maxActionsPerTurn: 3,
+    });
+  });
+
+  it('maps custom systemPrompt when provided', () => {
+    const driverConfig: DriverConfig = {
+      model: 'gpt-5.2',
+      systemPrompt: 'Custom prompt for experiment',
+    };
+    const agentConfig = toAgentConfig(driverConfig);
+    expect(agentConfig.systemPrompt).toBe('Custom prompt for experiment');
   });
 });

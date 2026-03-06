@@ -2,6 +2,7 @@ import * as path from 'node:path';
 import type { DriverConfig } from './config.js';
 
 export interface BrowserLaunchPlan {
+  profile: NonNullable<DriverConfig['profile']>;
   walletMode: boolean;
   headless: boolean;
   concurrency: number;
@@ -37,6 +38,7 @@ export function buildBrowserLaunchPlan(
   const env = options.env ?? process.env;
   const warnings: string[] = [];
   const errors: string[] = [];
+  const profile = config.profile ?? 'default';
 
   const viewport = config.viewport ?? { width: 1920, height: 1080 };
   const requestedConcurrency = config.concurrency ?? 1;
@@ -95,6 +97,7 @@ export function buildBrowserLaunchPlan(
   }
 
   const browserArgs = [...(config.browserArgs ?? [])];
+  applyProfileBrowserArgs(profile, browserArgs);
   if (walletMode && extensionPaths.length > 0) {
     const extensionsCsv = extensionPaths.join(',');
     browserArgs.push(`--disable-extensions-except=${extensionsCsv}`);
@@ -102,6 +105,7 @@ export function buildBrowserLaunchPlan(
   }
 
   return {
+    profile,
     walletMode,
     headless,
     concurrency,
@@ -112,4 +116,25 @@ export function buildBrowserLaunchPlan(
     warnings,
     errors,
   };
+}
+
+function applyProfileBrowserArgs(
+  profile: NonNullable<DriverConfig['profile']>,
+  browserArgs: string[],
+): void {
+  if (profile === 'default') return;
+
+  // Stealth-ish launch posture: low-risk Chromium flags that reduce noisy automation fingerprints.
+  const profileArgs = [
+    '--disable-blink-features=AutomationControlled',
+    '--disable-infobars',
+    '--no-first-run',
+    '--no-default-browser-check',
+  ];
+
+  for (const arg of profileArgs) {
+    if (!browserArgs.includes(arg)) {
+      browserArgs.push(arg);
+    }
+  }
 }

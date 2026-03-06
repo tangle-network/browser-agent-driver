@@ -25,6 +25,11 @@ export type {
   PageState,
   Scenario,
   AgentConfig,
+  ObservabilityConfig,
+  MicroPlanConfig,
+  SupervisorConfig,
+  SupervisorSignal,
+  SupervisorDirective,
   Turn,
   AgentResult,
   SuccessCriterion,
@@ -83,6 +88,10 @@ export {
   detectLoadingState,
   parseSnapshotElements,
 } from './recovery.js';
+
+// Supervisor
+export { detectSupervisorSignal, formatSupervisorSignal } from './supervisor/policy.js';
+export { requestSupervisorDirective } from './supervisor/critic.js';
 
 // Memory system
 export { ProjectStore } from './memory/project-store.js';

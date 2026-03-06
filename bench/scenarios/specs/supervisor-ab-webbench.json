@@ -1,0 +1,20 @@
+{
+  "casesPath": "./bench/scenarios/cases/webbench-read-sample.json",
+  "model": "gpt-5.2",
+  "repetitions": 5,
+  "concurrency": 2,
+  "scenarioConcurrency": 2,
+  "seed": "1337",
+  "benchmarkProfile": "webbench",
+  "memoryIsolation": "per-run",
+  "arms": [
+    {
+      "id": "off",
+      "configPath": "./bench/scenarios/configs/supervisor-off.mjs"
+    },
+    {
+      "id": "on",
+      "configPath": "./bench/scenarios/configs/supervisor-on.mjs"
+    }
+  ]
+}

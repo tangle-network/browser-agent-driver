@@ -1,0 +1,16 @@
+[
+  {
+    "id": "example-domain-heading",
+    "name": "Public smoke: Example Domain heading",
+    "startUrl": "https://example.com",
+    "goal": "Verify the page shows heading 'Example Domain' and a visible 'Learn more' link.",
+    "maxTurns": 10
+  },
+  {
+    "id": "iana-example-domains",
+    "name": "Public smoke: IANA reserved domains",
+    "startUrl": "https://www.iana.org/help/example-domains",
+    "goal": "Verify the page explains reserved example domains and references one of example.com/example.org/example.net.",
+    "maxTurns": 12
+  }
+]

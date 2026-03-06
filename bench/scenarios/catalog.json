@@ -17,6 +17,11 @@
       "description": "Public websites for generalization checks; internet drift expected."
     },
     {
+      "id": "webbench",
+      "ci_required": false,
+      "description": "WebBench-derived real-world tasks (READ/WRITE) for external benchmark comparability."
+    },
+    {
       "id": "restricted-manual",
       "ci_required": false,
       "description": "High-risk or policy-sensitive tasks; human-in-loop only."
@@ -81,6 +86,16 @@
       "category": "scraping",
       "startUrl": "https://news.ycombinator.com",
       "goal": "Extract top N story titles and URLs into structured output.",
+      "requiresAuth": false,
+      "hintsRequired": false,
+      "ciEligible": false
+    },
+    {
+      "id": "webbench-read-sample",
+      "track": "webbench",
+      "category": "navigation",
+      "startUrl": "__WEBBENCH_URL__",
+      "goal": "Execute sampled WebBench READ tasks generated into bench/scenarios/cases/webbench-read-sample.json.",
       "requiresAuth": false,
       "hintsRequired": false,
       "ciEligible": false

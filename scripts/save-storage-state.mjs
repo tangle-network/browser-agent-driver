@@ -5,10 +5,11 @@ import path from 'node:path';
 import readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import { chromium } from 'playwright';
+import { DEFAULT_STORAGE_STATE_PATH, resolveStorageStatePath } from './lib/storage-state.mjs';
 
 async function main() {
   const url = process.argv[2] ?? 'https://ai.tangle.tools';
-  const outPath = path.resolve(process.argv[3] ?? '.auth/ai-tangle-tools.json');
+  const outPath = resolveStorageStatePath(process.argv[3] ?? DEFAULT_STORAGE_STATE_PATH);
 
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
 
@@ -31,10 +32,10 @@ async function main() {
   await browser.close();
 
   console.log(`Saved storage state: ${outPath}`);
+  console.log(`Next: pnpm auth:check-state ${outPath} ${new URL(url).host}`);
 }
 
 main().catch((err) => {
   console.error(err instanceof Error ? err.message : err);
   process.exit(1);
 });
-

@@ -1,0 +1,66 @@
+name: Tier2 Staging Gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  tier2-gate:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+      - name: Verify secrets
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          AI_TANGLE_STORAGE_STATE: ${{ secrets.AI_TANGLE_STORAGE_STATE }}
+        run: |
+          if [ -z "${OPENAI_API_KEY}" ]; then
+            echo "OPENAI_API_KEY secret is required for Tier2 gate."
+            exit 1
+          fi
+          if [ -z "${AI_TANGLE_STORAGE_STATE}" ]; then
+            echo "AI_TANGLE_STORAGE_STATE secret is required for Tier2 gate."
+            exit 1
+          fi
+
+      - name: Materialize storage state
+        env:
+          AI_TANGLE_STORAGE_STATE: ${{ secrets.AI_TANGLE_STORAGE_STATE }}
+        run: |
+          mkdir -p ./.auth
+          printf '%s' "${AI_TANGLE_STORAGE_STATE}" > ./.auth/ai-tangle-tools.json
+          node -e "JSON.parse(require('node:fs').readFileSync('./.auth/ai-tangle-tools.json','utf8'))"
+
+      - name: Run staging gate
+        run: |
+          pnpm bench:tier2:gate -- \
+            --out ./agent-results/tier2-staging \
+            --model gpt-5.2 \
+            --storage-state ./.auth/ai-tangle-tools.json \
+            --min-full-pass-rate 1 \
+            --min-fast-pass-rate 1 \
+            --max-avg-turns 45 \
+            --max-avg-duration-ms 300000
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+      - name: Upload gate artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tier2-staging-results
+          path: ./agent-results/tier2-staging

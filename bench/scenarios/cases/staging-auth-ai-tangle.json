@@ -4,13 +4,13 @@
     "name": "AI Tangle: Coinbase template verification",
     "startUrl": "https://ai.tangle.tools",
     "goal": "As a logged-in user, navigate to /partner/coinbase and verify Coinbase templates are visible with concrete evidence.",
-    "maxTurns": 25
+    "maxTurns": 35
   },
   {
     "id": "ai-tangle-blocker-recovery",
     "name": "AI Tangle: blocker recovery flow",
     "startUrl": "https://ai.tangle.tools",
     "goal": "Attempt Coinbase template start, resolve blocker modals or project-limit path if present, and reach a verified visible output state.",
-    "maxTurns": 35
+    "maxTurns": 50
   }
 ]

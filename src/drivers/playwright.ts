@@ -72,6 +72,17 @@ export class PlaywrightDriver implements Driver {
     return this.page;
   }
 
+  private async adoptPage(nextPage: Page): Promise<void> {
+    if (this.page === nextPage) return;
+    if (this.cdpSession) {
+      await this.cdpSession.detach().catch(() => {});
+    }
+    this.page = nextPage;
+    this.cdpSession = null;
+    this.cdpFailed = false;
+    this.snapshot.reset();
+  }
+
   /**
    * Set up resource blocking to speed up page loads by aborting unnecessary requests.
    * Call before first navigation for best results.
@@ -302,6 +313,9 @@ export class PlaywrightDriver implements Driver {
       switch (action.action) {
         case 'click': {
           const locator = this.snapshot.resolveLocator(this.page, action.selector);
+          const popupPromise = this.page.context()
+            .waitForEvent('page', { timeout: Math.min(timeout, 2_000) })
+            .catch(() => null);
           try {
             await this.withOverlayRecovery(async () => {
               await locator.click({ timeout });
@@ -311,6 +325,11 @@ export class PlaywrightDriver implements Driver {
             if (!isPointerInterceptError(message)) throw err;
             // Fallback for sticky overlays/sidebars that still intercept pointer events.
             await locator.click({ timeout, force: true });
+          }
+          const popupPage = await popupPromise;
+          if (popupPage && !popupPage.isClosed()) {
+            await popupPage.waitForLoadState('domcontentloaded').catch(() => {});
+            await this.adoptPage(popupPage);
           }
           return { success: true };
         }

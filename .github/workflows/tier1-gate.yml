@@ -1,0 +1,48 @@
+name: Tier1 Deterministic Gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  tier1-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Verify OpenAI key
+        run: |
+          if [ -z "${OPENAI_API_KEY}" ]; then
+            echo "OPENAI_API_KEY secret is required for Tier1 gate."
+            exit 1
+          fi
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      - name: Run deterministic gate
+        run: |
+          pnpm bench:tier1:gate -- \
+            --out ./agent-results/tier1-ci \
+            --model gpt-5.2 \
+            --min-full-pass-rate 1 \
+            --min-fast-pass-rate 1 \
+            --max-avg-turns 24 \
+            --max-avg-duration-ms 120000
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      - name: Upload gate artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tier1-ci-results
+          path: ./agent-results/tier1-ci

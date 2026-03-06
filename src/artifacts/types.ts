@@ -10,6 +10,8 @@
 export type ArtifactType =
   | 'screenshot'
   | 'video'
+  | 'runtime-log'
+  | 'trace'
   | 'report-json'
   | 'report-md'
   | 'report-html'

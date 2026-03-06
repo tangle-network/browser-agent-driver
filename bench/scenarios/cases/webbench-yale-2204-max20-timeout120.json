@@ -1,0 +1,15 @@
+[
+  {
+    "id": "webbench-2204",
+    "name": "WebBench read #2204 (reachable max20)",
+    "startUrl": "https://www.yale.edu",
+    "goal": "Navigate to the \"About Yale\" section and summarize Yale University's mission statement in your own words.\nOnly use http://yale.edu to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.yale.edu for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.yale.edu"
+    ],
+    "timeoutMs": 120000
+  }
+]

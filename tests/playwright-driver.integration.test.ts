@@ -131,4 +131,36 @@ describe('PlaywrightDriver integration', () => {
     await driver.close();
     await context.close();
   }, 45_000);
+
+  it('follows links that open in a new tab', async () => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    const driver = new PlaywrightDriver(page, { captureScreenshots: false });
+
+    await page.setContent(`<!doctype html>
+<html>
+  <body>
+    <h1>Popup Test</h1>
+    <a href="${baseUrl}/next" target="_blank">Open next in new tab</a>
+  </body>
+</html>`, { waitUntil: 'domcontentloaded' });
+
+    const state = await driver.observe();
+    const linkRef = state.snapshot.match(/link "Open next in new tab" \[ref=([^\]]+)\]/)?.[1];
+    expect(linkRef).toBeTruthy();
+
+    const clickResult = await driver.execute({ action: 'click', selector: `@${linkRef}` });
+    expect(clickResult.success).toBe(true);
+
+    const followedPage = driver.getPage();
+    expect(followedPage).toBeTruthy();
+    await followedPage!.waitForURL(`${baseUrl}/next`);
+
+    const nextState = await driver.observe();
+    expect(nextState.url).toBe(`${baseUrl}/next`);
+    expect(nextState.snapshot).toContain('heading "Next Page"');
+
+    await driver.close();
+    await context.close();
+  }, 45_000);
 });

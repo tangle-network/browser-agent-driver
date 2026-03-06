@@ -1,0 +1,9 @@
+[
+  {
+    "id": "local-form-multistep",
+    "name": "Local smoke: multistep form",
+    "startUrl": "__FIXTURE_BASE_URL__/form.html",
+    "goal": "Fill first name John and last name Doe, proceed to contact step, enter john@example.com, proceed, accept terms, and submit account creation.",
+    "maxTurns": 20
+  }
+]

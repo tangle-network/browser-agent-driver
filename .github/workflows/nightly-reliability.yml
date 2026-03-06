@@ -1,0 +1,192 @@
+name: Nightly Reliability
+
+on:
+  schedule:
+    - cron: '0 9 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  nightly:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm check:boundaries
+      - run: pnpm build
+
+      - name: Verify OpenAI key
+        run: |
+          if [ -z "${OPENAI_API_KEY}" ]; then
+            echo "OPENAI_API_KEY secret is required for nightly reliability runs."
+            exit 1
+          fi
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+      - name: Tier1 deterministic gate
+        id: tier1
+        continue-on-error: true
+        run: |
+          pnpm bench:tier1:gate -- \
+            --out ./agent-results/nightly/tier1 \
+            --model gpt-5.2 \
+            --min-full-pass-rate 1 \
+            --min-fast-pass-rate 1 \
+            --max-avg-turns 24 \
+            --max-avg-duration-ms 120000
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+      - name: WebBench nightly sample
+        id: webbench
+        continue-on-error: true
+        run: |
+          node scripts/run-scenario-track.mjs \
+            --cases ./bench/scenarios/cases/webbench-read-sanity6-max35.json \
+            --config ./bench/scenarios/configs/supervisor-on.mjs \
+            --model gpt-5.2 \
+            --benchmark-profile webbench \
+            --concurrency 1 \
+            --out ./agent-results/nightly/webbench
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+      - name: Generate nightly scorecard
+        if: always()
+        run: |
+          pnpm reliability:scorecard -- \
+            --root ./agent-results/nightly \
+            --out ./agent-results/nightly/reliability-scorecard.json \
+            --md ./agent-results/nightly/reliability-scorecard.md
+
+      - name: Build nightly summary
+        if: always()
+        id: nightly-summary
+        env:
+          TIER1_OUTCOME: ${{ steps.tier1.outcome }}
+          WEBBENCH_OUTCOME: ${{ steps.webbench.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+
+          const tier1Outcome = process.env.TIER1_OUTCOME || 'unknown';
+          const webbenchOutcome = process.env.WEBBENCH_OUTCOME || 'unknown';
+          const runUrl = process.env.RUN_URL || '';
+          const shouldIssue = tier1Outcome !== 'success' || webbenchOutcome !== 'success';
+
+          const date = new Date().toISOString();
+          const scorecardPath = './agent-results/nightly/reliability-scorecard.json';
+          let scorecardSummary = '- scorecard unavailable';
+          if (fs.existsSync(scorecardPath)) {
+            try {
+              const score = JSON.parse(fs.readFileSync(scorecardPath, 'utf-8'));
+              scorecardSummary = `- pass rate: ${(Number(score.passRate || 0) * 100).toFixed(1)}% (${score.passed}/${score.totalTests})`;
+            } catch {
+              scorecardSummary = '- scorecard parse failed';
+            }
+          }
+
+          const body = [
+            '<!-- nightly-reliability -->',
+            '# Nightly Reliability Regression',
+            '',
+            `Generated: ${date}`,
+            `Run: ${runUrl}`,
+            '',
+            '## Workflow outcomes',
+            `- tier1 gate: ${tier1Outcome}`,
+            `- webbench sample: ${webbenchOutcome}`,
+            '',
+            '## Scorecard',
+            scorecardSummary,
+            '',
+            'Artifacts: action run artifacts include `agent-results/nightly` bundle.',
+          ].join('\n');
+
+          fs.mkdirSync('./agent-results/nightly', { recursive: true });
+          fs.writeFileSync('./agent-results/nightly/nightly-summary.md', `${body}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `should_issue=${shouldIssue}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, 'summary_path=./agent-results/nightly/nightly-summary.md\n');
+          NODE
+
+      - name: Upsert nightly regression issue
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('node:fs');
+            const shouldIssue = '${{ steps.nightly-summary.outputs.should_issue }}' === 'true';
+            const body = fs.readFileSync('./agent-results/nightly/nightly-summary.md', 'utf-8');
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const openIssues = await github.paginate(github.rest.issues.listForRepo, {
+              owner,
+              repo,
+              state: 'open',
+              per_page: 100,
+            });
+
+            const existing = openIssues.find((issue) => (issue.body || '').includes('<!-- nightly-reliability -->'));
+
+            if (shouldIssue) {
+              if (existing) {
+                await github.rest.issues.update({
+                  owner,
+                  repo,
+                  issue_number: existing.number,
+                  title: 'Nightly reliability regression',
+                  body,
+                });
+                await github.rest.issues.createComment({
+                  owner,
+                  repo,
+                  issue_number: existing.number,
+                  body: `Regression reproduced in ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+                });
+              } else {
+                await github.rest.issues.create({
+                  owner,
+                  repo,
+                  title: 'Nightly reliability regression',
+                  body,
+                });
+              }
+            } else if (existing) {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: existing.number,
+                body: `Recovered in ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              });
+              await github.rest.issues.update({
+                owner,
+                repo,
+                issue_number: existing.number,
+                state: 'closed',
+              });
+            }
+
+      - name: Upload nightly artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-reliability-results
+          path: ./agent-results/nightly
+
+      - name: Mark run failed on regression
+        if: always() && steps.nightly-summary.outputs.should_issue == 'true'
+        run: exit 1

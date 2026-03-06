@@ -12,6 +12,7 @@ LLM-driven browser automation agent. Observe page state via accessibility tree, 
 - **Conversation history** — LLM remembers previous turns for multi-step reasoning
 - **Trajectory memory** — stores successful runs for case-based reasoning on future tasks
 - **Test runner** — dependency-aware suite orchestration with ground-truth verification
+- **Runtime observability** — captures console/page errors, failed requests, HTTP error responses, and Playwright traces on failure
 - **Config file** — `agent-browser-driver.config.ts` with `defineConfig()` for IDE autocomplete
 - **JUnit XML reporter** — native CI integration (GitHub Actions, Jenkins, GitLab)
 - **Webhook sink** — push results to Slack, Discord, or custom dashboards
@@ -46,6 +47,10 @@ Custom destination:
 ```bash
 npm run skills:install -- --out /absolute/path/to/skills
 ```
+
+## Research Notes
+
+- Competitive analysis and product-direction memo: [docs/research/competitor-analysis-2026-03.md](./docs/research/competitor-analysis-2026-03.md)
 
 ## Publishing
 
@@ -138,12 +143,12 @@ The CLI and programmatic API both auto-detect this file. CLI flags override conf
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `provider` | `'openai' \| 'anthropic' \| 'google'` | `'openai'` | LLM provider |
+| `provider` | `'openai' \| 'anthropic' \| 'google' \| 'codex-cli' \| 'claude-code'` | `'openai'` | LLM provider |
 | `model` | `string` | `'gpt-5.2'` | Model name |
 | `adaptiveModelRouting` | `boolean` | `false` | Route early navigation turns to `navModel` |
 | `navModel` | `string` | — | Fast model used when adaptive routing is enabled |
-| `navProvider` | `'openai' \| 'anthropic' \| 'google'` | same as `provider` | Provider for `navModel` |
-| `apiKey` | `string` | env var | API key |
+| `navProvider` | `'openai' \| 'anthropic' \| 'google' \| 'codex-cli' \| 'claude-code'` | same as `provider` | Provider for `navModel` |
+| `apiKey` | `string` | env var | API key, or optional fallback when using `codex-cli` / `claude-code` |
 | `baseUrl` | `string` | — | Custom endpoint (LiteLLM, etc.) |
 | `browser` | `'chromium' \| 'firefox' \| 'webkit'` | `'chromium'` | Browser engine for execution |
 | `headless` | `boolean` | `true` | Browser headless mode |
@@ -154,6 +159,9 @@ The CLI and programmatic API both auto-detect this file. CLI flags override conf
 | `maxTurns` | `number` | `30` | Max turns per test |
 | `timeoutMs` | `number` | `600000` | Per-test timeout |
 | `concurrency` | `number` | `1` | Parallel workers |
+| `llmTimeoutMs` | `number` | `60000` | Timeout per LLM call |
+| `retries` | `number` | `3` | Retries for transient observe/LLM/action failures |
+| `retryDelayMs` | `number` | `1000` | Base backoff between retries |
 | `screenshotInterval` | `number` | `5` | Capture every N turns |
 | `vision` | `boolean` | `true` | Send screenshots to LLM |
 | `goalVerification` | `boolean` | `true` | Verify goal completion |
@@ -163,6 +171,7 @@ The CLI and programmatic API both auto-detect this file. CLI flags override conf
 | `sinks` | `ArtifactSink[]` | — | Custom artifact sinks |
 | `resourceBlocking` | `ResourceBlockingOptions` | — | Block analytics/images/media for faster tests |
 | `memory` | `{ enabled, dir, traceScoring, traceTtlDays }` | `disabled` | Trajectory memory + scored trace selection |
+| `supervisor` | `{ enabled, model, provider, useVision, minTurnsBeforeInvoke, cooldownTurns, maxInterventions, hardStallWindow }` | enabled | Hard-stall intervention policy |
 | `projects` | `Array<{ name, config, testDir, testMatch }>` | — | Named project configs |
 
 ### Built-in Personas
@@ -312,7 +321,8 @@ agent-driver run --cases ./wallet-cases.json --wallet --extension ./extensions/m
 Save a logged-in browser state once:
 
 ```bash
-pnpm auth:save-state https://ai.tangle.tools ./.auth/ai-tangle-tools.json
+pnpm auth:save-state
+pnpm auth:check-state ./.auth/ai-tangle-tools.json ai.tangle.tools
 ```
 
 Then reuse it in runs:
@@ -339,6 +349,10 @@ agent-driver run \
 # Mode presets
 agent-driver run --goal "Map key routes fast" --url https://ai.tangle.tools --mode fast-explore
 agent-driver run --goal "Run signoff flow with rich evidence" --url https://ai.tangle.tools --mode full-evidence
+
+# Profile presets (benchmark/research)
+agent-driver run --goal "WebBench-style run" --url https://example.com --profile benchmark-webbench
+agent-driver run --goal "Prompt variant run" --url https://example.com --prompt-file ./bench/scenarios/prompts/baseline-system.txt
 ```
 
 ### Run Modes
@@ -346,6 +360,14 @@ agent-driver run --goal "Run signoff flow with rich evidence" --url https://ai.t
 - `fast-explore`: optimized for speed. Defaults to `--no-vision`, `--screenshot-interval 0`, analytics blocking on, goal verification on.
 - `full-evidence`: optimized for release/signoff evidence. Defaults to `--vision`, `--screenshot-interval 3`, goal verification on.
 - Mode presets only apply defaults; explicit CLI flags still take precedence.
+
+### Execution Profiles
+
+- `default`: balanced defaults.
+- `stealth`: headed + anti-detection Chromium args + micro-plan on.
+- `benchmark-webbench`: speed-oriented benchmark profile (vision off, heavy resource blocking, micro-plan on).
+- `benchmark-webvoyager`: evidence-oriented benchmark profile (vision on, micro-plan on).
+- Profiles are orthogonal to modes; use both when needed.
 
 ### Adaptive Model Routing (Feature Flag)
 
@@ -393,6 +415,56 @@ npm run baseline:modes -- \
 
 Outputs `baseline-summary.json` under `./agent-results/mode-baseline-<timestamp>/`.
 
+Cost-aware iteration (single mode):
+
+```bash
+npm run baseline:modes -- \
+  --goal "Navigate to /partner/coinbase and verify Coinbase templates are visible" \
+  --url https://ai.tangle.tools \
+  --model gpt-5.2 \
+  --modes fast-explore
+```
+
+### Canonical Spec-Driven AB Experiments
+
+```bash
+npm run ab:experiment -- \
+  --spec ./bench/scenarios/specs/supervisor-ab-webbench.json \
+  --out ./agent-results/ab-exp-webbench
+```
+
+Useful flags:
+- `--prompt-file <path>`: shared prompt variant.
+- `--memory --memory-isolation per-run`: avoid memory leakage across repetitions.
+- `--memory-root <dir>`: fixed memory root for reproducible reruns.
+- `--modes <csv>`: run only selected modes (for example `fast-explore`).
+- `--seed <value>`: deterministic per-repetition case ordering (default `1337`).
+
+Default mode behavior:
+- `--benchmark-profile webbench` defaults to `--modes fast-explore`.
+- Other profiles default to `full-evidence,fast-explore`.
+
+AB summaries now include:
+- raw pass rate,
+- blocker-adjusted clean pass rate,
+- blocker counts and failure-class rollups per arm.
+- deterministic case-order metadata (`seed` + per-repetition case hash/id list).
+
+### Research Cycle (Champion/Challenger)
+
+Run multiple AB specs as one ranked cycle:
+
+```bash
+npm run research:cycle -- \
+  --specs ./bench/scenarios/specs/supervisor-ab-webbench.json,./bench/scenarios/specs/supervisor-ab-webbench-reachable4.json \
+  --out ./agent-results/research-cycle-webbench
+```
+
+Outputs:
+- `cycle-summary.json`
+- `cycle-leaderboard.csv`
+- `cycle-summary.md`
+
 ### Scenario Track Baseline
 
 Run multi-scenario mode comparisons from a case track file:
@@ -401,10 +473,173 @@ Run multi-scenario mode comparisons from a case track file:
 npm run baseline:track -- \
   --cases ./bench/scenarios/cases/staging-auth-ai-tangle.json \
   --storage-state ./.auth/ai-tangle-tools.json \
-  --model gpt-5.2
+  --model gpt-5.2 \
+  --modes fast-explore
 ```
 
 Outputs `track-summary.json` under `./agent-results/track-<timestamp>/`.
+
+### Tier1 Deterministic Gate (CI Grade)
+
+Run the local deterministic fixture suite with strict pass-rate thresholds:
+
+```bash
+npm run bench:tier1:gate -- \
+  --out ./agent-results/tier1-local \
+  --model gpt-5.2 \
+  --min-full-pass-rate 1 \
+  --min-fast-pass-rate 1 \
+  --max-avg-turns 24 \
+  --max-avg-duration-ms 120000
+```
+
+Outputs:
+- `tier1-gate-summary.json`
+- `tier1-gate-summary.md`
+
+The command exits non-zero when thresholds are violated.
+The gate also fails when required artifacts are missing (`report`, `manifest`, `recording`).
+
+### Fast Local Loops
+
+Use the preset local wrappers when iterating on reliability work:
+
+```bash
+npm run bench:local:smoke
+npm run bench:local:tier1
+npm run bench:local:tier2
+npm run bench:local:nightly
+```
+
+Profiles:
+- `bench:local:smoke`: single deterministic fixture for fast iteration.
+- `bench:local:tier1`: local parity with the CI deterministic gate.
+- `bench:local:tier2`: local parity with the authenticated staging gate using `./.auth/ai-tangle-tools.json` by default.
+- `bench:local:nightly`: runs `lint`, `check:boundaries`, `build`, Tier1, WebBench sample, and Tier2 when `./.auth/ai-tangle-tools.json` exists.
+
+All profiles write a `reliability-scorecard.json` and `reliability-scorecard.md` under the selected output root.
+They also append a snapshot to `./agent-results/local-history.jsonl` and render `reliability-trend.json` plus `reliability-trend.md`.
+
+Fastest local Tier2 loop:
+
+```bash
+pnpm auth:save-state
+pnpm auth:check-state ./.auth/ai-tangle-tools.json ai.tangle.tools
+pnpm bench:local:tier2
+```
+
+Render trend manually from accumulated local history:
+
+```bash
+pnpm reliability:trend -- \
+  --history ./agent-results/local-history.jsonl \
+  --profile tier1 \
+  --out ./agent-results/reliability-trend.json \
+  --md ./agent-results/reliability-trend.md
+```
+
+### Codex CLI Provider
+
+This repo uses AI SDK v6. `codex-cli` is wired through [`ai-sdk-provider-codex-cli`](https://github.com/ben-vargas/ai-sdk-provider-codex-cli), using the local `codex` binary rather than a new HTTP backend.
+
+Fastest local setup:
+
+```bash
+codex login
+pnpm exec agent-driver run \
+  --goal "Open the homepage and report the main CTA" \
+  --url https://example.com \
+  --provider codex-cli \
+  --model gpt-5
+```
+
+Notes:
+- `codex-cli` works with local `codex login` auth or an `OPENAI_API_KEY` fallback.
+- `CODEX_CLI_PATH` overrides the `codex` binary path for direct local CLI runs.
+- `CODEX_ALLOW_NPX=0` disables `npx` fallback.
+- Keep using the normal OpenAI-compatible path when you need a remote base URL; `codex-cli` is the local-process option.
+
+### Claude Code Provider
+
+`claude-code` is wired through `ai-sdk-provider-claude-code`, using the local `claude` CLI rather than Anthropic's HTTP API when you want subscription/OAuth auth.
+
+```bash
+claude login
+pnpm exec agent-driver run \
+  --goal "Open the homepage and report the main CTA" \
+  --url https://example.com \
+  --provider claude-code
+```
+
+Notes:
+- `claude-code` works with local `claude login` auth or an `ANTHROPIC_API_KEY` fallback.
+- `CLAUDE_CODE_CLI_PATH` overrides the `claude` binary path for direct local CLI runs.
+- If no model is supplied, the driver defaults `claude-code` to `sonnet`.
+
+### Tier2 Staging Gate
+
+Run the authenticated staging suite with strict pass-rate and artifact checks:
+
+```bash
+npm run bench:tier2:gate -- \
+  --out ./agent-results/tier2-staging \
+  --model gpt-5.2 \
+  --storage-state ./.auth/ai-tangle-tools.json \
+  --min-full-pass-rate 1 \
+  --min-fast-pass-rate 1
+```
+
+Outputs:
+- `tier2-gate-summary.json`
+- `tier2-gate-summary.md`
+
+The gate also preserves runtime diagnostics in per-test artifacts:
+- `runtime-log.json`
+- `trace.zip` for failed runs when trace capture is enabled
+
+### Local CI Parity Checks
+
+Run the same structural checks as CI before pushing:
+
+```bash
+pnpm lint
+pnpm check:boundaries
+pnpm test
+```
+
+### Failure Classifier + Leaderboard
+
+Generate a ranked failure taxonomy from any results directory:
+
+```bash
+npm run bench:classify -- \
+  --root ./agent-results/ab-exp-sample \
+  --out ./agent-results/ab-exp-sample/reliability-scorecard.json \
+  --md ./agent-results/ab-exp-sample/reliability-scorecard.md
+```
+
+### Unified Benchmark UI
+
+When the sibling `../abd-app` repo is present, local CLI/script benchmark runs auto-import into its local D1/R2 store and appear in the `Benchmarks` page.
+
+Start the app locally:
+
+```bash
+cd ../abd-app
+npm run dev
+npm run dev:api
+```
+
+Then open `http://localhost:5173/benchmarks`.
+
+To disable auto-import for a run, set `ABD_BENCHMARK_SYNC=0`.
+
+If you want to import a benchmark folder manually:
+
+```bash
+cd ../abd-app/worker
+npm run bench:import-local -- --path ../../agent-browser-driver/agent-results/<run-dir>
+```
 
 ## Reporters
 

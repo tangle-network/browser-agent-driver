@@ -2,13 +2,15 @@
  * LLM Decision Engine — multimodal (vision + text), planning, verification,
  * conversation history management, and quality evaluation.
  *
- * Uses Vercel AI SDK for multi-provider support (OpenAI, Anthropic, Google).
+ * Uses Vercel AI SDK for multi-provider support (OpenAI, Anthropic, Google, Codex CLI, Claude Code).
  */
 
 import { generateText } from 'ai';
 import type { ModelMessage, LanguageModel } from 'ai';
 import type { Action, PageState, AgentConfig, DesignFinding, GoalVerification } from '../types.js';
 import { AriaSnapshotHelper } from '../drivers/snapshot.js';
+import { resolveProviderModelName } from '../provider-defaults.js';
+import { buildFirstPartyBoundaryNote } from '../domain-policy.js';
 
 const SYSTEM_PROMPT = `You are a senior staff engineer operating a browser via Playwright automation.
 
@@ -41,6 +43,7 @@ RESPONSE FORMAT — respond with ONLY a JSON object:
   "plan": ["step 1", "step 2", ...],
   "currentStep": 0,
   "action": { "action": "click", "selector": "@REF_FROM_ELEMENTS" },
+  "nextActions": [{ "action": "type", "selector": "@REF_FROM_ELEMENTS", "text": "..." }],
   "reasoning": "Why I chose this action based on what I see",
   "expectedEffect": "What should change (e.g., 'URL should contain /chat/', 'modal should close')"
 }
@@ -49,7 +52,7 @@ RULES:
 1. Respond with ONLY valid JSON, no markdown or extra text
 2. Use @ref selectors from the ELEMENTS list — they are stable across turns
 3. Include plan, currentStep, reasoning, and expectedEffect in every response
-4. Take ONE action per turn
+4. Primary action must be in "action". Optional "nextActions" can contain up to 2 safe follow-ups (click/type/press/hover/select/scroll/wait) only when deterministic
 5. When the goal is achieved, use "complete" with a detailed result description
 6. If stuck after multiple attempts, use "abort" — don't loop forever
 7. LOOK at the screenshot — it shows visual state the a11y tree may miss
@@ -134,6 +137,7 @@ Score: 1-3 = poor, 4-5 = needs work, 6-7 = acceptable, 8-9 = good, 10 = excellen
 
 export interface BrainDecision {
   action: Action;
+  nextActions?: Action[];
   raw: string;
   reasoning?: string;
   plan?: string[];
@@ -157,11 +161,11 @@ type UserContent = string | Array<{ type: 'text'; text: string } | { type: 'imag
 
 export class Brain {
   private modelCache = new Map<string, LanguageModel>();
-  private provider: 'openai' | 'anthropic' | 'google';
+  private provider: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code';
   private modelName: string;
   private adaptiveModelRouting: boolean;
   private navModelName?: string;
-  private navProvider?: 'openai' | 'anthropic' | 'google';
+  private navProvider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code';
   private apiKey?: string;
   private baseUrl?: string;
   private debug: boolean;
@@ -169,6 +173,7 @@ export class Brain {
   private maxHistoryTurns: number;
   private visionEnabled: boolean;
   private llmTimeoutMs: number;
+  private systemPrompt: string;
 
   constructor(config: AgentConfig = {}) {
     this.llmTimeoutMs = config.llmTimeoutMs ?? 60_000;
@@ -179,6 +184,7 @@ export class Brain {
     this.navProvider = config.navProvider;
     this.apiKey = config.apiKey || process.env.OPENAI_API_KEY;
     this.baseUrl = config.baseUrl;
+    this.systemPrompt = config.systemPrompt || SYSTEM_PROMPT;
     this.debug = config.debug || false;
     this.maxHistoryTurns = config.maxHistoryTurns || 10;
     this.visionEnabled = config.vision !== false;
@@ -189,10 +195,22 @@ export class Brain {
     return !/^gpt-5(?:[.-]|$)/i.test(modelName);
   }
 
-  /** Lazily create the LLM model instance based on provider config */
-  private async getModel(selection?: { provider?: 'openai' | 'anthropic' | 'google'; model?: string }): Promise<LanguageModel> {
+  private generationOptions(
+    maxOutputTokens: number,
+    selection?: { provider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code'; model?: string },
+  ): Record<string, number> {
     const providerName = selection?.provider || this.provider;
-    const modelName = selection?.model || this.modelName;
+    const modelName = resolveProviderModelName(providerName, selection?.model || this.modelName);
+    return {
+      ...(this.shouldSendTemperature(modelName) ? { temperature: 0 } : {}),
+      ...(providerName === 'codex-cli' || providerName === 'claude-code' ? {} : { maxOutputTokens }),
+    };
+  }
+
+  /** Lazily create the LLM model instance based on provider config */
+  private async getModel(selection?: { provider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code'; model?: string }): Promise<LanguageModel> {
+    const providerName = selection?.provider || this.provider;
+    const modelName = resolveProviderModelName(providerName, selection?.model || this.modelName);
     const cacheKey = `${providerName}:${modelName}`;
     const cached = this.modelCache.get(cacheKey);
     if (cached) return cached;
@@ -213,6 +231,31 @@ export class Brain {
         const provider = createGoogleGenerativeAI({
           apiKey: this.apiKey,
           ...(this.baseUrl ? { baseURL: this.baseUrl } : {}),
+        });
+        model = provider(modelName) as LanguageModel;
+        break;
+      }
+      case 'codex-cli': {
+        const { codexExec } = await import('ai-sdk-provider-codex-cli');
+        const env: Record<string, string> = {};
+        if (this.apiKey) env.OPENAI_API_KEY = this.apiKey;
+        model = codexExec(modelName, {
+          allowNpx: process.env.CODEX_ALLOW_NPX !== '0',
+          skipGitRepoCheck: true,
+          ...(process.env.CODEX_CLI_PATH ? { codexPath: process.env.CODEX_CLI_PATH } : {}),
+          ...(Object.keys(env).length > 0 ? { env } : {}),
+        }) as LanguageModel;
+        break;
+      }
+      case 'claude-code': {
+        const { createClaudeCode } = await import('ai-sdk-provider-claude-code');
+        const env: Record<string, string> = {};
+        if (this.apiKey) env.ANTHROPIC_API_KEY = this.apiKey;
+        const provider = createClaudeCode({
+          defaultSettings: {
+            ...(process.env.CLAUDE_CODE_CLI_PATH ? { pathToClaudeCodeExecutable: process.env.CLAUDE_CODE_CLI_PATH } : {}),
+            ...(Object.keys(env).length > 0 ? { env } : {}),
+          },
         });
         model = provider(modelName) as LanguageModel;
         break;
@@ -357,7 +400,10 @@ export class Brain {
       const remaining = turnInfo.max - turnInfo.current;
       textContent += `\nTURN: ${turnInfo.current}/${turnInfo.max} (${remaining} remaining)`;
       if (remaining <= 3) {
-        textContent += ` — RUNNING LOW, prioritize completing the goal or abort with a clear reason`;
+        textContent += ` — RUNNING LOW, avoid exploratory navigation; prioritize completing the goal or aborting with a clear blocker reason`;
+      }
+      if (remaining === 1) {
+        textContent += ` — FINAL TURN: return a terminal action only (complete or abort)`;
       }
     }
 
@@ -407,10 +453,9 @@ ${state.snapshot}`;
 
     const result = await generateText({
       model,
-      system: SYSTEM_PROMPT,
+      system: this.systemPrompt,
       messages,
-      ...(this.shouldSendTemperature(effectiveModel) ? { temperature: 0 } : {}),
-      maxOutputTokens: 1000,
+      ...this.generationOptions(1000, { provider: effectiveProvider, model: effectiveModel }),
       abortSignal: AbortSignal.timeout(this.llmTimeoutMs),
     });
 
@@ -461,8 +506,7 @@ Please evaluate the quality of this page/application.`;
       model,
       system: EVALUATE_PROMPT,
       messages: [{ role: 'user', content: userContent }],
-      ...(this.shouldSendTemperature() ? { temperature: 0 } : {}),
-      maxOutputTokens: 800,
+      ...this.generationOptions(800),
       abortSignal: AbortSignal.timeout(this.llmTimeoutMs),
     });
 
@@ -512,6 +556,7 @@ Please evaluate the quality of this page/application.`;
     goal: string,
     claimedResult: string,
   ): Promise<GoalVerification> {
+    const siteBoundaryNote = buildFirstPartyBoundaryNote(goal, state.url);
     const textContent = `GOAL: ${goal}
 
 AGENT'S CLAIMED RESULT: ${claimedResult}
@@ -521,7 +566,7 @@ URL: ${state.url}
 Title: ${state.title}
 
 ELEMENTS:
-${state.snapshot}
+${state.snapshot}${siteBoundaryNote ? `\n\n${siteBoundaryNote}` : ''}
 
 Was the goal actually achieved? Analyze the current page state carefully.`;
 
@@ -550,12 +595,11 @@ Respond with ONLY a JSON object:
 }
 
 - achieved: true if the goal is clearly met, false if not or uncertain
-- confidence: 0.0 to 1.0 — how sure are you?
-- evidence: specific observations supporting your judgment
-- missing: what's still needed (empty array if achieved)`,
+      - confidence: 0.0 to 1.0 — how sure are you?
+      - evidence: specific observations supporting your judgment
+      - missing: what's still needed (empty array if achieved)`,
       messages: [{ role: 'user', content: userContent }],
-      ...(this.shouldSendTemperature() ? { temperature: 0 } : {}),
-      maxOutputTokens: 600,
+      ...this.generationOptions(600),
       abortSignal: AbortSignal.timeout(this.llmTimeoutMs),
     });
 
@@ -622,8 +666,7 @@ Audit this page for design quality, UX issues, and visual bugs.`;
       model,
       system: DESIGN_AUDIT_PROMPT,
       messages: [{ role: 'user', content: userContent }],
-      ...(this.shouldSendTemperature() ? { temperature: 0 } : {}),
-      maxOutputTokens: 1500,
+      ...this.generationOptions(1500),
       abortSignal: AbortSignal.timeout(this.llmTimeoutMs),
     });
 
@@ -706,8 +749,7 @@ Only include facts that are genuinely useful. Quality over quantity. Max 10 fact
         role: 'user',
         content: `Domain: ${domain}\n\nTrajectory:\n${trajectoryText}`,
       }],
-      ...(this.shouldSendTemperature() ? { temperature: 0 } : {}),
-      maxOutputTokens: 800,
+      ...this.generationOptions(800),
       abortSignal: AbortSignal.timeout(this.llmTimeoutMs),
     });
 
@@ -769,6 +811,7 @@ Only include facts that are genuinely useful. Quality over quantity. Max 10 fact
 
       return {
         action,
+        nextActions: parseNextActions(parsed, VALID_ACTIONS),
         reasoning: parsed.reasoning || parsed.thought || parsed.thinking,
         plan: Array.isArray(parsed.plan) ? parsed.plan : undefined,
         currentStep: typeof parsed.currentStep === 'number' ? parsed.currentStep : undefined,
@@ -784,6 +827,27 @@ Only include facts that are genuinely useful. Quality over quantity. Max 10 fact
       };
     }
   }
+}
+
+function parseNextActions(parsed: Record<string, unknown>, validActions: Set<string>): Action[] | undefined {
+  if (!Array.isArray(parsed.nextActions)) {
+    return undefined;
+  }
+
+  const nextActions: Action[] = [];
+  for (const entry of parsed.nextActions.slice(0, 3)) {
+    if (!entry || typeof entry !== 'object') continue;
+    const rawEntry = entry as Record<string, unknown>;
+    const actionType = typeof rawEntry.action === 'string' ? rawEntry.action : undefined;
+    if (!actionType || !validActions.has(actionType)) continue;
+    try {
+      nextActions.push(validateAction(actionType, rawEntry));
+    } catch {
+      // Best effort: ignore malformed follow-up action.
+    }
+  }
+
+  return nextActions.length > 0 ? nextActions : undefined;
 }
 
 /**

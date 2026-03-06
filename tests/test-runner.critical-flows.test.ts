@@ -19,10 +19,14 @@ vi.mock('../src/runner.js', () => {
 });
 
 function makeDriver(videoPath: string): Driver {
+  return makeDriverWithPage(videoPath);
+}
+
+function makeDriverWithPage(videoPath: string, page?: import('playwright').Page): Driver {
   return {
     observe: vi.fn(async () => ({ url: 'http://localhost', title: 'Test', snapshot: '' })),
     execute: vi.fn(async () => ({ success: true })),
-    getPage: () => ({
+    getPage: () => page ?? ({
       video: () => ({
         path: async () => videoPath,
       }),
@@ -34,9 +38,11 @@ function makeDriver(videoPath: string): Driver {
 class MemorySink implements ArtifactSink {
   manifest: ArtifactManifestEntry[] = [];
   closeManifestSize = 0;
+  storedData = new Map<string, Buffer>();
 
   async put(artifact: Artifact): Promise<string> {
     const uri = `mem://${artifact.testId}/${artifact.name}`;
+    this.storedData.set(uri, artifact.data);
     this.manifest.push({
       testId: artifact.testId,
       type: artifact.type,
@@ -55,6 +61,53 @@ class MemorySink implements ArtifactSink {
 
   async close(): Promise<void> {
     this.closeManifestSize = this.manifest.length;
+  }
+}
+
+class FakeTracing {
+  async start(): Promise<void> {}
+
+  async stop(options?: { path?: string }): Promise<void> {
+    if (options?.path) {
+      fs.writeFileSync(options.path, Buffer.from('TRACEZIP'));
+    }
+  }
+}
+
+class FakePage {
+  private handlers = new Map<string, Set<(payload: unknown) => void>>();
+  private tracing = new FakeTracing();
+
+  constructor(private videoPath: string) {}
+
+  on(event: string, handler: (payload: unknown) => void): this {
+    const handlers = this.handlers.get(event) ?? new Set();
+    handlers.add(handler);
+    this.handlers.set(event, handlers);
+    return this;
+  }
+
+  off(event: string, handler: (payload: unknown) => void): this {
+    this.handlers.get(event)?.delete(handler);
+    return this;
+  }
+
+  emit(event: string, payload: unknown): void {
+    for (const handler of this.handlers.get(event) ?? []) {
+      handler(payload);
+    }
+  }
+
+  video() {
+    return {
+      path: async () => this.videoPath,
+    };
+  }
+
+  context() {
+    return {
+      tracing: this.tracing,
+    };
   }
 }
 
@@ -165,5 +218,78 @@ describe('TestRunner critical flows', () => {
     expect(result.results[0]?.verified).toBe(false);
     expect(result.results[0]?.agentSuccess).toBe(false);
     expect(result.results[0]?.verdict).toContain('API key missing');
+  });
+
+  it('captures runtime observability artifacts for failed runs', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'abd-observe-'));
+    const videoPath = path.join(tmpDir, 'recording.webm');
+    fs.writeFileSync(videoPath, Buffer.from('FAKEWEBM'));
+    const fakePage = new FakePage(videoPath);
+
+    mockRunFn.mockImplementation(async () => {
+      fakePage.emit('console', {
+        type: () => 'error',
+        text: () => 'console exploded',
+        location: () => ({ url: 'http://localhost/app.js', lineNumber: 7, columnNumber: 2 }),
+      });
+      fakePage.emit('pageerror', new Error('page exploded'));
+      fakePage.emit('requestfailed', {
+        url: () => 'http://localhost/api',
+        method: () => 'GET',
+        resourceType: () => 'xhr',
+        failure: () => ({ errorText: 'net::ERR_FAILED' }),
+      });
+      fakePage.emit('response', {
+        url: () => 'http://localhost/api',
+        status: () => 500,
+        statusText: () => 'Internal Server Error',
+        request: () => ({
+          method: () => 'GET',
+          resourceType: () => 'xhr',
+        }),
+      });
+
+      return {
+        success: false,
+        reason: 'Server failed',
+        turns: [],
+        totalMs: 20,
+      };
+    });
+
+    const sink = new MemorySink();
+    const runner = new TestRunner({
+      driver: makeDriverWithPage(videoPath, fakePage as unknown as import('playwright').Page),
+      artifactSink: sink,
+      config: {
+        observability: {
+          enabled: true,
+          tracePolicy: 'on-failure',
+        },
+      },
+    });
+
+    const result = await runner.runSuite([
+      {
+        id: 'observe-failure',
+        name: 'Observability failure',
+        startUrl: 'http://localhost',
+        goal: 'Fail with diagnostics',
+      },
+    ]);
+
+    expect(result.summary.failed).toBe(1);
+    const artifactKeys = sink.manifest.map((entry) => `${entry.type}:${entry.name}`);
+    expect(artifactKeys).toContain('runtime-log:runtime-log.json');
+    expect(artifactKeys).toContain('trace:trace.zip');
+
+    const runtimeLogUri = sink.manifest.find((entry) => entry.type === 'runtime-log')?.uri;
+    expect(runtimeLogUri).toBeTruthy();
+    const runtimeLog = JSON.parse(sink.storedData.get(String(runtimeLogUri))!.toString('utf-8'));
+    expect(runtimeLog.console[0]?.text).toBe('console exploded');
+    expect(runtimeLog.pageErrors[0]?.message).toContain('page exploded');
+    expect(runtimeLog.requestFailures[0]?.errorText).toContain('ERR_FAILED');
+    expect(runtimeLog.responseErrors[0]?.status).toBe('500');
+    expect(runtimeLog.traceCaptured).toBe(true);
   });
 });

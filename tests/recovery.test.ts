@@ -3,6 +3,7 @@ import type { Action, Turn } from '../src/types.js';
 import {
   analyzeRecovery,
   detectBlockingModal,
+  detectTerminalBlocker,
   parseSnapshotElements,
 } from '../src/recovery.js';
 
@@ -130,5 +131,52 @@ describe('recovery blocker handling', () => {
     expect(recovery?.strategy).toBe('modal-present-no-force');
     expect(recovery?.forceAction).toBeUndefined();
     expect(recovery?.forceBrowserAction).toBeUndefined();
+  });
+});
+
+describe('terminal blocker detection', () => {
+  it('detects unreachable network states', () => {
+    const detection = detectTerminalBlocker({
+      url: 'chrome-error://chromewebdata/',
+      title: 'This site can’t be reached',
+      snapshot: '- heading "This site can’t be reached"',
+    });
+
+    expect(detection?.kind).toBe('network-unreachable');
+    expect(detection?.strategy).toBe('terminal-network-error');
+    expect(detection?.evidence.length).toBeGreaterThan(0);
+  });
+
+  it('detects bot challenge states', () => {
+    const detection = detectTerminalBlocker({
+      url: 'https://example.com/challenge',
+      title: 'Attention required',
+      snapshot: '- heading "Verify you are human"\n- text "Checking your browser before accessing"',
+    });
+
+    expect(detection?.kind).toBe('bot-challenge');
+    expect(detection?.strategy).toBe('terminal-bot-challenge');
+    expect(detection?.evidence.length).toBeGreaterThan(0);
+  });
+
+  it('detects cloudflare interstitial phrasing', () => {
+    const detection = detectTerminalBlocker({
+      url: 'https://www.crunchyroll.com/',
+      title: 'Just a moment...',
+      snapshot: '- text "Performing security verification"\n- text "Checking if the site connection is secure"',
+    });
+
+    expect(detection?.kind).toBe('bot-challenge');
+    expect(detection?.evidence).toContain('cloudflare-security-verification');
+  });
+
+  it('does not trigger on normal application pages', () => {
+    const detection = detectTerminalBlocker({
+      url: 'https://ai.tangle.tools/dashboard',
+      title: 'Dashboard',
+      snapshot: '- heading "Runs"\n- text "Cloudflare docs are linked in help center"',
+    });
+
+    expect(detection).toBeNull();
   });
 });

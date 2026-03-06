@@ -35,6 +35,7 @@ const BUILTIN_PERSONA_DIRECTIVES: Record<BuiltInPersonaId, string> = {
 
 function buildAutoDirective(goal: string, startUrl?: string): string {
   const context = `${goal} ${startUrl ?? ''}`.toLowerCase();
+  const isTangleContext = context.includes('ai.tangle.tools') || context.includes('blueprint') || context.includes('/partner/');
   const partnerRoutes: string[] = [];
 
   if (context.includes('coinbase')) partnerRoutes.push('/partner/coinbase');
@@ -44,23 +45,39 @@ function buildAutoDirective(goal: string, startUrl?: string): string {
     partnerRoutes.push('/partner/coinbase', '/partner/succinct', '/partner/tangle');
   }
 
-  const routeHint = partnerRoutes.length > 0
-    ? `- Check partner/template routes likely relevant to this task: ${partnerRoutes.join(', ')}.`
-    : '- Discover available templates/routes via home cards, sidebar, and profile/settings menus.';
+  if (isTangleContext) {
+    const routeHint = partnerRoutes.length > 0
+      ? `- Check partner/template routes likely relevant to this task: ${partnerRoutes.join(', ')}.`
+      : '- Discover available templates/routes via home cards, sidebar, and profile/settings menus.';
+
+    return [
+      'Persona: Adaptive product operator (senior technical IC + product mindset) focused on completing realistic end-to-end outcomes.',
+      `Primary objective: ${goal}`,
+      'Behavior policy: think proactively, adapt to blockers, and prefer high-signal actions over repetitive retries.',
+      'Navigation heuristics:',
+      '- Map the app quickly: dashboard/list views, create flow, settings, model/provider configuration, run/preview views.',
+      routeHint,
+      'Adaptive obstacle handling:',
+      '- If limits, auth prompts, or modals block progress, resolve the blocker first and then resume the main goal.',
+      '- If a route/control fails, try an adjacent route path or alternate entry point before repeating the same action.',
+      'Completion criteria:',
+      '- A substantive, user-valuable flow is completed (not toy chatter).',
+      '- The outcome is verified with concrete UI evidence (URL, visible state, run/preview artifact).',
+    ].join('\n');
+  }
 
   return [
-    'Persona: Adaptive product operator (senior technical IC + product mindset) focused on completing realistic end-to-end outcomes.',
+    'Persona: Adaptive web operator focused on completing tasks reliably on arbitrary websites.',
     `Primary objective: ${goal}`,
-    'Behavior policy: think proactively, adapt to blockers, and prefer high-signal actions over repetitive retries.',
+    'Behavior policy: prefer direct progress and concise actions over broad exploration.',
     'Navigation heuristics:',
-    '- Map the app quickly: dashboard/list views, create flow, settings, model/provider configuration, run/preview views.',
-    routeHint,
+    '- Use the site’s own navigation and search first; follow high-signal links that match the requested outcome.',
+    '- Avoid app-specific assumptions about routes or settings unless explicitly visible in the current site.',
     'Adaptive obstacle handling:',
-    '- If limits, auth prompts, or modals block progress, resolve the blocker first and then resume the main goal.',
-    '- If a route/control fails, try an adjacent route path or alternate entry point before repeating the same action.',
+    '- If blocked by auth/paywall/captcha or unavailable content, capture concrete evidence and try one adjacent strategy.',
+    '- Do not loop on the same failing interaction; switch approach quickly.',
     'Completion criteria:',
-    '- A substantive, user-valuable flow is completed (not toy chatter).',
-    '- The outcome is verified with concrete UI evidence (URL, visible state, run/preview artifact).',
+    '- Return the requested data/result with concrete evidence (URL + visible text/state).',
   ].join('\n');
 }
 

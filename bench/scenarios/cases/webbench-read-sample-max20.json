@@ -1,0 +1,602 @@
+[
+  {
+    "id": "webbench-2204",
+    "name": "WebBench read #2204",
+    "startUrl": "https://www.yale.edu",
+    "goal": "Navigate to the \"About Yale\" section and summarize Yale University's mission statement in your own words.\nOnly use http://yale.edu to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.yale.edu for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.yale.edu"
+    ]
+  },
+  {
+    "id": "webbench-2556",
+    "name": "WebBench read #2556",
+    "startUrl": "https://www.johnlewis.com",
+    "goal": "Use the product search function to look up “organic cotton towels” and extract the customer review section summary for the top-listed item.\nOnly use https://www.johnlewis.com/ to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.johnlewis.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.johnlewis.com"
+    ]
+  },
+  {
+    "id": "webbench-332",
+    "name": "WebBench read #332",
+    "startUrl": "https://www.crunchyroll.com",
+    "goal": "Navigate to the details page of the anime \"One Piece\" and extract the available language and subtitle options.\nOnly use http://crunchyroll.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.crunchyroll.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.crunchyroll.com"
+    ]
+  },
+  {
+    "id": "webbench-2605",
+    "name": "WebBench read #2605",
+    "startUrl": "https://www.nih.gov",
+    "goal": "Use the site’s search feature to find information on \"Alzheimer's disease\" and extract the title and publication date of the first related press release.\nOnly use https://www.nih.gov/ to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.nih.gov for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.nih.gov"
+    ]
+  },
+  {
+    "id": "webbench-750",
+    "name": "WebBench read #750",
+    "startUrl": "https://www.harpersbazaar.com",
+    "goal": "Navigate to Harper’s Bazaar’s homepage and list the titles of the three most recent articles featured on the site.\nOnly use http://harpersbazaar.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.harpersbazaar.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.harpersbazaar.com"
+    ]
+  },
+  {
+    "id": "webbench-100",
+    "name": "WebBench read #100",
+    "startUrl": "https://apkpure.com",
+    "goal": "Browse the \"Games\" category and extract the names of the top 5 action games currently featured on APKPure.\nOnly use http://apkpure.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use apkpure.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "apkpure.com"
+    ]
+  },
+  {
+    "id": "webbench-32",
+    "name": "WebBench read #32",
+    "startUrl": "https://www.alberta.ca",
+    "goal": "Visit the Open Government portal on Alberta.ca and list the different categories of public datasets available for download.\nOnly use http://alberta.ca to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.alberta.ca for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.alberta.ca"
+    ]
+  },
+  {
+    "id": "webbench-425",
+    "name": "WebBench read #425",
+    "startUrl": "https://www.encyclopedia.com",
+    "goal": "Search for \"Artificial Intelligence\" and list any related news or magazine articles or media referenced on the entry.\nOnly use http://encyclopedia.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.encyclopedia.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.encyclopedia.com"
+    ]
+  },
+  {
+    "id": "webbench-197",
+    "name": "WebBench read #197",
+    "startUrl": "https://www.cambridge.org",
+    "goal": "Use Cambridge to search for articles related to \"climate education\" and list the titles of the first 5 articles displayed.\nOnly use http://cambridge.org to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.cambridge.org for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.cambridge.org"
+    ]
+  },
+  {
+    "id": "webbench-143",
+    "name": "WebBench read #143",
+    "startUrl": "https://www.bbc.com",
+    "goal": "Navigate to the Live section and give me the first topic that has \"Trump\" in it\nOnly use http://bbc.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.bbc.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.bbc.com"
+    ]
+  },
+  {
+    "id": "webbench-804",
+    "name": "WebBench read #804",
+    "startUrl": "https://www.housebeautiful.com",
+    "goal": "Navigate to the homepage and list the titles of the top 3 featured articles on modern interior design.\nOnly use http://housebeautiful.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.housebeautiful.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.housebeautiful.com"
+    ]
+  },
+  {
+    "id": "webbench-2020",
+    "name": "WebBench read #2020",
+    "startUrl": "https://www.usnews.com",
+    "goal": "Navigate to the Politics section and list the titles of the latest three articles.\nOnly use http://usnews.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.usnews.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.usnews.com"
+    ]
+  },
+  {
+    "id": "webbench-1385",
+    "name": "WebBench read #1385",
+    "startUrl": "https://www.prnewswire.com",
+    "goal": "Search for press releases related to \"climate change\" that were distributed within the last month and list the top 5 headlines along with their release dates.\nOnly use http://prnewswire.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.prnewswire.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.prnewswire.com"
+    ]
+  },
+  {
+    "id": "webbench-929",
+    "name": "WebBench read #929",
+    "startUrl": "https://www.justdial.com",
+    "goal": "Search for reputed plumber services in Mumbai and list the names, phone numbers, and addresses of the top 5 verified listings.\nOnly use http://justdial.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.justdial.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.justdial.com"
+    ]
+  },
+  {
+    "id": "webbench-1988",
+    "name": "WebBench read #1988",
+    "startUrl": "https://www.usda.gov",
+    "goal": "Locate the USDA guidelines on sustainable farming practices and list three key recommendations provided in the document.\nOnly use http://usda.gov to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.usda.gov for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.usda.gov"
+    ]
+  },
+  {
+    "id": "webbench-1425",
+    "name": "WebBench read #1425",
+    "startUrl": "https://www.redbubble.com",
+    "goal": "Use the search bar to look for “vintage typography” designs and record the names, prices, and ratings of the first 5 products.\nOnly use http://redbubble.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.redbubble.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.redbubble.com"
+    ]
+  },
+  {
+    "id": "webbench-75",
+    "name": "WebBench read #75",
+    "startUrl": "https://www.alltrails.com",
+    "goal": "Look up the \"Appalachian Trail\" on AllTrails and extract key details such as length, rating, and difficulty from one of its segments.\nOnly use http://alltrails.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.alltrails.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.alltrails.com"
+    ]
+  },
+  {
+    "id": "webbench-314",
+    "name": "WebBench read #314",
+    "startUrl": "https://www.crunchbase.com",
+    "goal": "Search for companies categorized under \"Artificial Intelligence\" located in San Francisco and list the top 5 by funding amount.\nOnly use http://crunchbase.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.crunchbase.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.crunchbase.com"
+    ]
+  },
+  {
+    "id": "webbench-695",
+    "name": "WebBench read #695",
+    "startUrl": "https://www.goal.com/en-us",
+    "goal": "Find the match analysis of the last Champions League game and write down the main tactical observation discussed in the article.\nOnly use http://goal.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.goal.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.goal.com"
+    ]
+  },
+  {
+    "id": "webbench-265",
+    "name": "WebBench read #265",
+    "startUrl": "https://www.collinsdictionary.com",
+    "goal": "Retrieve the German translation for \"beauty\" on Collins Dictionary and record any additional synonyms or usage notes provided.\nOnly use http://collinsdictionary.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.collinsdictionary.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.collinsdictionary.com"
+    ]
+  },
+  {
+    "id": "webbench-114",
+    "name": "WebBench read #114",
+    "startUrl": "https://www.asos.com",
+    "goal": "Search for \"summer tote bag\" using the search bar and list the first 5 results including their prices and available color options.\nOnly use http://asos.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.asos.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.asos.com"
+    ]
+  },
+  {
+    "id": "webbench-1506",
+    "name": "WebBench read #1506",
+    "startUrl": "https://www.scribd.com",
+    "goal": "Search for a free ebook on “Healthy Cooking” and list the title and author of the first result you see.\nOnly use http://scribd.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.scribd.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.scribd.com"
+    ]
+  },
+  {
+    "id": "webbench-389",
+    "name": "WebBench read #389",
+    "startUrl": "https://www.dw.com",
+    "goal": "Navigate to the Culture category and list the titles of the first four articles featured.\nOnly use http://dw.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.dw.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.dw.com"
+    ]
+  },
+  {
+    "id": "webbench-45",
+    "name": "WebBench read #45",
+    "startUrl": "https://aliexpress.com",
+    "goal": "Find a smart watch with more than 20 reviews. Filter the reviews to the most recent and summarize the most common positive and negative points mentioned by customers.\nOnly use http://aliexpress.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use aliexpress.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "aliexpress.com"
+    ]
+  },
+  {
+    "id": "webbench-2573",
+    "name": "WebBench read #2573",
+    "startUrl": "https://www.makemytrip.global/?cc=am&redirectedBy=gl",
+    "goal": "Search for a holiday package that bundles flights and hotel stays for a Dubai trip and view the detailed itinerary.\nOnly use https://www.makemytrip.com/ to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.makemytrip.global for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.makemytrip.global"
+    ]
+  },
+  {
+    "id": "webbench-129",
+    "name": "WebBench read #129",
+    "startUrl": "http://www.barnesandnoble.com",
+    "goal": "Use the store locator by entering ZIP code 90210, then display the address, store hours, and contact details of the nearest location.\nOnly use http://barnesandnoble.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.barnesandnoble.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.barnesandnoble.com"
+    ]
+  },
+  {
+    "id": "webbench-1545",
+    "name": "WebBench read #1545",
+    "startUrl": "https://www.skysports.com",
+    "goal": "Identify and read the latest article under the rugby section covering match recaps, and list the names of the two teams that played.\nOnly use http://skysports.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.skysports.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.skysports.com"
+    ]
+  },
+  {
+    "id": "webbench-90",
+    "name": "WebBench read #90",
+    "startUrl": "https://www.apa.org",
+    "goal": "Use the APA website’s search function to look for articles related to \"cognitive behavioral therapy\" and output the titles of the first three search results.\nOnly use http://apa.org to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.apa.org for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.apa.org"
+    ]
+  },
+  {
+    "id": "webbench-176",
+    "name": "WebBench read #176",
+    "startUrl": "https://www.britannica.com",
+    "goal": "Locate Leonardo da Vinci’s article, check the painting attributions, and identify which one was completed first.\nOnly use http://britannica.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.britannica.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.britannica.com"
+    ]
+  },
+  {
+    "id": "webbench-2161",
+    "name": "WebBench read #2161",
+    "startUrl": "https://www.wordreference.com",
+    "goal": "Use the site's search functionality to find a discussion thread on the differences between British and American English spelling and list the three main points highlighted by users.\nOnly use http://wordreference.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.wordreference.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.wordreference.com"
+    ]
+  },
+  {
+    "id": "webbench-1202",
+    "name": "WebBench read #1202",
+    "startUrl": "https://www.nerdwallet.com",
+    "goal": "Visit the NerdWallet personal loans comparison page and extract the interest rate ranges for the top five loan options listed.\nOnly use http://nerdwallet.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.nerdwallet.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.nerdwallet.com"
+    ]
+  },
+  {
+    "id": "webbench-1135",
+    "name": "WebBench read #1135",
+    "startUrl": "https://www.mercari.com",
+    "goal": "Use the help section to search for \"Payment methods\" and extract the key details about available payment options and any associated fees.\nOnly use http://mercari.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.mercari.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.mercari.com"
+    ]
+  },
+  {
+    "id": "webbench-271",
+    "name": "WebBench read #271",
+    "startUrl": "https://www.commonsensemedia.org",
+    "goal": "Browse the homepage and list the titles along with the age-appropriateness ratings of the first five media reviews displayed.\nOnly use http://commonsensemedia.org to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.commonsensemedia.org for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.commonsensemedia.org"
+    ]
+  },
+  {
+    "id": "webbench-1222",
+    "name": "WebBench read #1222",
+    "startUrl": "https://www.nj.com",
+    "goal": "Search the homepage for the latest breaking news on New Jersey weather and extract the headline along with any detailed alert information.\nOnly use http://nj.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.nj.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.nj.com"
+    ]
+  },
+  {
+    "id": "webbench-1312",
+    "name": "WebBench read #1312",
+    "startUrl": "https://www.pbs.org",
+    "goal": "Search PBS LearningMedia for \"climate change\" lesson plans and provide the titles with a short description for the top three results.\nOnly use http://pbs.org to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.pbs.org for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.pbs.org"
+    ]
+  },
+  {
+    "id": "webbench-1107",
+    "name": "WebBench read #1107",
+    "startUrl": "https://www.maryland.gov/Pages/default.aspx",
+    "goal": "Explore the \"Feedback\" section and summarize the process given for submitting citizen input.\nOnly use http://maryland.gov to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.maryland.gov for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.maryland.gov"
+    ]
+  },
+  {
+    "id": "webbench-2001",
+    "name": "WebBench read #2001",
+    "startUrl": "https://www.usmagazine.com",
+    "goal": "Use the website’s search function to find articles about “Met Gala” and extract the titles and publication dates of the first 3 results.\nOnly use http://usmagazine.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.usmagazine.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.usmagazine.com"
+    ]
+  },
+  {
+    "id": "webbench-46",
+    "name": "WebBench read #46",
+    "startUrl": "https://www.aljazeera.com",
+    "goal": "Use the search function to find articles about “climate change” and provide the titles and publication dates of the first 5 results.\nOnly use http://aljazeera.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.aljazeera.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.aljazeera.com"
+    ]
+  },
+  {
+    "id": "webbench-383",
+    "name": "WebBench read #383",
+    "startUrl": "https://www.dreamstime.com/",
+    "goal": "Browse the Dreamstime Public Domain collection and extract the names of all available image categories listed on the page.\nOnly use http://dreamstime.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.dreamstime.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.dreamstime.com"
+    ]
+  },
+  {
+    "id": "webbench-220",
+    "name": "WebBench read #220",
+    "startUrl": "https://www.cbr.com",
+    "goal": "Navigate to the CBR homepage and list the titles of the top five most recent articles in the news section.\nOnly use http://cbr.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.cbr.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.cbr.com"
+    ]
+  },
+  {
+    "id": "webbench-719",
+    "name": "WebBench read #719",
+    "startUrl": "https://www.groupon.com",
+    "goal": "Use the search functionality to look for spa and wellness deals in Los Angeles, CA, filter the results by deals under $50, and extract the merchant ratings for the first five deals.\nOnly use http://groupon.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.groupon.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.groupon.com"
+    ]
+  },
+  {
+    "id": "webbench-2523",
+    "name": "WebBench read #2523",
+    "startUrl": "https://www.harvard.edu",
+    "goal": "Navigate to Harvard's homepage and extract the university's mission statement and founding date.\nOnly use https://www.harvard.edu/ to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.harvard.edu for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.harvard.edu"
+    ]
+  },
+  {
+    "id": "webbench-1297",
+    "name": "WebBench read #1297",
+    "startUrl": "https://www.opentable.com",
+    "goal": "Check the operating hours and address details for the restaurant \"Balthazar\" in New York City.\nOnly use http://opentable.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.opentable.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.opentable.com"
+    ]
+  },
+  {
+    "id": "webbench-560",
+    "name": "WebBench read #560",
+    "startUrl": "https://www.forbes.com",
+    "goal": "Search Forbes for the latest startup that raised over $500 million\nOnly use http://forbes.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.forbes.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.forbes.com"
+    ]
+  },
+  {
+    "id": "webbench-2620",
+    "name": "WebBench read #2620",
+    "startUrl": "https://www.nsw.gov.au",
+    "goal": "Find the page that details the eligibility criteria and required documents for renewing a NSW driver’s licence, then summarize the key requirements.\nOnly use https://www.nsw.gov.au/ to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.nsw.gov.au for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.nsw.gov.au"
+    ]
+  },
+  {
+    "id": "webbench-98",
+    "name": "WebBench read #98",
+    "startUrl": "https://www.apartments.com",
+    "goal": "Search for apartments in \"New York\" and list three four star rated apartments\nOnly use http://apartments.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.apartments.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.apartments.com"
+    ]
+  },
+  {
+    "id": "webbench-1607",
+    "name": "WebBench read #1607",
+    "startUrl": "https://open.spotify.com",
+    "goal": "Look up the \"Spotify AI DJ\" feature, read about its functionality, and provide a brief summary of the main steps described.\nOnly use http://spotify.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use open.spotify.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "open.spotify.com"
+    ]
+  },
+  {
+    "id": "webbench-543",
+    "name": "WebBench read #543",
+    "startUrl": "https://www.flipkart.com",
+    "goal": "In the \"Laptops\" section, apply the filter for \"Dell\" and extract the average discount percentage on the first 3 Dell laptops displayed.\nOnly use http://flipkart.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.flipkart.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.flipkart.com"
+    ]
+  },
+  {
+    "id": "webbench-108",
+    "name": "WebBench read #108",
+    "startUrl": "https://www.apple.com",
+    "goal": "Locate the Apple Store locator and find the nearest three Apple stores to New York, New York, Zip Code 10003. For each store, note the address, phone number, and operating hours.\nOnly use http://apple.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.apple.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.apple.com"
+    ]
+  },
+  {
+    "id": "webbench-1570",
+    "name": "WebBench read #1570",
+    "startUrl": "https://www.sportingnews.com/us",
+    "goal": "Go to the NCAA Basketball section and summarize the key takeaways from the most recently published article.\nOnly use http://sportingnews.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.sportingnews.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.sportingnews.com"
+    ]
+  }
+]

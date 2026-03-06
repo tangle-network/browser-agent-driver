@@ -2,7 +2,12 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
+import { execSync } from 'node:child_process';
+import { assertApiKeyForModel, loadLocalEnvFiles } from './lib/env-loader.mjs';
+import { resolveBenchmarkProfile } from './lib/benchmark-profiles.mjs';
+import { formatArtifactCheckFailures, summarizeArtifactChecks, verifyScenarioArtifacts } from './lib/artifact-completeness.mjs';
+import { benchmarkSyncChildEnv, syncBenchmarkOutput } from './lib/abd-benchmark-sync.mjs';
 
 const argv = process.argv.slice(2);
 const getArg = (name, fallback = undefined) => {
@@ -15,16 +20,33 @@ const getArg = (name, fallback = undefined) => {
 const rootDir = path.resolve(path.join(new URL('.', import.meta.url).pathname, '..'));
 const casesPath = path.resolve(getArg('cases', './bench/scenarios/cases/staging-auth-ai-tangle.json'));
 const model = getArg('model', 'gpt-5.2');
+const configPath = getArg('config');
 const storageState = getArg('storage-state');
+const fixtureBaseUrl = getArg('fixture-base-url');
+const concurrency = clampInt(getArg('concurrency', '1'), 1, 32);
 const outRoot = path.resolve(getArg('out', `./agent-results/track-${Date.now()}`));
+const benchmarkProfileId = getArg('benchmark-profile', 'default');
+const benchmarkProfile = resolveBenchmarkProfile(benchmarkProfileId);
 const persona = getArg('persona', 'auto');
 const modelAdaptive = argv.includes('--model-adaptive');
 const navModel = getArg('nav-model');
 const navProvider = getArg('nav-provider');
 const memory = argv.includes('--memory');
 const memoryDir = getArg('memory-dir');
+const memoryRoot = getArg('memory-root');
+const memoryIsolation = getArg('memory-isolation', 'shared');
+const memoryScopeId = getArg('memory-scope-id');
+const promptFile = getArg('prompt-file');
 const traceScoring = argv.includes('--trace-scoring');
 const traceTtlDays = getArg('trace-ttl-days');
+const modes = getArg('modes');
+const allowedMemoryIsolation = new Set(['none', 'shared', 'per-run']);
+
+loadLocalEnvFiles(rootDir);
+assertApiKeyForModel(model);
+if (!allowedMemoryIsolation.has(String(memoryIsolation))) {
+  throw new Error(`Invalid --memory-isolation value "${memoryIsolation}". Expected one of: none, shared, per-run`);
+}
 
 if (!fs.existsSync(casesPath)) {
   console.error(`Cases file not found: ${casesPath}`);
@@ -38,36 +60,65 @@ if (!Array.isArray(cases) || cases.length === 0) {
 }
 
 fs.mkdirSync(outRoot, { recursive: true });
-const results = [];
+const jobs = cases.map((scenario, index) => {
+  const startUrl = typeof scenario.startUrl === 'string'
+    ? scenario.startUrl.replace('__FIXTURE_BASE_URL__', fixtureBaseUrl ?? '__FIXTURE_BASE_URL__')
+    : scenario.startUrl;
+  if (String(startUrl).includes('__FIXTURE_BASE_URL__')) {
+    throw new Error(
+      `Scenario "${scenario.id ?? scenario.name ?? 'unknown'}" contains __FIXTURE_BASE_URL__ but --fixture-base-url was not provided.`,
+    );
+  }
 
-for (const scenario of cases) {
-  const scenarioSlug = String(scenario.id || scenario.name || 'scenario')
+  const scenarioSlug = String(scenario.id || scenario.name || `scenario-${index + 1}`)
     .toLowerCase()
     .replace(/[^a-z0-9_-]+/g, '-');
   const scenarioDir = path.join(outRoot, scenarioSlug);
   fs.mkdirSync(scenarioDir, { recursive: true });
 
+  return {
+    scenario,
+    scenarioSlug,
+    startUrl,
+    scenarioDir,
+    index,
+  };
+});
+
+const results = await runPool(jobs, concurrency, async (job) => {
+  const { scenario, scenarioSlug, startUrl, scenarioDir } = job;
   const args = [
     'scripts/run-mode-baseline.mjs',
     '--goal', scenario.goal,
-    '--url', scenario.startUrl,
+    '--url', startUrl,
     '--model', model,
     '--max-turns', String(scenario.maxTurns ?? 30),
+    '--timeout-ms', String(scenario.timeoutMs ?? 600000),
     '--out', scenarioDir,
+    '--benchmark-profile', benchmarkProfile.id,
     '--persona', persona,
   ];
+  if (configPath) args.push('--config', configPath);
+  if (modes) args.push('--modes', modes);
   if (storageState) args.push('--storage-state', storageState);
+  if (promptFile) args.push('--prompt-file', path.resolve(promptFile));
   if (modelAdaptive) args.push('--model-adaptive');
   if (navModel) args.push('--nav-model', navModel);
   if (navProvider) args.push('--nav-provider', navProvider);
   if (memory) args.push('--memory');
   if (memoryDir) args.push('--memory-dir', memoryDir);
+  if (memoryRoot) args.push('--memory-root', memoryRoot);
+  if (memoryIsolation) args.push('--memory-isolation', memoryIsolation);
+  if (memoryIsolation === 'per-run') {
+    const scopePrefix = memoryScopeId ? `${memoryScopeId}-` : '';
+    args.push('--memory-scope-id', `${scopePrefix}${scenarioSlug}`);
+  }
   if (traceScoring) args.push('--trace-scoring');
   if (traceTtlDays) args.push('--trace-ttl-days', traceTtlDays);
 
-  const proc = spawnSync('node', args, {
+  const exitCode = await spawnAndWait('node', args, {
     cwd: rootDir,
-    env: process.env,
+    env: benchmarkSyncChildEnv(process.env),
     stdio: 'inherit',
   });
 
@@ -77,23 +128,106 @@ for (const scenario of cases) {
     summary = JSON.parse(fs.readFileSync(summaryPath, 'utf-8'));
   }
 
-  results.push({
+  return {
     scenarioId: scenario.id ?? scenarioSlug,
     scenarioName: scenario.name ?? scenario.goal.slice(0, 100),
-    exitCode: proc.status ?? 1,
+    exitCode,
     summaryPath,
     summary,
-  });
+  };
+});
+
+const artifactRows = [];
+for (const result of results) {
+  const checks = Array.isArray(result.summary?.artifactChecks?.rows) && result.summary.artifactChecks.rows.length > 0
+    ? result.summary.artifactChecks.rows
+    : verifyScenarioArtifacts({
+      scenarioId: result.scenarioId,
+      summaryPath: result.summaryPath,
+      runs: result.summary?.runs ?? [],
+    });
+  result.artifactChecks = checks;
+  artifactRows.push(...checks);
 }
+
+const artifactChecks = summarizeArtifactChecks(artifactRows);
+const executionFailures = results
+  .filter((result) => result.exitCode !== 0)
+  .map((result) => `${result.scenarioId} exited with code ${result.exitCode}`);
+const artifactFailures = formatArtifactCheckFailures(artifactRows);
 
 const aggregate = {
   generatedAt: new Date().toISOString(),
+  gitSha: safeGitSha(rootDir),
   casesPath,
   outputDir: outRoot,
+  benchmarkProfile: benchmarkProfile.id,
+  driverProfile: benchmarkProfile.driverProfile,
+  promptFile: promptFile ? path.resolve(promptFile) : null,
+  memory: {
+    enabled: memory,
+    isolation: memoryIsolation,
+    memoryDir: memoryDir ?? null,
+    memoryRoot: memoryRoot ?? null,
+    memoryScopeId: memoryScopeId ?? null,
+  },
   totalScenarios: results.length,
+  artifactChecks,
   results,
 };
 
 const aggregatePath = path.join(outRoot, 'track-summary.json');
-fs.writeFileSync(aggregatePath, JSON.stringify(aggregate, null, 2));
+fs.writeFileSync(aggregatePath, `${JSON.stringify(aggregate, null, 2)}\n`);
 console.log(`\nTrack summary: ${aggregatePath}`);
+
+await syncBenchmarkOutput({
+  rootDir,
+  outPath: outRoot,
+  label: `${path.basename(casesPath)} · scenario track`,
+});
+
+if (executionFailures.length > 0 || artifactFailures.length > 0) {
+  for (const failure of [...executionFailures, ...artifactFailures]) {
+    console.error(`- ${failure}`);
+  }
+  process.exit(1);
+}
+
+function clampInt(value, min, max) {
+  const parsed = Number.parseInt(String(value), 10);
+  if (!Number.isFinite(parsed)) return min;
+  return Math.max(min, Math.min(max, parsed));
+}
+
+function spawnAndWait(command, args, options) {
+  return new Promise((resolve) => {
+    const child = spawn(command, args, options);
+    child.once('error', () => resolve(1));
+    child.once('close', (code) => resolve(code ?? 1));
+  });
+}
+
+async function runPool(items, limit, worker) {
+  const results = new Array(items.length);
+  let cursor = 0;
+
+  async function runner() {
+    while (true) {
+      const index = cursor++;
+      if (index >= items.length) return;
+      results[index] = await worker(items[index], index);
+    }
+  }
+
+  const workerCount = Math.min(limit, Math.max(1, items.length));
+  await Promise.all(Array.from({ length: workerCount }, () => runner()));
+  return results;
+}
+
+function safeGitSha(cwd) {
+  try {
+    return execSync('git rev-parse HEAD', { cwd, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+  } catch {
+    return null;
+  }
+}

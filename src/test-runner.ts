@@ -5,6 +5,9 @@
  * Parallel mode: spawns up to N concurrent workers, each with its own driver.
  */
 
+import { existsSync, readFileSync, unlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { Page } from 'playwright';
 import type {
   TestCase,
@@ -27,6 +30,17 @@ import { AppKnowledge } from './memory/knowledge.js';
 import { generateReport } from './test-report.js';
 
 const DEFAULT_MAX_TURNS = 30;
+
+interface RuntimeObservabilityOutcome {
+  passed: boolean;
+  verdict: string;
+  durationMs: number;
+  turnsUsed: number;
+}
+
+interface RuntimeObservabilityHandle {
+  finalize(outcome?: RuntimeObservabilityOutcome): Promise<void>;
+}
 
 export interface TestRunnerOptions {
   /** Agent configuration (model, API key, vision, etc.) */
@@ -173,6 +187,8 @@ export class TestRunner {
 
     // Run setup hook
     const page = activeDriver.getPage?.();
+    const runtimeObservability = await this.startRuntimeObservability(testCase, page);
+    let runtimeOutcome: RuntimeObservabilityOutcome | undefined;
     if (testCase.setup && page) {
       await testCase.setup(page);
     }
@@ -349,8 +365,19 @@ export class TestRunner {
         turnsUsed: result.turnsUsed,
         tokensUsed: result.tokensUsed,
       });
+      runtimeOutcome = {
+        passed: result.verified,
+        verdict: result.verdict,
+        durationMs: result.durationMs,
+        turnsUsed: result.turnsUsed,
+      };
       return result;
     } finally {
+      await runtimeObservability?.finalize(runtimeOutcome).catch((err) => {
+        if (this.config.debug) {
+          console.log(`[TestRunner] Observability finalize failed for ${testCase.id}: ${err instanceof Error ? err.message : err}`);
+        }
+      });
       if (testCase.teardown && page) {
         await testCase.teardown(page).catch((err) => {
           if (this.config.debug) {
@@ -891,6 +918,199 @@ export class TestRunner {
     if (this.pendingArtifactOps.size === 0) return;
     await Promise.allSettled([...this.pendingArtifactOps]);
   }
+
+  private async startRuntimeObservability(testCase: TestCase, page?: Page): Promise<RuntimeObservabilityHandle | null> {
+    const config = this.config.observability;
+    if (config?.enabled === false || !page || typeof (page as Page & { on?: unknown }).on !== 'function') {
+      return null;
+    }
+
+    const captureConsole = config?.captureConsole !== false;
+    const captureNetwork = config?.captureNetwork !== false;
+    const tracePolicy = config?.tracePolicy ?? 'on-failure';
+    const maxConsoleEntries = config?.maxConsoleEntries ?? 200;
+    const maxNetworkEntries = config?.maxNetworkEntries ?? 200;
+    const observabilityStartedAt = new Date().toISOString();
+
+    const consoleEntries: Array<Record<string, string>> = [];
+    const pageErrors: Array<Record<string, string>> = [];
+    const requestFailures: Array<Record<string, string>> = [];
+    const responseErrors: Array<Record<string, string>> = [];
+
+    const pushLimited = (target: Array<Record<string, string>>, entry: Record<string, string>, limit: number) => {
+      if (target.length >= limit) return;
+      target.push(entry);
+    };
+
+    const onConsole = (msg: { type(): string; text(): string; location(): { url?: string; lineNumber?: number; columnNumber?: number } }) => {
+      const level = msg.type();
+      if (!['warning', 'error', 'assert'].includes(level)) return;
+      const location = msg.location();
+      pushLimited(consoleEntries, {
+        level,
+        text: msg.text(),
+        url: location.url || '',
+        line: String(location.lineNumber ?? ''),
+        column: String(location.columnNumber ?? ''),
+      }, maxConsoleEntries);
+    };
+
+    const onPageError = (err: Error) => {
+      pushLimited(pageErrors, {
+        message: err.message,
+        stack: err.stack || '',
+      }, maxConsoleEntries);
+    };
+
+    const onRequestFailed = (request: {
+      url(): string;
+      method(): string;
+      resourceType(): string;
+      failure(): { errorText?: string } | null;
+    }) => {
+      pushLimited(requestFailures, {
+        url: request.url(),
+        method: request.method(),
+        resourceType: request.resourceType(),
+        errorText: request.failure()?.errorText || '',
+      }, maxNetworkEntries);
+    };
+
+    const onResponse = (response: {
+      url(): string;
+      status(): number;
+      statusText(): string;
+      request(): { method(): string; resourceType(): string };
+    }) => {
+      const status = response.status();
+      if (status < 400) return;
+      const request = response.request();
+      pushLimited(responseErrors, {
+        url: response.url(),
+        status: String(status),
+        statusText: response.statusText(),
+        method: request.method(),
+        resourceType: request.resourceType(),
+      }, maxNetworkEntries);
+    };
+
+    if (captureConsole) {
+      page.on('console', onConsole);
+      page.on('pageerror', onPageError);
+    }
+    if (captureNetwork) {
+      page.on('requestfailed', onRequestFailed);
+      page.on('response', onResponse);
+    }
+
+    const context = page.context?.();
+    let traceStarted = false;
+    if (tracePolicy !== 'off' && context?.tracing?.start) {
+      try {
+        await context.tracing.start({ screenshots: true, snapshots: true });
+        traceStarted = true;
+      } catch {
+        traceStarted = false;
+      }
+    }
+
+    return {
+      finalize: async (outcome?: RuntimeObservabilityOutcome) => {
+        if (captureConsole) {
+          if (typeof (page as Page & { off?: unknown }).off === 'function') {
+            page.off('console', onConsole);
+            page.off('pageerror', onPageError);
+          }
+        }
+        if (captureNetwork) {
+          if (typeof (page as Page & { off?: unknown }).off === 'function') {
+            page.off('requestfailed', onRequestFailed);
+            page.off('response', onResponse);
+          }
+        }
+
+        let traceCaptured = false;
+        let traceArtifactUri = '';
+        let traceError = '';
+
+        if (traceStarted && context?.tracing?.stop) {
+          const shouldPersistTrace =
+            tracePolicy === 'always' || (tracePolicy === 'on-failure' && outcome?.passed === false) || outcome === undefined;
+          try {
+            if (shouldPersistTrace) {
+              const tracePath = join(tmpdir(), `abd-trace-${Date.now()}-${sanitizeArtifactId(testCase.id)}.zip`);
+              await context.tracing.stop({ path: tracePath });
+              if (this.artifactSink && existsSync(tracePath)) {
+                const data = readFileSync(tracePath);
+                if (data.length > 0) {
+                  traceCaptured = true;
+                  traceArtifactUri = await this.artifactSink.put({
+                    type: 'trace',
+                    testId: testCase.id,
+                    name: 'trace.zip',
+                    data,
+                    contentType: 'application/zip',
+                    metadata: {
+                      policy: tracePolicy,
+                      passed: String(outcome?.passed ?? false),
+                    },
+                  });
+                  this.onProgress?.({ type: 'test:artifact', testId: testCase.id, artifactType: 'trace', uri: traceArtifactUri });
+                }
+                unlinkSync(tracePath);
+              }
+            } else {
+              await context.tracing.stop();
+            }
+          } catch (err) {
+            traceError = err instanceof Error ? err.message : String(err);
+          }
+        }
+
+        if (!this.artifactSink) return;
+        const runtimeLog = {
+          startedAt: observabilityStartedAt,
+          finishedAt: new Date().toISOString(),
+          tracePolicy,
+          traceCaptured,
+          traceArtifactUri,
+          traceError,
+          outcome: outcome
+            ? {
+                passed: outcome.passed,
+                verdict: outcome.verdict,
+                durationMs: outcome.durationMs,
+                turnsUsed: outcome.turnsUsed,
+              }
+            : null,
+          console: consoleEntries,
+          pageErrors,
+          requestFailures,
+          responseErrors,
+        };
+
+        const uri = await this.artifactSink.put({
+          type: 'runtime-log',
+          testId: testCase.id,
+          name: 'runtime-log.json',
+          data: Buffer.from(JSON.stringify(runtimeLog, null, 2), 'utf-8'),
+          contentType: 'application/json',
+          metadata: {
+            consoleEntries: String(consoleEntries.length),
+            pageErrors: String(pageErrors.length),
+            requestFailures: String(requestFailures.length),
+            responseErrors: String(responseErrors.length),
+            traceCaptured: String(traceCaptured),
+          },
+        });
+        this.onProgress?.({ type: 'test:artifact', testId: testCase.id, artifactType: 'runtime-log', uri });
+      },
+    };
+  }
+}
+
+function sanitizeArtifactId(value: string): string {
+  return String(value || 'test').replace(/[^a-zA-Z0-9_-]+/g, '-').slice(0, 64) || 'test';
 }
 
 function avg(nums: number[]): number {

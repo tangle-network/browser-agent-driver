@@ -1,0 +1,54 @@
+[
+  {
+    "id": "webbench-2204",
+    "name": "WebBench read #2204 (reachable max20)",
+    "startUrl": "https://www.yale.edu",
+    "goal": "Navigate to the \"About Yale\" section and summarize Yale University's mission statement in your own words.\nOnly use http://yale.edu to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.yale.edu for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.yale.edu"
+    ],
+    "timeoutMs": 120000
+  },
+  {
+    "id": "webbench-2605",
+    "name": "WebBench read #2605 (reachable max20)",
+    "startUrl": "https://www.nih.gov",
+    "goal": "Use the site’s search feature to find information on \"Alzheimer's disease\" and extract the title and publication date of the first related press release.\nOnly use https://www.nih.gov/ to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.nih.gov for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.nih.gov"
+    ],
+    "timeoutMs": 120000
+  },
+  {
+    "id": "webbench-32",
+    "name": "WebBench read #32 (reachable max20)",
+    "startUrl": "https://www.alberta.ca",
+    "goal": "Visit the Open Government portal on Alberta.ca and list the different categories of public datasets available for download.\nOnly use http://alberta.ca to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.alberta.ca for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.alberta.ca"
+    ],
+    "timeoutMs": 120000
+  },
+  {
+    "id": "webbench-425",
+    "name": "WebBench read #425 (reachable max20)",
+    "startUrl": "https://www.encyclopedia.com",
+    "goal": "Search for \"Artificial Intelligence\" and list any related news or magazine articles or media referenced on the entry.\nOnly use http://encyclopedia.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.encyclopedia.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.encyclopedia.com"
+    ],
+    "timeoutMs": 120000
+  }
+]

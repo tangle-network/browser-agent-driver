@@ -5,6 +5,7 @@ describe('buildBrowserLaunchPlan', () => {
   it('uses standard launch defaults when wallet mode is disabled', () => {
     const plan = buildBrowserLaunchPlan({}, { cwd: '/repo', platform: 'darwin' });
 
+    expect(plan.profile).toBe('default');
     expect(plan.walletMode).toBe(false);
     expect(plan.headless).toBe(true);
     expect(plan.concurrency).toBe(1);
@@ -122,5 +123,20 @@ describe('buildBrowserLaunchPlan', () => {
     expect(plan.warnings).toContain(
       'WAYLAND_DISPLAY is set but XDG_RUNTIME_DIR is not. If Chromium cannot connect to Wayland, set XDG_RUNTIME_DIR for your session.',
     );
+  });
+
+  it('applies stealth profile launch args without duplicating existing values', () => {
+    const plan = buildBrowserLaunchPlan({
+      profile: 'stealth',
+      browserArgs: ['--disable-infobars'],
+    }, { cwd: '/repo', platform: 'darwin' });
+
+    expect(plan.profile).toBe('stealth');
+    expect(plan.browserArgs).toEqual([
+      '--disable-infobars',
+      '--disable-blink-features=AutomationControlled',
+      '--no-first-run',
+      '--no-default-browser-check',
+    ]);
   });
 });
