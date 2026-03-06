@@ -2,176 +2,221 @@
 
 Canonical operating roadmap for `agent-browser-driver`.
 
-This is the single source of truth for:
+This is the single planning document for:
 - mission
+- success criteria
 - benchmark policy
-- promotion rules
+- promotion gates
 - failure taxonomy
 - execution order
-- immediate next actions
+- immediate priorities
 
-Use this document for planning and prioritization.
 Use [RELIABILITY.md](/Users/drew/webb/agent-browser-driver/RELIABILITY.md) for the day-to-day run loop.
 Use [competitor-analysis-2026-03.md](/Users/drew/webb/agent-browser-driver/docs/research/competitor-analysis-2026-03.md) for external reference points.
 
 ## Mission
 
-Build a general-purpose browser agent that:
-- completes real user tasks reliably
-- improves with evidence, not anecdotes
-- stays simple enough to operate and evolve quickly
+Build a general-purpose browser agent that completes real tasks reliably, produces complete artifacts, and improves through controlled measurement instead of anecdotal prompt tuning.
 
 Primary outcomes:
 - higher pass rate
 - lower median duration
+- lower median turns
 - lower token cost
 - complete artifacts on every run
 
 Non-goals:
 - optimizing for one demo app at the expense of generality
 - shipping features without measurable reliability impact
+- widening benchmark scope before the current slice is stable
 - mixing product work and research work in the same experiment
 
-## North Star
+## Success Definition
 
-The system should behave like an eval-driven control loop:
-1. measure a stable baseline
-2. classify failures
+The system is healthy only when all are true:
+- Tier 1 remains at 100%
+- Tier 2 trends to 100% through bug closure, not benchmark filtering
+- Tier 3 is used to measure generalization, not excuse regressions
+- every serious run emits report, manifest, and recording
+- promotion decisions are backed by repeated seeded runs
+
+The program is succeeding when we can repeatedly do this loop:
+1. measure a clean baseline
+2. classify failures correctly
 3. fix one high-leverage failure class
 4. rerun the same slice
-5. promote only when improvement is real
+5. promote only when the delta holds
 
-This is RL-style discipline in practice, without pretending we have a full RL stack.
+This is an eval-driven control system. Treat it like one.
 
-## Tiers
+## Principles
 
-### Tier 1
-- deterministic local fixtures
+1. Fix execution bugs before policy tuning.
+2. Fix verifier bugs before prompt tuning.
+3. Treat zero-turn and startup failures as infrastructure until proven otherwise.
+4. Change one variable at a time.
+5. Prefer deterministic fixes over prompt inflation.
+6. Keep product-specific hints optional.
+7. Keep wallet and crypto behavior isolated behind explicit flags.
+8. Do not call a result real unless the artifacts and config are preserved.
+
+## Benchmark Tiers
+
+### Tier 1: Deterministic Fixtures
+- local, controlled, repeatable
 - must stay at 100%
+- blocks merges
 
-### Tier 2
-- authenticated staging core flows
-- target 100%
+### Tier 2: Authenticated Core Flows
+- staging or owned environments with credentials
+- target is 100%
+- used to validate real product flows
 
-### Tier 3
-- public web tasks
-- used for capability tracking and generalization
-- not allowed to justify regressions in Tier 1 or Tier 2
-
-## Current Direction
-
-Current strategy is correct:
-- fix execution bugs first
-- fix verifier bugs second
-- tune policy only after the measurement loop is trustworthy
-
-Recent high-value wins followed that order:
-- popup/new-tab adoption in the driver
-- first-party sibling-subdomain verification policy
-- script-backed extraction acceptance
-- benchmark env/config integrity fixes
-
-This is the pattern to continue.
+### Tier 3: Public Web
+- open-web capability and generalization
+- expected to be noisy
+- cannot justify regressions in Tier 1 or Tier 2
 
 ## Benchmark Policy
 
-### Canonical experiment structure
-- fixed scenario slice
-- fixed seed
-- fixed model
-- fixed timeout budget
-- one intervention at a time
+Promotion-grade experiments must keep these fixed:
+- scenario slice
+- seed
+- model
+- timeout budget
+- browser mode
+- memory policy
+- artifact policy
 
-### Required tracked metrics
+Required metrics:
 - pass rate
 - median duration
-- turns used
-- tokens used
+- median turns
+- token usage
 - artifact completeness
+- failure-class distribution
 
-### Promotion rule
+Parallelism policy:
+- parallelize inside one experiment first
+- do not run multiple unrelated promotion-grade experiments in parallel
+- use outer-loop parallelism only for coarse screening, never for final decisions
+
+Memory policy:
+- isolate memory per run during benchmark experiments unless memory is the intervention being tested
+- never compare contaminated and uncontaminated arms
+
+## Promotion Gate
+
 Promote only when all are true:
 - no Tier 1 regression
 - no Tier 2 regression
-- positive or neutral pass-rate delta on the target slice
-- artifact completeness remains intact
-- latency/token improvement is meaningful if pass rate is flat
+- target-slice pass rate is positive or neutral
+- artifacts remain complete
+- failure mix does not shift toward a worse structural class
+- if pass rate is flat, duration or token cost improvement is meaningful
 
-### Parallelism rule
-- parallelize inside one experiment first
-- do not run multiple unrelated promotion-grade experiments in parallel
-- use outer-loop parallel runs only for coarse screening, never for final decisions
+Reject or roll back when any are true:
+- Tier 1 drops
+- Tier 2 drops without an explicit temporary exception
+- artifact completeness degrades
+- the apparent gain depends on one-off wins or unseeded runs
+- the change mixes multiple interventions and cannot be attributed cleanly
 
 ## Failure Taxonomy
 
-Every loss should land in one of these buckets:
+Every failure must land in one bucket before work is prioritized.
 
-### 1. Execution bug
-The browser/driver does the wrong thing.
+### 1. Execution Bug
+The browser or driver does the wrong thing.
+
 Examples:
-- popup/new-tab not adopted
+- popup or new-tab not adopted
 - stale selector handling broken
-- dead clicks
-- storage/auth not applied
+- dead click or type path
+- auth state not applied
+- incorrect browser storage/session setup
 
 Action:
-- fix in driver/runtime
+- fix the runtime or driver
 
-### 2. Verifier bug
+### 2. Verifier Bug
 The agent did the work, but completion was rejected incorrectly.
+
 Examples:
-- first-party subdomain mismatch
-- script-extracted evidence not accepted
+- first-party sibling-subdomain mismatch
+- script-extracted evidence ignored
 - a11y-only visibility bias
+- correct answer rejected because the checker was too narrow
 
 Action:
 - make verification policy deterministic
 
-### 3. Policy/path inefficiency
-The agent wastes turns but is technically capable.
+### 3. Policy or Path Inefficiency
+The agent is capable, but wastes turns.
+
 Examples:
 - repeated search reformulations
 - excessive backtracking
 - late completion after enough evidence exists
 - repeated verifier bounce-back loops
+- unnecessary navigation after landing on the right page
 
 Action:
-- improve heuristics / system prompt / recovery rules
+- add heuristics, recovery rules, or prompt changes only after structural causes are ruled out
 
-### 4. Runtime variance / environment instability
+### 4. Runtime Variance or Environment Instability
 The system is correct but unstable under budget.
+
 Examples:
 - intermittent first-turn timeout
 - provider latency spikes
-- anti-bot fluctuations
+- anti-bot variance
 - noisy public-site dependencies
+- rate-limit or quota instability
 
 Action:
-- isolate, instrument, and adjust budgets or retry policy
+- instrument, isolate, and adjust budget or retry policy
 
-### 5. External blocker
-The task is blocked by something the agent should not brute-force through.
+### 5. External Blocker
+The task should stop early rather than brute-force through a dead end.
+
 Examples:
 - captcha
 - hard auth wall without credentials
 - network unreachable
-- domain constraints incompatible with the real site structure
+- domain constraints incompatible with the live site
 
 Action:
 - classify and stop early
 
-## Operating Rules
+## Required Instrumentation
 
-1. Do not treat infrastructure failures as agent failures.
-2. Do not treat verifier failures as policy failures.
-3. Do not run broad new benchmarks before the current slice is stable.
-4. Do not promote from one-off wins.
-5. Do not mix multiple interventions in one cycle.
-6. Prefer deterministic fixes over prompt inflation.
-7. Keep wallet/crypto behavior strictly optional and isolated.
-8. Keep product-specific hints optional; the agent must remain general-purpose.
+Every promotion-grade run must expose:
+- first `navigate` timing
+- first `observe` timing
+- first `decide` timing
+- first `execute` timing
+- total turns
+- repeated-query count
+- verifier rejection count
+- turns after first sufficient evidence
+- final failure class
+- report, manifest, and recording paths
 
-## Execution Order
+Without this, optimization work is guesswork.
+
+## Definition Of Done For A Reliability Change
+
+A change is not done when code compiles. It is done when all are true:
+- the failure class is explicitly identified
+- the fix is scoped to that class
+- tests cover the regression where practical
+- the same seeded slice is rerun
+- results are attributable to the one change
+- artifacts are preserved
+- the promotion gate is passed or the change remains flagged
+
+## Execution Phases
 
 ### Phase 1: Measurement Integrity
 Goal:
@@ -181,22 +226,24 @@ Checklist:
 - stable seeded slice
 - explicit per-run config capture
 - artifact completeness checks
-- reproducible memory isolation during experiments
+- reproducible memory isolation
 - clear failure taxonomy output
+- first-turn phase timing in reports
 
 Exit criteria:
 - repeated runs are comparable enough to support promotion decisions
 
 ### Phase 2: Structural Reliability
 Goal:
-- remove platform and verifier defects
+- remove runtime and verifier defects that create false failures
 
 Checklist:
-- popup/new-tab handling
-- auth/storage-state correctness
+- popup and new-tab handling
+- auth and storage-state correctness
 - first-party host policy
 - script-backed extraction policy
 - terminal blocker fast-fail rules
+- startup and zero-turn failure classification
 
 Exit criteria:
 - obvious false negatives and execution traps are gone
@@ -209,21 +256,23 @@ Checklist:
 - search-result page heuristics
 - sufficient-evidence early completion
 - bounded recovery for reformulation loops
-- earlier extraction on catalog/search/filter pages
+- earlier extraction on search, catalog, and filter pages
 - fewer redundant navigations after landing on good pages
+- waste accounting in every report
 
 Exit criteria:
-- median turns and duration drop on the same slice
+- median turns and duration drop on the same slice without pass-rate loss
 
 ### Phase 4: Controlled Policy Experiments
 Goal:
 - compare strategies scientifically
 
 Checklist:
-- baseline
+- one baseline
 - one challenger
-- fixed seed/cases/budget
+- fixed seed, cases, and budget
 - CI-aware comparison
+- rollback path defined before promotion
 
 Possible challengers:
 - supervisor variants
@@ -232,22 +281,22 @@ Possible challengers:
 - memory variants
 
 Exit criteria:
-- winner beats baseline with enough evidence to promote
+- the winner beats baseline with enough evidence to promote
 
 ### Phase 5: Productization
 Goal:
-- make the winning path usable in the app
+- make the winning path usable end to end
 
 Checklist:
-- app -> worker -> orchestrator -> sandbox path
-- auth files end-to-end
+- app to worker to orchestrator to sandbox execution path
+- auth files end to end
 - artifact upload path
 - live run visibility
 - clean run reports and video playback
 - CI setup path for users
 
 Exit criteria:
-- one real authenticated dogfood flow works end to end
+- one real authenticated dogfood flow works end to end with artifacts
 
 ### Phase 6: Benchmark Expansion
 Goal:
@@ -257,47 +306,85 @@ Checklist:
 - add WebVoyager
 - expand WebBench slices
 - add owned staging flows
-- add optional wallet/crypto suites
+- add optional wallet and crypto suites behind flags
 
 Exit criteria:
 - breadth increases without losing comparability discipline
 
-## Required Instrumentation
+## Operating Cadence
 
-Every serious run should expose:
-- first `navigate` timing
-- first `observe` timing
-- first `decide` timing
-- first `execute` timing
-- total turns
-- repeated-query count
-- verifier rejection count
-- turns after first sufficient evidence
+### Per Change
+1. classify the failure
+2. define the narrowest fix
+3. add or update tests
+4. rerun the same seeded slice
+5. compare against control
+6. promote, flag, or revert
 
-Without this, we will keep guessing at what is slow.
+### Daily
+1. run Tier 1 and Tier 2 control baselines
+2. aggregate failures by class
+3. fix the highest-frequency structural issue first
+4. rerun baseline
 
-## Immediate Priorities
+### Weekly
+1. review pass rate, duration, turns, and cost trends
+2. review top failure classes
+3. decide the next single intervention
+4. retire dead-end experiments
 
-### P0
+## Current Program
+
+### Current Assessment
+The direction is correct:
+- execution bugs were being misread as agent weakness
+- verifier bugs were being misread as policy weakness
+- benchmark integrity needed hardening before meaningful supervisor or prompt work
+
+Recent wins that fit this model:
+- popup and new-tab adoption
+- first-party sibling-subdomain verification policy
+- script-backed extraction acceptance
+- `.env` and benchmark config integrity fixes
+
+### Immediate Priorities
+
+P0:
 - add first-turn phase timing to reports
 - add waste accounting to reports
 - rerun the current `reach3` slice repeatedly
 
-### P1
+P1:
 - eliminate the highest-frequency wasted-turn pattern
 - stabilize NIH-class search tasks at the target budget
+- classify remaining zero-turn failures as startup, provider, or runner defects
 
-### P2
-- only then resume supervisor and policy challenger experiments
+P2:
+- resume supervisor and policy challenger experiments only after the slice is stable
+- wire the winning execution path cleanly into the app stack
 
-## Current Recommendation
+## Do And Do Not
 
-Do this next, in order:
-1. instrument
-2. repeat the same slice
-3. fix the top waste class
-4. rerun
-5. promote only if the delta holds
+Do:
+- keep the current slice small until it is trustworthy
+- bias toward deterministic fixes
+- preserve artifacts for every serious run
+- use repeated seeded experiments for decisions
 
-That is the fastest path to a better browser agent.
+Do not:
+- widen scope because one case passed once
+- run many promotion-grade experiments in parallel
+- mix product features with benchmark research in one change
+- use open-web noise to excuse Tier 1 or Tier 2 regressions
+- promote on narrative instead of evidence
 
+## Short-Term Execution Plan
+
+This is the next sequence to execute:
+1. implement phase timing and waste accounting
+2. rerun the same `reach3` slice for repeated baselines
+3. identify the top remaining failure class
+4. ship the smallest fix that addresses that class
+5. rerun and decide promotion from evidence only
+
+That is the fastest path to a meaningfully better browser agent.
