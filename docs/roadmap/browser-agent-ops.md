@@ -397,7 +397,7 @@ This is the canonical finish-line tracker. Work is done only when every item her
 | Artifact completeness | Verified baseline | Every serious run emits report, manifest, and recording | artifact completeness checks in baseline/gate summaries |
 | Cost and turn efficiency | In progress | Median turns, duration, and token cost are non-regressive on the promoted slice | repeated baseline summaries |
 | Vision challenger | In progress | Vision-based policy must beat or match the baseline on repeated seeded runs before promotion | challenger-only repeated runs; not baseline |
-| Product path readiness | Pending | Winning execution path is wired cleanly into app -> worker -> orchestrator -> artifacts | end-to-end dogfood run with video/report |
+| Product path readiness | Verified baseline | Winning execution path is wired cleanly into app -> worker -> orchestrator -> artifacts | verified local dogfood in `abd-app`: `npm --prefix worker run e2e:real-ui` |
 
 ### Current Scoreboard
 
@@ -412,6 +412,10 @@ Current honest status:
 - NIH token burn has been reduced on focused post-fix repeats, though broader Tier 3 efficiency work remains open
 - Tier 2 repeated authenticated control is now green across three valid repetitions
 - the Tier 2 Coinbase template-verification fast-explore regression has been corrected on post-fix repeats; it no longer needs to launch runs or over-prove actionability to satisfy the goal
+- local product-path readiness is now verified in `abd-app` with real app -> worker -> orchestrator -> artifact evidence
+- `openai/gpt-5.4` remains the promoted default runtime on the guarded public-web slice
+- `codex-cli/gpt-5.4` is currently an optional cost path only; on the same guarded `reach3` slice it was slower on Yale and Alberta and timed out on NIH
+- `scout` remains challenger-only; the architecture is right, but the current policy has not earned promotion
 
 Current best evidence:
 - Tier 1 deterministic summary: `./agent-results/tier1-green-1772794410/tier1-gate-summary.json`
@@ -423,6 +427,9 @@ Current best evidence:
 - Tier 2 repeated authenticated markdown: `./agent-results/tier2-repeat-green-1772792440/tier2-repeat-summary.md`
 - Tier 2 post-fix template verification summary: `./agent-results/tier2-repeat-post-template-fix-1772794740/tier2-repeat-summary.json`
 - NIH post-fix focused summary: `./agent-results/nih-token-fix-repeat-1772795250/tier3-gate-summary.json`
+- local product-path evidence lives in `abd-app`: `/tmp/abd-real-ui-e2e-gate-1772826110/`
+- provider screen, OpenAI control: `./agent-results/provider-openai-gpt54-reach3-1772840341/track-summary.json`
+- provider screen, Codex challenger: `./agent-results/provider-codex-gpt54-reach3-1772840486/track-summary.json`
 - Tier 2 validated repetition summaries:
   - `./agent-results/tier2-repeat-green-1772792440/rep-1/tier2-gate-summary.json`
   - `./agent-results/tier2-repeat-green-1772792440/rep-2/tier2-gate-summary.json`
@@ -431,6 +438,9 @@ Current best evidence:
   - Yale (`webbench-2204`): `5/5`, median `28.9s`, median `5` turns, median `27.2k` tokens
   - NIH (`webbench-2605`): `5/5`, median `77.9s`, median `12` turns, median `185.8k` tokens
   - Alberta (`webbench-32`): `5/5`, median `50.2s`, median `7` turns, median `56.3k` tokens
+- latest provider screen on the guarded `reach3` slice:
+  - OpenAI `gpt-5.4`: Yale pass `19.1s` / `4` turns / `18.6k`; NIH pass `53.8s` / `11` turns / `133.9k`; Alberta pass `47.2s` / `8` turns / `74.0k`
+  - Codex CLI `gpt-5.4`: Yale pass `45.5s` / `4` turns / `51.4k`; NIH fail `120.0s` / `9` turns / `178.5k`; Alberta pass `93.4s` / `7` turns / `113.4k`
 
 Exit rule:
 - do not call the browser agent production-ready until Tier 1 is green, Tier 2 is green, and repeated Tier 3 control runs are stable enough to support promotion decisions
@@ -439,8 +449,9 @@ Exit rule:
 
 P0:
 - keep the guarded non-vision path as baseline until a challenger beats it cleanly
+- keep `openai/gpt-5.4` as the promoted default runtime; do not switch the baseline to `codex-cli` unless it wins on the fixed slice
 - verify the Tier 2 template-verification cost fix continues to hold in CI/nightly, then allow `fast-explore` to remain first-class on authenticated flows
-- close product path readiness with one clean end-to-end app -> worker -> orchestrator -> artifact dogfood run
+- keep product-path readiness green in `abd-app` CI and hosted gates
 
 P1:
 - continue reducing Tier 3 cost variance, especially NIH, on the promoted slice
@@ -448,11 +459,12 @@ P1:
 - raise Tier 2 authenticated coverage with the same artifact standards
 - reduce `fast-explore` cost and turn variance on authenticated template verification before considering it a Tier 2 default
 - keep Tier 2 repeated gate and Tier 3 public gate healthy in CI
+- improve the guarded search/content path before promoting any new subagent policy
 
 P2:
 - resume supervisor and policy challenger experiments only after the slice is stable
 - keep vision as a challenger until it shows repeated non-regressive gains
-- wire the winning execution path cleanly into the app stack
+- continue `scout` only as a challenger until it beats the guarded baseline on repeated seeded runs
 
 Candidate experiments to queue after the current slice is stable:
 - bounded branch exploration at high-ambiguity points only
