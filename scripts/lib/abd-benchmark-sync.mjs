@@ -37,7 +37,11 @@ export async function syncBenchmarkOutput({ rootDir, outPath, label, userEmail }
   });
 
   if (exitCode !== 0) {
-    throw new Error(`abd-app benchmark import failed for ${resolvedOutPath}`);
+    if (process.env.ABD_BENCHMARK_SYNC_STRICT === '1') {
+      throw new Error(`abd-app benchmark import failed for ${resolvedOutPath}`);
+    }
+    console.warn(`abd-app benchmark import skipped after non-zero exit for ${resolvedOutPath}`);
+    return { skipped: true, reason: 'importer-failed' };
   }
 
   return { skipped: false, reason: 'imported' };

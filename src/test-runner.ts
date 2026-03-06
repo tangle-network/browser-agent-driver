@@ -282,6 +282,13 @@ export class TestRunner {
               reason: `Test timed out after ${timeoutMs}ms`,
               turns: [],
               totalMs: timeoutMs,
+              phaseTimings: {},
+              wasteMetrics: {
+                repeatedQueryCount: 0,
+                verificationRejectionCount: 0,
+                turnsAfterSufficientEvidence: 0,
+                errorTurns: 0,
+              },
             });
           }, timeoutMs);
         });
@@ -326,6 +333,8 @@ export class TestRunner {
         turnsUsed: agentResult.turns.length,
         tokensUsed,
         durationMs: endedAt.getTime() - startedAt.getTime(),
+        phaseTimings: agentResult.phaseTimings,
+        wasteMetrics: agentResult.wasteMetrics,
         startedAt,
         endedAt,
         screenshots: screenshots.length > 0 ? screenshots : undefined,
@@ -814,6 +823,13 @@ export class TestRunner {
       turnsUsed: 0,
       tokensUsed: 0,
       durationMs: 0,
+      phaseTimings: {},
+      wasteMetrics: {
+        repeatedQueryCount: 0,
+        verificationRejectionCount: 0,
+        turnsAfterSufficientEvidence: 0,
+        errorTurns: 0,
+      },
       startedAt: now,
       endedAt: now,
       skipped: true,

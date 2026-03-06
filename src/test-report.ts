@@ -77,6 +77,25 @@ function generateMarkdownReport(suite: TestSuiteResult, options: ReportOptions):
       lines.push(`- **Agent reported:** ${r.agentSuccess ? 'success' : 'failure'}`);
       lines.push(`- **Verdict:** ${esc(r.verdict)}`);
       lines.push(`- **Turns:** ${r.turnsUsed}/${r.testCase.maxTurns ?? 30}`);
+      if (r.phaseTimings) {
+        const phaseSummary = [
+          fmtPhase('navigate', r.phaseTimings.initialNavigateMs),
+          fmtPhase('observe', r.phaseTimings.firstObserveMs),
+          fmtPhase('decide', r.phaseTimings.firstDecideMs),
+          fmtPhase('execute', r.phaseTimings.firstExecuteMs),
+        ].filter(Boolean).join(', ');
+        if (phaseSummary) {
+          lines.push(`- **Phase timings:** ${phaseSummary}`);
+        }
+      }
+      if (r.wasteMetrics) {
+        lines.push(
+          `- **Waste:** repeated queries ${r.wasteMetrics.repeatedQueryCount}, ` +
+          `verification rejections ${r.wasteMetrics.verificationRejectionCount}, ` +
+          `turns after evidence ${r.wasteMetrics.turnsAfterSufficientEvidence}, ` +
+          `error turns ${r.wasteMetrics.errorTurns}`,
+        );
+      }
 
       if (r.criteriaResults?.length) {
         lines.push('- **Criteria:**');
@@ -233,4 +252,9 @@ export function compareReports(before: TestSuiteResult, after: TestSuiteResult):
 /** Escape pipe and newline for markdown table cells */
 function esc(s: string): string {
   return s.replace(/\|/g, '\\|').replace(/\n/g, ' ');
+}
+
+function fmtPhase(label: string, value?: number): string {
+  if (value === undefined) return '';
+  return `${label} ${(value / 1000).toFixed(1)}s`;
 }

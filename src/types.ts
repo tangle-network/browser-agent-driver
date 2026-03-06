@@ -275,6 +275,10 @@ export interface AgentResult {
   reason?: string;
   turns: Turn[];
   totalMs: number;
+  /** Phase timing instrumentation for the run */
+  phaseTimings?: RunPhaseTimings;
+  /** Wasted-turn instrumentation for the run */
+  wasteMetrics?: RunWasteMetrics;
   /** Quality evaluation (if qualityThreshold is set or agent used "evaluate" action) */
   evaluation?: {
     score: number;
@@ -378,6 +382,10 @@ export interface TestResult {
   tokensUsed: number;
   /** Duration in ms */
   durationMs: number;
+  /** Phase timing instrumentation copied from agentResult for report consumers */
+  phaseTimings?: RunPhaseTimings;
+  /** Wasted-turn instrumentation copied from agentResult for report consumers */
+  wasteMetrics?: RunWasteMetrics;
   startedAt: Date;
   endedAt: Date;
   /** Screenshots captured during execution */
@@ -408,6 +416,20 @@ export interface TestSuiteResult {
     p95DurationMs: number;
     totalDurationMs: number;
   };
+}
+
+export interface RunPhaseTimings {
+  initialNavigateMs?: number;
+  firstObserveMs?: number;
+  firstDecideMs?: number;
+  firstExecuteMs?: number;
+}
+
+export interface RunWasteMetrics {
+  repeatedQueryCount: number;
+  verificationRejectionCount: number;
+  turnsAfterSufficientEvidence: number;
+  errorTurns: number;
 }
 
 // ============================================================================

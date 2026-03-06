@@ -29,6 +29,13 @@ function makeSuccessResult(): AgentResult {
     result: 'ok',
     turns: [],
     totalMs: 5,
+    phaseTimings: { initialNavigateMs: 10, firstObserveMs: 20 },
+    wasteMetrics: {
+      repeatedQueryCount: 1,
+      verificationRejectionCount: 0,
+      turnsAfterSufficientEvidence: 0,
+      errorTurns: 0,
+    },
   };
 }
 
@@ -69,6 +76,13 @@ describe('TestRunner hardening', () => {
     expect(result.agentSuccess).toBe(false);
     expect(result.agentResult.reason).toBe('Test timed out after 25ms');
     expect(result.verdict).toContain('25ms');
+    expect(result.phaseTimings).toEqual({});
+    expect(result.wasteMetrics).toEqual({
+      repeatedQueryCount: 0,
+      verificationRejectionCount: 0,
+      turnsAfterSufficientEvidence: 0,
+      errorTurns: 0,
+    });
   });
 
   it('preserves per-case timeout precedence over config timeout', async () => {
@@ -126,5 +140,22 @@ describe('TestRunner hardening', () => {
 
     expect(suite.summary.total).toBe(1);
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('copies phase timing and waste metrics onto the test result', async () => {
+    const runner = new TestRunner({
+      driver: makeDriver(),
+      config: { model: 'gpt-4o' },
+    });
+
+    const result = await runner.runTest(makeCase({ id: 'instrumented' }));
+
+    expect(result.phaseTimings).toEqual({ initialNavigateMs: 10, firstObserveMs: 20 });
+    expect(result.wasteMetrics).toEqual({
+      repeatedQueryCount: 1,
+      verificationRejectionCount: 0,
+      turnsAfterSufficientEvidence: 0,
+      errorTurns: 0,
+    });
   });
 });

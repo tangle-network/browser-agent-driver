@@ -22,6 +22,7 @@ import { SelectorCache } from './memory/selectors.js';
 import { detectSupervisorSignal, formatSupervisorSignal } from './supervisor/policy.js';
 import { requestSupervisorDirective } from './supervisor/critic.js';
 import { shouldAcceptFirstPartyBoundaryCompletion } from './domain-policy.js';
+import { deriveWasteMetrics } from './run-metrics.js';
 
 const DEFAULT_MAX_TURNS = 20;
 const DEFAULT_RETRIES = 3;
@@ -112,6 +113,15 @@ export class AgentRunner {
     const retryDelayMs = this.config.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
     const turns: Turn[] = [];
     const startTime = Date.now();
+    const phaseTimings: import('./types.js').RunPhaseTimings = {};
+    let verificationRejectionCount = 0;
+    let firstSufficientEvidenceTurn: number | undefined;
+
+    const buildResult = (result: Omit<AgentResult, 'phaseTimings' | 'wasteMetrics'>): AgentResult => ({
+      ...result,
+      phaseTimings,
+      wasteMetrics: deriveWasteMetrics(turns, verificationRejectionCount, firstSufficientEvidenceTurn),
+    });
 
     // Reset brain history for fresh scenario
     this.brain.reset();
@@ -129,6 +139,7 @@ export class AgentRunner {
 
     // Navigate to start URL if provided
     if (scenario.startUrl) {
+      const navigateStartedAt = Date.now();
       await withRetry(
         () => this.driver.execute({ action: 'navigate', url: scenario.startUrl! }),
         retries,
@@ -136,6 +147,7 @@ export class AgentRunner {
         undefined,
         scenario.signal,
       );
+      phaseTimings.initialNavigateMs = Date.now() - navigateStartedAt;
     }
 
     let consecutiveErrors = 0;
@@ -157,12 +169,12 @@ export class AgentRunner {
 
     for (let i = 1; i <= maxTurns; i++) {
       if (scenario.signal?.aborted) {
-        return {
+        return buildResult({
           success: false,
           reason: scenario.signal.reason || 'Cancelled',
           turns,
           totalMs: Date.now() - startTime,
-        };
+        });
       }
 
       const turnStart = Date.now();
@@ -229,6 +241,7 @@ export class AgentRunner {
         }
 
         // ── 2. Observe (with retry) ──
+        const observeStartedAt = Date.now();
         const state = await withRetry(
           () => this.driver.observe(),
           retries,
@@ -240,6 +253,7 @@ export class AgentRunner {
           },
           scenario.signal,
         );
+        phaseTimings.firstObserveMs ??= Date.now() - observeStartedAt;
 
         const terminalBlocker = detectTerminalBlocker(state);
         if (terminalBlocker) {
@@ -254,12 +268,12 @@ export class AgentRunner {
           turns.push(blockerTurn);
           this.onTurn?.(blockerTurn);
           this.saveMemory();
-          return {
+          return buildResult({
             success: false,
             reason,
             turns,
             totalMs: Date.now() - startTime,
-          };
+          });
         }
 
         let extraContext = '';
@@ -341,12 +355,12 @@ export class AgentRunner {
               turns.push(supervisorTurn);
               this.onTurn?.(supervisorTurn);
               this.saveMemory();
-              return {
+              return buildResult({
                 success: false,
                 reason,
                 turns,
                 totalMs: Date.now() - startTime,
-              };
+              });
             }
 
             if (directive.decision === 'force_action' && directive.action) {
@@ -391,21 +405,21 @@ export class AgentRunner {
 
               if (consecutiveErrors >= 3) {
                 this.saveMemory();
-                return {
+                return buildResult({
                   success: false,
                   reason: `${consecutiveErrors} consecutive errors after supervisor action: ${actionError}`,
                   turns,
                   totalMs: Date.now() - startTime,
-                };
+                });
               }
               if (totalErrors >= maxTotalErrors) {
                 this.saveMemory();
-                return {
+                return buildResult({
                   success: false,
                   reason: `Error budget exhausted (${totalErrors}/${maxTotalErrors}) after supervisor action`,
                   turns,
                   totalMs: Date.now() - startTime,
-                };
+                });
               }
 
               continue;
@@ -444,6 +458,7 @@ export class AgentRunner {
         }
 
         // ── 4. Decide (with retry) ──
+        const decideStartedAt = Date.now();
         const decision = await withRetry(
           () => this.brain.decide(scenario.goal, state, extraContext || undefined, { current: i, max: maxTurns }),
           retries,
@@ -455,6 +470,7 @@ export class AgentRunner {
           },
           scenario.signal,
         );
+        phaseTimings.firstDecideMs ??= Date.now() - decideStartedAt;
 
         const { action, nextActions, raw, reasoning, plan, currentStep, expectedEffect, tokensUsed } = decision;
 
@@ -535,6 +551,7 @@ export class AgentRunner {
               const stringified = typeof scriptResult === 'string'
                 ? scriptResult
                 : JSON.stringify(scriptResult, null, 2);
+              firstSufficientEvidenceTurn ??= i;
               pushGoalVerificationEvidence(goalVerificationEvidence, `SCRIPT RESULT:\n${stringified ?? '(undefined)'}`);
               this.brain.injectFeedback(
                 `SCRIPT RESULT:\n${stringified ?? '(undefined)'}`
@@ -617,6 +634,8 @@ export class AgentRunner {
             }
 
             if (!goalResult.achieved) {
+              verificationRejectionCount++;
+              firstSufficientEvidenceTurn ??= i;
               // Goal not met — reject completion and feed back what's missing
               this.brain.injectFeedback(
                 `COMPLETION REJECTED — goal verification failed (confidence: ${goalResult.confidence.toFixed(2)}).\n` +
@@ -640,6 +659,8 @@ export class AgentRunner {
               if (this.config.debug) {
                 console.log(`[Runner] Quality ${evaluation.score}/${qualityThreshold} — rejecting completion`);
               }
+              verificationRejectionCount++;
+              firstSufficientEvidenceTurn ??= i;
               this.brain.injectFeedback(
                 `COMPLETION REJECTED — quality score ${evaluation.score}/10 is below threshold ${qualityThreshold}/10.\n` +
                 `Issues: ${evaluation.issues.join(', ')}\n` +
@@ -656,7 +677,8 @@ export class AgentRunner {
             turns.push(turn);
             this.onTurn?.(turn);
             this.saveMemory();
-            return {
+            firstSufficientEvidenceTurn ??= i;
+            return buildResult({
               success: true,
               result: action.result,
               turns,
@@ -669,37 +691,39 @@ export class AgentRunner {
                 suggestions: evaluation.suggestions,
               },
               goalVerification: goalResult,
-            };
+            });
           }
 
           // Goal verified (or skipped), no quality gate
           turns.push(turn);
           this.onTurn?.(turn);
           this.saveMemory();
-          return {
+          firstSufficientEvidenceTurn ??= i;
+          return buildResult({
             success: true,
             result: action.result,
             turns,
             totalMs: Date.now() - startTime,
             goalVerification: goalResult,
-          };
+          });
         }
 
         if (action.action === 'abort') {
           turns.push(turn);
           this.onTurn?.(turn);
           this.saveMemory();
-          return {
+          return buildResult({
             success: false,
             reason: action.reason,
             turns,
             totalMs: Date.now() - startTime,
-          };
+          });
         }
 
         // ── 7. Execute (with stale-ref auto-retry) ──
         let execResult: Awaited<ReturnType<Driver['execute']>>;
         try {
+          const executeStartedAt = Date.now();
           execResult = await withRetry(
             () => this.driver.execute(action),
             retries,
@@ -711,6 +735,7 @@ export class AgentRunner {
             },
             scenario.signal,
           );
+          phaseTimings.firstExecuteMs ??= Date.now() - executeStartedAt;
         } catch (err) {
           if (err instanceof StaleRefError) {
             // Stale ref — re-observe and ask the Brain to pick a new ref
@@ -841,22 +866,22 @@ export class AgentRunner {
 
         if (consecutiveErrors >= 3) {
           this.saveMemory();
-          return {
+          return buildResult({
             success: false,
             reason: `${consecutiveErrors} consecutive errors: ${error}`,
             turns,
             totalMs: Date.now() - startTime,
-          };
+          });
         }
 
         if (totalErrors >= maxTotalErrors) {
           this.saveMemory();
-          return {
+          return buildResult({
             success: false,
             reason: `Error budget exhausted (${totalErrors}/${maxTotalErrors} total errors): ${error}`,
             turns,
             totalMs: Date.now() - startTime,
-          };
+          });
         }
 
         if (this.config.debug) {
@@ -869,12 +894,12 @@ export class AgentRunner {
     this.saveMemory();
 
     // Max turns reached
-    return {
+    return buildResult({
       success: false,
       reason: `Max turns (${maxTurns}) reached`,
       turns,
       totalMs: Date.now() - startTime,
-    };
+    });
   }
 
   private selectFollowUpActions(primaryAction: Action, nextActions?: Action[]): Action[] {

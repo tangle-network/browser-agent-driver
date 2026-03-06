@@ -870,7 +870,10 @@ async function syncLocalBenchmarkRun(outPath: string, label: string): Promise<vo
   });
 
   if (exitCode !== 0) {
-    throw new Error(`abd-app benchmark import failed for ${outPath}`);
+    if (process.env.ABD_BENCHMARK_SYNC_STRICT === '1') {
+      throw new Error(`abd-app benchmark import failed for ${outPath}`);
+    }
+    console.warn(`abd-app benchmark import skipped after non-zero exit for ${outPath}`);
   }
 }
 
