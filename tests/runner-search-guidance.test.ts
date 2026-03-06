@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { buildSearchResultsGuidance, buildVisibleLinkRecommendation, rankSearchCandidates } from '../src/runner.js';
+import {
+  buildSearchResultsGuidance,
+  buildVisibleLinkRecommendation,
+  chooseVisibleLinkOverride,
+  rankSearchCandidates,
+} from '../src/runner.js';
 
 describe('buildSearchResultsGuidance', () => {
   it('returns structured extraction guidance on search result pages for extraction goals', () => {
@@ -85,5 +90,25 @@ describe('buildSearchResultsGuidance', () => {
     expect(recommendation).toContain('@l1a78');
     expect(recommendation).toContain('first-party match');
     expect(recommendation).not.toContain('@l9e3');
+  });
+
+  it('overrides detours to all news releases when the target release is already visible', () => {
+    const state = {
+      url: 'https://www.nih.gov/news-events',
+      title: 'News & Events',
+      snapshot: [
+        '- heading "Recent News Releases" [ref=h7dd]',
+        '- link "Study measuring changes in protein structure establishes new class of Alzheimer’s biomarkers February 27, 2026 — NIH-funded insights into Alzheimer’s biology could help with early diagnosis, future clinical trials." [ref=l1a78]:',
+        '- link "All news releases »" [ref=l2baa]',
+      ].join('\n'),
+    };
+    const override = chooseVisibleLinkOverride(
+      state,
+      { action: 'click', selector: '@l2baa' },
+      { ref: '@l1a78', text: 'Study measuring changes in protein structure establishes new class of Alzheimer’s biomarkers', score: 17 },
+    );
+
+    expect(override?.ref).toBe('@l1a78');
+    expect(override?.feedback).toContain('Do not search again');
   });
 });

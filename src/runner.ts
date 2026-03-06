@@ -1527,14 +1527,14 @@ function rankVisibleLinkCandidates(
     .slice(0, 5);
 }
 
-function chooseVisibleLinkOverride(
+export function chooseVisibleLinkOverride(
   state: PageState,
   action: Action,
   recommendation: { ref: string; text: string; score: number } | undefined,
 ): { ref: string; feedback: string } | undefined {
   if (!recommendation || recommendation.score < 10) return undefined;
   if (!isFirstPartyContentHub(state)) return undefined;
-  if (!isSearchAction(state, action)) return undefined;
+  if (!isContentHubDetourAction(state, action)) return undefined;
   if (action.action === 'click' && action.selector === recommendation.ref) return undefined;
 
   return {
@@ -1547,6 +1547,17 @@ function isSearchAction(state: PageState, action: Action): boolean {
   if (!('selector' in action) || !action.selector?.startsWith('@')) return false;
   const element = findElementForRef(state.snapshot, action.selector)?.toLowerCase() ?? '';
   return element.includes('searchbox') || element.includes('search');
+}
+
+function isContentHubDetourAction(state: PageState, action: Action): boolean {
+  if (isSearchAction(state, action)) return true;
+  if (!('selector' in action) || !action.selector?.startsWith('@')) return false;
+  const element = findElementForRef(state.snapshot, action.selector)?.toLowerCase() ?? '';
+  if (!element) return false;
+  return (
+    /\b(all news releases|all releases|news releases)\b/.test(element)
+    || /\bsearch\b/.test(element)
+  );
 }
 
 function isFirstPartyContentHub(state: PageState): boolean {

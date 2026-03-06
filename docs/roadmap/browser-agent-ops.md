@@ -371,7 +371,7 @@ Current honest status:
 - current repeated control sample: Yale `5/5`, Alberta `5/5`, NIH `5/5`
 - Tier 3 is now good enough to support promotion decisions on this slice
 - selective `auto` vision is currently a challenger only; it regressed on NIH and is not baseline-ready
-- cost variance remains open, but Alberta search-path variance is improved after the main-area search scout change
+- NIH token burn has been reduced on focused post-fix repeats, though broader Tier 3 efficiency work remains open
 - Tier 2 repeated authenticated control is now green across three valid repetitions
 - the Tier 2 Coinbase template-verification fast-explore regression has been corrected on post-fix repeats; it no longer needs to launch runs or over-prove actionability to satisfy the goal
 
@@ -384,6 +384,7 @@ Current best evidence:
 - Tier 2 repeated authenticated summary: `./agent-results/tier2-repeat-green-1772792440/tier2-repeat-summary.json`
 - Tier 2 repeated authenticated markdown: `./agent-results/tier2-repeat-green-1772792440/tier2-repeat-summary.md`
 - Tier 2 post-fix template verification summary: `./agent-results/tier2-repeat-post-template-fix-1772794740/tier2-repeat-summary.json`
+- NIH post-fix focused summary: `./agent-results/nih-token-fix-repeat-1772795250/tier3-gate-summary.json`
 - Tier 2 validated repetition summaries:
   - `./agent-results/tier2-repeat-green-1772792440/rep-1/tier2-gate-summary.json`
   - `./agent-results/tier2-repeat-green-1772792440/rep-2/tier2-gate-summary.json`
@@ -400,10 +401,11 @@ Exit rule:
 
 P0:
 - keep the guarded non-vision path as baseline until a challenger beats it cleanly
-- reduce NIH token burn while preserving the `5/5` pass rate
 - verify the Tier 2 template-verification cost fix continues to hold in CI/nightly, then allow `fast-explore` to remain first-class on authenticated flows
+- close product path readiness with one clean end-to-end app -> worker -> orchestrator -> artifact dogfood run
 
 P1:
+- continue reducing Tier 3 cost variance, especially NIH, on the promoted slice
 - reduce wasted-turn variance on Yale and Alberta after NIH is stable
 - raise Tier 2 authenticated coverage with the same artifact standards
 - reduce `fast-explore` cost and turn variance on authenticated template verification before considering it a Tier 2 default
