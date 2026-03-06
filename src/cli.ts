@@ -908,7 +908,8 @@ ENVIRONMENT VARIABLES:
   CODEX_ALLOW_NPX      Set to 0 to disable npx fallback for --provider codex-cli
   CLAUDE_CODE_CLI_PATH Optional Claude CLI binary path for --provider claude-code
   SANDBOX_BACKEND_TYPE Native backend type for --provider sandbox-backend
-  SANDBOX_BACKEND_PROFILE_ID Native backend profile/preset for --provider sandbox-backend
+  SANDBOX_BACKEND_PROFILE    Native backend profile/preset for --provider sandbox-backend
+  SANDBOX_BACKEND_PROFILE_ID Legacy alias for SANDBOX_BACKEND_PROFILE
   SANDBOX_BACKEND_MODEL_PROVIDER Native backend provider override for --provider sandbox-backend
   SANDBOX_SIDECAR_URL  Sidecar API URL for --provider sandbox-backend (default: http://127.0.0.1:$SIDECAR_PORT)
   SANDBOX_SIDECAR_AUTH_TOKEN Sidecar API bearer token for --provider sandbox-backend

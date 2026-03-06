@@ -8,19 +8,23 @@ import type {
   Turn,
 } from '../types.js';
 import { resolveProviderApiKey, resolveProviderModelName } from '../provider-defaults.js';
+import { generateWithSandboxBackend } from '../providers/sandbox-backend.js';
 
 export interface SupervisorCriticInput {
   goal: string;
   currentState: PageState;
   recentTurns: Turn[];
   signal: SupervisorSignal;
-  provider: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code';
+  provider: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend';
   model: string;
   useVision?: boolean;
   apiKey?: string;
   baseUrl?: string;
   timeoutMs?: number;
   debug?: boolean;
+  sandboxBackendType?: string;
+  sandboxBackendProfile?: string;
+  sandboxBackendProvider?: string;
 }
 
 type SupervisorUserContent =
@@ -61,13 +65,6 @@ Respond ONLY JSON:
 export async function requestSupervisorDirective(
   input: SupervisorCriticInput,
 ): Promise<SupervisorDirective> {
-  const model = await getModel({
-    provider: input.provider,
-    model: input.model,
-    apiKey: input.apiKey,
-    baseUrl: input.baseUrl,
-  });
-
   const turnSummary = summarizeTurns(input.recentTurns);
   const text = [
     `GOAL: ${input.goal}`,
@@ -88,16 +85,7 @@ export async function requestSupervisorDirective(
   ].join('\n');
 
   const userContent = buildSupervisorUserContent(text, input.currentState, input.useVision !== false);
-  const result = await generateText({
-    model,
-    system: SUPERVISOR_PROMPT,
-    messages: [{ role: 'user', content: userContent }],
-    ...(shouldSendTemperature(input.model) ? { temperature: 0 } : {}),
-    ...(input.provider === 'codex-cli' || input.provider === 'claude-code' ? {} : { maxOutputTokens: 700 }),
-    abortSignal: AbortSignal.timeout(input.timeoutMs ?? 45_000),
-  });
-
-  const raw = result.text?.trim() ?? '';
+  const raw = (await generateSupervisorText(input, userContent)).trim();
   if (input.debug) {
     console.log('[Supervisor] Critic response:', raw.slice(0, 400));
   }
@@ -282,6 +270,7 @@ async function getModel(config: {
   model: string;
   apiKey?: string;
   baseUrl?: string;
+  debug?: boolean;
 }): Promise<LanguageModel> {
   const modelName = resolveProviderModelName(config.provider, config.model);
   const apiKey = resolveProviderApiKey(config.provider, config.apiKey);
@@ -320,6 +309,17 @@ async function getModel(config: {
       const provider = createClaudeCode({
         defaultSettings: {
           ...(process.env.CLAUDE_CODE_CLI_PATH ? { pathToClaudeCodeExecutable: process.env.CLAUDE_CODE_CLI_PATH } : {}),
+          permissionMode: 'default',
+          allowDangerouslySkipPermissions: false,
+          ...(config.debug ? { verbose: true } : {}),
+          ...(config.debug
+            ? {
+                stderr: (chunk: string) => {
+                  const line = chunk.trim();
+                  if (line) console.error(`[claude-code] ${line}`);
+                },
+              }
+            : {}),
           ...(Object.keys(env).length > 0 ? { env } : {}),
         },
       });
@@ -334,4 +334,46 @@ async function getModel(config: {
       return provider(modelName) as LanguageModel;
     }
   }
+}
+
+async function generateSupervisorText(
+  input: SupervisorCriticInput,
+  userContent: SupervisorUserContent,
+): Promise<string> {
+  const modelName = resolveProviderModelName(input.provider, input.model, {
+    sandboxBackendType: input.provider === 'sandbox-backend' ? input.sandboxBackendType : undefined,
+  });
+
+  if (input.provider === 'sandbox-backend') {
+    const result = await generateWithSandboxBackend({
+      model: modelName,
+      system: SUPERVISOR_PROMPT,
+      messages: [{ role: 'user', content: userContent }],
+      timeoutMs: input.timeoutMs ?? 45_000,
+      debug: input.debug,
+      backendType: input.sandboxBackendType,
+      backendProfile: input.sandboxBackendProfile,
+      backendModelProvider: input.sandboxBackendProvider,
+    });
+    return result.text ?? '';
+  }
+
+  const model = await getModel({
+    provider: input.provider,
+    model: modelName,
+    apiKey: input.apiKey,
+    baseUrl: input.baseUrl,
+    debug: input.debug,
+  });
+
+  const result = await generateText({
+    model,
+    system: SUPERVISOR_PROMPT,
+    messages: [{ role: 'user', content: userContent }],
+    ...(shouldSendTemperature(modelName) ? { temperature: 0 } : {}),
+    ...(input.provider === 'codex-cli' || input.provider === 'claude-code' ? {} : { maxOutputTokens: 700 }),
+    abortSignal: AbortSignal.timeout(input.timeoutMs ?? 45_000),
+  });
+
+  return result.text ?? '';
 }

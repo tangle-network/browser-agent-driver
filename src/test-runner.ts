@@ -373,6 +373,7 @@ export class TestRunner {
         startedAt,
         endedAt,
         screenshots: screenshots.length > 0 ? screenshots : undefined,
+        runtime: this.buildRuntimeConfig(),
       };
 
       // Emit video artifact if available
@@ -874,6 +875,7 @@ export class TestRunner {
       endedAt: now,
       skipped: true,
       skipReason: reason,
+      runtime: this.buildRuntimeConfig(),
     };
   }
 
@@ -945,6 +947,7 @@ export class TestRunner {
 
     return {
       model: this.config.model || 'unknown',
+      runtime: this.buildRuntimeConfig(),
       timestamp: new Date().toISOString(),
       results,
       summary: {
@@ -960,6 +963,16 @@ export class TestRunner {
         p95DurationMs: percentile(durations, 0.95),
         totalDurationMs: durations.reduce((sum, d) => sum + d, 0),
       },
+    };
+  }
+
+  private buildRuntimeConfig(): import('./types.js').RunRuntimeConfig {
+    return {
+      provider: this.config.provider || 'openai',
+      model: this.config.model || 'unknown',
+      ...(this.config.sandboxBackendType ? { sandboxBackendType: this.config.sandboxBackendType } : {}),
+      ...(this.config.sandboxBackendProfile ? { sandboxBackendProfile: this.config.sandboxBackendProfile } : {}),
+      ...(this.config.sandboxBackendProvider ? { sandboxBackendProvider: this.config.sandboxBackendProvider } : {}),
     };
   }
 

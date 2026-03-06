@@ -430,11 +430,15 @@ export interface TestResult {
   /** Whether this test was skipped (unmet dependencies) */
   skipped?: boolean;
   skipReason?: string;
+  /** Runtime/backend configuration that produced this result */
+  runtime?: RunRuntimeConfig;
 }
 
 export interface TestSuiteResult {
   /** Model used */
   model: string;
+  /** Runtime/backend configuration for the suite */
+  runtime?: RunRuntimeConfig;
   /** Run timestamp */
   timestamp: string;
   /** Per-test results */
@@ -453,6 +457,14 @@ export interface TestSuiteResult {
     p95DurationMs: number;
     totalDurationMs: number;
   };
+}
+
+export interface RunRuntimeConfig {
+  provider: NonNullable<AgentConfig['provider']>;
+  model: string;
+  sandboxBackendType?: string;
+  sandboxBackendProfile?: string;
+  sandboxBackendProvider?: string;
 }
 
 export interface RunPhaseTimings {

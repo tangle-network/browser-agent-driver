@@ -34,6 +34,9 @@ function generateMarkdownReport(suite: TestSuiteResult, options: ReportOptions):
 
   lines.push('# Test Suite Report\n');
   lines.push(`**Model:** ${suite.model}`);
+  if (suite.runtime) {
+    lines.push(`**Runtime:** ${suite.runtime.provider}${suite.runtime.sandboxBackendType ? ` -> ${suite.runtime.sandboxBackendType}` : ''}${suite.runtime.sandboxBackendProfile ? ` (${suite.runtime.sandboxBackendProfile})` : ''}`);
+  }
   lines.push(`**Date:** ${suite.timestamp}`);
   lines.push(`**Pass Rate:** ${(summary.passRate * 100).toFixed(1)}% (${summary.passed}/${summary.total})`);
   lines.push(`**Duration:** ${(summary.totalDurationMs / 1000).toFixed(1)}s\n`);
@@ -180,7 +183,7 @@ function generateHtmlReport(suite: TestSuiteResult): string {
 </head>
 <body>
   <h1>Test Suite Report</h1>
-  <p><strong>Model:</strong> ${suite.model} | <strong>Date:</strong> ${suite.timestamp} | <strong>Duration:</strong> ${(summary.totalDurationMs / 1000).toFixed(1)}s</p>
+  <p><strong>Model:</strong> ${suite.model}${suite.runtime ? ` | <strong>Runtime:</strong> ${suite.runtime.provider}${suite.runtime.sandboxBackendType ? ` -> ${suite.runtime.sandboxBackendType}` : ''}${suite.runtime.sandboxBackendProfile ? ` (${suite.runtime.sandboxBackendProfile})` : ''}` : ''} | <strong>Date:</strong> ${suite.timestamp} | <strong>Duration:</strong> ${(summary.totalDurationMs / 1000).toFixed(1)}s</p>
 
   <div class="summary">
     <div class="summary-card"><div class="metric-value passed">${summary.passed}</div><div class="metric-label">Passed</div></div>

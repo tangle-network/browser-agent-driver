@@ -391,7 +391,7 @@ export class Brain {
         timeoutMs: this.llmTimeoutMs,
         debug: this.debug,
         backendType: this.sandboxBackendType,
-        backendProfileId: this.sandboxBackendProfile,
+        backendProfile: this.sandboxBackendProfile,
         backendModelProvider: this.sandboxBackendProvider,
       });
       return { text: result.text };
