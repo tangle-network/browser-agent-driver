@@ -133,7 +133,7 @@ function detectQuotaLimitText(snapshotLower: string): boolean {
 }
 
 export interface BlockingModalDetection {
-  kind: 'quota-limit' | 'blocking-modal';
+  kind: 'quota-limit' | 'blocking-modal' | 'verification-override';
   strategy: string;
   feedback: string;
   action?: Action;
@@ -141,8 +141,8 @@ export interface BlockingModalDetection {
 }
 
 export interface TerminalBlockerDetection {
-  kind: 'network-unreachable' | 'bot-challenge';
-  strategy: 'terminal-network-error' | 'terminal-bot-challenge';
+  kind: 'network-unreachable' | 'bot-challenge' | 'dev-environment-unavailable';
+  strategy: 'terminal-network-error' | 'terminal-bot-challenge' | 'terminal-dev-environment-unavailable';
   reason: string;
   evidence: string[];
 }
@@ -180,6 +180,28 @@ export function detectBlockingModal(snapshot: string): BlockingModalDetection | 
       feedback:
         'BLOCKER SUBSTEP: A delete-confirmation modal is present. Confirming deletion to complete quota cleanup, then continue the main goal.',
       action: { action: 'click', selector: `@${confirmDeleteRef}` },
+    };
+  }
+
+  const verificationOverrideRef = pickRefByName(elements, [
+    /use personal credits/,
+    /continue with (?:your )?current project/,
+    /continue with personal credits/,
+    /continue anyway/,
+    /proceed anyway/,
+  ]);
+  const looksLikeVerificationOverride =
+    /\bverification error\b/.test(snapshotLower) ||
+    /\bcouldn[’']t verify\b/.test(snapshotLower) ||
+    /\bpartner['’]s requirements\b/.test(snapshotLower) ||
+    /\buse personal credits\b/.test(snapshotLower);
+  if (looksLikeVerificationOverride && verificationOverrideRef) {
+    return {
+      kind: 'verification-override',
+      strategy: 'modal-use-personal-credits',
+      feedback:
+        'BLOCKER: A partner verification modal is blocking project start. Continue with the current project using personal credits, then resume the main goal.',
+      action: { action: 'click', selector: `@${verificationOverrideRef}` },
     };
   }
 
@@ -320,6 +342,57 @@ export function detectTerminalBlocker(state: PageState): TerminalBlockerDetectio
   }
 
   return null;
+}
+
+/**
+ * Detect persistent app-native environment blockers that are unlikely to be fixed
+ * by more navigation attempts inside the same run.
+ */
+export function detectPersistentTerminalBlocker(
+  recentTurns: Turn[],
+  currentState: PageState,
+): TerminalBlockerDetection | null {
+  const appDevEnvPatterns: Array<[string, RegExp]> = [
+    ['dev-environment', /\bdev environment\b/i],
+    ['orchestrator-offline', /\borchestrator\b.*\boffline\b/i],
+    ['websocket-disconnected', /\bwebsocket disconnected\b/i],
+    ['event-stream-connecting', /\bevent stream\b.*\bconnecting\b/i],
+    ['container-not-started', /\bcontainer\b.*\bnot started\b/i],
+    ['not-provisioned', /\bnot provisioned\b/i],
+    ['awaiting-provisioning', /\bawaiting provisioning\b/i],
+  ];
+  if (recentTurns.length < 3) return null;
+
+  const currentSnapshot = currentState.snapshot || '';
+  const currentHaystack = `${currentState.url}\n${currentState.title}\n${currentSnapshot}`.toLowerCase();
+  const appDevEnvSignals = appDevEnvPatterns
+    .filter(([, pattern]) => pattern.test(currentHaystack))
+    .map(([name]) => name);
+  if (appDevEnvSignals.length < 3) return null;
+
+  const recent = recentTurns.slice(-3);
+  const sameUrl = recent.every((turn) => turn.state.url === currentState.url);
+  const refreshOrInspectLoop = recent.every((turn) => {
+    const action = turn.action;
+    return action.action === 'click' || action.action === 'runScript' || action.action === 'wait';
+  });
+  const repeatedSignals = recent.every((turn) => {
+    const haystack = `${turn.state.url}\n${turn.state.title}\n${turn.state.snapshot}`.toLowerCase();
+    const matchedSignals = appDevEnvPatterns
+      .filter(([, pattern]) => pattern.test(haystack))
+      .map(([name]) => name);
+    return matchedSignals.length >= 3;
+  });
+
+  if (!sameUrl || !refreshOrInspectLoop || !repeatedSignals) return null;
+
+  return {
+    kind: 'dev-environment-unavailable',
+    strategy: 'terminal-dev-environment-unavailable',
+    reason:
+      'Terminal blocker: the application dev environment is offline/not provisioned, so preview/start actions cannot complete within this run.',
+    evidence: appDevEnvSignals,
+  };
 }
 
 /**

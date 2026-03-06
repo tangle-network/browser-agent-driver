@@ -3,6 +3,7 @@ import type { Action, Turn } from '../src/types.js';
 import {
   analyzeRecovery,
   detectBlockingModal,
+  detectPersistentTerminalBlocker,
   detectTerminalBlocker,
   parseSnapshotElements,
 } from '../src/recovery.js';
@@ -86,6 +87,19 @@ describe('recovery blocker handling', () => {
     const detection = detectBlockingModal(snapshot);
     expect(detection?.strategy).toBe('modal-confirm-delete');
     expect(detection?.action).toEqual({ action: 'click', selector: '@b4' });
+  });
+
+  it('detects verification override modal and continues with personal credits', () => {
+    const snapshot = `
+- dialog "Verification Error" [ref=d1]:
+  - text "We couldn't verify your project matches Partner's requirements."
+  - button "Use personal credits" [ref=b7]
+  - button "Change project" [ref=b8]
+`;
+
+    const detection = detectBlockingModal(snapshot);
+    expect(detection?.strategy).toBe('modal-use-personal-credits');
+    expect(detection?.action).toEqual({ action: 'click', selector: '@b7' });
   });
 
   it('analyzeRecovery prioritizes blocker modal over stuck reload', () => {
@@ -178,5 +192,37 @@ describe('terminal blocker detection', () => {
     });
 
     expect(detection).toBeNull();
+  });
+
+  it('detects persistent dev environment blocker loops', () => {
+    const snapshot = [
+      '- button "Dev environment: Reconnecting" [ref=b2130]:',
+      '- dialog:',
+      '  - text "Orchestrator Offline"',
+      '  - text "Event Stream Connecting"',
+      '  - text "Container Not Started"',
+      '  - text "Not provisioned"',
+      '  - button "Refresh" [ref=b2200]',
+    ].join('\n');
+    const turns = [1, 2, 3].map((turn) => ({
+      turn,
+      state: {
+        url: 'https://ai.tangle.tools/chat/chat-123',
+        title: 'Chat',
+        snapshot,
+      },
+      action: { action: 'click', selector: '@b2200' as const },
+      durationMs: 100,
+    }));
+
+    const detection = detectPersistentTerminalBlocker(turns, {
+      url: 'https://ai.tangle.tools/chat/chat-123',
+      title: 'Chat',
+      snapshot,
+    });
+
+    expect(detection?.kind).toBe('dev-environment-unavailable');
+    expect(detection?.strategy).toBe('terminal-dev-environment-unavailable');
+    expect(detection?.evidence).toContain('not-provisioned');
   });
 });

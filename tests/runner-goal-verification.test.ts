@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { buildGoalVerificationClaim, shouldAcceptScriptBackedCompletion } from '../src/runner.js';
+import {
+  buildGoalVerificationClaim,
+  detectAiTangleVerifiedOutputState,
+  shouldAcceptScriptBackedCompletion,
+} from '../src/runner.js';
 
 describe('buildGoalVerificationClaim', () => {
   it('returns the raw claim when no evidence is present', () => {
@@ -78,5 +82,24 @@ describe('buildGoalVerificationClaim', () => {
     );
 
     expect(accepted).toBe(false);
+  });
+
+  it('detects a verified ai.tangle.tools output workspace for blocker-recovery flows', () => {
+    const completion = detectAiTangleVerifiedOutputState(
+      {
+        url: 'https://ai.tangle.tools/chat/chat-123',
+        title: 'Blueprint Agent',
+        snapshot: [
+          '- tab "Code"',
+          '- tab "Preview"',
+          '- heading "Fresh start"',
+          '- button "Fork" [ref=b42]',
+        ].join('\n'),
+      },
+      'Attempt Coinbase template start, resolve blocker modals or project-limit path if present, and reach a verified visible output state.',
+    );
+
+    expect(completion?.result).toContain('Reached a verified Blueprint output workspace');
+    expect(completion?.feedback).toContain('Complete now');
   });
 });
