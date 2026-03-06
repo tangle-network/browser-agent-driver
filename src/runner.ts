@@ -1255,10 +1255,14 @@ export class AgentRunner {
   ): Promise<{ ref: string; text: string; confidence: number; reasoning: string } | undefined> {
     const scoutConfig = this.config.scout;
     if (!scoutConfig?.enabled) return undefined;
+    if (!shouldUseVisibleLinkScoutPage(state, goal, allowedDomains)) return undefined;
 
     const ranked = getRankedVisibleLinkCandidates(state, goal, allowedDomains);
     const maxCandidates = Math.max(2, Math.min(scoutConfig.maxCandidates ?? 3, 5));
-    const candidates = ranked.slice(0, maxCandidates);
+    const candidates = await this.filterScoutCandidatesByAllowedDomains(
+      ranked.slice(0, maxCandidates),
+      allowedDomains,
+    );
     if (!shouldUseVisibleLinkScout(candidates, scoutConfig)) return undefined;
 
     const scoutState = scoutConfig.useVision
@@ -1282,6 +1286,26 @@ export class AgentRunner {
       confidence: recommendation.confidence,
       reasoning: recommendation.reasoning,
     };
+  }
+
+  private async filterScoutCandidatesByAllowedDomains(
+    candidates: Array<{ ref: string; text: string; score: number }>,
+    allowedDomains: string[] | undefined,
+  ): Promise<Array<{ ref: string; text: string; score: number }>> {
+    if (!allowedDomains || allowedDomains.length === 0 || !this.driver.inspectSelectorHref) {
+      return candidates;
+    }
+
+    const allowedHosts = new Set(allowedDomains.map((domain) => domain.toLowerCase()));
+    const filtered: Array<{ ref: string; text: string; score: number }> = [];
+    for (const candidate of candidates) {
+      const href = await this.driver.inspectSelectorHref(candidate.ref).catch(() => undefined);
+      const host = href ? safeHostname(href) : undefined;
+      if (!host || allowedHosts.has(host)) {
+        filtered.push(candidate);
+      }
+    }
+    return filtered;
   }
 
   private async inspectDisallowedSearchClick(
@@ -1616,6 +1640,14 @@ export function shouldUseVisibleLinkScout(
   const scoreGap = top.score - second.score;
 
   return top.score < minTopScore || scoreGap <= maxScoreGap;
+}
+
+export function shouldUseVisibleLinkScoutPage(
+  state: PageState,
+  goal: string,
+  allowedDomains?: string[],
+): boolean {
+  return buildSearchResultsGuidance(state, goal, allowedDomains).length > 0 || isFirstPartyContentHub(state);
 }
 
 export function chooseScoutLinkOverride(

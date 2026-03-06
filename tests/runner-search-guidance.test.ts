@@ -6,6 +6,7 @@ import {
   chooseVisibleLinkOverride,
   rankSearchCandidates,
   shouldUseVisibleLinkScout,
+  shouldUseVisibleLinkScoutPage,
 } from '../src/runner.js';
 
 describe('buildSearchResultsGuidance', () => {
@@ -124,6 +125,28 @@ describe('buildSearchResultsGuidance', () => {
       { ref: '@a1', text: 'Primary result', score: 18 },
       { ref: '@a2', text: 'Secondary result', score: 8 },
     ], { minTopScore: 12, maxScoreGap: 4 })).toBe(false);
+  });
+
+  it('limits scout activation to search pages and first-party content hubs', () => {
+    expect(shouldUseVisibleLinkScoutPage(
+      {
+        url: 'https://www.alberta.ca/',
+        title: 'Government of Alberta | Alberta.ca',
+        snapshot: '- searchbox "Search Alberta.ca" [ref=s3e25]\n- link "About government" [ref=l1685]',
+      },
+      'Visit the Open Government portal and list dataset categories.',
+      ['www.alberta.ca'],
+    )).toBe(false);
+
+    expect(shouldUseVisibleLinkScoutPage(
+      {
+        url: 'https://search.alberta.ca/alberta/Pages/results.aspx?k=Open+Government',
+        title: 'Search: Open Government',
+        snapshot: '- heading "Search Results"\n- link "Open Government program | Alberta.ca" [ref=l110d]',
+      },
+      'Visit the Open Government portal and list dataset categories.',
+      ['www.alberta.ca'],
+    )).toBe(true);
   });
 
   it('can override a search detour with a high-confidence scout recommendation', () => {
