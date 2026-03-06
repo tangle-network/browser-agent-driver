@@ -38,6 +38,7 @@ const hasExplicitMaxTurns = argv.includes('--max-turns');
 const hasExplicitTimeout = argv.includes('--timeout-ms') || argv.includes('--timeout');
 let maxTurns = Number.parseInt(getArg('max-turns', '50'), 10);
 let timeoutMs = Number.parseInt(getArg('timeout-ms', getArg('timeout', '600000')), 10);
+let allowedDomains = parseDomainCsv(getArg('allowed-domains'));
 const runId = `${Date.now()}`;
 const outBase = path.resolve(getArg('out', `./agent-results/mode-baseline-${runId}`));
 const debug = hasFlag('debug');
@@ -69,6 +70,9 @@ if (casesPathArg) {
   const firstCase = cases[0];
   if (!explicitGoal) goal = String(firstCase.goal ?? goal);
   if (!explicitUrl) url = String(firstCase.startUrl ?? url);
+  if (allowedDomains === undefined && Array.isArray(firstCase.allowedDomains)) {
+    allowedDomains = firstCase.allowedDomains.filter((domain) => typeof domain === 'string' && domain.length > 0);
+  }
   if (!hasExplicitMaxTurns && Number.isFinite(Number(firstCase.maxTurns))) {
     maxTurns = Number(firstCase.maxTurns);
   }
@@ -120,6 +124,7 @@ function runMode(mode) {
     '--sink', modeDir,
     '--profile', benchmarkProfile.driverProfile,
   ];
+  if (allowedDomains && allowedDomains.length > 0) args.push('--allowed-domains', allowedDomains.join(','));
   if (persona) args.push('--persona', persona);
   if (configPath) args.push('--config', configPath);
   if (storageState) args.push('--storage-state', storageState);
@@ -203,6 +208,7 @@ const summary = {
   gitSha: safeGitSha(rootDir),
   goal,
   url,
+  allowedDomains,
   model,
   benchmarkProfile: benchmarkProfile.id,
   driverProfile: benchmarkProfile.driverProfile,
@@ -306,4 +312,13 @@ function safeGitSha(cwd) {
   } catch {
     return null;
   }
+}
+
+function parseDomainCsv(value) {
+  if (!value) return undefined;
+  const domains = String(value)
+    .split(',')
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+  return domains.length > 0 ? [...new Set(domains)] : undefined;
 }

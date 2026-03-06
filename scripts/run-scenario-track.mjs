@@ -115,6 +115,9 @@ const results = await runPool(jobs, concurrency, async (job) => {
   }
   if (traceScoring) args.push('--trace-scoring');
   if (traceTtlDays) args.push('--trace-ttl-days', traceTtlDays);
+  if (Array.isArray(scenario.allowedDomains) && scenario.allowedDomains.length > 0) {
+    args.push('--allowed-domains', scenario.allowedDomains.join(','));
+  }
 
   const exitCode = await spawnAndWait('node', args, {
     cwd: rootDir,

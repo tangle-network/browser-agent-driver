@@ -158,6 +158,7 @@ export class AgentRunner {
     let consecutiveErrors = 0;
     let totalErrors = 0;
     const goalVerificationEvidence: string[] = [];
+    const searchScoutUrls = new Set<string>();
     const maxTotalErrors = Math.max(3, Math.ceil(maxTurns / 3));
     const supervisorConfig = {
       enabled: this.config.supervisor?.enabled ?? DEFAULT_SUPERVISOR.enabled,
@@ -295,6 +296,19 @@ export class AgentRunner {
             extraContext +=
               'FINAL TURN REQUIREMENT: return a terminal action now (`complete` if enough evidence exists, otherwise `abort` with explicit blocker reason).\n';
           }
+        }
+        const searchResultsGuidance = buildSearchResultsGuidance(state, scenario.goal, scenario.allowedDomains);
+        if (searchResultsGuidance) {
+          extraContext += `\n${searchResultsGuidance}\n`;
+        }
+        const searchScoutFeedback = await this.buildSearchResultsScoutFeedback(
+          state,
+          scenario.goal,
+          scenario.allowedDomains,
+          searchScoutUrls,
+        );
+        if (searchScoutFeedback) {
+          extraContext += `\n${searchScoutFeedback}\n`;
         }
         const supervisorSignal = detectSupervisorSignal({
           recentTurns: turns,
@@ -626,6 +640,7 @@ export class AgentRunner {
             if (
               !goalResult.achieved
               && shouldAcceptScriptBackedCompletion(
+                scenario.goal,
                 state,
                 goalResult,
                 action.result || '',
@@ -729,6 +744,18 @@ export class AgentRunner {
             turns,
             totalMs: Date.now() - startTime,
           });
+        }
+
+        const disallowedSearchClick = await this.inspectDisallowedSearchClick(state, scenario, action);
+        if (disallowedSearchClick) {
+          this.brain.injectFeedback(disallowedSearchClick);
+          turn.error = disallowedSearchClick;
+          turn.durationMs = Date.now() - turnStart;
+          consecutiveErrors++;
+          totalErrors++;
+          turns.push(turn);
+          this.onTurn?.(turn);
+          continue;
         }
 
         // ── 7. Execute (with stale-ref auto-retry) ──
@@ -1042,6 +1069,73 @@ export class AgentRunner {
       reason: `Expected effect "${expectedEffect}" — page did not change`,
     };
   }
+
+  private async buildSearchResultsScoutFeedback(
+    state: PageState,
+    goal: string,
+    allowedDomains: string[] | undefined,
+    seenUrls: Set<string>,
+  ): Promise<string> {
+    if (!buildSearchResultsGuidance(state, goal, allowedDomains)) return '';
+    if (seenUrls.has(state.url)) return '';
+
+    const page = this.driver.getPage?.();
+    if (!page) return '';
+
+    try {
+      const candidates = await page.evaluate(() => {
+        const items: Array<{ title: string; href: string }> = [];
+        const seen = new Set<string>();
+        for (const link of Array.from(document.querySelectorAll('a[href]'))) {
+          const anchor = link as HTMLAnchorElement;
+          const href = anchor.href?.trim();
+          const title = link.textContent?.replace(/\s+/g, ' ').trim();
+          if (!href || !title || title.length < 12) continue;
+          const key = `${title}::${href}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          items.push({ title, href });
+          if (items.length >= 8) break;
+        }
+        return items;
+      });
+
+      if (!Array.isArray(candidates) || candidates.length === 0) return '';
+      const ranked = rankSearchCandidates(goal, candidates, allowedDomains);
+      const recommendation = ranked[0];
+      seenUrls.add(state.url);
+      return [
+        'SEARCH RESULTS CANDIDATES:',
+        ...ranked.map((candidate, index) => `${index + 1}. ${candidate.title} — ${candidate.href} (score ${candidate.score})`),
+        recommendation
+          ? `BEST MATCH RECOMMENDATION: prefer "${recommendation.title}" because it best matches the requested entity, content type, and host constraints.`
+          : '',
+      ].join('\n');
+    } catch {
+      return '';
+    }
+  }
+
+  private async inspectDisallowedSearchClick(
+    state: PageState,
+    scenario: Scenario,
+    action: Action,
+  ): Promise<string | undefined> {
+    if (action.action !== 'click') return undefined;
+    if (!scenario.allowedDomains || scenario.allowedDomains.length === 0) return undefined;
+    if (!buildSearchResultsGuidance(state, scenario.goal, scenario.allowedDomains)) return undefined;
+    if (!this.driver.inspectSelectorHref) return undefined;
+
+    const href = await this.driver.inspectSelectorHref(action.selector);
+    const host = href ? safeHostname(href) : undefined;
+    if (!href || !host) return undefined;
+    if (scenario.allowedDomains.map((domain) => domain.toLowerCase()).includes(host)) return undefined;
+
+    return [
+      `Blocked action: selector ${action.selector} resolves to ${href}, which is outside the allowed host set: ${scenario.allowedDomains.join(', ')}.`,
+      'Choose a result from an allowed host instead, even if the snippet text looks relevant.',
+    ].join(' ');
+  }
 }
 
 export function buildGoalVerificationClaim(claimedResult: string, evidence: string[]): string {
@@ -1067,6 +1161,7 @@ export function buildGoalVerificationClaim(claimedResult: string, evidence: stri
 }
 
 export function shouldAcceptScriptBackedCompletion(
+  goal: string,
   state: PageState,
   verification: import('./types.js').GoalVerification,
   claimedResult: string,
@@ -1090,8 +1185,18 @@ export function shouldAcceptScriptBackedCompletion(
     .join('\n');
   if (!scriptEvidence) return false;
 
+  const lowerGoal = goal.toLowerCase();
   const claimLower = claimedResult.toLowerCase();
   const hasUrlEvidence = state.url.length > 0 && claimLower.includes(state.url.toLowerCase());
+  const combinedEvidence = `${state.url}\n${state.title}\n${claimLower}\n${scriptEvidence}\n${verifierText}`.toLowerCase();
+
+  if (/\bpress release\b|\bnews release\b/.test(lowerGoal)) {
+    const explicitlyNotRelease = /\bnot a press release page\b|\bnot a press release\b/.test(verifierText);
+    const releaseLikeEvidence = /\bpress release\b|\bnews release\b|\/news-releases?\//.test(combinedEvidence);
+    if (explicitlyNotRelease || !releaseLikeEvidence) {
+      return false;
+    }
+  }
 
   const tokenMatches = scriptEvidence.match(/[A-Z][a-z]+ \d{1,2}, \d{4}|\b\d{4}\b|\"[^\"]{6,}\"/g) ?? [];
   const normalizedTokens = tokenMatches
@@ -1100,6 +1205,104 @@ export function shouldAcceptScriptBackedCompletion(
   const overlappingTokens = normalizedTokens.filter((token) => claimLower.includes(token));
 
   return hasUrlEvidence && overlappingTokens.length >= 1;
+}
+
+export function buildSearchResultsGuidance(
+  state: PageState,
+  goal: string,
+  allowedDomains?: string[],
+): string {
+  const url = state.url.toLowerCase();
+  const title = state.title.toLowerCase();
+  const snapshot = state.snapshot.toLowerCase();
+  const looksLikeSearchPage =
+    /\bsearch\b|\bquery=/.test(url)
+    || /\bsearch results\b/.test(title)
+    || /\bsearch results\b/.test(snapshot);
+
+  if (!looksLikeSearchPage) return '';
+
+  const needsStructuredExtraction =
+    /\bfirst\b/.test(goal.toLowerCase())
+    || /\bextract\b/.test(goal.toLowerCase())
+    || /\btitle\b/.test(goal.toLowerCase())
+    || /\bdate\b/.test(goal.toLowerCase());
+
+  if (needsStructuredExtraction) {
+    const lines = [
+      'SEARCH RESULTS HEURISTIC: do not open random results one by one.',
+      'Rank visible results against the requested entity and content type before clicking.',
+      'If the ranking is ambiguous, use runScript to extract the top result titles and URLs first, then choose the best match.',
+      'Prefer result titles or URLs that match the requested content type exactly (for example, press release, news release, pricing, docs, settings).',
+    ];
+    if (allowedDomains && allowedDomains.length > 0) {
+      lines.push(`Hard constraint: only choose results whose hostname is in this allowlist: ${allowedDomains.join(', ')}.`);
+      lines.push('Strongly avoid results from sibling subdomains unless the allowlist explicitly includes them.');
+    }
+    return lines.join('\n');
+  }
+
+  const lines = [
+    'SEARCH RESULTS HEURISTIC: prefer the highest-signal matching result rather than exploratory clicks.',
+    'Use visible titles, snippets, and URLs to choose the best candidate before clicking.',
+  ];
+  if (allowedDomains && allowedDomains.length > 0) {
+    lines.push(`Host constraint: prefer only results from ${allowedDomains.join(', ')}.`);
+  }
+  return lines.join('\n');
+}
+
+export function rankSearchCandidates(
+  goal: string,
+  candidates: Array<{ title: string; href: string }>,
+  allowedDomains?: string[],
+): Array<{ title: string; href: string; score: number }> {
+  const lowerGoal = goal.toLowerCase();
+  const keywords = lowerGoal
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter((token) => token.length >= 4)
+    .filter((token) => !new Set(['site', 'find', 'information', 'extract', 'first', 'related', 'using', 'feature']).has(token));
+  const wantsPressRelease = /\bpress release\b|\bnews release\b/.test(lowerGoal);
+
+  const allowedHosts = new Set((allowedDomains ?? []).map((domain) => domain.toLowerCase()));
+  return candidates
+    .map((candidate) => {
+      const haystack = `${candidate.title} ${candidate.href}`.toLowerCase();
+      let score = 0;
+      const host = safeHostname(candidate.href);
+      for (const keyword of keywords) {
+        if (haystack.includes(keyword)) score += 2;
+      }
+      if (wantsPressRelease && /\bpress[- ]release\b|\bnews[- ]release\b/.test(haystack)) {
+        score += 6;
+      }
+      if (/\/news-events\/news-releases\//.test(haystack)) {
+        score += 4;
+      }
+      if (/\/science-updates\//.test(haystack)) {
+        score -= 2;
+      }
+      if (allowedHosts.size > 0) {
+        if (host && allowedHosts.has(host)) {
+          score += 10;
+        } else if (host) {
+          score -= 12;
+        }
+      }
+      return { ...candidate, score };
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5);
+}
+
+function safeHostname(url: string): string | undefined {
+  try {
+    return new URL(url).hostname.toLowerCase();
+  } catch {
+    return undefined;
+  }
 }
 
 function pushGoalVerificationEvidence(target: string[], entry: string): void {

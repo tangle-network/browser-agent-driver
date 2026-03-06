@@ -77,6 +77,26 @@ EXAMPLE 1 — Multi-step form fill (use actual refs from ELEMENTS, not these pla
 EXAMPLE 2 — Recovery after failure:
 {"plan":["Click the send button","Wait for response"],"currentStep":0,"action":{"action":"scroll","direction":"down","amount":300},"reasoning":"My last click failed because the element was not visible in the viewport. I can see from the screenshot that the send button is below the fold. Scrolling down to bring it into view before retrying.","expectedEffect":"The send button should become visible in the viewport"}`;
 
+const FIRST_TURN_COMPACT_PROMPT = `You are a browser agent choosing the fastest safe next action.
+
+Return ONLY valid JSON with:
+{
+  "plan": ["step 1", "step 2"],
+  "currentStep": 0,
+  "action": { "action": "click", "selector": "@REF" },
+  "nextActions": [],
+  "reasoning": "brief reason",
+  "expectedEffect": "what should change"
+}
+
+Rules:
+1. Use exact @ref selectors from ELEMENTS. Never invent refs.
+2. Prefer the smallest high-signal action.
+3. On landing pages, prefer site search, primary navigation, or an obvious goal-matching link.
+4. If a blocker is visible, resolve it first.
+5. Do not over-explore on the first turn.
+6. Respond with JSON only.`;
+
 const DESIGN_AUDIT_PROMPT = `You are a senior product designer and UX engineer auditing a web application.
 
 Analyze the screenshot and accessibility tree for design quality, UX issues, and visual bugs.
@@ -173,6 +193,7 @@ export class Brain {
   private maxHistoryTurns: number;
   private visionEnabled: boolean;
   private llmTimeoutMs: number;
+  private compactFirstTurn: boolean;
   private systemPrompt: string;
 
   constructor(config: AgentConfig = {}) {
@@ -188,6 +209,7 @@ export class Brain {
     this.debug = config.debug || false;
     this.maxHistoryTurns = config.maxHistoryTurns || 10;
     this.visionEnabled = config.vision !== false;
+    this.compactFirstTurn = config.compactFirstTurn === true;
   }
 
   private shouldSendTemperature(modelName = this.modelName): boolean {
@@ -394,6 +416,10 @@ export class Brain {
     extraContext?: string,
     turnInfo?: { current: number; max: number }
   ): Promise<BrainDecision> {
+    const useCompactFirstTurn = this.compactFirstTurn && turnInfo?.current === 1;
+    const visibleSnapshot = useCompactFirstTurn
+      ? compactFirstTurnSnapshot(state.snapshot)
+      : state.snapshot;
     let textContent = `GOAL: ${goal}`;
 
     if (turnInfo) {
@@ -414,7 +440,7 @@ URL: ${state.url}
 Title: ${state.title}
 
 ELEMENTS:
-${state.snapshot}`;
+${visibleSnapshot}`;
 
     // Append snapshot diff when available and compact (< 30% of full snapshot)
     if (state.snapshotDiff && state.snapshotDiff.length < state.snapshot.length * 0.3) {
@@ -453,9 +479,9 @@ ${state.snapshot}`;
 
     const result = await generateText({
       model,
-      system: this.systemPrompt,
+      system: useCompactFirstTurn ? FIRST_TURN_COMPACT_PROMPT : this.systemPrompt,
       messages,
-      ...this.generationOptions(1000, { provider: effectiveProvider, model: effectiveModel }),
+      ...this.generationOptions(useCompactFirstTurn ? 500 : 1000, { provider: effectiveProvider, model: effectiveModel }),
       abortSignal: AbortSignal.timeout(this.llmTimeoutMs),
     });
 
@@ -827,6 +853,14 @@ Only include facts that are genuinely useful. Quality over quantity. Max 10 fact
       };
     }
   }
+}
+
+function compactFirstTurnSnapshot(snapshot: string): string {
+  const compact = AriaSnapshotHelper.formatCompact(snapshot);
+  const basis = compact.length > 0 ? compact : snapshot;
+  const maxChars = 4000;
+  if (basis.length <= maxChars) return basis;
+  return `${basis.slice(0, maxChars)}\n... [snapshot truncated for first-turn fast path]`;
 }
 
 function parseNextActions(parsed: Record<string, unknown>, validActions: Set<string>): Action[] | undefined {

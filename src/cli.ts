@@ -100,6 +100,7 @@ async function main(): Promise<void> {
       goal: { type: 'string', short: 'g' },
       url: { type: 'string', short: 'u' },
       cases: { type: 'string', short: 'c' },
+      'allowed-domains': { type: 'string' },
 
       // LLM configuration
       model: { type: 'string', short: 'm' },
@@ -325,6 +326,7 @@ async function main(): Promise<void> {
     };
   } else if (profile === 'benchmark-webbench') {
     if (!values['llm-timeout']) cliOverrides.llmTimeoutMs = 20_000;
+    cliOverrides.compactFirstTurn = true;
     if (!values.retries) cliOverrides.retries = 1;
     if (!values['retry-delay-ms']) cliOverrides.retryDelayMs = 250;
     if (values.vision === undefined) cliOverrides.vision = false;
@@ -444,6 +446,9 @@ async function main(): Promise<void> {
       name: (c.name as string) || (c.goal as string)?.slice(0, 60) || `Case ${i}`,
       startUrl: (c.startUrl as string) || (c.url as string) || values.url || '',
       goal: (c.goal as string) || '',
+      allowedDomains: Array.isArray(c.allowedDomains)
+        ? c.allowedDomains.filter((domain): domain is string => typeof domain === 'string' && domain.length > 0)
+        : parseAllowedDomains(values['allowed-domains']),
       maxTurns: (c.maxTurns as number) || maxTurns,
       timeoutMs: (c.timeoutMs as number) || timeoutMs,
       priority: (c.priority as number) ?? i,
@@ -454,6 +459,7 @@ async function main(): Promise<void> {
       name: values.goal!.slice(0, 60),
       startUrl: values.url || '',
       goal: values.goal!,
+      allowedDomains: parseAllowedDomains(values['allowed-domains']),
       maxTurns,
       timeoutMs,
       priority: 0,
@@ -775,6 +781,7 @@ OPTIONS:
   -g, --goal <text>           Natural language goal for single task
   -u, --url <url>             Starting URL
   -c, --cases <file>          JSON file with test cases array
+      --allowed-domains <csv> Comma-separated host allowlist (e.g. www.nih.gov,docs.foo.com)
   -m, --model <name>          LLM model (default: gpt-5.2)
       --provider <name>       LLM provider: openai, anthropic, google, codex-cli, claude-code (default: openai)
       --model-adaptive        Enable adaptive model routing for decide() turns
@@ -867,6 +874,15 @@ function resolveProviderApiKey(
   }
 
   return process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY;
+}
+
+function parseAllowedDomains(value: string | undefined): string[] | undefined {
+  if (!value) return undefined;
+  const domains = value
+    .split(',')
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+  return domains.length > 0 ? [...new Set(domains)] : undefined;
 }
 
 async function syncLocalBenchmarkRun(outPath: string, label: string): Promise<void> {

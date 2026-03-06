@@ -281,6 +281,7 @@ export class TestRunner {
       const runPromise = runner.run({
         goal,
         startUrl: testCase.startUrl,
+        allowedDomains: testCase.allowedDomains,
         maxTurns: testCase.maxTurns ?? DEFAULT_MAX_TURNS,
         signal: combinedSignal,
       });

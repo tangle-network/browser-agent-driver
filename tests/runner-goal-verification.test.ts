@@ -28,6 +28,7 @@ describe('buildGoalVerificationClaim', () => {
 
   it('accepts script-backed completions when verifier only lacks visible evidence', () => {
     const accepted = shouldAcceptScriptBackedCompletion(
+      'Use the site search to find the first related press release and extract the title and date.',
       {
         url: 'https://www.nih.gov/news-events/news-releases/example',
         title: 'Example',
@@ -50,5 +51,32 @@ describe('buildGoalVerificationClaim', () => {
     );
 
     expect(accepted).toBe(true);
+  });
+
+  it('rejects script-backed completions when the goal requires a press release but evidence points to another content type', () => {
+    const accepted = shouldAcceptScriptBackedCompletion(
+      'Use the site search to find the first related press release and extract the title and date.',
+      {
+        url: 'https://www.nih.gov/news-events/nih-research-matters/gene-expression-signatures-alzheimers-disease',
+        title: "Gene expression signatures of Alzheimer's disease",
+        snapshot: '- heading "Gene expression signatures of Alzheimer\'s disease"',
+      },
+      {
+        achieved: false,
+        confidence: 0.73,
+        evidence: ['The current URL is an NIH Research Matters article, not a press release page.'],
+        missing: ['Need the first related press release.'],
+      },
+      [
+        'URL: https://www.nih.gov/news-events/nih-research-matters/gene-expression-signatures-alzheimers-disease',
+        `Title: "Gene expression signatures of Alzheimer's disease"`,
+        'Publication date: May 14, 2019',
+      ].join('\n'),
+      [
+        `SCRIPT RESULT:\n{"date":"May 14, 2019","title":"Gene expression signatures of Alzheimer's disease"}`,
+      ],
+    );
+
+    expect(accepted).toBe(false);
   });
 });

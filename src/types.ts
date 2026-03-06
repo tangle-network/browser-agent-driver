@@ -119,6 +119,8 @@ export interface Scenario {
   goal: string;
   /** Starting URL (optional - uses current page if not set) */
   startUrl?: string;
+  /** Explicit host allowlist for navigation/result selection (for benchmark and policy constraints) */
+  allowedDomains?: string[];
   /** Max turns before giving up */
   maxTurns?: number;
   /** Abort signal for external cancellation (e.g., story timeout) */
@@ -160,6 +162,8 @@ export interface AgentConfig {
   qualityThreshold?: number;
   /** Timeout per LLM request in ms (default: 60000) */
   llmTimeoutMs?: number;
+  /** Use a lower-token prompt/snapshot strategy on the first turn */
+  compactFirstTurn?: boolean;
   /** Verify goal completion before accepting 'complete' action (default: true) */
   goalVerification?: boolean;
   /** Enable trajectory scoring when selecting reference traces (default: false) */
@@ -337,6 +341,8 @@ export interface TestCase {
   startUrl: string;
   /** Natural language goal for the agent */
   goal: string;
+  /** Explicit host allowlist for navigation/result selection */
+  allowedDomains?: string[];
   /** Max turns allowed (default: 30) */
   maxTurns?: number;
   /** Timeout in ms */

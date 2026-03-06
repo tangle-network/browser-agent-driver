@@ -72,6 +72,15 @@ export class PlaywrightDriver implements Driver {
     return this.page;
   }
 
+  async inspectSelectorHref(selector: string): Promise<string | undefined> {
+    const locator = this.snapshot.resolveLocator(this.page, selector);
+    return locator.evaluate((node) => {
+      const element = node as Element | null;
+      const anchor = element?.closest('a[href]') as HTMLAnchorElement | null;
+      return anchor?.href || undefined;
+    }).catch(() => undefined);
+  }
+
   private async adoptPage(nextPage: Page): Promise<void> {
     if (this.page === nextPage) return;
     if (this.cdpSession) {
@@ -393,7 +402,7 @@ export class PlaywrightDriver implements Driver {
         }
 
         case 'navigate':
-          await this.page.goto(action.url, { timeout });
+          await this.page.goto(action.url, { timeout, waitUntil: 'domcontentloaded' });
           return { success: true };
 
         case 'wait':

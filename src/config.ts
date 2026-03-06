@@ -69,6 +69,7 @@ export interface DriverConfig {
   timeoutMs?: number;
   concurrency?: number;
   llmTimeoutMs?: number;
+  compactFirstTurn?: boolean;
   retries?: number;
   retryDelayMs?: number;
   screenshotInterval?: number;
@@ -139,6 +140,7 @@ const DEFAULTS: DriverConfig = {
   timeoutMs: 600_000,
   concurrency: 1,
   llmTimeoutMs: 60_000,
+  compactFirstTurn: false,
   retries: 3,
   retryDelayMs: 1000,
   screenshotInterval: 5,
@@ -257,6 +259,7 @@ export function toAgentConfig(config: DriverConfig): AgentConfig {
     baseUrl: config.baseUrl,
     ...(config.systemPrompt ? { systemPrompt: config.systemPrompt } : {}),
     llmTimeoutMs: config.llmTimeoutMs,
+    compactFirstTurn: config.compactFirstTurn,
     retries: config.retries,
     retryDelayMs: config.retryDelayMs,
     vision: config.vision,

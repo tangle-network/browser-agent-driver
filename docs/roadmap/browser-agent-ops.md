@@ -279,6 +279,7 @@ Possible challengers:
 - prompt variants
 - routing variants
 - memory variants
+- bounded branch exploration variants
 
 Exit criteria:
 - the winner beats baseline with enough evidence to promote
@@ -362,6 +363,14 @@ P1:
 P2:
 - resume supervisor and policy challenger experiments only after the slice is stable
 - wire the winning execution path cleanly into the app stack
+
+Candidate experiments to queue after the current slice is stable:
+- bounded branch exploration at high-ambiguity points only
+- branch count capped at 2 to 3
+- short horizon only (1 to 3 actions per branch)
+- use read-mostly scouting before side-effectful actions
+- score and prune aggressively; continue only the winning branch
+- never make this default until it proves non-regressive on cost and pass rate
 
 ## Do And Do Not
 

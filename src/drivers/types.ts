@@ -35,6 +35,9 @@ export interface Driver {
   /** Take a screenshot on demand */
   screenshot?(): Promise<Buffer>;
 
+  /** Best-effort href inspection for a selector before executing a click */
+  inspectSelectorHref?(selector: string): Promise<string | undefined>;
+
   /** Optional run-time diagnostics for startup and browser/session setup */
   getDiagnostics?(): Record<string, unknown>;
 
