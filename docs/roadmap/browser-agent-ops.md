@@ -356,7 +356,7 @@ This is the canonical finish-line tracker. Work is done only when every item her
 | --- | --- | --- | --- |
 | Tier 1 deterministic fixtures | Pending | Stable at 100% on repeated local runs | `npm run bench:tier1:gate` |
 | Tier 2 authenticated core flows | Pending | Stable at 100% with real auth state and complete artifacts | `npm run bench:tier2:gate` |
-| Tier 3 public-web `reach3` baseline | Verified baseline | At least 5 repeated seeded runs with no case below 80% pass and no structural false-positive class open | `npm run baseline:track -- --cases ./bench/scenarios/cases/webbench-reachable3-max20-timeout120.json --benchmark-profile webbench --model gpt-5.2 --modes fast-explore` |
+| Tier 3 public-web `reach3` baseline | Verified baseline | At least 5 repeated seeded runs with no case below 80% pass and no structural false-positive class open | `npm run bench:tier3:gate -- --existing-root ./agent-results/reach3-contenthub-v4-repeat-1772786885` |
 | Search/domain policy correctness | Verified baseline | Disallowed-host clicks and false-positive completions are blocked deterministically | repeated NIH runs + targeted tests |
 | Artifact completeness | Verified baseline | Every serious run emits report, manifest, and recording | artifact completeness checks in baseline/gate summaries |
 | Cost and turn efficiency | In progress | Median turns, duration, and token cost are non-regressive on the promoted slice | repeated baseline summaries |
@@ -375,6 +375,7 @@ Current honest status:
 Current best evidence:
 - clean corrected `reach3`: `./agent-results/reach3-contenthub-v4-1772786683/track-summary.json`
 - repeated `reach3`: `./agent-results/reach3-contenthub-v4-repeat-1772786885/`
+- executable Tier 3 summary: `./agent-results/reach3-contenthub-v4-repeat-1772786885/tier3-gate-summary.json`
 - repeated control medians:
   - Yale (`webbench-2204`): `5/5`, median `28.9s`, median `5` turns, median `27.2k` tokens
   - NIH (`webbench-2605`): `5/5`, median `77.9s`, median `12` turns, median `185.8k` tokens
@@ -394,6 +395,7 @@ P1:
 - reduce wasted-turn variance on Yale and Alberta after NIH is stable
 - raise Tier 2 authenticated coverage with the same artifact standards
 - add CI-style summary output for repeated control runs so promotion evidence is one artifact, not manual aggregation
+- commit the Tier 3 gate command into CI once Tier 2 is ready to run alongside it
 
 P2:
 - resume supervisor and policy challenger experiments only after the slice is stable
