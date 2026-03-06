@@ -43,6 +43,8 @@ export interface RunnerOptions {
   config?: AgentConfig;
   /** Called after each turn */
   onTurn?: (turn: Turn) => void;
+  /** Called when a first-time phase timing is observed */
+  onPhaseTiming?: (phase: 'navigate' | 'observe' | 'decide' | 'execute', durationMs: number) => void;
   /** Reference trajectory to inject into brain context */
   referenceTrajectory?: string;
   /** Project memory store — enables knowledge + selector persistence */
@@ -93,6 +95,7 @@ export class AgentRunner {
   private brain: Brain;
   private config: AgentConfig;
   private onTurn?: (turn: Turn) => void;
+  private onPhaseTiming?: (phase: 'navigate' | 'observe' | 'decide' | 'execute', durationMs: number) => void;
   private referenceTrajectory?: string;
   private projectStore?: ProjectStore;
   private knowledge?: AppKnowledge;
@@ -103,6 +106,7 @@ export class AgentRunner {
     this.config = options.config || {};
     this.brain = new Brain(this.config);
     this.onTurn = options.onTurn;
+    this.onPhaseTiming = options.onPhaseTiming;
     this.referenceTrajectory = options.referenceTrajectory;
     this.projectStore = options.projectStore;
   }
@@ -148,6 +152,7 @@ export class AgentRunner {
         scenario.signal,
       );
       phaseTimings.initialNavigateMs = Date.now() - navigateStartedAt;
+      this.onPhaseTiming?.('navigate', phaseTimings.initialNavigateMs);
     }
 
     let consecutiveErrors = 0;
@@ -253,7 +258,10 @@ export class AgentRunner {
           },
           scenario.signal,
         );
-        phaseTimings.firstObserveMs ??= Date.now() - observeStartedAt;
+        if (phaseTimings.firstObserveMs === undefined) {
+          phaseTimings.firstObserveMs = Date.now() - observeStartedAt;
+          this.onPhaseTiming?.('observe', phaseTimings.firstObserveMs);
+        }
 
         const terminalBlocker = detectTerminalBlocker(state);
         if (terminalBlocker) {
@@ -470,7 +478,10 @@ export class AgentRunner {
           },
           scenario.signal,
         );
-        phaseTimings.firstDecideMs ??= Date.now() - decideStartedAt;
+        if (phaseTimings.firstDecideMs === undefined) {
+          phaseTimings.firstDecideMs = Date.now() - decideStartedAt;
+          this.onPhaseTiming?.('decide', phaseTimings.firstDecideMs);
+        }
 
         const { action, nextActions, raw, reasoning, plan, currentStep, expectedEffect, tokensUsed } = decision;
 
@@ -735,7 +746,10 @@ export class AgentRunner {
             },
             scenario.signal,
           );
-          phaseTimings.firstExecuteMs ??= Date.now() - executeStartedAt;
+          if (phaseTimings.firstExecuteMs === undefined) {
+            phaseTimings.firstExecuteMs = Date.now() - executeStartedAt;
+            this.onPhaseTiming?.('execute', phaseTimings.firstExecuteMs);
+          }
         } catch (err) {
           if (err instanceof StaleRefError) {
             // Stale ref — re-observe and ask the Brain to pick a new ref

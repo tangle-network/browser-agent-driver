@@ -187,8 +187,12 @@ export class TestRunner {
 
     // Run setup hook
     const page = activeDriver.getPage?.();
-    const runtimeObservability = await this.startRuntimeObservability(testCase, page);
+    const runtimeObservability = await this.startRuntimeObservability(testCase, page, activeDriver);
     let runtimeOutcome: RuntimeObservabilityOutcome | undefined;
+    const runStartedAtMs = Date.now();
+    let timeToFirstTurnMs: number | undefined;
+    const observedTurns: Turn[] = [];
+    const partialPhaseTimings: AgentResult['phaseTimings'] = {};
     if (testCase.setup && page) {
       await testCase.setup(page);
     }
@@ -219,6 +223,10 @@ export class TestRunner {
         referenceTrajectory: combinedReference,
         projectStore: this.projectStore,
         onTurn: (turn) => {
+          if (timeToFirstTurnMs === undefined) {
+            timeToFirstTurnMs = Math.max(0, Date.now() - runStartedAtMs);
+          }
+          observedTurns.push(structuredClone(turn));
           this.onTurn?.(testCase, turn);
           this.onProgress?.({
             type: 'test:turn',
@@ -251,6 +259,12 @@ export class TestRunner {
             }
           }
         },
+        onPhaseTiming: (phase, durationMs) => {
+          if (phase === 'navigate') partialPhaseTimings.initialNavigateMs ??= durationMs;
+          if (phase === 'observe') partialPhaseTimings.firstObserveMs ??= durationMs;
+          if (phase === 'decide') partialPhaseTimings.firstDecideMs ??= durationMs;
+          if (phase === 'execute') partialPhaseTimings.firstExecuteMs ??= durationMs;
+        },
       });
 
       // Build goal with success description
@@ -276,13 +290,27 @@ export class TestRunner {
         let timer: ReturnType<typeof setTimeout> | undefined;
         const timeoutPromise = new Promise<AgentResult>((resolve) => {
           timer = setTimeout(() => {
-            timeoutAbortController.abort(`Test timed out after ${timeoutMs}ms`);
+            const timedOutBeforeFirstTurn = timeToFirstTurnMs === undefined;
+            const reason = timedOutBeforeFirstTurn
+              ? `Pre-first-turn timeout after ${timeoutMs}ms`
+              : `Test timed out after ${timeoutMs}ms`;
+            timeoutAbortController.abort(reason);
             resolve({
               success: false,
-              reason: `Test timed out after ${timeoutMs}ms`,
-              turns: [],
+              reason,
+              turns: [...observedTurns],
               totalMs: timeoutMs,
-              phaseTimings: {},
+              phaseTimings: partialPhaseTimings,
+              startupDiagnostics: timedOutBeforeFirstTurn
+                ? {
+                  firstTurnSeen: false,
+                  zeroTurnFailureClass: 'pre_first_turn_timeout',
+                  startupReason: reason,
+                }
+                : {
+                  firstTurnSeen: true,
+                  timeToFirstTurnMs,
+                },
               wasteMetrics: {
                 repeatedQueryCount: 0,
                 verificationRejectionCount: 0,
@@ -297,6 +325,8 @@ export class TestRunner {
       } else {
         agentResult = await runPromise;
       }
+
+      agentResult = attachStartupDiagnostics(agentResult, timeToFirstTurnMs);
 
       // Ground-truth verification
       // Default to agent outcome when no explicit criteria are provided.
@@ -334,6 +364,7 @@ export class TestRunner {
         tokensUsed,
         durationMs: endedAt.getTime() - startedAt.getTime(),
         phaseTimings: agentResult.phaseTimings,
+        startupDiagnostics: agentResult.startupDiagnostics,
         wasteMetrics: agentResult.wasteMetrics,
         startedAt,
         endedAt,
@@ -824,6 +855,11 @@ export class TestRunner {
       tokensUsed: 0,
       durationMs: 0,
       phaseTimings: {},
+      startupDiagnostics: {
+        firstTurnSeen: false,
+        zeroTurnFailureClass: 'unknown',
+        startupReason: reason,
+      },
       wasteMetrics: {
         repeatedQueryCount: 0,
         verificationRejectionCount: 0,
@@ -935,7 +971,7 @@ export class TestRunner {
     await Promise.allSettled([...this.pendingArtifactOps]);
   }
 
-  private async startRuntimeObservability(testCase: TestCase, page?: Page): Promise<RuntimeObservabilityHandle | null> {
+  private async startRuntimeObservability(testCase: TestCase, page?: Page, driver?: Driver): Promise<RuntimeObservabilityHandle | null> {
     const config = this.config.observability;
     if (config?.enabled === false || !page || typeof (page as Page & { on?: unknown }).on !== 'function') {
       return null;
@@ -1084,6 +1120,7 @@ export class TestRunner {
         }
 
         if (!this.artifactSink) return;
+        const driverDiagnostics = driver?.getDiagnostics?.();
         const runtimeLog = {
           startedAt: observabilityStartedAt,
           finishedAt: new Date().toISOString(),
@@ -1103,6 +1140,7 @@ export class TestRunner {
           pageErrors,
           requestFailures,
           responseErrors,
+          driverDiagnostics: driverDiagnostics ?? null,
         };
 
         const uri = await this.artifactSink.put({
@@ -1123,6 +1161,46 @@ export class TestRunner {
       },
     };
   }
+}
+
+function attachStartupDiagnostics(agentResult: AgentResult, timeToFirstTurnMs?: number): AgentResult {
+  if (agentResult.startupDiagnostics) return agentResult;
+
+  if (typeof timeToFirstTurnMs === 'number') {
+    return {
+      ...agentResult,
+      startupDiagnostics: {
+        firstTurnSeen: true,
+        timeToFirstTurnMs,
+      },
+    };
+  }
+
+  if ((agentResult.turns?.length ?? 0) > 0) {
+    return {
+      ...agentResult,
+      startupDiagnostics: {
+        firstTurnSeen: true,
+      },
+    };
+  }
+
+  return {
+    ...agentResult,
+    startupDiagnostics: {
+      firstTurnSeen: false,
+      zeroTurnFailureClass: classifyZeroTurnFailure(agentResult.reason),
+      startupReason: agentResult.reason,
+    },
+  };
+}
+
+function classifyZeroTurnFailure(reasonRaw?: string): 'pre_first_turn_timeout' | 'provider_or_credentials' | 'runner_startup_error' | 'unknown' {
+  const reason = String(reasonRaw || '').toLowerCase();
+  if (!reason) return 'unknown';
+  if (/pre-first-turn timeout|startup timeout/.test(reason)) return 'pre_first_turn_timeout';
+  if (/incorrect api key|authorization failed|rate limit|llm|api key/.test(reason)) return 'provider_or_credentials';
+  return 'runner_startup_error';
 }
 
 function sanitizeArtifactId(value: string): string {

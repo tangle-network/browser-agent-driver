@@ -515,6 +515,7 @@ async function main(): Promise<void> {
   let browser: Awaited<ReturnType<typeof chromium.launch>> | Awaited<ReturnType<typeof firefox.launch>> | Awaited<ReturnType<typeof webkit.launch>> | undefined;
   let persistentContext: Awaited<ReturnType<typeof chromium.launchPersistentContext>> | undefined;
   let stopWalletAutoApprover: (() => void) | undefined;
+  const launchDiagnostics: Record<string, number | string | boolean> = {};
 
   if (launchPlan.walletMode) {
     for (const extensionPath of launchPlan.extensionPaths) {
@@ -526,6 +527,7 @@ async function main(): Promise<void> {
     const userDataDir = launchPlan.userDataDir ?? path.resolve('.agent-wallet-profile');
     fs.mkdirSync(userDataDir, { recursive: true });
 
+    const persistentLaunchStartedAt = Date.now();
     persistentContext = await chromium.launchPersistentContext(userDataDir, {
       channel: 'chromium',
       headless: false,
@@ -533,6 +535,7 @@ async function main(): Promise<void> {
       viewport,
       recordVideo: { dir: videoDir, size: viewport },
     });
+    launchDiagnostics.browserLaunchMs = Date.now() - persistentLaunchStartedAt;
     await applyStorageStateToPersistentContext(persistentContext, storageStatePath);
 
     const walletConfig = driverConfig.wallet ?? {};
@@ -581,34 +584,56 @@ async function main(): Promise<void> {
         ? webkit
         : chromium;
 
+    const browserLaunchStartedAt = Date.now();
     browser = await browserType.launch({
       headless: launchPlan.headless,
       ...(browserName === 'chromium' ? { args: launchPlan.browserArgs } : {}),
     });
+    launchDiagnostics.browserLaunchMs = Date.now() - browserLaunchStartedAt;
   }
 
   const driverFactory = async () => {
+    const contextStartedAt = Date.now();
     const context = persistentContext ?? await browser!.newContext({
       viewport,
       recordVideo: { dir: videoDir, size: viewport },
       storageState: storageStatePath,
     });
+    const contextCreateMs = Date.now() - contextStartedAt;
+    const pageStartedAt = Date.now();
     const page = await context.newPage();
+    const pageCreateMs = Date.now() - pageStartedAt;
     const driver = new PlaywrightDriver(page, {
       captureScreenshots: config.vision,
       screenshotQuality: 50,
       disableCdp: driverConfig.disableCdp,
     });
     // Apply resource blocking if configured
+    const resourceBlockingStartedAt = Date.now();
     if (driverConfig.resourceBlocking) {
       await driver.setupResourceBlocking(driverConfig.resourceBlocking);
     }
+    const resourceBlockingSetupMs = driverConfig.resourceBlocking
+      ? Date.now() - resourceBlockingStartedAt
+      : 0;
+    const diagnostics = {
+      browserName,
+      headless: launchPlan.headless,
+      walletMode: launchPlan.walletMode,
+      browserLaunchMs: Number(launchDiagnostics.browserLaunchMs ?? 0),
+      contextCreateMs,
+      pageCreateMs,
+      resourceBlockingSetupMs,
+      storageStateApplied: Boolean(storageStatePath),
+      persistentContext: Boolean(persistentContext),
+    };
     // Wrap in a Driver that properly tears down context on close
     const wrappedDriver: import('./drivers/types.js').Driver = {
       observe: () => driver.observe(),
       execute: (action) => driver.execute(action),
       getPage: () => driver.getPage?.(),
       screenshot: () => driver.screenshot(),
+      getDiagnostics: () => diagnostics,
       async close() {
         await driver.close().catch(() => {});
         await page.close().catch(() => {});

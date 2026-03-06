@@ -14,6 +14,12 @@ describe('failure taxonomy', () => {
     expect(isExternalBlockerFailureClass(cls)).toBe(false);
   });
 
+  it('classifies pre-first-turn timeouts separately from in-loop timeouts', () => {
+    const cls = classifyFailureReason('Pre-first-turn timeout after 5000ms');
+    expect(cls).toBe('startup_timeout');
+    expect(isExternalBlockerFailureClass(cls)).toBe(false);
+  });
+
   it('prefers runtime log evidence over coarse reason text', () => {
     const result = classifyFailure({
       reason: 'Failed',

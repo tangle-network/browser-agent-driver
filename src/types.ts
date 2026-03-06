@@ -277,6 +277,8 @@ export interface AgentResult {
   totalMs: number;
   /** Phase timing instrumentation for the run */
   phaseTimings?: RunPhaseTimings;
+  /** Startup-path instrumentation for the run */
+  startupDiagnostics?: RunStartupDiagnostics;
   /** Wasted-turn instrumentation for the run */
   wasteMetrics?: RunWasteMetrics;
   /** Quality evaluation (if qualityThreshold is set or agent used "evaluate" action) */
@@ -384,6 +386,8 @@ export interface TestResult {
   durationMs: number;
   /** Phase timing instrumentation copied from agentResult for report consumers */
   phaseTimings?: RunPhaseTimings;
+  /** Startup-path instrumentation copied from agentResult for report consumers */
+  startupDiagnostics?: RunStartupDiagnostics;
   /** Wasted-turn instrumentation copied from agentResult for report consumers */
   wasteMetrics?: RunWasteMetrics;
   startedAt: Date;
@@ -423,6 +427,13 @@ export interface RunPhaseTimings {
   firstObserveMs?: number;
   firstDecideMs?: number;
   firstExecuteMs?: number;
+}
+
+export interface RunStartupDiagnostics {
+  firstTurnSeen: boolean;
+  timeToFirstTurnMs?: number;
+  zeroTurnFailureClass?: 'pre_first_turn_timeout' | 'provider_or_credentials' | 'runner_startup_error' | 'unknown';
+  startupReason?: string;
 }
 
 export interface RunWasteMetrics {

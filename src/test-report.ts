@@ -88,6 +88,20 @@ function generateMarkdownReport(suite: TestSuiteResult, options: ReportOptions):
           lines.push(`- **Phase timings:** ${phaseSummary}`);
         }
       }
+      if (r.startupDiagnostics) {
+        const startupSummary = [
+          `first turn seen ${r.startupDiagnostics.firstTurnSeen ? 'yes' : 'no'}`,
+          r.startupDiagnostics.timeToFirstTurnMs !== undefined
+            ? `time to first turn ${(r.startupDiagnostics.timeToFirstTurnMs / 1000).toFixed(1)}s`
+            : '',
+          r.startupDiagnostics.zeroTurnFailureClass
+            ? `zero-turn class ${r.startupDiagnostics.zeroTurnFailureClass}`
+            : '',
+        ].filter(Boolean).join(', ');
+        if (startupSummary) {
+          lines.push(`- **Startup:** ${startupSummary}`);
+        }
+      }
       if (r.wasteMetrics) {
         lines.push(
           `- **Waste:** repeated queries ${r.wasteMetrics.repeatedQueryCount}, ` +

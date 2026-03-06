@@ -35,6 +35,9 @@ export interface Driver {
   /** Take a screenshot on demand */
   screenshot?(): Promise<Buffer>;
 
+  /** Optional run-time diagnostics for startup and browser/session setup */
+  getDiagnostics?(): Record<string, unknown>;
+
   /** Close/cleanup the driver */
   close?(): Promise<void>;
 }

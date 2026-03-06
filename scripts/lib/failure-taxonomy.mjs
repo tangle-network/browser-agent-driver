@@ -52,6 +52,9 @@ export function classifyFailureReason(reasonRaw) {
     /max turns|out of remaining turns|turn budget|remaining turn budget/.test(reason)
   ) return 'planner_stall_max_turns';
   if (
+    /pre-first-turn timeout|startup timeout/.test(reason)
+  ) return 'startup_timeout';
+  if (
     /timeout|timed out|observe timeout/.test(reason)
   ) return 'timeout';
   if (
