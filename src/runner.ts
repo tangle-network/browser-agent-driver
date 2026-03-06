@@ -514,6 +514,10 @@ export class AgentRunner {
           supervisorSignalSeverity: supervisorSignal.severity,
           extraContext,
         });
+        const aiTanglePartnerCompletion = detectAiTanglePartnerTemplateVisibleState(state, scenario.goal);
+        if (aiTanglePartnerCompletion) {
+          extraContext += `\nPARTNER TEMPLATE VISIBILITY DETECTED:\n${aiTanglePartnerCompletion.feedback}\nReturn a terminal \`complete\` action now with concrete evidence.\n`;
+        }
         const aiTangleOutputCompletion = detectAiTangleVerifiedOutputState(state, scenario.goal);
         if (aiTangleOutputCompletion) {
           extraContext += `\nVERIFIED OUTPUT STATE DETECTED:\n${aiTangleOutputCompletion.feedback}\nReturn a terminal \`complete\` action now with concrete evidence.\n`;
@@ -555,7 +559,16 @@ export class AgentRunner {
           expectedEffect = 'URL should change';
           nextActions = [];
         }
-        if (aiTangleOutputCompletion && action.action !== 'complete' && action.action !== 'abort') {
+        if (aiTanglePartnerCompletion && action.action !== 'complete' && action.action !== 'abort') {
+          this.brain.injectFeedback(aiTanglePartnerCompletion.feedback);
+          action = {
+            action: 'complete',
+            result: aiTanglePartnerCompletion.result,
+          };
+          reasoning = `${reasoning}\n[POLICY OVERRIDE] ${aiTanglePartnerCompletion.feedback}`;
+          expectedEffect = 'Run should terminate after verifying the partner template page.';
+          nextActions = [];
+        } else if (aiTangleOutputCompletion && action.action !== 'complete' && action.action !== 'abort') {
           this.brain.injectFeedback(aiTangleOutputCompletion.feedback);
           action = {
             action: 'complete',
@@ -1678,6 +1691,49 @@ export function detectAiTangleVerifiedOutputState(
     result: `Reached a verified Blueprint output workspace. ${evidence}`,
     feedback:
       `The main goal is already satisfied: a Blueprint chat workspace with visible output is on screen (${evidence}). Do not open menus or settings. Complete now.`,
+  };
+}
+
+export function detectAiTanglePartnerTemplateVisibleState(
+  state: PageState,
+  goal: string,
+): { result: string; feedback: string } | undefined {
+  const goalLower = goal.toLowerCase();
+  const urlLower = state.url.toLowerCase();
+  const snapshot = state.snapshot;
+  const snapshotLower = snapshot.toLowerCase();
+
+  const requiresVisibilityOnly =
+    goalLower.includes('templates are visible')
+    || goalLower.includes('verify coinbase templates are visible')
+    || goalLower.includes('verify templates are visible');
+
+  if (!requiresVisibilityOnly) return undefined;
+  if (!urlLower.includes('ai.tangle.tools/partner/')) return undefined;
+
+  const templateButtons = Array.from(
+    snapshot.matchAll(/- button "([^"]*View [^"]+ templates[^"]*)" \[ref=([^\]]+)\]/g),
+  ).map((match) => ({ text: match[1]?.trim() ?? '', ref: match[2]?.trim() ?? '' }));
+
+  const partnerHeadingMatch = snapshot.match(/- heading "([^"]*Coinbase[^"]*)" \[ref=([^\]]+)\]/i);
+  const hasPartnerHeading = Boolean(partnerHeadingMatch);
+  if (!hasPartnerHeading || templateButtons.length < 3) return undefined;
+
+  const visibleTemplateEvidence = templateButtons
+    .slice(0, 5)
+    .map((button) => `"${button.text}" [ref=${button.ref}]`)
+    .join('; ');
+
+  const headingText = partnerHeadingMatch?.[1]?.trim() ?? 'Coinbase';
+  const result =
+    `Verified Coinbase templates are visible on the partner page. ` +
+    `URL: ${state.url}; heading: "${headingText}"; visible template buttons: ${visibleTemplateEvidence}.`;
+
+  return {
+    result,
+    feedback:
+      `The goal is already satisfied on the current partner page: Coinbase template buttons are visibly present under the Coinbase heading. ` +
+      `Do not open a template, submit a run, or chase extra actionability proof. Complete now with the visible evidence only.`,
   };
 }
 

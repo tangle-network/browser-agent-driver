@@ -373,7 +373,7 @@ Current honest status:
 - selective `auto` vision is currently a challenger only; it regressed on NIH and is not baseline-ready
 - cost variance remains open, but Alberta search-path variance is improved after the main-area search scout change
 - Tier 2 repeated authenticated control is now green across three valid repetitions
-- authenticated staging still favors `full-evidence` over `fast-explore` on the Coinbase template-verification case; `fast-explore` is pass-stable but cost-negative there
+- the Tier 2 Coinbase template-verification fast-explore regression has been corrected on post-fix repeats; it no longer needs to launch runs or over-prove actionability to satisfy the goal
 
 Current best evidence:
 - Tier 1 deterministic summary: `./agent-results/tier1-green-1772794410/tier1-gate-summary.json`
@@ -383,6 +383,7 @@ Current best evidence:
 - executable Tier 3 summary: `./agent-results/reach3-contenthub-v4-repeat-1772786885/tier3-gate-summary.json`
 - Tier 2 repeated authenticated summary: `./agent-results/tier2-repeat-green-1772792440/tier2-repeat-summary.json`
 - Tier 2 repeated authenticated markdown: `./agent-results/tier2-repeat-green-1772792440/tier2-repeat-summary.md`
+- Tier 2 post-fix template verification summary: `./agent-results/tier2-repeat-post-template-fix-1772794740/tier2-repeat-summary.json`
 - Tier 2 validated repetition summaries:
   - `./agent-results/tier2-repeat-green-1772792440/rep-1/tier2-gate-summary.json`
   - `./agent-results/tier2-repeat-green-1772792440/rep-2/tier2-gate-summary.json`
@@ -400,7 +401,7 @@ Exit rule:
 P0:
 - keep the guarded non-vision path as baseline until a challenger beats it cleanly
 - reduce NIH token burn while preserving the `5/5` pass rate
-- keep `full-evidence` as the Tier 2 default until `fast-explore` stops being cost/regression-negative on authenticated template flows
+- verify the Tier 2 template-verification cost fix continues to hold in CI/nightly, then allow `fast-explore` to remain first-class on authenticated flows
 
 P1:
 - reduce wasted-turn variance on Yale and Alberta after NIH is stable

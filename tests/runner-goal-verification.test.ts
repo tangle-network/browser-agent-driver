@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildGoalVerificationClaim,
+  detectAiTanglePartnerTemplateVisibleState,
   detectAiTangleVerifiedOutputState,
   shouldAcceptScriptBackedCompletion,
 } from '../src/runner.js';
@@ -101,5 +102,25 @@ describe('buildGoalVerificationClaim', () => {
 
     expect(completion?.result).toContain('Reached a verified Blueprint output workspace');
     expect(completion?.feedback).toContain('Complete now');
+  });
+
+  it('detects visible partner template evidence and completes without launching a run', () => {
+    const completion = detectAiTanglePartnerTemplateVisibleState(
+      {
+        url: 'https://ai.tangle.tools/partner/coinbase',
+        title: 'Tangle Blueprint Agent',
+        snapshot: [
+          '- heading "Coinbase Coinbase" [ref=h32eb]',
+          '- button "View E-commerce with Coinbase templates" [ref=b3862]',
+          '- button "View Embedded Wallet Starter templates" [ref=b138b]',
+          '- button "View Advanced Trade Bot templates" [ref=b337a]',
+          '- button "View USDC Payments templates" [ref=b2d9b]',
+        ].join('\n'),
+      },
+      'As a logged-in user, navigate to /partner/coinbase and verify Coinbase templates are visible with concrete evidence.',
+    );
+
+    expect(completion?.result).toContain('Verified Coinbase templates are visible on the partner page');
+    expect(completion?.feedback).toContain('Do not open a template');
   });
 });
