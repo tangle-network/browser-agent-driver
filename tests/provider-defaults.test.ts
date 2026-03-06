@@ -7,7 +7,7 @@ describe('resolveProviderModelName', () => {
   });
 
   it('replaces inherited gpt-5 defaults for claude-code', () => {
-    expect(resolveProviderModelName('claude-code', 'gpt-5.2')).toBe('sonnet');
+    expect(resolveProviderModelName('claude-code', 'gpt-5.4')).toBe('sonnet');
   });
 
   it('preserves explicit claude-code model choices', () => {
@@ -15,7 +15,23 @@ describe('resolveProviderModelName', () => {
   });
 
   it('preserves non-claude provider defaults', () => {
-    expect(resolveProviderModelName('openai')).toBe('gpt-5.2');
+    expect(resolveProviderModelName('openai')).toBe('gpt-5.4');
+  });
+
+  it('defaults sandbox-backend claude runs to sonnet when backend type is claude-code', () => {
+    expect(
+      resolveProviderModelName('sandbox-backend', undefined, {
+        sandboxBackendType: 'claude-code',
+      }),
+    ).toBe('sonnet');
+  });
+
+  it('defaults sandbox-backend codex runs to gpt-5 when backend type is codex', () => {
+    expect(
+      resolveProviderModelName('sandbox-backend', undefined, {
+        sandboxBackendType: 'codex',
+      }),
+    ).toBe('gpt-5');
   });
 });
 

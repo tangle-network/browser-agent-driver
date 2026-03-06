@@ -91,7 +91,7 @@ describe('loadConfig', () => {
     try {
       const config = await loadConfig();
       expect(config).toBeDefined();
-      expect(config.model).toBe('gpt-5.2'); // default
+      expect(config.model).toBe('gpt-5.4'); // default
       expect(config.headless).toBe(true);  // default
     } finally {
       process.chdir(origCwd);
@@ -257,6 +257,32 @@ describe('toAgentConfig', () => {
     expect(agentConfig.microPlan).toEqual({
       enabled: true,
       maxActionsPerTurn: 3,
+    });
+  });
+
+  it('maps scout config into AgentConfig', () => {
+    const driverConfig: DriverConfig = {
+      model: 'gpt-5.2',
+      scout: {
+        enabled: true,
+        model: 'gpt-5.2-mini',
+        provider: 'openai',
+        useVision: false,
+        maxCandidates: 3,
+        minTopScore: 11,
+        maxScoreGap: 2,
+      },
+    };
+
+    const agentConfig = toAgentConfig(driverConfig);
+    expect(agentConfig.scout).toEqual({
+      enabled: true,
+      model: 'gpt-5.2-mini',
+      provider: 'openai',
+      useVision: false,
+      maxCandidates: 3,
+      minTopScore: 11,
+      maxScoreGap: 2,
     });
   });
 

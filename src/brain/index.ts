@@ -11,6 +11,7 @@ import type { Action, PageState, AgentConfig, DesignFinding, GoalVerification } 
 import { AriaSnapshotHelper } from '../drivers/snapshot.js';
 import { resolveProviderApiKey, resolveProviderModelName } from '../provider-defaults.js';
 import { buildFirstPartyBoundaryNote } from '../domain-policy.js';
+import { generateWithSandboxBackend } from '../providers/sandbox-backend.js';
 
 const SYSTEM_PROMPT = `You are a senior staff engineer operating a browser via Playwright automation.
 
@@ -97,6 +98,36 @@ Rules:
 5. Do not over-explore on the first turn.
 6. Respond with JSON only.`;
 
+const LINK_SCOUT_PROMPT = `You are a browser navigation scout.
+
+Your job is NOT to browse freely. Your only job is to pick the best next visible link from a short candidate list.
+
+You will receive:
+- the user goal
+- the current URL/title
+- the current page structure
+- a small ranked candidate list of visible links
+
+Choose the single best candidate that most directly advances the goal.
+Prefer:
+- first-party links already visible on the current page
+- links whose text matches the requested entity/content type
+- links that avoid unnecessary search detours
+
+Respond with ONLY a JSON object:
+{
+  "selector": "@ref",
+  "reasoning": "brief reason",
+  "confidence": 0.82
+}
+
+Rules:
+1. selector must exactly match one candidate ref
+2. choose only one candidate
+3. do not invent refs
+4. confidence must be 0 to 1
+5. if none are viable, choose the best available candidate anyway`;
+
 const DESIGN_AUDIT_PROMPT = `You are a senior product designer and UX engineer auditing a web application.
 
 Analyze the screenshot and accessibility tree for design quality, UX issues, and visual bugs.
@@ -176,16 +207,24 @@ export interface QualityEvaluation {
   tokensUsed?: number;
 }
 
+export interface LinkScoutRecommendation {
+  selector: string;
+  reasoning: string;
+  confidence: number;
+  raw: string;
+  tokensUsed?: number;
+}
+
 /** User message content — text-only or multimodal with screenshot */
 type UserContent = string | Array<{ type: 'text'; text: string } | { type: 'image'; image: string; mediaType: string }>;
 
 export class Brain {
   private modelCache = new Map<string, LanguageModel>();
-  private provider: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code';
+  private provider: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend';
   private modelName: string;
   private adaptiveModelRouting: boolean;
   private navModelName?: string;
-  private navProvider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code';
+  private navProvider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend';
   private explicitApiKey?: string;
   private baseUrl?: string;
   private debug: boolean;
@@ -196,11 +235,17 @@ export class Brain {
   private llmTimeoutMs: number;
   private compactFirstTurn: boolean;
   private systemPrompt: string;
+  private scoutModelName?: string;
+  private scoutProvider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend';
+  private scoutUseVision: boolean;
+  private sandboxBackendType?: string;
+  private sandboxBackendProfile?: string;
+  private sandboxBackendProvider?: string;
 
   constructor(config: AgentConfig = {}) {
     this.llmTimeoutMs = config.llmTimeoutMs ?? 60_000;
     this.provider = config.provider || 'openai';
-    this.modelName = config.model || 'gpt-5.2';
+    this.modelName = config.model || 'gpt-5.4';
     this.adaptiveModelRouting = config.adaptiveModelRouting === true;
     this.navModelName = config.navModel;
     this.navProvider = config.navProvider;
@@ -212,6 +257,21 @@ export class Brain {
     this.visionEnabled = config.vision !== false;
     this.visionStrategy = config.visionStrategy ?? (this.visionEnabled ? 'always' : 'never');
     this.compactFirstTurn = config.compactFirstTurn === true;
+    this.sandboxBackendType = config.sandboxBackendType;
+    this.sandboxBackendProfile = config.sandboxBackendProfile;
+    this.sandboxBackendProvider = config.sandboxBackendProvider;
+    this.scoutModelName = config.scout?.model;
+    this.scoutProvider = config.scout?.provider;
+    this.scoutUseVision = config.scout?.useVision === true;
+  }
+
+  private resolveModelName(
+    provider: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend',
+    requestedModel?: string,
+  ): string {
+    return resolveProviderModelName(provider, requestedModel, {
+      sandboxBackendType: provider === 'sandbox-backend' ? this.sandboxBackendType : undefined,
+    });
   }
 
   private shouldSendTemperature(modelName = this.modelName): boolean {
@@ -221,20 +281,22 @@ export class Brain {
 
   private generationOptions(
     maxOutputTokens: number,
-    selection?: { provider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code'; model?: string },
+    selection?: { provider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend'; model?: string },
   ): Record<string, number> {
     const providerName = selection?.provider || this.provider;
-    const modelName = resolveProviderModelName(providerName, selection?.model || this.modelName);
+    const modelName = this.resolveModelName(providerName, selection?.model || this.modelName);
     return {
       ...(this.shouldSendTemperature(modelName) ? { temperature: 0 } : {}),
-      ...(providerName === 'codex-cli' || providerName === 'claude-code' ? {} : { maxOutputTokens }),
+      ...(providerName === 'codex-cli' || providerName === 'claude-code' || providerName === 'sandbox-backend'
+        ? {}
+        : { maxOutputTokens }),
     };
   }
 
   /** Lazily create the LLM model instance based on provider config */
-  private async getModel(selection?: { provider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code'; model?: string }): Promise<LanguageModel> {
+  private async getModel(selection?: { provider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend'; model?: string }): Promise<LanguageModel> {
     const providerName = selection?.provider || this.provider;
-    const modelName = resolveProviderModelName(providerName, selection?.model || this.modelName);
+    const modelName = this.resolveModelName(providerName, selection?.model || this.modelName);
     const apiKey = resolveProviderApiKey(providerName, this.explicitApiKey);
     const cacheKey = `${providerName}:${modelName}`;
     const cached = this.modelCache.get(cacheKey);
@@ -279,6 +341,17 @@ export class Brain {
         const provider = createClaudeCode({
           defaultSettings: {
             ...(process.env.CLAUDE_CODE_CLI_PATH ? { pathToClaudeCodeExecutable: process.env.CLAUDE_CODE_CLI_PATH } : {}),
+            permissionMode: 'default',
+            allowDangerouslySkipPermissions: false,
+            ...(this.debug ? { verbose: true } : {}),
+            ...(this.debug
+              ? {
+                  stderr: (chunk: string) => {
+                    const line = chunk.trim();
+                    if (line) console.error(`[claude-code] ${line}`);
+                  },
+                }
+              : {}),
             ...(Object.keys(env).length > 0 ? { env } : {}),
           },
         });
@@ -299,6 +372,48 @@ export class Brain {
 
     this.modelCache.set(cacheKey, model);
     return model;
+  }
+
+  private async generate(
+    system: string,
+    messages: ModelMessage[],
+    selection?: { provider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend'; model?: string },
+    maxOutputTokens = 800,
+  ): Promise<{ text: string; tokensUsed?: number }> {
+    const providerName = selection?.provider || this.provider;
+    const modelName = this.resolveModelName(providerName, selection?.model || this.modelName);
+
+    if (providerName === 'sandbox-backend') {
+      const result = await generateWithSandboxBackend({
+        system,
+        messages,
+        model: modelName,
+        timeoutMs: this.llmTimeoutMs,
+        debug: this.debug,
+        backendType: this.sandboxBackendType,
+        backendProfileId: this.sandboxBackendProfile,
+        backendModelProvider: this.sandboxBackendProvider,
+      });
+      return { text: result.text };
+    }
+
+    const model = await this.getModel({
+      provider: providerName,
+      model: modelName,
+    });
+
+    const result = await generateText({
+      model,
+      system,
+      messages,
+      ...this.generationOptions(maxOutputTokens, { provider: providerName, model: modelName }),
+      abortSignal: AbortSignal.timeout(this.llmTimeoutMs),
+    });
+
+    return {
+      text: result.text,
+      tokensUsed: result.usage?.totalTokens,
+    };
   }
 
   private shouldUseNavigationModel(
@@ -478,26 +593,20 @@ ${visibleSnapshot}`;
       }
     }
 
-    const model = await this.getModel({
-      provider: effectiveProvider,
-      model: effectiveModel,
-    });
-
     const messages: ModelMessage[] = [
       ...this.compactHistory(),
       { role: 'user', content: userContent },
     ];
 
-    const result = await generateText({
-      model,
-      system: useCompactFirstTurn ? FIRST_TURN_COMPACT_PROMPT : this.systemPrompt,
+    const result = await this.generate(
+      useCompactFirstTurn ? FIRST_TURN_COMPACT_PROMPT : this.systemPrompt,
       messages,
-      ...this.generationOptions(useCompactFirstTurn ? 500 : 1000, { provider: effectiveProvider, model: effectiveModel }),
-      abortSignal: AbortSignal.timeout(this.llmTimeoutMs),
-    });
+      { provider: effectiveProvider, model: effectiveModel },
+      useCompactFirstTurn ? 500 : 1000,
+    );
 
     const raw = result.text;
-    const tokensUsed = result.usage?.totalTokens;
+    const tokensUsed = result.tokensUsed;
 
     if (!raw) {
       throw new Error('Brain.decide: LLM returned empty response — possible rate limit or model error');
@@ -537,18 +646,15 @@ Please evaluate the quality of this page/application.`;
 
     const userContent = this.buildUserContent(textContent, state.screenshot, true);
 
-    const model = await this.getModel();
-
-    const result = await generateText({
-      model,
-      system: EVALUATE_PROMPT,
-      messages: [{ role: 'user', content: userContent }],
-      ...this.generationOptions(800),
-      abortSignal: AbortSignal.timeout(this.llmTimeoutMs),
-    });
+    const result = await this.generate(
+      EVALUATE_PROMPT,
+      [{ role: 'user', content: userContent }],
+      undefined,
+      800,
+    );
 
     const raw = result.text;
-    const tokensUsed = result.usage?.totalTokens;
+    const tokensUsed = result.tokensUsed;
 
     if (this.debug) {
       console.log('[Brain] Evaluation:', raw.slice(0, 300));
@@ -583,6 +689,85 @@ Please evaluate the quality of this page/application.`;
     }
   }
 
+  async recommendLinkCandidate(
+    goal: string,
+    state: PageState,
+    candidates: Array<{ ref: string; text: string; score: number }>,
+    extraContext?: string,
+  ): Promise<LinkScoutRecommendation> {
+    const topCandidates = candidates.slice(0, 5);
+    const lines = [
+      `GOAL: ${goal}`,
+      '',
+      'CURRENT PAGE:',
+      `URL: ${state.url}`,
+      `Title: ${state.title}`,
+      '',
+      'ELEMENTS:',
+      state.snapshot,
+      '',
+      'CANDIDATES:',
+      ...topCandidates.map((candidate, index) =>
+        `${index + 1}. ${candidate.ref} — ${candidate.text} (deterministic score ${candidate.score})`,
+      ),
+    ];
+    if (extraContext) {
+      lines.push('', extraContext);
+    }
+    lines.push('', 'Choose the single best next visible link.');
+
+    const userContent = this.buildUserContent(
+      lines.join('\n'),
+      state.screenshot,
+      this.scoutUseVision,
+    );
+    const provider = this.scoutProvider || this.navProvider || this.provider;
+    const model = this.scoutModelName || this.navModelName || this.modelName;
+    const result = await this.generate(
+      LINK_SCOUT_PROMPT,
+      [{ role: 'user', content: userContent }],
+      { provider, model },
+      300,
+    );
+
+    const raw = result.text;
+    const tokensUsed = result.tokensUsed;
+
+    try {
+      let text = raw.trim();
+      if (text.startsWith('```')) {
+        text = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+      }
+      const parsed = JSON.parse(text);
+      const selector = typeof parsed.selector === 'string' ? parsed.selector.trim() : '';
+      const candidate = topCandidates.find((entry) => entry.ref === selector);
+      if (!candidate) {
+        throw new Error('invalid scout selector');
+      }
+      return {
+        selector,
+        reasoning: typeof parsed.reasoning === 'string' ? parsed.reasoning : 'No scout reasoning provided.',
+        confidence: typeof parsed.confidence === 'number'
+          ? Math.max(0, Math.min(1, parsed.confidence))
+          : 0.5,
+        raw,
+        tokensUsed,
+      };
+    } catch {
+      const fallback = topCandidates[0];
+      if (!fallback) {
+        throw new Error('recommendLinkCandidate requires at least one candidate');
+      }
+      return {
+        selector: fallback.ref,
+        reasoning: 'Scout fallback: selected the top deterministic candidate after parse failure.',
+        confidence: 0.5,
+        raw,
+        tokensUsed,
+      };
+    }
+  }
+
   /**
    * Verify whether the goal was actually achieved.
    * Separate from quality evaluation — this checks goal completion, not polish.
@@ -609,11 +794,8 @@ Was the goal actually achieved? Analyze the current page state carefully.`;
 
     const userContent = this.buildUserContent(textContent, state.screenshot, true);
 
-    const model = await this.getModel();
-
-    const result = await generateText({
-      model,
-      system: `You are verifying whether a browser automation agent actually achieved its goal.
+    const result = await this.generate(
+      `You are verifying whether a browser automation agent actually achieved its goal.
 
 Analyze the page state (screenshot + accessibility tree) and determine if the stated goal was accomplished.
 
@@ -635,10 +817,10 @@ Respond with ONLY a JSON object:
       - confidence: 0.0 to 1.0 — how sure are you?
       - evidence: specific observations supporting your judgment
       - missing: what's still needed (empty array if achieved)`,
-      messages: [{ role: 'user', content: userContent }],
-      ...this.generationOptions(600),
-      abortSignal: AbortSignal.timeout(this.llmTimeoutMs),
-    });
+      [{ role: 'user', content: userContent }],
+      undefined,
+      600,
+    );
 
     const raw = result.text;
 
@@ -697,18 +879,15 @@ Audit this page for design quality, UX issues, and visual bugs.`;
 
     const userContent = this.buildUserContent(textContent, state.screenshot, true);
 
-    const model = await this.getModel();
-
-    const result = await generateText({
-      model,
-      system: DESIGN_AUDIT_PROMPT,
-      messages: [{ role: 'user', content: userContent }],
-      ...this.generationOptions(1500),
-      abortSignal: AbortSignal.timeout(this.llmTimeoutMs),
-    });
+    const result = await this.generate(
+      DESIGN_AUDIT_PROMPT,
+      [{ role: 'user', content: userContent }],
+      undefined,
+      1500,
+    );
 
     const raw = result.text;
-    const tokensUsed = result.usage?.totalTokens;
+    const tokensUsed = result.tokensUsed;
 
     if (this.debug) {
       console.log('[Brain] Design audit:', raw.slice(0, 300));
@@ -760,11 +939,8 @@ Audit this page for design quality, UX issues, and visual bugs.`;
     trajectoryText: string,
     domain: string,
   ): Promise<Array<{ type: 'timing' | 'selector' | 'pattern' | 'quirk'; key: string; value: string }>> {
-    const model = await this.getModel();
-
-    const result = await generateText({
-      model,
-      system: `You are analyzing a browser automation trajectory to extract reusable knowledge.
+    const result = await this.generate(
+      `You are analyzing a browser automation trajectory to extract reusable knowledge.
 Extract facts that would help an agent complete similar tasks faster next time.
 
 Respond with ONLY a JSON array of facts:
@@ -782,13 +958,13 @@ Types:
 - quirk: app-specific behaviors or gotchas
 
 Only include facts that are genuinely useful. Quality over quantity. Max 10 facts.`,
-      messages: [{
+      [{
         role: 'user',
         content: `Domain: ${domain}\n\nTrajectory:\n${trajectoryText}`,
       }],
-      ...this.generationOptions(800),
-      abortSignal: AbortSignal.timeout(this.llmTimeoutMs),
-    });
+      undefined,
+      800,
+    );
 
     try {
       let text = result.text.trim();

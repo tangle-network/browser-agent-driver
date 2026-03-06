@@ -9,6 +9,7 @@ LLM-driven browser automation agent. Observe page state via accessibility tree, 
 - **Post-action verification** — checks expected effects after each action
 - **Stuck detection + recovery** — auto-detects loops and triggers recovery strategies
 - **Adaptive blocker recovery** — detects dialogs (quota/limit/modals), performs deterministic unblock actions, then resumes the goal
+- **Optional scout/ranker** — adds a cheap pre-decide recommendation pass on ambiguous visible-link/result pages
 - **Conversation history** — LLM remembers previous turns for multi-step reasoning
 - **Trajectory memory** — stores successful runs for case-based reasoning on future tasks
 - **Test runner** — dependency-aware suite orchestration with ground-truth verification
@@ -51,7 +52,12 @@ npm run skills:install -- --out /absolute/path/to/skills
 ## Research Notes
 
 - Canonical operating roadmap: [docs/roadmap/browser-agent-ops.md](./docs/roadmap/browser-agent-ops.md)
+- Execution runbook: [RELIABILITY.md](./RELIABILITY.md)
 - Competitive analysis and product-direction memo: [docs/research/competitor-analysis-2026-03.md](./docs/research/competitor-analysis-2026-03.md)
+
+Model defaults:
+- product/runtime default: `gpt-5.4`
+- benchmark controls may remain pinned to older explicit models until intentionally re-baselined
 
 ## Publishing
 
@@ -95,7 +101,7 @@ const driver = new PlaywrightDriver(page, {
 const runner = new AgentRunner({
   driver,
   config: {
-    model: 'gpt-5.2',
+    model: 'gpt-5.4',
     debug: true,
     maxHistoryTurns: 15,
     retries: 3,
@@ -144,13 +150,16 @@ The CLI and programmatic API both auto-detect this file. CLI flags override conf
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `provider` | `'openai' \| 'anthropic' \| 'google' \| 'codex-cli' \| 'claude-code'` | `'openai'` | LLM provider |
-| `model` | `string` | `'gpt-5.2'` | Model name |
+| `provider` | `'openai' \| 'anthropic' \| 'google' \| 'codex-cli' \| 'claude-code' \| 'sandbox-backend'` | `'openai'` | LLM provider |
+| `model` | `string` | `'gpt-5.4'` | Model name |
 | `adaptiveModelRouting` | `boolean` | `false` | Route early navigation turns to `navModel` |
 | `navModel` | `string` | — | Fast model used when adaptive routing is enabled |
-| `navProvider` | `'openai' \| 'anthropic' \| 'google' \| 'codex-cli' \| 'claude-code'` | same as `provider` | Provider for `navModel` |
+| `navProvider` | `'openai' \| 'anthropic' \| 'google' \| 'codex-cli' \| 'claude-code' \| 'sandbox-backend'` | same as `provider` | Provider for `navModel` |
 | `apiKey` | `string` | env var | API key, or optional fallback when using `codex-cli` / `claude-code` |
 | `baseUrl` | `string` | — | Custom endpoint (LiteLLM, etc.) |
+| `sandboxBackendType` | `string` | env/config | Native sidecar backend type when `provider='sandbox-backend'` |
+| `sandboxBackendProfile` | `string` | — | Optional native sidecar profile/preset ID |
+| `sandboxBackendProvider` | `string` | — | Optional native sidecar provider override (mainly `opencode`) |
 | `browser` | `'chromium' \| 'firefox' \| 'webkit'` | `'chromium'` | Browser engine for execution |
 | `headless` | `boolean` | `true` | Browser headless mode |
 | `viewport` | `{ width, height }` | `1920x1080` | Browser viewport |
@@ -576,6 +585,24 @@ Notes:
 - `claude-code` works with local `claude login` auth or an `ANTHROPIC_API_KEY` fallback.
 - `CLAUDE_CODE_CLI_PATH` overrides the `claude` binary path for direct local CLI runs.
 - If no model is supplied, the driver defaults `claude-code` to `sonnet`.
+
+### Sandbox Backend Provider
+
+`sandbox-backend` is the native sidecar-runtime path. Use it when `agent-browser-driver` is already running inside an `agent-dev-container` sidecar and you want the browser loop to call the local sidecar backend directly instead of spinning up a second provider wrapper.
+
+```bash
+pnpm exec agent-driver run \
+  --goal "Open the homepage and report the main CTA" \
+  --url https://example.com \
+  --provider sandbox-backend \
+  --sandbox-backend-type claude-code \
+  --model sonnet
+```
+
+Notes:
+- This expects a reachable local sidecar API, usually `http://127.0.0.1:$SIDECAR_PORT`.
+- Auth comes from `SIDECAR_AUTH_TOKEN` / `SANDBOX_SIDECAR_AUTH_TOKEN`, not `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`.
+- Use `--sandbox-backend-type codex` or `claude-code` to benchmark the same browser task loop against different native sidecar backends.
 
 ### Tier2 Staging Gate
 

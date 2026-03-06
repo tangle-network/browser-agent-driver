@@ -112,6 +112,9 @@ async function main(): Promise<void> {
       mode: { type: 'string' },
       profile: { type: 'string' },
       'prompt-file': { type: 'string' },
+      'sandbox-backend-type': { type: 'string' },
+      'sandbox-backend-profile': { type: 'string' },
+      'sandbox-backend-provider': { type: 'string' },
       'api-key': { type: 'string' },
       'base-url': { type: 'string' },
 
@@ -124,6 +127,13 @@ async function main(): Promise<void> {
       retries: { type: 'string' },
       'retry-delay-ms': { type: 'string' },
       'screenshot-interval': { type: 'string' },
+      scout: { type: 'boolean' },
+      'scout-model': { type: 'string' },
+      'scout-provider': { type: 'string' },
+      'scout-vision': { type: 'boolean' },
+      'scout-max-candidates': { type: 'string' },
+      'scout-min-top-score': { type: 'string' },
+      'scout-max-score-gap': { type: 'string' },
       headless: { type: 'boolean' },
       timeout: { type: 'string' },
       extension: { type: 'string', multiple: true },
@@ -208,6 +218,9 @@ async function main(): Promise<void> {
   if (values['model-adaptive'] !== undefined) cliOverrides.adaptiveModelRouting = values['model-adaptive'];
   if (values['nav-model']) cliOverrides.navModel = values['nav-model'];
   if (values['nav-provider']) cliOverrides.navProvider = values['nav-provider'] as DriverConfig['navProvider'];
+  if (values['sandbox-backend-type']) cliOverrides.sandboxBackendType = values['sandbox-backend-type'];
+  if (values['sandbox-backend-profile']) cliOverrides.sandboxBackendProfile = values['sandbox-backend-profile'];
+  if (values['sandbox-backend-provider']) cliOverrides.sandboxBackendProvider = values['sandbox-backend-provider'];
   if (values['api-key']) cliOverrides.apiKey = values['api-key'];
   if (values['base-url']) cliOverrides.baseUrl = values['base-url'];
   if (values['prompt-file']) {
@@ -231,6 +244,28 @@ async function main(): Promise<void> {
   if (values.retries) cliOverrides.retries = parseInt(values.retries, 10);
   if (values['retry-delay-ms']) cliOverrides.retryDelayMs = parseInt(values['retry-delay-ms'], 10);
   if (values['screenshot-interval']) cliOverrides.screenshotInterval = parseInt(values['screenshot-interval'], 10);
+  if (
+    values.scout !== undefined ||
+    values['scout-model'] ||
+    values['scout-provider'] ||
+    values['scout-vision'] !== undefined ||
+    values['scout-max-candidates'] ||
+    values['scout-min-top-score'] ||
+    values['scout-max-score-gap']
+  ) {
+    cliOverrides.scout = {
+      ...(cliOverrides.scout ?? {}),
+    };
+    if (values.scout !== undefined) cliOverrides.scout.enabled = values.scout;
+    if (values['scout-model']) cliOverrides.scout.model = values['scout-model'];
+    if (values['scout-provider']) {
+      cliOverrides.scout.provider = values['scout-provider'] as NonNullable<DriverConfig['scout']>['provider'];
+    }
+    if (values['scout-vision'] !== undefined) cliOverrides.scout.useVision = values['scout-vision'];
+    if (values['scout-max-candidates']) cliOverrides.scout.maxCandidates = parseInt(values['scout-max-candidates'], 10);
+    if (values['scout-min-top-score']) cliOverrides.scout.minTopScore = parseInt(values['scout-min-top-score'], 10);
+    if (values['scout-max-score-gap']) cliOverrides.scout.maxScoreGap = parseInt(values['scout-max-score-gap'], 10);
+  }
   if (values.timeout) cliOverrides.timeoutMs = parseInt(values.timeout, 10);
   if (values['quality-threshold']) cliOverrides.qualityThreshold = parseInt(values['quality-threshold'], 10);
   if (values['trace-scoring'] !== undefined || values['trace-ttl-days']) {
@@ -409,15 +444,22 @@ async function main(): Promise<void> {
 
   const resolvedProvider = driverConfig.provider || 'openai';
   const resolvedApiKey = resolveProviderApiKey(resolvedProvider, driverConfig.apiKey);
-  const resolvedModel = resolveProviderModelName(resolvedProvider, driverConfig.model);
+  const resolvedModel = resolveProviderModelName(resolvedProvider, driverConfig.model, {
+    sandboxBackendType: resolvedProvider === 'sandbox-backend' ? driverConfig.sandboxBackendType : undefined,
+  });
   const resolvedNavProvider = driverConfig.navProvider || resolvedProvider;
   const resolvedNavModel = driverConfig.navModel
-    ? resolveProviderModelName(resolvedNavProvider, driverConfig.navModel)
+    ? resolveProviderModelName(resolvedNavProvider, driverConfig.navModel, {
+        sandboxBackendType: resolvedNavProvider === 'sandbox-backend' ? driverConfig.sandboxBackendType : undefined,
+      })
     : undefined;
   const resolvedSupervisorProvider = driverConfig.supervisor?.provider || resolvedProvider;
   const resolvedSupervisorModel = resolveProviderModelName(
     resolvedSupervisorProvider,
     driverConfig.supervisor?.model || resolvedModel,
+    {
+      sandboxBackendType: resolvedSupervisorProvider === 'sandbox-backend' ? driverConfig.sandboxBackendType : undefined,
+    },
   );
   const config = {
     ...toAgentConfig(driverConfig),
@@ -772,7 +814,7 @@ SINGLE TASK:
 
 TEST SUITE:
   agent-driver run --cases ./cases.json --concurrency 4
-  agent-driver run --cases ./cases.json --sink ./results/ --model gpt-5.2
+  agent-driver run --cases ./cases.json --sink ./results/ --model gpt-5.4
 
 DOCKER:
   docker run -v ./cases.json:/data/cases.json -v ./out:/output \\
@@ -785,8 +827,8 @@ OPTIONS:
   -c, --cases <file>          JSON file with test cases array
       --allowed-domains <csv> Comma-separated host allowlist (e.g. www.nih.gov,docs.foo.com)
       --vision-strategy <m>   Vision policy: always, never, auto
-  -m, --model <name>          LLM model (default: gpt-5.2)
-      --provider <name>       LLM provider: openai, anthropic, google, codex-cli, claude-code (default: openai)
+  -m, --model <name>          LLM model (default: gpt-5.4)
+      --provider <name>       LLM provider: openai, anthropic, google, codex-cli, claude-code, sandbox-backend (default: openai)
       --model-adaptive        Enable adaptive model routing for decide() turns
       --nav-model <name>      Fast navigation model for adaptive routing
       --nav-provider <name>   Provider for nav model (default: same as --provider)
@@ -794,6 +836,9 @@ OPTIONS:
       --mode <name>           Mode preset: ${RUN_MODES.join(', ')}
       --profile <name>        Execution profile: ${DRIVER_PROFILES.join(', ')}
       --prompt-file <path>    Load system prompt from file for experimentable prompt variants
+      --sandbox-backend-type <type>     Native sidecar backend type for --provider sandbox-backend (e.g. claude-code, codex, opencode:with-web-search)
+      --sandbox-backend-profile <id>    Optional native backend profile/preset ID
+      --sandbox-backend-provider <id>   Optional native backend model provider override (mainly for opencode)
       --api-key <key>         API key (or set OPENAI_API_KEY / ANTHROPIC_API_KEY; codex-cli can use \`codex login\`; claude-code can use \`claude login\`)
       --base-url <url>        Custom LLM endpoint (e.g., LiteLLM proxy)
       --browser <name>        Browser: chromium, firefox, webkit (default: chromium)
@@ -804,6 +849,13 @@ OPTIONS:
       --retries <n>           Retries for observe/LLM/action transient failures
       --retry-delay-ms <ms>   Base retry backoff in milliseconds
       --screenshot-interval <n>  Capture every N turns (default: 5)
+      --scout                 Enable scout/ranker recommendations on ambiguous pages
+      --scout-model <name>    Model override for scout recommendations
+      --scout-provider <name> Provider override for scout recommendations
+      --scout-vision          Let scout inspect screenshots when available
+      --scout-max-candidates <n> Max visible link candidates sent to the scout
+      --scout-min-top-score <n>  Skip scout when the top deterministic score is already strong
+      --scout-max-score-gap <n>  Skip scout when the top-vs-second score gap is already wide
       --headless              Run browser headless (default: true)
       --no-headless           Show browser window
       --wallet               Enable wallet mode (persistent Chromium profile)
@@ -855,6 +907,11 @@ ENVIRONMENT VARIABLES:
   CODEX_CLI_PATH       Optional Codex CLI binary path for --provider codex-cli
   CODEX_ALLOW_NPX      Set to 0 to disable npx fallback for --provider codex-cli
   CLAUDE_CODE_CLI_PATH Optional Claude CLI binary path for --provider claude-code
+  SANDBOX_BACKEND_TYPE Native backend type for --provider sandbox-backend
+  SANDBOX_BACKEND_PROFILE_ID Native backend profile/preset for --provider sandbox-backend
+  SANDBOX_BACKEND_MODEL_PROVIDER Native backend provider override for --provider sandbox-backend
+  SANDBOX_SIDECAR_URL  Sidecar API URL for --provider sandbox-backend (default: http://127.0.0.1:$SIDECAR_PORT)
+  SANDBOX_SIDECAR_AUTH_TOKEN Sidecar API bearer token for --provider sandbox-backend
 `);
 }
 

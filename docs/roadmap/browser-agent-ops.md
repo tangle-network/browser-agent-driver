@@ -13,6 +13,7 @@ This is the single planning document for:
 
 Use [RELIABILITY.md](/Users/drew/webb/agent-browser-driver/RELIABILITY.md) for the day-to-day run loop.
 Use [competitor-analysis-2026-03.md](/Users/drew/webb/agent-browser-driver/docs/research/competitor-analysis-2026-03.md) for external reference points.
+Use [README.md](/Users/drew/webb/agent-browser-driver/README.md) for package/API/CLI surface only.
 
 ## Mission
 
@@ -60,6 +61,20 @@ This is an eval-driven control system. Treat it like one.
 7. Keep wallet and crypto behavior isolated behind explicit flags.
 8. Do not call a result real unless the artifacts and config are preserved.
 
+## Target Architecture
+
+Build toward a small layered control system, not a generic framework:
+- `actor`: main browser policy loop
+- `scout`: cheap recommendation pass on ambiguous link/result pages only
+- `verifier`: deterministic completion policy plus LLM verification where needed
+- `supervisor`: hard-stall recovery only
+
+Guardrails:
+- no new browser action types for scouting
+- no broad plugin system
+- no default branching everywhere
+- vision, branching, and extra compute stay challenger-only until they win repeatedly
+
 ## Benchmark Tiers
 
 ### Tier 1: Deterministic Fixtures
@@ -104,6 +119,11 @@ Parallelism policy:
 Memory policy:
 - isolate memory per run during benchmark experiments unless memory is the intervention being tested
 - never compare contaminated and uncontaminated arms
+
+Model policy:
+- product/runtime defaults may advance as newer official models become available
+- benchmark controls stay pinned until a slice is intentionally re-baselined
+- newer models belong in challenger arms until they beat the fixed control cleanly
 
 ## Promotion Gate
 
@@ -254,6 +274,7 @@ Goal:
 
 Checklist:
 - search-result page heuristics
+- cheap `scout` recommendations on ambiguous visible-link/result pages
 - sufficient-evidence early completion
 - bounded recovery for reformulation loops
 - earlier extraction on search, catalog, and filter pages
@@ -263,7 +284,22 @@ Checklist:
 Exit criteria:
 - median turns and duration drop on the same slice without pass-rate loss
 
-### Phase 4: Controlled Policy Experiments
+### Phase 4: Structured Policy
+Goal:
+- improve path choice without turning the codebase into a generic orchestration framework
+
+Checklist:
+- keep `actor` as the main loop
+- add `scout` only as a narrow ambiguous-page recommendation pass
+- keep `verifier` deterministic-first
+- keep `supervisor` recovery-only
+- keep branching and extra compute behind explicit challengers
+
+Exit criteria:
+- path quality improves on repeated slices
+- architecture remains small, testable, and debuggable
+
+### Phase 5: Controlled Policy Experiments
 Goal:
 - compare strategies scientifically
 
@@ -284,7 +320,7 @@ Possible challengers:
 Exit criteria:
 - the winner beats baseline with enough evidence to promote
 
-### Phase 5: Productization
+### Phase 6: Productization
 Goal:
 - make the winning path usable end to end
 
@@ -299,7 +335,7 @@ Checklist:
 Exit criteria:
 - one real authenticated dogfood flow works end to end with artifacts
 
-### Phase 6: Benchmark Expansion
+### Phase 7: Benchmark Expansion
 Goal:
 - broaden coverage without losing rigor
 
@@ -364,6 +400,8 @@ This is the canonical finish-line tracker. Work is done only when every item her
 | Product path readiness | Pending | Winning execution path is wired cleanly into app -> worker -> orchestrator -> artifacts | end-to-end dogfood run with video/report |
 
 ### Current Scoreboard
+
+This section is an operational snapshot, not roadmap authority. Keep policy and target architecture above stable; refresh or prune this section as the measured state changes.
 
 Current honest status:
 - Tier 1 deterministic control is green on the promoted local fixture set

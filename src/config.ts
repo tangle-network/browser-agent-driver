@@ -17,13 +17,16 @@ export interface DriverConfig {
   browser?: 'chromium' | 'firefox' | 'webkit';
 
   // LLM
-  provider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code';
+  provider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend';
   model?: string;
   adaptiveModelRouting?: boolean;
   navModel?: string;
-  navProvider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code';
+  navProvider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend';
   apiKey?: string;
   baseUrl?: string;
+  sandboxBackendType?: string;
+  sandboxBackendProfile?: string;
+  sandboxBackendProvider?: string;
   systemPrompt?: string;
 
   // Browser
@@ -81,6 +84,15 @@ export interface DriverConfig {
     enabled?: boolean;
     maxActionsPerTurn?: number;
   };
+  scout?: {
+    enabled?: boolean;
+    model?: string;
+    provider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend';
+    useVision?: boolean;
+    maxCandidates?: number;
+    minTopScore?: number;
+    maxScoreGap?: number;
+  };
   observability?: {
     enabled?: boolean;
     captureConsole?: boolean;
@@ -113,7 +125,7 @@ export interface DriverConfig {
   supervisor?: {
     enabled?: boolean;
     model?: string;
-    provider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code';
+    provider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend';
     useVision?: boolean;
     minTurnsBeforeInvoke?: number;
     cooldownTurns?: number;
@@ -133,7 +145,7 @@ export interface DriverConfig {
 const DEFAULTS: DriverConfig = {
   browser: 'chromium',
   provider: 'openai',
-  model: 'gpt-5.2',
+  model: 'gpt-5.4',
   adaptiveModelRouting: false,
   headless: true,
   viewport: { width: 1920, height: 1080 },
@@ -149,6 +161,13 @@ const DEFAULTS: DriverConfig = {
   goalVerification: true,
   qualityThreshold: 0,
   microPlan: { enabled: false, maxActionsPerTurn: 2 },
+  scout: {
+    enabled: false,
+    useVision: false,
+    maxCandidates: 3,
+    minTopScore: 12,
+    maxScoreGap: 4,
+  },
   observability: {
     enabled: true,
     captureConsole: true,
@@ -256,6 +275,9 @@ export function toAgentConfig(config: DriverConfig): AgentConfig {
     adaptiveModelRouting: config.adaptiveModelRouting,
     navModel: config.navModel,
     navProvider: config.navProvider,
+    sandboxBackendType: config.sandboxBackendType,
+    sandboxBackendProfile: config.sandboxBackendProfile,
+    sandboxBackendProvider: config.sandboxBackendProvider,
     apiKey: config.apiKey,
     baseUrl: config.baseUrl,
     ...(config.systemPrompt ? { systemPrompt: config.systemPrompt } : {}),
@@ -271,6 +293,17 @@ export function toAgentConfig(config: DriverConfig): AgentConfig {
       ? {
           enabled: config.microPlan.enabled,
           maxActionsPerTurn: config.microPlan.maxActionsPerTurn,
+        }
+      : undefined,
+    scout: config.scout
+      ? {
+          enabled: config.scout.enabled,
+          model: config.scout.model,
+          provider: config.scout.provider,
+          useVision: config.scout.useVision,
+          maxCandidates: config.scout.maxCandidates,
+          minTopScore: config.scout.minTopScore,
+          maxScoreGap: config.scout.maxScoreGap,
         }
       : undefined,
     observability: config.observability

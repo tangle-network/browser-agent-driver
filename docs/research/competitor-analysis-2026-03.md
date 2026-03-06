@@ -183,10 +183,11 @@ Opportunity:
 These should be treated as current product direction, not brainstorms.
 
 1. Keep `agent-browser-driver` as the core execution/eval engine.
-2. Make the supervisor vision-aware when screenshots exist.
-3. Add cleaner experimentable policy profiles instead of ad-hoc prompt edits.
-4. Improve auth/profile persistence and seeded user-state handling.
-5. Integrate external agents later as benchmark baselines, not as replacements.
+2. Build a minimal layered control loop: actor -> scout -> verifier -> supervisor.
+3. Keep scout narrow: ambiguous link/result ranking only, no new action surface.
+4. Make the supervisor vision-aware when screenshots exist.
+5. Improve auth/profile persistence and seeded user-state handling.
+6. Integrate external agents later as benchmark baselines, not as replacements.
 
 ## Implementation Backlog
 

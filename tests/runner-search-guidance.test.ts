@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   buildSearchResultsGuidance,
   buildVisibleLinkRecommendation,
+  chooseScoutLinkOverride,
   chooseVisibleLinkOverride,
   rankSearchCandidates,
+  shouldUseVisibleLinkScout,
 } from '../src/runner.js';
 
 describe('buildSearchResultsGuidance', () => {
@@ -110,5 +112,42 @@ describe('buildSearchResultsGuidance', () => {
 
     expect(override?.ref).toBe('@l1a78');
     expect(override?.feedback).toContain('Do not search again');
+  });
+
+  it('uses scout on ambiguous visible link choices', () => {
+    expect(shouldUseVisibleLinkScout([
+      { ref: '@a1', text: 'Primary result', score: 10 },
+      { ref: '@a2', text: 'Secondary result', score: 8 },
+    ], { minTopScore: 12, maxScoreGap: 4 })).toBe(true);
+
+    expect(shouldUseVisibleLinkScout([
+      { ref: '@a1', text: 'Primary result', score: 18 },
+      { ref: '@a2', text: 'Secondary result', score: 8 },
+    ], { minTopScore: 12, maxScoreGap: 4 })).toBe(false);
+  });
+
+  it('can override a search detour with a high-confidence scout recommendation', () => {
+    const state = {
+      url: 'https://www.nih.gov/news-events',
+      title: 'News & Events',
+      snapshot: [
+        '- link "Search" [ref=s1]',
+        '- link "Study measuring changes in protein structure establishes new class of Alzheimer’s biomarkers February 27, 2026" [ref=l1a78]:',
+      ].join('\n'),
+    };
+
+    const override = chooseScoutLinkOverride(
+      state,
+      { action: 'click', selector: '@s1' },
+      {
+        ref: '@l1a78',
+        text: 'Study measuring changes in protein structure establishes new class of Alzheimer’s biomarkers',
+        confidence: 0.82,
+        reasoning: 'This visible release link is a stronger direct match than re-opening search.',
+      },
+    );
+
+    expect(override?.ref).toBe('@l1a78');
+    expect(override?.feedback).toContain('Scout recommendation');
   });
 });

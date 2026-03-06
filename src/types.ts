@@ -132,20 +132,26 @@ export interface Scenario {
 // ============================================================================
 
 export interface AgentConfig {
-  /** LLM provider: 'openai' (default), 'anthropic', 'google', 'codex-cli', or 'claude-code' */
-  provider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code';
-  /** LLM model (default: gpt-5.2) */
+  /** LLM provider: 'openai' (default), 'anthropic', 'google', 'codex-cli', 'claude-code', or 'sandbox-backend' */
+  provider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend';
+  /** LLM model (default: gpt-5.4) */
   model?: string;
   /** Enable adaptive model routing for decide() (default: false) */
   adaptiveModelRouting?: boolean;
   /** Fast navigation model used when adaptive routing is enabled */
   navModel?: string;
   /** Provider for navModel (defaults to provider) */
-  navProvider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code';
+  navProvider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend';
   /** API key (defaults to OPENAI_API_KEY) */
   apiKey?: string;
   /** Custom API base URL (for LiteLLM, local models, etc.) */
   baseUrl?: string;
+  /** Native sidecar backend type when using provider='sandbox-backend' */
+  sandboxBackendType?: string;
+  /** Optional sidecar backend profile/preset identifier */
+  sandboxBackendProfile?: string;
+  /** Optional native backend model provider (mainly for opencode) */
+  sandboxBackendProvider?: string;
   /** Optional override for the default browser-agent system prompt */
   systemPrompt?: string;
   /** Enable debug logging */
@@ -174,6 +180,8 @@ export interface AgentConfig {
   traceTtlDays?: number;
   /** Optional micro-planning: execute small follow-up actions within a turn */
   microPlan?: MicroPlanConfig;
+  /** Optional scout that ranks ambiguous link choices before the actor decides */
+  scout?: ScoutConfig;
   /** Optional supervisor that can intervene when the run is hard-stalled */
   supervisor?: SupervisorConfig;
   /** Runtime observability artifacts (console/network/trace) */
@@ -202,13 +210,30 @@ export interface MicroPlanConfig {
   maxActionsPerTurn?: number;
 }
 
+export interface ScoutConfig {
+  /** Enable scout recommendations on ambiguous link/result pages */
+  enabled?: boolean;
+  /** Optional model override for scout reasoning */
+  model?: string;
+  /** Optional provider override for scout model */
+  provider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend';
+  /** Allow the scout to inspect the current screenshot when available */
+  useVision?: boolean;
+  /** Max ranked candidates sent to the scout */
+  maxCandidates?: number;
+  /** Skip scout when the top deterministic score is already above this threshold */
+  minTopScore?: number;
+  /** Skip scout when the top-vs-second score gap is wider than this threshold */
+  maxScoreGap?: number;
+}
+
 export interface SupervisorConfig {
   /** Enable supervisor interventions (default: true in config defaults) */
   enabled?: boolean;
   /** Optional model override for supervisor reasoning */
   model?: string;
   /** Optional provider override for supervisor model */
-  provider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code';
+  provider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend';
   /** Allow the supervisor to inspect the current screenshot when available */
   useVision?: boolean;
   /** Minimum completed turns before supervisor can intervene */

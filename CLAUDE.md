@@ -4,10 +4,8 @@ Agent Browser Driver product operating guidance (greenfield, high-ROI, no overen
 
 ## Canonical Contract
 
-This file is the canonical in-repo agent operating contract for this project.
-Use this `CLAUDE.md` as the source of truth instead of `AGENTS.md`.
-
-Canonical roadmap and promotion policy:
+This file is the contributor operating contract for this project.
+Roadmap, benchmark policy, and promotion rules are canonical in:
 - [docs/roadmap/browser-agent-ops.md](/Users/drew/webb/agent-browser-driver/docs/roadmap/browser-agent-ops.md)
 
 ## Mechanical Enforcement
@@ -147,8 +145,8 @@ Non-goals:
 2. Promote to dual-mode (`full-evidence,fast-explore`) only for shortlisted winning variants.
 3. Never run high-repetition full-evidence sweeps before fast-explore indicates uplift.
 4. Treat unresolved provider quota/auth issues as experiment blockers and stop early.
-7. For reliability-affecting changes, create an execution plan from `exec-plans/TEMPLATE.md`.
-8. Runtime observability must remain on unless there is a measured reason to disable it.
+5. For reliability-affecting changes, create an execution plan from `exec-plans/TEMPLATE.md`.
+6. Runtime observability must remain on unless there is a measured reason to disable it.
 
 ## Closed-Loop Improvement (RL-Style Discipline)
 

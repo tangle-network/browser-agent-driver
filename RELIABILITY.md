@@ -42,10 +42,11 @@ Local runs append snapshots to `./agent-results/local-history.jsonl` so you can 
 ## Experiment Rules
 
 - Adaptive routing and memory are flag-only.
-- Compare A/B/C on identical scenarios and environment:
+- For routing/memory studies, compare A/B/C on identical scenarios and environment:
 1. A = control
 2. B = adaptive
 3. C = adaptive + memory
+- For other policy work, use baseline + one challenger unless there is a specific reason to add more arms.
 - If pass rate drops, do not promote.
 
 ## Non-Negotiables

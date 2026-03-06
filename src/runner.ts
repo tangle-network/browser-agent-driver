@@ -162,7 +162,7 @@ export class AgentRunner {
     const maxTotalErrors = Math.max(3, Math.ceil(maxTurns / 3));
     const supervisorConfig = {
       enabled: this.config.supervisor?.enabled ?? DEFAULT_SUPERVISOR.enabled,
-      model: this.config.supervisor?.model || this.config.model || 'gpt-5.2',
+      model: this.config.supervisor?.model || this.config.model || 'gpt-5.4',
       provider: this.config.supervisor?.provider || this.config.provider || 'openai',
       useVision: this.config.supervisor?.useVision ?? DEFAULT_SUPERVISOR.useVision,
       minTurnsBeforeInvoke: this.config.supervisor?.minTurnsBeforeInvoke ?? DEFAULT_SUPERVISOR.minTurnsBeforeInvoke,
@@ -326,6 +326,14 @@ export class AgentRunner {
         if (visibleLinkRecommendation) {
           extraContext += `\n${visibleLinkRecommendation}\n`;
         }
+        const scoutLinkRecommendation = await this.buildVisibleLinkScoutRecommendation(
+          state,
+          scenario.goal,
+          scenario.allowedDomains,
+        );
+        if (scoutLinkRecommendation) {
+          extraContext += `\n${buildScoutLinkRecommendationText(scoutLinkRecommendation)}\n`;
+        }
         const searchScoutFeedback = await this.buildSearchResultsScoutFeedback(
           state,
           scenario.goal,
@@ -368,6 +376,9 @@ export class AgentRunner {
               baseUrl: this.config.baseUrl,
               timeoutMs: this.config.llmTimeoutMs ?? 60_000,
               debug: this.config.debug,
+              sandboxBackendType: this.config.sandboxBackendType,
+              sandboxBackendProfile: this.config.sandboxBackendProfile,
+              sandboxBackendProvider: this.config.sandboxBackendProvider,
             });
           } catch (supervisorErr) {
             if (this.config.debug) {
@@ -556,6 +567,14 @@ export class AgentRunner {
           this.brain.injectFeedback(visibleLinkOverride.feedback);
           action = { action: 'click', selector: visibleLinkOverride.ref };
           reasoning = `${reasoning}\n[POLICY OVERRIDE] ${visibleLinkOverride.feedback}`;
+          expectedEffect = 'URL should change';
+          nextActions = [];
+        }
+        const scoutLinkOverride = chooseScoutLinkOverride(state, action, scoutLinkRecommendation);
+        if (scoutLinkOverride) {
+          this.brain.injectFeedback(scoutLinkOverride.feedback);
+          action = { action: 'click', selector: scoutLinkOverride.ref };
+          reasoning = `${reasoning}\n[SCOUT OVERRIDE] ${scoutLinkOverride.feedback}`;
           expectedEffect = 'URL should change';
           nextActions = [];
         }
@@ -1229,6 +1248,42 @@ export class AgentRunner {
     }
   }
 
+  private async buildVisibleLinkScoutRecommendation(
+    state: PageState,
+    goal: string,
+    allowedDomains: string[] | undefined,
+  ): Promise<{ ref: string; text: string; confidence: number; reasoning: string } | undefined> {
+    const scoutConfig = this.config.scout;
+    if (!scoutConfig?.enabled) return undefined;
+
+    const ranked = getRankedVisibleLinkCandidates(state, goal, allowedDomains);
+    const maxCandidates = Math.max(2, Math.min(scoutConfig.maxCandidates ?? 3, 5));
+    const candidates = ranked.slice(0, maxCandidates);
+    if (!shouldUseVisibleLinkScout(candidates, scoutConfig)) return undefined;
+
+    const scoutState = scoutConfig.useVision
+      ? await this.attachDecisionScreenshot(state)
+      : state;
+    const extraContext = allowedDomains && allowedDomains.length > 0
+      ? `Host constraint: prefer only ${allowedDomains.join(', ')}.`
+      : undefined;
+    const recommendation = await this.brain.recommendLinkCandidate(
+      goal,
+      scoutState,
+      candidates,
+      extraContext,
+    );
+    const matched = candidates.find((candidate) => candidate.ref === recommendation.selector);
+    if (!matched) return undefined;
+
+    return {
+      ref: matched.ref,
+      text: matched.text,
+      confidence: recommendation.confidence,
+      reasoning: recommendation.reasoning,
+    };
+  }
+
   private async inspectDisallowedSearchClick(
     state: PageState,
     scenario: Scenario,
@@ -1450,8 +1505,7 @@ export function buildVisibleLinkRecommendation(
   const top = getVisibleLinkRecommendation(state, goal, allowedDomains);
   if (!top || top.score < 6) return '';
 
-  const candidates = extractSnapshotLinkCandidates(state.snapshot, goal);
-  const ranked = rankVisibleLinkCandidates(goal, candidates);
+  const ranked = getRankedVisibleLinkCandidates(state, goal, allowedDomains);
 
   return [
     'VISIBLE LINK RECOMMENDATION:',
@@ -1465,16 +1519,23 @@ function getVisibleLinkRecommendation(
   goal: string,
   allowedDomains?: string[],
 ): { ref: string; text: string; score: number } | undefined {
+  const ranked = getRankedVisibleLinkCandidates(state, goal, allowedDomains);
+  return ranked[0];
+}
+
+function getRankedVisibleLinkCandidates(
+  state: PageState,
+  goal: string,
+  allowedDomains?: string[],
+): Array<{ ref: string; text: string; score: number }> {
   const currentHost = safeHostname(state.url);
   if (allowedDomains && allowedDomains.length > 0 && currentHost && !allowedDomains.map((domain) => domain.toLowerCase()).includes(currentHost)) {
-    return undefined;
+    return [];
   }
 
   const candidates = extractSnapshotLinkCandidates(state.snapshot, goal);
-  if (candidates.length === 0) return undefined;
-
-  const ranked = rankVisibleLinkCandidates(goal, candidates);
-  return ranked[0];
+  if (candidates.length === 0) return [];
+  return rankVisibleLinkCandidates(goal, candidates);
 }
 
 function extractSnapshotLinkCandidates(snapshot: string, goal: string): Array<{ ref: string; text: string }> {
@@ -1541,6 +1602,52 @@ export function chooseVisibleLinkOverride(
     ref: recommendation.ref,
     feedback: `A high-confidence first-party link is already visible on this page. Do not search again; click ${recommendation.ref} (${recommendation.text}) instead.`,
   };
+}
+
+export function shouldUseVisibleLinkScout(
+  candidates: Array<{ ref: string; text: string; score: number }>,
+  config: { minTopScore?: number; maxScoreGap?: number },
+): boolean {
+  if (candidates.length < 2) return false;
+
+  const [top, second] = candidates;
+  const minTopScore = config.minTopScore ?? 12;
+  const maxScoreGap = config.maxScoreGap ?? 4;
+  const scoreGap = top.score - second.score;
+
+  return top.score < minTopScore || scoreGap <= maxScoreGap;
+}
+
+export function chooseScoutLinkOverride(
+  state: PageState,
+  action: Action,
+  recommendation: { ref: string; text: string; confidence: number; reasoning: string } | undefined,
+): { ref: string; feedback: string } | undefined {
+  if (!recommendation || recommendation.confidence < 0.7) return undefined;
+  if (action.action === 'click' && action.selector === recommendation.ref) return undefined;
+
+  const isCandidateClick = action.action === 'click'
+    && action.selector.startsWith('@')
+    && !!findElementForRef(state.snapshot, action.selector);
+  if (!isSearchAction(state, action) && !isContentHubDetourAction(state, action) && !isCandidateClick) {
+    return undefined;
+  }
+
+  return {
+    ref: recommendation.ref,
+    feedback: `Scout recommendation: click ${recommendation.ref} (${recommendation.text}) instead. ${recommendation.reasoning}`,
+  };
+}
+
+function buildScoutLinkRecommendationText(
+  recommendation: { ref: string; text: string; confidence: number; reasoning: string },
+): string {
+  return [
+    'SCOUT RECOMMENDATION:',
+    `Prefer clicking ${recommendation.ref} (${recommendation.text}).`,
+    `Scout confidence: ${recommendation.confidence.toFixed(2)}.`,
+    `Scout reasoning: ${recommendation.reasoning}`,
+  ].join('\n');
 }
 
 function isSearchAction(state: PageState, action: Action): boolean {
