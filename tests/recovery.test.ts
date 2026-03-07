@@ -4,6 +4,7 @@ import {
   analyzeRecovery,
   detectBlockingModal,
   detectPersistentTerminalBlocker,
+  detectStuck,
   detectTerminalBlocker,
   parseSnapshotElements,
 } from '../src/recovery.js';
@@ -254,5 +255,70 @@ describe('terminal blocker detection', () => {
     expect(detection?.kind).toBe('dev-environment-unavailable');
     expect(detection?.strategy).toBe('terminal-dev-environment-unavailable');
     expect(detection?.evidence).toContain('not-provisioned');
+  });
+});
+
+describe('URL cycle detection', () => {
+  function makeTurnWithUrl(url: string, idx: number, snapshot = 'page content'): Turn {
+    return {
+      turn: idx,
+      state: { url, title: 'Test', snapshot: snapshot + idx },
+      action: { action: 'click', selector: '@link' },
+      durationMs: 100,
+    };
+  }
+
+  it('detects 3-state URL cycle (A→B→C→A→B→C)', () => {
+    const turns = [
+      makeTurnWithUrl('https://site.com/search', 1),
+      makeTurnWithUrl('https://site.com/news', 2),
+      makeTurnWithUrl('https://site.com/releases', 3),
+      makeTurnWithUrl('https://site.com/search', 4),
+      makeTurnWithUrl('https://site.com/news', 5),
+      makeTurnWithUrl('https://site.com/releases', 6),
+    ];
+    expect(detectStuck(turns, 3)).toBe(true);
+  });
+
+  it('detects 2-state URL cycle across different URLs (A→B→A→B→A→B)', () => {
+    const turns = [
+      makeTurnWithUrl('https://site.com/page-a', 1),
+      makeTurnWithUrl('https://site.com/page-b', 2),
+      makeTurnWithUrl('https://site.com/page-a', 3),
+      makeTurnWithUrl('https://site.com/page-b', 4),
+      makeTurnWithUrl('https://site.com/page-a', 5),
+      makeTurnWithUrl('https://site.com/page-b', 6),
+    ];
+    expect(detectStuck(turns, 3)).toBe(true);
+  });
+
+  it('does not trigger on normal navigation progress', () => {
+    const turns = [
+      makeTurnWithUrl('https://site.com/home', 1),
+      makeTurnWithUrl('https://site.com/search', 2),
+      makeTurnWithUrl('https://site.com/results', 3),
+      makeTurnWithUrl('https://site.com/article', 4),
+      makeTurnWithUrl('https://site.com/details', 5),
+      makeTurnWithUrl('https://site.com/complete', 6),
+    ];
+    expect(detectStuck(turns, 3)).toBe(false);
+  });
+
+  it('analyzeRecovery returns stuck-url-cycle strategy', () => {
+    const turns = [
+      makeTurnWithUrl('https://nih.gov/search', 1),
+      makeTurnWithUrl('https://nih.gov/news', 2),
+      makeTurnWithUrl('https://nih.gov/releases', 3),
+      makeTurnWithUrl('https://nih.gov/search', 4),
+      makeTurnWithUrl('https://nih.gov/news', 5),
+      makeTurnWithUrl('https://nih.gov/releases', 6),
+    ];
+    const recovery = analyzeRecovery({
+      recentTurns: turns,
+      currentState: turns[5].state,
+      consecutiveErrors: 0,
+    });
+    expect(recovery?.strategy).toBe('stuck-url-cycle');
+    expect(recovery?.feedback).toContain('navigating in a circle');
   });
 });

@@ -78,6 +78,21 @@ export function detectStuck(turns: Turn[], threshold = 3): boolean {
     }
   }
 
+  // URL cycle detection: agent revisits the same URL sequence across different pages
+  // Catches A→B→C→A→B→C and A→B→A→B patterns across different URLs
+  if (turns.length >= 6) {
+    const recentUrls = turns.slice(-6).map((t) => t.state.url);
+    // Check for 2-cycle (A→B→A→B) across different URLs
+    if (recentUrls[2] === recentUrls[4] && recentUrls[3] === recentUrls[5] && recentUrls[2] !== recentUrls[3]) {
+      if (recentUrls[0] === recentUrls[2] && recentUrls[1] === recentUrls[3]) return true;
+    }
+    // Check for 3-cycle (A→B→C→A→B→C) across different URLs
+    if (recentUrls[0] === recentUrls[3] && recentUrls[1] === recentUrls[4] && recentUrls[2] === recentUrls[5]) {
+      const unique = new Set(recentUrls.slice(0, 3));
+      if (unique.size >= 2) return true;
+    }
+  }
+
   return false;
 }
 
@@ -484,6 +499,26 @@ export function analyzeRecovery(ctx: RecoveryContext): RecoveryAction | null {
             'Try a completely different approach: use the search box if one is available, navigate directly via URL, ' +
             'or scroll to find alternative navigation elements.',
           forceAction: 'escape',
+        };
+      }
+    }
+
+    // Check for URL cycle (navigating between the same 2-3 pages repeatedly)
+    if (recentTurns.length >= 6) {
+      const recentUrls = recentTurns.slice(-6).map((t) => t.state.url);
+      const is2Cycle = recentUrls[0] === recentUrls[2] && recentUrls[2] === recentUrls[4] &&
+        recentUrls[1] === recentUrls[3] && recentUrls[3] === recentUrls[5] && recentUrls[0] !== recentUrls[1];
+      const is3Cycle = recentUrls[0] === recentUrls[3] && recentUrls[1] === recentUrls[4] &&
+        recentUrls[2] === recentUrls[5] && new Set(recentUrls.slice(0, 3)).size >= 2;
+      if (is2Cycle || is3Cycle) {
+        return {
+          strategy: 'stuck-url-cycle',
+          feedback:
+            'STUCK: You are navigating in a circle between the same pages without making progress. ' +
+            'You have visited the same URLs repeatedly. Stop this loop immediately. ' +
+            'The information you need may already be on the current page — look at the ELEMENTS more carefully. ' +
+            'If not, try a completely different approach: use a direct URL, extract data with runScript, ' +
+            'or look for the answer in the current page content rather than navigating away.',
         };
       }
     }
