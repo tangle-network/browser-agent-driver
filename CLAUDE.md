@@ -142,6 +142,19 @@ Non-goals:
 - Anti-bot-prone sites need separate reach tracking, not promotion-grade baseline mixing.
 - Page structure issues (hidden search fields, complex navigation menus) are distinct from anti-bot failures.
 
+3. Action timeout must scale with case timeout:
+- Default 30s per-action timeout consumes 25% of a 120s case budget on one stuck click.
+- Scale to `min(30s, caseTimeout/8)` so short-budget cases get more turns.
+- Prevents first-turn click hangs (e.g., overlay-obscured search box) from exhausting the entire run.
+
+4. Oscillating stuck detection catches menu toggle loops:
+- A-B-A-B state pattern (same URL, alternating snapshots) indicates menu open/close loop.
+- Recovery guidance redirects to search or direct URL navigation.
+
+5. Snapshot budgeting reduces token cost on large commerce pages:
+- Filter decorative elements, keep interactive elements (buttons, links, textboxes).
+- 16k char cap for non-first turns prevents 35k+ char snapshots from inflating LLM cost.
+
 ## Execution Standard
 
 1. Operate as reliability engineering, not feature exploration.

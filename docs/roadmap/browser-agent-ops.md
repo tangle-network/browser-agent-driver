@@ -478,6 +478,13 @@ Current best evidence:
   - John Lewis: pass `49.3s` / `4` turns / `33.0k`
   - Target: fail (timeout, path inefficiency)
   - Best Buy: pass `96.2s` / `9` turns / `237.3k`
+- stealth reach5 v3 (oscillation fix + snapshot budget + action timeout):
+  - Crunchyroll: pass `18.4s` / `3` turns / `13.5k`
+  - APKPure: pass `92.1s` / `9` turns / `243.9k`
+  - John Lewis: pass `42.8s` / `4` turns / `26.8k`
+  - Target: pass `78.5s` / `5` turns / `37.0k`
+  - Best Buy: pass `26.7s` / `3` turns / `101.7k`
+  - result: 5/5 (100%) — up from 3/5 (60%)
 
 Exit rule:
 - do not call the browser agent production-ready until Tier 1 is green, Tier 2 is green, and repeated Tier 3 control runs are stable enough to support promotion decisions
@@ -495,9 +502,10 @@ P1:
 - continue reducing Tier 3 cost variance, especially NIH, on the promoted slice
 - reduce wasted-turn variance on Yale and Alberta after NIH is stable
 - run repeated seeded stealth reach5 experiments to build promotion-grade evidence for the reach challenger
-- fix APKPure search-field a11y detection (likely hidden search bar that needs click-to-expand)
-- fix Target path inefficiency (agent navigates to category menu instead of using search or direct links)
-- reduce Best Buy token cost (237k tokens is expensive; investigate whether the page snapshot is bloated)
+- ~~fix APKPure search-field a11y detection~~ — resolved: action timeout scaling (15s for 120s cases) prevents stuck clicks from consuming the entire budget
+- ~~fix Target path inefficiency~~ — resolved: oscillating stuck detection (A-B-A-B pattern) breaks menu open/close loops
+- ~~reduce Best Buy token cost~~ — resolved: snapshot budget cap (16k chars, interactive-first filtering) reduced 237k → 102k tokens
+- stabilize stealth reach5 at 100% across repeated seeded runs before promotion
 - raise Tier 2 authenticated coverage with the same artifact standards
 - reduce `fast-explore` cost and turn variance on authenticated template verification before considering it a Tier 2 default
 - keep Tier 2 repeated gate and Tier 3 public gate healthy in CI
