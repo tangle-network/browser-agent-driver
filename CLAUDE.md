@@ -155,6 +155,21 @@ Non-goals:
 - Filter decorative elements, keep interactive elements (buttons, links, textboxes).
 - 16k char cap for non-first turns prevents 35k+ char snapshots from inflating LLM cost.
 
+6. Search form auto-submit prevents search-without-submit loops:
+- Agents often type in a searchbox but then click list items instead of submitting the form.
+- Many sites require form submission (Enter/click Search button) to trigger filtering.
+- Auto-inject press Enter after typing into elements with `searchbox` role (not textbox).
+- Tighter than generic "search" match — avoids false-positives on labeled textboxes.
+
+7. Verification rejection feedback must escalate with count:
+- First rejection: guide agent to navigate to the actual content page before completing.
+- Second+ rejection: demand a complete strategy change (different page, different approach).
+- Generic "continue working" wastes turns on the same failing approach.
+
+8. Verifier should see same snapshot as agent:
+- Use budgetSnapshot() in goal verification, not raw state.snapshot.
+- Prevents verifier from checking evidence the agent couldn't see due to truncation.
+
 ## Execution Standard
 
 1. Operate as reliability engineering, not feature exploration.

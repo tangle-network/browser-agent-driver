@@ -485,6 +485,10 @@ Current best evidence:
   - Target: pass `78.5s` / `5` turns / `37.0k`
   - Best Buy: pass `26.7s` / `3` turns / `101.7k`
   - result: 5/5 (100%) — up from 3/5 (60%)
+- reach3 with search auto-submit + verification escalation (2 reps):
+  - rep1: Yale pass `4` turns / `26k`; NIH pass `13` turns / `217k`; Alberta pass `11` turns / `151k`
+  - rep2: Yale pass `15` turns / `191k`; NIH pass `9` turns / `120k`; Alberta pass `9` turns / `98k`
+  - result: 3/3 (100%) × 2 reps — NIH was previously ~62% (5/8), now 100% (4/4 counting both NIH-only and full runs)
 
 Exit rule:
 - do not call the browser agent production-ready until Tier 1 is green, Tier 2 is green, and repeated Tier 3 control runs are stable enough to support promotion decisions
@@ -499,7 +503,7 @@ P0:
 - preserve the new content-type guard; do not accept public-web “wins” that land on the wrong content class
 
 P1:
-- continue reducing Tier 3 cost variance, especially NIH, on the promoted slice
+- ~~continue reducing Tier 3 cost variance, especially NIH, on the promoted slice~~ — resolved: search auto-submit + verification escalation brought NIH from ~62% to 100% across 4 consecutive runs
 - reduce wasted-turn variance on Yale and Alberta after NIH is stable
 - run repeated seeded stealth reach5 experiments to build promotion-grade evidence for the reach challenger
 - ~~fix APKPure search-field a11y detection~~ — resolved: action timeout scaling (15s for 120s cases) prevents stuck clicks from consuming the entire budget
