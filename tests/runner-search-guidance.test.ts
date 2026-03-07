@@ -72,6 +72,26 @@ describe('buildSearchResultsGuidance', () => {
     expect(ranked[1]?.href).toBe('https://www.nimh.nih.gov/news/press-release-alzheimer');
   });
 
+  it('penalizes research-matters and topic pages for press-release tasks', () => {
+    const ranked = rankSearchCandidates('Find the first related press release about Alzheimer disease.', [
+      {
+        title: "Blood tests show promise for early Alzheimer's diagnosis | National Institutes of Health (NIH)",
+        href: 'https://www.nih.gov/news-events/nih-research-matters/blood-tests-show-promise-early-alzheimers-diagnosis',
+      },
+      {
+        title: 'NIH News Releases | National Institutes of Health (NIH)',
+        href: 'https://www.nih.gov/news-events/news-releases',
+      },
+      {
+        title: "Alzheimer's Disease | National Institute on Aging",
+        href: 'https://www.nia.nih.gov/health/alzheimers-disease',
+      },
+    ], ['www.nih.gov']);
+
+    expect(ranked[0]?.href).toBe('https://www.nih.gov/news-events/news-releases');
+    expect(ranked[ranked.length - 1]?.href).toContain('/health/alzheimers-disease');
+  });
+
   it('recommends a visible first-party release link instead of re-searching', () => {
     const recommendation = buildVisibleLinkRecommendation(
       {

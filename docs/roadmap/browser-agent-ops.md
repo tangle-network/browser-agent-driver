@@ -416,6 +416,8 @@ Current honest status:
 - `openai/gpt-5.4` remains the promoted default runtime on the guarded public-web slice
 - `codex-cli/gpt-5.4` is currently an optional cost path only; on the same guarded `reach3` slice it was slower on Yale and Alberta and timed out on NIH
 - `scout` remains challenger-only; the architecture is right, but the current policy has not earned promotion
+- the guarded baseline now includes explicit content-type rejection for press-release tasks, preventing false-positive completions on Research Matters/topic pages
+- the latest guarded `reach3` run stayed green while restoring NIH correctness with materially lower cost than the first honest content-type run
 
 Current best evidence:
 - Tier 1 deterministic summary: `./agent-results/tier1-green-1772794410/tier1-gate-summary.json`
@@ -430,6 +432,8 @@ Current best evidence:
 - local product-path evidence lives in `abd-app`: `/tmp/abd-real-ui-e2e-gate-1772826110/`
 - provider screen, OpenAI control: `./agent-results/provider-openai-gpt54-reach3-1772840341/track-summary.json`
 - provider screen, Codex challenger: `./agent-results/provider-codex-gpt54-reach3-1772840486/track-summary.json`
+- focused NIH correctness + cost pass: `./agent-results/nih-content-guard-v2-1772842499/baseline-summary.json`
+- latest guarded `reach3`: `./agent-results/reach3-content-guard-v2-1772842574/track-summary.json`
 - Tier 2 validated repetition summaries:
   - `./agent-results/tier2-repeat-green-1772792440/rep-1/tier2-gate-summary.json`
   - `./agent-results/tier2-repeat-green-1772792440/rep-2/tier2-gate-summary.json`
@@ -441,6 +445,10 @@ Current best evidence:
 - latest provider screen on the guarded `reach3` slice:
   - OpenAI `gpt-5.4`: Yale pass `19.1s` / `4` turns / `18.6k`; NIH pass `53.8s` / `11` turns / `133.9k`; Alberta pass `47.2s` / `8` turns / `74.0k`
   - Codex CLI `gpt-5.4`: Yale pass `45.5s` / `4` turns / `51.4k`; NIH fail `120.0s` / `9` turns / `178.5k`; Alberta pass `93.4s` / `7` turns / `113.4k`
+- latest honest guarded baseline:
+  - Yale (`webbench-2204`): pass `22.8s` / `4` turns / `18.6k`
+  - NIH (`webbench-2605`): pass `66.9s` / `12` turns / `153.4k` on `https://www.nih.gov/news-events/news-releases/...`
+  - Alberta (`webbench-32`): pass `49.6s` / `8` turns / `74.1k`
 
 Exit rule:
 - do not call the browser agent production-ready until Tier 1 is green, Tier 2 is green, and repeated Tier 3 control runs are stable enough to support promotion decisions
@@ -452,6 +460,7 @@ P0:
 - keep `openai/gpt-5.4` as the promoted default runtime; do not switch the baseline to `codex-cli` unless it wins on the fixed slice
 - verify the Tier 2 template-verification cost fix continues to hold in CI/nightly, then allow `fast-explore` to remain first-class on authenticated flows
 - keep product-path readiness green in `abd-app` CI and hosted gates
+- preserve the new content-type guard; do not accept public-web “wins” that land on the wrong content class
 
 P1:
 - continue reducing Tier 3 cost variance, especially NIH, on the promoted slice
@@ -460,6 +469,7 @@ P1:
 - reduce `fast-explore` cost and turn variance on authenticated template verification before considering it a Tier 2 default
 - keep Tier 2 repeated gate and Tier 3 public gate healthy in CI
 - improve the guarded search/content path before promoting any new subagent policy
+- add the first bounded-branch challenger only at ambiguous result/content-hub choice points, not as a baseline behavior
 
 P2:
 - resume supervisor and policy challenger experiments only after the slice is stable

@@ -758,8 +758,28 @@ export class AgentRunner {
               };
             }
 
+            const contentTypeMismatch = detectCompletionContentTypeMismatch(
+              scenario.goal,
+              state,
+              action.result || '',
+              goalVerificationEvidence,
+            );
+            if (contentTypeMismatch) {
+              verificationRejectionCount++;
+              turn.verificationFailure = contentTypeMismatch;
+              this.brain.injectFeedback(
+                `COMPLETION REJECTED — content type mismatch.\n${contentTypeMismatch}\n` +
+                'The goal has NOT been achieved yet. Continue working toward the requested content type.'
+              );
+              turn.durationMs = Date.now() - turnStart;
+              turns.push(turn);
+              this.onTurn?.(turn);
+              continue;
+            }
+
             if (!goalResult.achieved) {
               verificationRejectionCount++;
+              turn.verificationFailure = goalResult.missing.join('; ') || 'Goal verification failed';
               firstSufficientEvidenceTurn ??= i;
               // Goal not met — reject completion and feed back what's missing
               this.brain.injectFeedback(
@@ -1463,6 +1483,9 @@ export function buildSearchResultsGuidance(
       'If the ranking is ambiguous, use runScript to extract the top result titles and URLs first, then choose the best match.',
       'Prefer result titles or URLs that match the requested content type exactly (for example, press release, news release, pricing, docs, settings).',
     ];
+    if (/\bpress release\b|\bnews release\b/.test(goal.toLowerCase())) {
+      lines.push('For press-release tasks, avoid topic pages, fact sheets, and Research Matters-style articles unless no release/news hub is visible.');
+    }
     if (allowedDomains && allowedDomains.length > 0) {
       lines.push(`Hard constraint: only choose results whose hostname is in this allowlist: ${allowedDomains.join(', ')}.`);
       lines.push('Strongly avoid results from sibling subdomains unless the allowlist explicitly includes them.');
@@ -1502,11 +1525,22 @@ export function rankSearchCandidates(
       if (signals.wantsPressRelease && /\bpress[- ]release\b|\bnews[- ]release\b/.test(haystack)) {
         score += 6;
       }
-      if (/\/news-events\/news-releases\//.test(haystack)) {
+      if (signals.wantsPressRelease && /\bnews events\b|\bnews releases\b|\bpress room\b/.test(haystack)) {
         score += 4;
+      }
+      if (/\/news-events\/news-releases\//.test(haystack)) {
+        score += 8;
+      } else if (signals.wantsPressRelease && /\/news-events\//.test(haystack)) {
+        score += 3;
       }
       if (/\/science-updates\//.test(haystack)) {
         score -= 2;
+      }
+      if (signals.wantsPressRelease && /\bnih research matters\b|\bnews in health\b|\bcatalyst\b|\bfact sheet\b|\bwhat causes\b|\bwhat are the signs\b|\btreated\b|\bresearch centers\b/.test(haystack)) {
+        score -= 12;
+      }
+      if (signals.wantsPressRelease && /\/nih-research-matters\/|\/science-updates\/|\/health\/|\/research\/|\/blog\//.test(haystack)) {
+        score -= 8;
       }
       if (allowedHosts.size > 0) {
         if (host && allowedHosts.has(host)) {
@@ -1559,7 +1593,7 @@ function getRankedVisibleLinkCandidates(
 
   const candidates = extractSnapshotLinkCandidates(state.snapshot, goal);
   if (candidates.length === 0) return [];
-  return rankVisibleLinkCandidates(goal, candidates);
+  return rankVisibleLinkCandidates(goal, candidates, { firstPartyContentHub: isFirstPartyContentHub(state) });
 }
 
 function extractSnapshotLinkCandidates(snapshot: string, goal: string): Array<{ ref: string; text: string }> {
@@ -1579,6 +1613,7 @@ function extractSnapshotLinkCandidates(snapshot: string, goal: string): Array<{ 
 function rankVisibleLinkCandidates(
   goal: string,
   candidates: Array<{ ref: string; text: string }>,
+  context?: { firstPartyContentHub?: boolean },
 ): Array<{ ref: string; text: string; score: number }> {
   const signals = extractGoalSignals(goal);
 
@@ -1595,13 +1630,16 @@ function rankVisibleLinkCandidates(
       if (signals.wantsPressRelease && /\bpress release\b|\bnews release\b|\bnews releases\b/.test(haystack)) {
         score += 6;
       }
+      if (signals.wantsPressRelease && context?.firstPartyContentHub && !/all news releases/.test(haystack)) {
+        score += 4;
+      }
       if (hasFullDate(haystack)) {
         score += 5;
       } else if (/\b\d{4}\b/.test(haystack)) {
         score += 1;
       }
       if (/all news releases/.test(haystack)) {
-        score += 2;
+        score -= 3;
       }
       if (signals.wantsPressRelease && /\bnih research matters\b|\bnews in health\b|\bcatalyst\b|\bcalendar of events\b|\bsocial media\b/.test(haystack)) {
         score -= 8;
@@ -1761,6 +1799,33 @@ function safeHostname(url: string): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+export function detectCompletionContentTypeMismatch(
+  goal: string,
+  state: PageState,
+  claimedResult: string,
+  evidence: string[],
+): string | undefined {
+  const lowerGoal = goal.toLowerCase();
+  if (!/\bpress release\b|\bnews release\b/.test(lowerGoal)) return undefined;
+
+  const combined = [
+    state.url,
+    state.title,
+    state.snapshot,
+    claimedResult,
+    ...evidence,
+  ].join('\n').toLowerCase();
+
+  const releaseLike = /\bpress release\b|\bnews release\b|\/news-releases?\//.test(combined);
+  if (releaseLike) return undefined;
+
+  const mismatchedContent = /\bnih research matters\b|\bnews in health\b|\bcatalyst\b|\bfact sheet\b|\bwhat causes\b|\bwhat are the signs\b|\btreated\b/.test(combined)
+    || /\/nih-research-matters\/|\/science-updates\/|\/health\/|\/research\/|\/blog\//.test(combined);
+  if (!mismatchedContent) return undefined;
+
+  return 'The current page/result is not a press release or news release. Continue until the completion evidence points to an actual release page or release listing.';
 }
 
 function shouldEscalateVision(input: {

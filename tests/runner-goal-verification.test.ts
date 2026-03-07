@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildGoalVerificationClaim,
+  detectCompletionContentTypeMismatch,
   detectAiTanglePartnerTemplateVisibleState,
   detectAiTangleVerifiedOutputState,
   shouldAcceptScriptBackedCompletion,
@@ -83,6 +84,27 @@ describe('buildGoalVerificationClaim', () => {
     );
 
     expect(accepted).toBe(false);
+  });
+
+  it('rejects complete actions that claim success on non-release article pages', () => {
+    const mismatch = detectCompletionContentTypeMismatch(
+      'Use the site search to find the first related press release and extract the title and date.',
+      {
+        url: 'https://www.nih.gov/news-events/nih-research-matters/blood-tests-show-promise-early-alzheimers-diagnosis',
+        title: "Blood tests show promise for early Alzheimer's diagnosis",
+        snapshot: '- heading "Blood tests show promise for early Alzheimer\'s diagnosis"',
+      },
+      [
+        'Title: Blood tests show promise for early Alzheimer\'s diagnosis',
+        'Publication date: August 18, 2020',
+        'URL: https://www.nih.gov/news-events/nih-research-matters/blood-tests-show-promise-early-alzheimers-diagnosis',
+      ].join('\n'),
+      [
+        'SCRIPT RESULT:\n{"date":"August 18, 2020","title":"Blood tests show promise for early Alzheimer\'s diagnosis"}',
+      ],
+    );
+
+    expect(mismatch).toContain('not a press release');
   });
 
   it('detects a verified ai.tangle.tools output workspace for blocker-recovery flows', () => {
