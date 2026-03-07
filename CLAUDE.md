@@ -47,7 +47,7 @@ Non-goals:
 ## Product Defaults (Ship)
 
 1. Reliability over novelty:
-- Default model: `gpt-5.2`.
+- Default model: `gpt-5.4`.
 - Default execution remains single-model unless explicitly opted into adaptive routing.
 
 2. Wallet behavior:
@@ -138,6 +138,25 @@ Non-goals:
 4. Ship only changes that improve or preserve success rate.
 5. Run `bench:tier1:gate` before merging reliability changes.
 6. Run `bench:classify` on experiment output and prioritize the top failure class.
+
+## Autonomy Standard
+
+1. Default to the next highest-ROI task automatically once the current task or experiment finishes.
+2. Do not stop after a single run or a single experiment if the next step is clear and low-risk.
+3. After each experiment:
+- evaluate the result
+- classify the failure or gain
+- choose the next best intervention
+- run the next experiment without waiting for permission
+4. Only stop to ask for input when:
+- the next step requires credentials, approvals, or product decisions that cannot be inferred safely
+- the repo state is ambiguous or risky
+- a blocker cannot be resolved locally with high confidence
+5. Prefer a sequence of narrow experiments over one broad speculative change.
+6. Keep pushing until one of these is true:
+- the promoted baseline is materially better
+- the current challenger is clearly rejected
+- the next step requires user input
 
 ## Cost-First Experiment Order
 
