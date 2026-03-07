@@ -905,11 +905,17 @@ export class AgentRunner {
               turn.verificationFailure = goalResult.missing.join('; ') || 'Goal verification failed';
               firstSufficientEvidenceTurn ??= i;
               // Goal not met — reject completion and feed back what's missing
+              const escalation = verificationRejectionCount >= 2
+                ? '\nYou have been rejected multiple times. CHANGE YOUR STRATEGY COMPLETELY: ' +
+                  'navigate to the specific result/article page and extract information directly from it. ' +
+                  'Do not try to complete from a list or search results page — open the actual content.'
+                : '\nIf you are on a list/index page, navigate to the specific result page first. ' +
+                  'Complete only when you are on the actual content page with all required evidence visible.';
               this.brain.injectFeedback(
                 `COMPLETION REJECTED — goal verification failed (confidence: ${goalResult.confidence.toFixed(2)}).\n` +
                 `Missing: ${goalResult.missing.join('; ')}\n` +
                 `Evidence reviewed: ${goalResult.evidence.join('; ')}\n` +
-                `The goal has NOT been achieved yet. Continue working.`
+                `The goal has NOT been achieved yet. Continue working.${escalation}`
               );
               turn.durationMs = Date.now() - turnStart;
               turns.push(turn);
@@ -1067,7 +1073,29 @@ export class AgentRunner {
           }
         }
 
-        const followUpActions = this.selectFollowUpActions(action, nextActions);
+        let followUpActions = this.selectFollowUpActions(action, nextActions);
+
+        // Auto-submit: if we just typed into a searchbox and no follow-up
+        // presses Enter or clicks a search button, inject a press Enter.
+        // Many sites require form submission to trigger search filtering.
+        if (
+          !turn.error &&
+          action.action === 'type' &&
+          'selector' in action &&
+          action.selector
+        ) {
+          const typedElement = findElementForRef(state.snapshot, action.selector)?.toLowerCase() ?? '';
+          if (typedElement.startsWith('searchbox')) {
+            const hasSubmit = followUpActions.some(
+              (a) => (a.action === 'press' && 'key' in a && a.key === 'Enter') ||
+                     (a.action === 'click' && 'selector' in a && a.selector &&
+                       (findElementForRef(state.snapshot, a.selector)?.toLowerCase().includes('search') ?? false)),
+            );
+            if (!hasSubmit) {
+              followUpActions = [{ action: 'press', selector: action.selector, key: 'Enter' }, ...followUpActions];
+            }
+          }
+        }
         for (const followUpAction of followUpActions) {
           if (turn.error) break;
           try {

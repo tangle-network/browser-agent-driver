@@ -64,6 +64,7 @@ RULES:
 12. BLOCKER-FIRST POLICY: if a modal, limit, quota, permission, or error dialog blocks progress, resolve THAT first before continuing the main goal
 13. For quota/limit blockers, use an unblock ladder: open manage path -> clean up old test resources if needed -> retry the original action
 14. If the same action triggers the same blocker twice, switch strategy immediately (different button/path), do not repeat blind retries
+15. SEARCH FORMS: Always interact with the form (type in search box, then click Search or press Enter). Do NOT navigate to a URL with search query parameters — many sites require form submission to trigger filtering. If a search yields no results, try the page's own search box rather than the site-wide search
 
 REASONING FRAMEWORK — before choosing an action:
 1. What is the current state vs. the goal state? What is missing?
@@ -788,7 +789,7 @@ URL: ${state.url}
 Title: ${state.title}
 
 ELEMENTS:
-${state.snapshot}${siteBoundaryNote ? `\n\n${siteBoundaryNote}` : ''}
+${budgetSnapshot(state.snapshot)}${siteBoundaryNote ? `\n\n${siteBoundaryNote}` : ''}
 
 Was the goal actually achieved? Analyze the current page state carefully.`;
 
