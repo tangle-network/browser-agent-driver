@@ -547,6 +547,12 @@ export class AgentRunner {
           extraContext += `\nVERIFICATION FAILED: ${lastTurn.verificationFailure}\nYour last action did NOT produce the expected effect. Try a different approach.\n`;
         }
 
+        // Extraction guard: if the agent just ran a script that returned data,
+        // remind it to consider completing before navigating away.
+        if (lastTurn?.action.action === 'runScript' && !lastTurn.error) {
+          extraContext += `\nYou just extracted data with runScript. If this data answers the goal, use "complete" now instead of navigating away. Do not leave a page with useful data without attempting completion first.\n`;
+        }
+
         const forceVision = shouldEscalateVision({
           config: this.config,
           state,

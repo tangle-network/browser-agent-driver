@@ -235,6 +235,7 @@ export class Brain {
   private visionStrategy: 'always' | 'never' | 'auto';
   private llmTimeoutMs: number;
   private compactFirstTurn: boolean;
+  private lastDecisionUrl?: string;
   private systemPrompt: string;
   private scoutModelName?: string;
   private scoutProvider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend';
@@ -541,19 +542,25 @@ export class Brain {
     options?: { forceVision?: boolean }
   ): Promise<BrainDecision> {
     const useCompactFirstTurn = this.compactFirstTurn && turnInfo?.current === 1;
+    const samePageAsPrevious = this.lastDecisionUrl === state.url;
+    // Tighter snapshot budget on same-page turns — agent already saw the full page
+    const snapshotBudget = samePageAsPrevious ? 8_000 : 16_000;
     const visibleSnapshot = useCompactFirstTurn
       ? compactFirstTurnSnapshot(state.snapshot)
-      : budgetSnapshot(state.snapshot);
+      : budgetSnapshot(state.snapshot, snapshotBudget);
+    this.lastDecisionUrl = state.url;
     let textContent = `GOAL: ${goal}`;
 
     if (turnInfo) {
       const remaining = turnInfo.max - turnInfo.current;
+      const budgetUsed = turnInfo.current / turnInfo.max;
       textContent += `\nTURN: ${turnInfo.current}/${turnInfo.max} (${remaining} remaining)`;
-      if (remaining <= 3) {
-        textContent += ` — RUNNING LOW, avoid exploratory navigation; prioritize completing the goal or aborting with a clear blocker reason`;
-      }
       if (remaining === 1) {
         textContent += ` — FINAL TURN: return a terminal action only (complete or abort)`;
+      } else if (remaining <= 3) {
+        textContent += ` — RUNNING LOW, avoid exploratory navigation; prioritize completing the goal or aborting with a clear blocker reason`;
+      } else if (budgetUsed >= 0.5) {
+        textContent += ` — HALF BUDGET USED. If you have extracted useful data, try completing now. Do not navigate away from pages with relevant content without attempting completion first`;
       }
     }
 
