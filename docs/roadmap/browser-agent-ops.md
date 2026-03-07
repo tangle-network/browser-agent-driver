@@ -407,20 +407,24 @@ Current honest status:
 - Tier 1 deterministic control is green on the promoted local fixture set
 - `reach3` control is stable at 100% across 5+ repeated runs (Yale, NIH, Alberta)
 - `reach4` (Yale, NIH, Alberta, Encyclopedia) at 100% — Encyclopedia reduced from timeout to 5-7 turns via extraction guard
-- **extended reachable probe: 14/15 pass (93.3%)** — Scribd, Harvard newly fixed via evidence + verifier improvements
-  - Passing: Yale, NIH, Alberta, Encyclopedia, BBC, Scribd, Britannica, DW, Al Jazeera, Harvard, Maryland.gov, NSW.gov.au, Common Sense Media, House Beautiful
+- `reach7` (Yale, NIH, Alberta, Encyclopedia, BBC, Scribd, Goal.com) at 6/7 (86%) — Goal.com content-dependent
+- **extended reachable probe: 19/20 pass (95%)** — 5 new sites added via expansion probes
+  - Passing (19): Yale, NIH, Alberta, Encyclopedia, BBC, Scribd, Britannica, DW, Al Jazeera, Harvard, Maryland.gov, NSW.gov.au, Common Sense Media, House Beautiful, CBR, Apple, PBS, Harper's Bazaar, PR Newswire
   - Content-dependent: Goal.com ❌ (match analysis articles may not exist on site at test time)
-  - NIH is stochastic (~70%) due to search.usa.gov redirect + verifier strictness on Alzheimer's vs dementia
-  - Anti-bot blocked (not agent issues): Crunchbase, ASOS, APA.org, Collins Dictionary, NJ.com
+  - NIH stability: 3/3 (100%) with progressive acceptance — up from ~70%
+  - Anti-bot blocked (not agent issues): Crunchbase, ASOS, APA.org, Collins Dictionary, NJ.com, Cambridge, Forbes
+  - Unreachable (network): USDA, US News
 - Tier 2 repeated authenticated control is green across three valid repetitions
 - `openai/gpt-5.4` remains the promoted default runtime
-- key reliability fixes this session:
+- key reliability fixes:
+  - URL mapping fix in track script: `scenario.url` fallback saves 2 turns/run (was passing `"undefined"`)
+  - progressive acceptance: verifier accepts ≥0.65 confidence after prior rejections with supplemental evidence
   - evidence limit 3→5: prevents runScript results from being evicted before verification
   - verifier supplemental evidence trust: verifier treats runScript data from earlier pages as trustworthy
   - content discovery rule: agent uses runScript to find links when a11y tree is truncated
   - prioritized snapshot budgeting: searchbox/heading elements kept even when interactive elements exceed budget
 - `scout` remains challenger-only; not promoted
-- anti-bot blocked: Crunchbase (Cloudflare), ASOS (Akamai), APA.org (Incapsula) — environment constraints
+- anti-bot blocked: Crunchbase (Cloudflare), ASOS (Akamai), APA.org (Incapsula), Cambridge (Cloudflare), Forbes (captcha) — environment constraints
 
 Current best evidence:
 - Tier 1 deterministic summary: `./agent-results/tier1-green-1772794410/tier1-gate-summary.json`
