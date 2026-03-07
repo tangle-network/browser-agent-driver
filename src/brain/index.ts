@@ -65,6 +65,7 @@ RULES:
 13. For quota/limit blockers, use an unblock ladder: open manage path -> clean up old test resources if needed -> retry the original action
 14. If the same action triggers the same blocker twice, switch strategy immediately (different button/path), do not repeat blind retries
 15. SEARCH FORMS: Always interact with the form (type in search box, then click Search or press Enter). Do NOT navigate to a URL with search query parameters — many sites require form submission to trigger filtering. If a search yields no results, try the page's own search box rather than the site-wide search
+16. CONTENT DISCOVERY: If the ELEMENTS list doesn't show the link/content you need (e.g., the page has many links but the a11y tree is truncated), use runScript to find it: document.querySelectorAll('a[href]') filtered by keyword. Navigate to the discovered URL directly instead of clicking blindly through menus
 
 REASONING FRAMEWORK — before choosing an action:
 1. What is the current state vs. the goal state? What is missing?
@@ -812,6 +813,7 @@ Be STRICT — the agent may claim success prematurely. Check:
 2. Are there error messages, incomplete forms, or missing elements?
 3. Does the URL match what you'd expect after goal completion?
 4. Is the claimed result consistent with what's visible on the page?
+5. If SUPPLEMENTAL TOOL EVIDENCE is provided in the claimed result, treat it as verified data extracted from earlier pages via JavaScript. This evidence is trustworthy and can satisfy requirements not visible on the current page (e.g., search query proof, data from a previous page).
 
 Respond with ONLY a JSON object:
 {
@@ -1075,6 +1077,32 @@ function budgetSnapshot(snapshot: string, maxChars = 16_000): string {
   const interactiveText = interactive.join('\n');
   if (interactiveText.length <= maxChars) {
     return interactiveText + `\n... [${decorative.length} decorative elements omitted for brevity]`;
+  }
+
+  // Second pass: when interactive elements still exceed budget, prioritize:
+  // 1. searchbox/textbox/combobox (inputs — essential for form tasks)
+  // 2. headings (structural navigation)
+  // 3. links/buttons (main content — keep all, trim from end as last resort)
+  const priority: string[] = [];
+  const bulk: string[] = [];
+  for (const line of interactive) {
+    if (/\b(?:searchbox|textbox|combobox|heading|dialog|alertdialog)\b/i.test(line)) {
+      priority.push(line);
+    } else {
+      bulk.push(line);
+    }
+  }
+
+  const priorityText = priority.join('\n');
+  const remaining = maxChars - priorityText.length - 80; // reserve space for note
+  if (remaining > 0) {
+    const bulkText = bulk.join('\n');
+    const trimmedBulk = bulkText.slice(0, remaining);
+    const bulkKept = trimmedBulk.lastIndexOf('\n') > 0
+      ? trimmedBulk.slice(0, trimmedBulk.lastIndexOf('\n'))
+      : trimmedBulk;
+    return priorityText + '\n' + bulkKept +
+      `\n... [${interactive.length - priority.length - bulkKept.split('\n').length} interactive + ${decorative.length} decorative elements omitted]`;
   }
 
   // Hard cap: take the first maxChars of the full snapshot

@@ -1,0 +1,51 @@
+[
+  {
+    "id": "webbench-2204",
+    "url": "https://www.yale.edu",
+    "goal": "Navigate to the \"About Yale\" section and summarize Yale University's mission statement in your own words.\nOnly use https://www.yale.edu/ to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.yale.edu for this task.",
+    "maxTurns": 20,
+    "timeoutMs": 180000
+  },
+  {
+    "id": "webbench-2605",
+    "url": "https://www.nih.gov",
+    "goal": "Use the site\u2019s search feature to find information on \"Alzheimer's disease\" and extract the title and publication date of the first related press release.\nOnly use https://www.nih.gov/ to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.nih.gov for this task.",
+    "maxTurns": 20,
+    "timeoutMs": 180000
+  },
+  {
+    "id": "webbench-32",
+    "url": "https://www.alberta.ca",
+    "goal": "Visit the Open Government portal on Alberta.ca and list the different categories of public datasets available for download.\nOnly use https://www.alberta.ca/ to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.alberta.ca for this task.",
+    "maxTurns": 20,
+    "timeoutMs": 180000
+  },
+  {
+    "id": "webbench-425",
+    "url": "https://www.encyclopedia.com",
+    "goal": "Search for \"Artificial Intelligence\" and list any related news or magazine articles or media referenced on the entry.\nOnly use http://encyclopedia.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.encyclopedia.com for this task.",
+    "maxTurns": 20,
+    "timeoutMs": 180000
+  },
+  {
+    "id": "webbench-143",
+    "url": "https://www.bbc.com",
+    "goal": "Navigate to the Live section and give me the first topic that has \"Trump\" in it\n\nOnly use https://www.bbc.com/ to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.bbc.com for this task.",
+    "maxTurns": 20,
+    "timeoutMs": 180000
+  },
+  {
+    "id": "webbench-695",
+    "url": "https://www.goal.com/en-us",
+    "goal": "Find the match analysis of the last Champions League game and write down the main conclusions.\nOnly use https://www.goal.com/en-us/ to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.goal.com for this task.",
+    "maxTurns": 20,
+    "timeoutMs": 180000
+  },
+  {
+    "id": "webbench-1506",
+    "url": "https://www.scribd.com",
+    "goal": "Search for a free ebook on \"Healthy Cooking\" and list the title and author of the first result including its URL on the site.\nOnly use https://www.scribd.com/ to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.scribd.com for this task.",
+    "maxTurns": 20,
+    "timeoutMs": 180000
+  }
+]

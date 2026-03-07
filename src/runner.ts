@@ -55,7 +55,7 @@ export interface RunnerOptions {
   projectStore?: ProjectStore;
 }
 
-const MAX_GOAL_VERIFICATION_EVIDENCE = 3;
+const MAX_GOAL_VERIFICATION_EVIDENCE = 5;
 
 /** Retry wrapper for transient failures. Respects AbortSignal between attempts. */
 async function withRetry<T>(

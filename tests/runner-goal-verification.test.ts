@@ -27,11 +27,15 @@ describe('buildGoalVerificationClaim', () => {
       'evidence-2',
       'evidence-3',
       'evidence-4',
+      'evidence-5',
+      'evidence-6',
     ]);
     expect(claim).not.toContain('evidence-1');
     expect(claim).toContain('evidence-2');
     expect(claim).toContain('evidence-3');
     expect(claim).toContain('evidence-4');
+    expect(claim).toContain('evidence-5');
+    expect(claim).toContain('evidence-6');
   });
 
   it('accepts script-backed completions when verifier only lacks visible evidence', () => {
