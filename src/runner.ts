@@ -23,6 +23,10 @@ import { detectSupervisorSignal, formatSupervisorSignal } from './supervisor/pol
 import { requestSupervisorDirective } from './supervisor/critic.js';
 import { shouldAcceptFirstPartyBoundaryCompletion } from './domain-policy.js';
 import { deriveWasteMetrics } from './run-metrics.js';
+import { RunState } from './run-state.js';
+import { ContextBudget } from './context-budget.js';
+import { runOverridePipeline } from './override-pipeline.js';
+import type { OverrideProducer, OverrideContext } from './override-pipeline.js';
 
 const DEFAULT_MAX_TURNS = 20;
 const DEFAULT_RETRIES = 3;
@@ -118,13 +122,12 @@ export class AgentRunner {
     const turns: Turn[] = [];
     const startTime = Date.now();
     const phaseTimings: import('./types.js').RunPhaseTimings = {};
-    let verificationRejectionCount = 0;
-    let firstSufficientEvidenceTurn: number | undefined;
+    const runState = new RunState(maxTurns);
 
     const buildResult = (result: Omit<AgentResult, 'phaseTimings' | 'wasteMetrics'>): AgentResult => ({
       ...result,
       phaseTimings,
-      wasteMetrics: deriveWasteMetrics(turns, verificationRejectionCount, firstSufficientEvidenceTurn),
+      wasteMetrics: deriveWasteMetrics(turns, runState.verificationRejectionCount, runState.firstSufficientEvidenceTurn),
     });
 
     // Reset brain history for fresh scenario
@@ -155,11 +158,6 @@ export class AgentRunner {
       this.onPhaseTiming?.('navigate', phaseTimings.initialNavigateMs);
     }
 
-    let consecutiveErrors = 0;
-    let totalErrors = 0;
-    const goalVerificationEvidence: string[] = [];
-    const searchScoutUrls = new Set<string>();
-    const maxTotalErrors = Math.max(3, Math.ceil(maxTurns / 3));
     const supervisorConfig = {
       enabled: this.config.supervisor?.enabled ?? DEFAULT_SUPERVISOR.enabled,
       model: this.config.supervisor?.model || this.config.model || 'gpt-5.4',
@@ -170,8 +168,6 @@ export class AgentRunner {
       maxInterventions: this.config.supervisor?.maxInterventions ?? DEFAULT_SUPERVISOR.maxInterventions,
       hardStallWindow: this.config.supervisor?.hardStallWindow ?? DEFAULT_SUPERVISOR.hardStallWindow,
     } as const;
-    let supervisorInterventions = 0;
-    let lastSupervisorTurn = -Infinity;
 
     for (let i = 1; i <= maxTurns; i++) {
       if (scenario.signal?.aborted) {
@@ -192,7 +188,7 @@ export class AgentRunner {
           const recovery = analyzeRecovery({
             recentTurns: turns.slice(-5),
             currentState: lastState,
-            consecutiveErrors,
+            consecutiveErrors: runState.consecutiveErrors,
           });
 
           if (recovery) {
@@ -305,7 +301,7 @@ export class AgentRunner {
           });
         }
 
-        let extraContext = '';
+        const ctxBudget = new ContextBudget();
 
         // Post-blocker-dismissal: if the previous turn's recovery dismissed a modal
         // and the URL hasn't changed, warn the agent that prior actions may have been voided.
@@ -322,33 +318,34 @@ export class AgentRunner {
                 prevTurn?.action?.selector || prevTurn?.rawLLMResponse || '',
               ));
           if (modalWasDismissed && prevPrevTurn && state.url === prevPrevTurn.state.url) {
-            extraContext +=
+            ctxBudget.add('blocker-recovery',
               '\nBLOCKER RECOVERY NOTE: A blocking dialog was just dismissed, but the URL has not changed ' +
               'since before the dialog appeared. Any form submission, search, or navigation that was attempted ' +
               'before the dialog may have been intercepted and voided. ' +
-              'Re-check the page state and re-submit your prior action if needed.\n';
+              'Re-check the page state and re-submit your prior action if needed.\n', 90);
           }
         }
 
         const turnsLeft = maxTurns - i + 1;
         if (turnsLeft <= 3) {
-          extraContext +=
+          let turnBudgetText =
             `\nTURN-BUDGET CRITICAL: ${turnsLeft} turn(s) left including this one.\n` +
             'Do not start new exploratory navigation.\n' +
             'Prioritize extracting the final required evidence from the current page context and finish decisively.\n';
           if (turnsLeft === 1) {
-            extraContext +=
+            turnBudgetText +=
               'FINAL TURN REQUIREMENT: return a terminal action now (`complete` if enough evidence exists, otherwise `abort` with explicit blocker reason).\n';
           }
+          ctxBudget.add('turn-budget', turnBudgetText, 100);
         }
         const searchResultsGuidance = buildSearchResultsGuidance(state, scenario.goal, scenario.allowedDomains);
         if (searchResultsGuidance) {
-          extraContext += `\n${searchResultsGuidance}\n`;
+          ctxBudget.add('search-guidance', `\n${searchResultsGuidance}\n`, 70);
         }
         const visibleLinkMatch = getVisibleLinkRecommendation(state, scenario.goal, scenario.allowedDomains);
         const visibleLinkRecommendation = buildVisibleLinkRecommendation(state, scenario.goal, scenario.allowedDomains);
         if (visibleLinkRecommendation) {
-          extraContext += `\n${visibleLinkRecommendation}\n`;
+          ctxBudget.add('visible-link', `\n${visibleLinkRecommendation}\n`, 60);
         }
         const scoutLinkRecommendation = await this.buildVisibleLinkScoutRecommendation(
           state,
@@ -356,7 +353,7 @@ export class AgentRunner {
           scenario.allowedDomains,
         );
         if (scoutLinkRecommendation) {
-          extraContext += `\n${buildScoutLinkRecommendationText(scoutLinkRecommendation)}\n`;
+          ctxBudget.add('scout-link', `\n${buildScoutLinkRecommendationText(scoutLinkRecommendation)}\n`, 55);
         }
         const branchLinkRecommendation = await this.buildBranchLinkRecommendation(
           state,
@@ -364,16 +361,16 @@ export class AgentRunner {
           scenario.allowedDomains,
         );
         if (branchLinkRecommendation) {
-          extraContext += `\n${buildBranchLinkRecommendationText(branchLinkRecommendation)}\n`;
+          ctxBudget.add('branch-link', `\n${buildBranchLinkRecommendationText(branchLinkRecommendation)}\n`, 55);
         }
         const searchScoutFeedback = await this.buildSearchResultsScoutFeedback(
           state,
           scenario.goal,
           scenario.allowedDomains,
-          searchScoutUrls,
+          runState.searchScoutUrls,
         );
         if (searchScoutFeedback) {
-          extraContext += `\n${searchScoutFeedback}\n`;
+          ctxBudget.add('search-scout', `\n${searchScoutFeedback}\n`, 50);
         }
         const supervisorSignal = detectSupervisorSignal({
           recentTurns: turns,
@@ -386,8 +383,8 @@ export class AgentRunner {
           supervisorConfig.enabled &&
           supervisorSignal.severity === 'hard' &&
           i >= supervisorConfig.minTurnsBeforeInvoke &&
-          supervisorInterventions < supervisorConfig.maxInterventions &&
-          i - lastSupervisorTurn > supervisorConfig.cooldownTurns;
+          runState.supervisorInterventions < supervisorConfig.maxInterventions &&
+          i - runState.lastSupervisorTurn > supervisorConfig.cooldownTurns;
 
         if (shouldInvokeSupervisor) {
           if (this.config.debug) {
@@ -422,8 +419,8 @@ export class AgentRunner {
           }
 
           if (directive.decision !== 'none') {
-            supervisorInterventions++;
-            lastSupervisorTurn = i;
+            runState.supervisorInterventions++;
+            runState.lastSupervisorTurn = i;
 
             if (directive.feedback) {
               this.brain.injectFeedback(
@@ -475,10 +472,9 @@ export class AgentRunner {
               }
 
               if (actionError) {
-                consecutiveErrors++;
-                totalErrors++;
+                runState.recordError();
               } else {
-                consecutiveErrors = 0;
+                runState.clearConsecutiveErrors();
               }
 
               const supervisorTurn: Turn = {
@@ -493,20 +489,20 @@ export class AgentRunner {
               turns.push(supervisorTurn);
               this.onTurn?.(supervisorTurn);
 
-              if (consecutiveErrors >= 3) {
+              if (runState.hasConsecutiveErrorThreshold) {
                 this.saveMemory();
                 return buildResult({
                   success: false,
-                  reason: `${consecutiveErrors} consecutive errors after supervisor action: ${actionError}`,
+                  reason: `${runState.consecutiveErrors} consecutive errors after supervisor action: ${actionError}`,
                   turns,
                   totalMs: Date.now() - startTime,
                 });
               }
-              if (totalErrors >= maxTotalErrors) {
+              if (runState.isErrorBudgetExhausted) {
                 this.saveMemory();
                 return buildResult({
                   success: false,
-                  reason: `Error budget exhausted (${totalErrors}/${maxTotalErrors}) after supervisor action`,
+                  reason: `Error budget exhausted (${runState.totalErrors}/${runState.maxTotalErrors}) after supervisor action`,
                   turns,
                   totalMs: Date.now() - startTime,
                 });
@@ -517,41 +513,46 @@ export class AgentRunner {
 
             if (directive.decision === 'inject_feedback') {
               const feedback = directive.feedback || directive.reason || 'Supervisor detected a hard stall. Switch strategy.';
-              extraContext += `\nSUPERVISOR GUIDANCE: ${feedback}\nSignal: ${formatSupervisorSignal(supervisorSignal)}\n`;
+              ctxBudget.add('supervisor', `\nSUPERVISOR GUIDANCE: ${feedback}\nSignal: ${formatSupervisorSignal(supervisorSignal)}\n`, 95);
             }
           }
         }
 
         // ── 3. Build extra context ──
         if (this.referenceTrajectory) {
-          extraContext += `\nREFERENCE TRAJECTORY — A similar task was completed before:\n${this.referenceTrajectory}\nUse this as a guide, but adapt to the current page state.\n`;
+          ctxBudget.add('reference-trajectory',
+            `\nREFERENCE TRAJECTORY — A similar task was completed before:\n${this.referenceTrajectory}\nUse this as a guide, but adapt to the current page state.\n`, 40);
         }
 
         // Inject persistent knowledge from previous runs
         if (this.knowledge) {
           const knowledgeContext = this.knowledge.formatForBrain();
           if (knowledgeContext) {
-            extraContext += `\n${knowledgeContext}\n`;
+            ctxBudget.add('knowledge', `\n${knowledgeContext}\n`, 30);
           }
         }
         if (this.selectorCache) {
           const selectorContext = this.selectorCache.formatForBrain();
           if (selectorContext) {
-            extraContext += `\n${selectorContext}\n`;
+            ctxBudget.add('selector-cache', `\n${selectorContext}\n`, 25);
           }
         }
 
         // Check if last turn had a verification failure
         const lastTurn = turns[turns.length - 1];
         if (lastTurn?.verificationFailure) {
-          extraContext += `\nVERIFICATION FAILED: ${lastTurn.verificationFailure}\nYour last action did NOT produce the expected effect. Try a different approach.\n`;
+          ctxBudget.add('verification-failure',
+            `\nVERIFICATION FAILED: ${lastTurn.verificationFailure}\nYour last action did NOT produce the expected effect. Try a different approach.\n`, 85);
         }
 
         // Extraction guard: if the agent just ran a script that returned data,
         // remind it to consider completing before navigating away.
         if (lastTurn?.action.action === 'runScript' && !lastTurn.error) {
-          extraContext += `\nYou just extracted data with runScript. If this data answers the goal, use "complete" now instead of navigating away. Do not leave a page with useful data without attempting completion first.\n`;
+          ctxBudget.add('extraction-guard',
+            '\nYou just extracted data with runScript. If this data answers the goal, use "complete" now instead of navigating away. Do not leave a page with useful data without attempting completion first.\n', 80);
         }
+
+        const extraContext = ctxBudget.build();
 
         const forceVision = shouldEscalateVision({
           config: this.config,
@@ -564,13 +565,14 @@ export class AgentRunner {
           extraContext,
         });
         const aiTanglePartnerCompletion = detectAiTanglePartnerTemplateVisibleState(state, scenario.goal);
-        if (aiTanglePartnerCompletion) {
-          extraContext += `\nPARTNER TEMPLATE VISIBILITY DETECTED:\n${aiTanglePartnerCompletion.feedback}\nReturn a terminal \`complete\` action now with concrete evidence.\n`;
-        }
+        const aiTanglePartnerContext = aiTanglePartnerCompletion
+          ? `\nPARTNER TEMPLATE VISIBILITY DETECTED:\n${aiTanglePartnerCompletion.feedback}\nReturn a terminal \`complete\` action now with concrete evidence.\n`
+          : '';
         const aiTangleOutputCompletion = detectAiTangleVerifiedOutputState(state, scenario.goal);
-        if (aiTangleOutputCompletion) {
-          extraContext += `\nVERIFIED OUTPUT STATE DETECTED:\n${aiTangleOutputCompletion.feedback}\nReturn a terminal \`complete\` action now with concrete evidence.\n`;
-        }
+        const aiTangleOutputContext = aiTangleOutputCompletion
+          ? `\nVERIFIED OUTPUT STATE DETECTED:\n${aiTangleOutputCompletion.feedback}\nReturn a terminal \`complete\` action now with concrete evidence.\n`
+          : '';
+        const finalExtraContext = [extraContext, aiTanglePartnerContext, aiTangleOutputContext].filter(Boolean).join('');
         const decisionState = forceVision
           ? await this.attachDecisionScreenshot(state)
           : state;
@@ -581,7 +583,7 @@ export class AgentRunner {
           () => this.brain.decide(
             scenario.goal,
             decisionState,
-            extraContext || undefined,
+            finalExtraContext || undefined,
             { current: i, max: maxTurns },
             { forceVision },
           ),
@@ -600,100 +602,25 @@ export class AgentRunner {
         }
 
         let { action, nextActions, raw, reasoning, plan, currentStep, expectedEffect, tokensUsed } = decision;
-        const searchQueryOverride = chooseSearchQueryOverride(state, scenario.goal, action);
-        if (searchQueryOverride) {
-          this.brain.injectFeedback(searchQueryOverride.feedback);
-          action = { action: 'type', selector: searchQueryOverride.selector, text: searchQueryOverride.query };
-          reasoning = `${reasoning}\n[POLICY OVERRIDE] ${searchQueryOverride.feedback}`;
-          expectedEffect = `The search box should contain the exact task query "${searchQueryOverride.query}".`;
-          nextActions = [];
-        }
-        const searchTabOverride = chooseSearchResultsNewsTabOverride(state, scenario.goal, action);
-        if (searchTabOverride) {
-          this.brain.injectFeedback(searchTabOverride.feedback);
-          action = { action: 'click', selector: searchTabOverride.ref };
-          reasoning = `${reasoning}\n[POLICY OVERRIDE] ${searchTabOverride.feedback}`;
-          expectedEffect = 'The search results page should switch to the News tab or news-filtered results.';
-          nextActions = [];
-        }
-        const newsReleasesHubOverride = chooseNewsReleasesHubOverride(state, scenario.goal, action);
-        if (newsReleasesHubOverride) {
-          this.brain.injectFeedback(newsReleasesHubOverride.feedback);
-          action = { action: 'click', selector: newsReleasesHubOverride.ref };
-          reasoning = `${reasoning}\n[POLICY OVERRIDE] ${newsReleasesHubOverride.feedback}`;
-          expectedEffect = 'The browser should open the News Releases hub page where the site-specific release search is available.';
-          nextActions = [];
-        }
-        const visibleNewsReleaseOverride = chooseVisibleNewsReleaseResultOverride(state, scenario.goal, action);
-        if (visibleNewsReleaseOverride) {
-          this.brain.injectFeedback(visibleNewsReleaseOverride.feedback);
-          action = { action: 'click', selector: visibleNewsReleaseOverride.ref };
-          reasoning = `${reasoning}\n[POLICY OVERRIDE] ${visibleNewsReleaseOverride.feedback}`;
-          expectedEffect = 'The matching visible release result should open directly from the News Releases hub.';
-          nextActions = [];
-        }
-        const visibleSearchResultOverride = chooseVisibleSearchResultOverride(
+
+        // ── 4b. Override pipeline — scored selection of post-decision overrides ──
+        const overrideCtx: OverrideContext = {
           state,
-          scenario.goal,
-          scenario.allowedDomains,
+          goal: scenario.goal,
+          allowedDomains: scenario.allowedDomains,
           action,
-        );
-        if (visibleSearchResultOverride) {
-          this.brain.injectFeedback(visibleSearchResultOverride.feedback);
-          action = { action: 'click', selector: visibleSearchResultOverride.ref };
-          reasoning = `${reasoning}\n[POLICY OVERRIDE] ${visibleSearchResultOverride.feedback}`;
-          expectedEffect = 'The strongest visible search result should open directly.';
-          nextActions = [];
-        }
-        const visibleLinkOverride = chooseVisibleLinkOverride(state, action, visibleLinkMatch);
-        if (visibleLinkOverride) {
-          this.brain.injectFeedback(visibleLinkOverride.feedback);
-          action = { action: 'click', selector: visibleLinkOverride.ref };
-          reasoning = `${reasoning}\n[POLICY OVERRIDE] ${visibleLinkOverride.feedback}`;
-          expectedEffect = 'URL should change';
-          nextActions = [];
-        }
-        const scoutLinkOverride = chooseScoutLinkOverride(state, action, scoutLinkRecommendation);
-        if (scoutLinkOverride) {
-          this.brain.injectFeedback(scoutLinkOverride.feedback);
-          action = { action: 'click', selector: scoutLinkOverride.ref };
-          reasoning = `${reasoning}\n[SCOUT OVERRIDE] ${scoutLinkOverride.feedback}`;
-          expectedEffect = 'URL should change';
-          nextActions = [];
-        }
-        const branchLinkOverride = chooseBranchLinkOverride(state, action, branchLinkRecommendation);
-        if (branchLinkOverride) {
-          this.brain.injectFeedback(branchLinkOverride.feedback);
-          action = { action: 'click', selector: branchLinkOverride.ref };
-          reasoning = `${reasoning}\n[BRANCH OVERRIDE] ${branchLinkOverride.feedback}`;
-          expectedEffect = 'URL should change';
-          nextActions = [];
-        }
-        if (aiTanglePartnerCompletion && action.action !== 'complete' && action.action !== 'abort') {
-          this.brain.injectFeedback(aiTanglePartnerCompletion.feedback);
-          action = {
-            action: 'complete',
-            result: aiTanglePartnerCompletion.result,
-          };
-          reasoning = `${reasoning}\n[POLICY OVERRIDE] ${aiTanglePartnerCompletion.feedback}`;
-          expectedEffect = 'Run should terminate after verifying the partner template page.';
-          nextActions = [];
-        } else if (aiTangleOutputCompletion && action.action !== 'complete' && action.action !== 'abort') {
-          this.brain.injectFeedback(aiTangleOutputCompletion.feedback);
-          action = {
-            action: 'complete',
-            result: aiTangleOutputCompletion.result,
-          };
-          reasoning = `${reasoning}\n[POLICY OVERRIDE] ${aiTangleOutputCompletion.feedback}`;
-          expectedEffect = 'Run should terminate with a verified visible output state.';
-          nextActions = [];
-        }
-        const expandableListGate = chooseExpandableListCompletionOverride(state, scenario.goal, action);
-        if (expandableListGate) {
-          this.brain.injectFeedback(expandableListGate.feedback);
-          action = { action: 'click', selector: expandableListGate.ref };
-          reasoning = `${reasoning}\n[POLICY OVERRIDE] ${expandableListGate.feedback}`;
-          expectedEffect = 'The remaining list items should become visible.';
+          visibleLinkMatch,
+          scoutLinkRecommendation,
+          branchLinkRecommendation,
+          aiTanglePartnerCompletion: aiTanglePartnerCompletion ?? undefined,
+          aiTangleOutputCompletion: aiTangleOutputCompletion ?? undefined,
+        };
+        const overrideWinner = runOverridePipeline(overrideCtx, buildOverrideProducers());
+        if (overrideWinner) {
+          this.brain.injectFeedback(overrideWinner.feedback);
+          action = overrideWinner.action;
+          reasoning = `${reasoning}\n[${overrideWinner.reasoningTag}] ${overrideWinner.feedback}`;
+          expectedEffect = overrideWinner.expectedEffect;
           nextActions = [];
         }
 
@@ -774,8 +701,8 @@ export class AgentRunner {
               const stringified = typeof scriptResult === 'string'
                 ? scriptResult
                 : JSON.stringify(scriptResult, null, 2);
-              firstSufficientEvidenceTurn ??= i;
-              pushGoalVerificationEvidence(goalVerificationEvidence, `SCRIPT RESULT:\n${stringified ?? '(undefined)'}`);
+              runState.firstSufficientEvidenceTurn ??= i;
+              pushGoalVerificationEvidence(runState.goalVerificationEvidence, `SCRIPT RESULT:\n${stringified ?? '(undefined)'}`);
               this.brain.injectFeedback(
                 `SCRIPT RESULT:\n${stringified ?? '(undefined)'}`
               );
@@ -808,7 +735,7 @@ export class AgentRunner {
             turns,
           );
           const verificationEvidence = [
-            ...goalVerificationEvidence,
+            ...runState.goalVerificationEvidence,
             ...persistentSearchEvidence,
           ];
 
@@ -894,7 +821,7 @@ export class AgentRunner {
               verificationEvidence,
             );
             if (contentTypeMismatch) {
-              verificationRejectionCount++;
+              runState.verificationRejectionCount++;
               turn.verificationFailure = contentTypeMismatch;
               this.brain.injectFeedback(
                 `COMPLETION REJECTED — content type mismatch.\n${contentTypeMismatch}\n` +
@@ -907,16 +834,18 @@ export class AgentRunner {
             }
 
             if (!goalResult.achieved) {
-              verificationRejectionCount++;
+              runState.verificationRejectionCount++;
               turn.verificationFailure = goalResult.missing.join('; ') || 'Goal verification failed';
-              firstSufficientEvidenceTurn ??= i;
+              runState.firstSufficientEvidenceTurn ??= i;
               // Goal not met — reject completion and feed back what's missing
-              const escalation = verificationRejectionCount >= 2
-                ? '\nYou have been rejected multiple times. CHANGE YOUR STRATEGY COMPLETELY: ' +
-                  'navigate to the specific result/article page and extract information directly from it. ' +
-                  'Do not try to complete from a list or search results page — open the actual content.'
-                : '\nIf you are on a list/index page, navigate to the specific result page first. ' +
-                  'Complete only when you are on the actual content page with all required evidence visible.';
+              const escalation = runState.verificationRejectionCount >= 2
+                ? '\nYou have been rejected multiple times. CHANGE YOUR STRATEGY COMPLETELY. ' +
+                  'Use runScript to extract the exact data needed from the current page. ' +
+                  'If you need to prove a search was done, complete FROM the search results page showing the query and results. ' +
+                  'If you need specific content details, navigate to the content page first.'
+                : '\nBefore trying again, ensure ALL required evidence is visible on the current page. ' +
+                  'Use runScript to extract structured data if the a11y tree is incomplete. ' +
+                  'Complete only when every requirement in the goal can be verified from the page state.';
               this.brain.injectFeedback(
                 `COMPLETION REJECTED — goal verification failed (confidence: ${goalResult.confidence.toFixed(2)}).\n` +
                 `Missing: ${goalResult.missing.join('; ')}\n` +
@@ -939,8 +868,8 @@ export class AgentRunner {
               if (this.config.debug) {
                 console.log(`[Runner] Quality ${evaluation.score}/${qualityThreshold} — rejecting completion`);
               }
-              verificationRejectionCount++;
-              firstSufficientEvidenceTurn ??= i;
+              runState.verificationRejectionCount++;
+              runState.firstSufficientEvidenceTurn ??= i;
               this.brain.injectFeedback(
                 `COMPLETION REJECTED — quality score ${evaluation.score}/10 is below threshold ${qualityThreshold}/10.\n` +
                 `Issues: ${evaluation.issues.join(', ')}\n` +
@@ -957,7 +886,7 @@ export class AgentRunner {
             turns.push(turn);
             this.onTurn?.(turn);
             this.saveMemory();
-            firstSufficientEvidenceTurn ??= i;
+            runState.firstSufficientEvidenceTurn ??= i;
             return buildResult({
               success: true,
               result: action.result,
@@ -978,7 +907,7 @@ export class AgentRunner {
           turns.push(turn);
           this.onTurn?.(turn);
           this.saveMemory();
-          firstSufficientEvidenceTurn ??= i;
+          runState.firstSufficientEvidenceTurn ??= i;
           return buildResult({
             success: true,
             result: action.result,
@@ -1005,8 +934,7 @@ export class AgentRunner {
           this.brain.injectFeedback(disallowedSearchClick);
           turn.error = disallowedSearchClick;
           turn.durationMs = Date.now() - turnStart;
-          consecutiveErrors++;
-          totalErrors++;
+          runState.recordError();
           turns.push(turn);
           this.onTurn?.(turn);
           continue;
@@ -1047,8 +975,7 @@ export class AgentRunner {
               `URL: ${freshState.url}\nELEMENTS:\n${freshState.snapshot}`
             );
             // Let the loop continue — Brain sees feedback and next observe() has fresh refs.
-            consecutiveErrors++;
-            totalErrors++;
+            runState.recordError();
             turn.error = `Stale ref @${err.staleRef} — auto-retrying`;
             turn.durationMs = Date.now() - turnStart;
             turns.push(turn);
@@ -1065,10 +992,9 @@ export class AgentRunner {
             console.log(`[Runner] Action failed: ${errorMsg}`);
           }
           turn.error = errorMsg;
-          consecutiveErrors++;
-          totalErrors++;
+          runState.recordError();
         } else {
-          consecutiveErrors = 0;
+          runState.clearConsecutiveErrors();
 
           // Update selector cache on successful action
           if (this.selectorCache && 'selector' in action && action.selector) {
@@ -1120,13 +1046,11 @@ export class AgentRunner {
             if (!followResult.success) {
               const followUpError = followResult.error || `Follow-up ${followUpAction.action} failed`;
               turn.error = followUpError;
-              consecutiveErrors++;
-              totalErrors++;
+              runState.recordError();
             }
           } catch (followErr) {
             turn.error = followErr instanceof Error ? followErr.message : String(followErr);
-            consecutiveErrors++;
-            totalErrors++;
+            runState.recordError();
           }
         }
 
@@ -1135,8 +1059,7 @@ export class AgentRunner {
           this.brain.injectFeedback(domainBoundaryViolation);
           turn.error = domainBoundaryViolation;
           turn.durationMs = Date.now() - turnStart;
-          consecutiveErrors++;
-          totalErrors++;
+          runState.recordError();
           if (executedActions.length > 1) {
             turn.executedActions = executedActions;
           }
@@ -1168,8 +1091,7 @@ export class AgentRunner {
         this.onTurn?.(turn);
 
       } catch (err) {
-        consecutiveErrors++;
-        totalErrors++;
+        runState.recordError();
         const error = err instanceof Error ? err.message : String(err);
 
         let timer: ReturnType<typeof setTimeout> | undefined;
@@ -1196,21 +1118,21 @@ export class AgentRunner {
         turns.push(turn);
         this.onTurn?.(turn);
 
-        if (consecutiveErrors >= 3) {
+        if (runState.hasConsecutiveErrorThreshold) {
           this.saveMemory();
           return buildResult({
             success: false,
-            reason: `${consecutiveErrors} consecutive errors: ${error}`,
+            reason: `${runState.consecutiveErrors} consecutive errors: ${error}`,
             turns,
             totalMs: Date.now() - startTime,
           });
         }
 
-        if (totalErrors >= maxTotalErrors) {
+        if (runState.isErrorBudgetExhausted) {
           this.saveMemory();
           return buildResult({
             success: false,
-            reason: `Error budget exhausted (${totalErrors}/${maxTotalErrors} total errors): ${error}`,
+            reason: `Error budget exhausted (${runState.totalErrors}/${runState.maxTotalErrors} total errors): ${error}`,
             turns,
             totalMs: Date.now() - startTime,
           });
@@ -1581,6 +1503,169 @@ export class AgentRunner {
       return state;
     }
   }
+}
+
+/**
+ * Build the ordered list of override producers for the post-decision pipeline.
+ * Each producer wraps one of the existing choose* functions and returns a scored
+ * OverrideCandidate, or undefined if the override does not apply.
+ */
+function buildOverrideProducers(): OverrideProducer[] {
+  return [
+    // 1. Search query correction (score 50)
+    (ctx: OverrideContext) => {
+      const result = chooseSearchQueryOverride(ctx.state, ctx.goal, ctx.action);
+      if (!result) return undefined;
+      return {
+        name: 'searchQueryOverride',
+        action: { action: 'type', selector: result.selector, text: result.query },
+        expectedEffect: `The search box should contain the exact task query "${result.query}".`,
+        feedback: result.feedback,
+        score: 50,
+        reasoningTag: 'POLICY OVERRIDE',
+      };
+    },
+
+    // 2. News tab override (score 40)
+    (ctx: OverrideContext) => {
+      const result = chooseSearchResultsNewsTabOverride(ctx.state, ctx.goal, ctx.action);
+      if (!result) return undefined;
+      return {
+        name: 'newsTabOverride',
+        action: { action: 'click', selector: result.ref },
+        expectedEffect: 'The search results page should switch to the News tab or news-filtered results.',
+        feedback: result.feedback,
+        score: 40,
+        reasoningTag: 'POLICY OVERRIDE',
+      };
+    },
+
+    // 3. News releases hub override (score 38)
+    (ctx: OverrideContext) => {
+      const result = chooseNewsReleasesHubOverride(ctx.state, ctx.goal, ctx.action);
+      if (!result) return undefined;
+      return {
+        name: 'newsReleasesHubOverride',
+        action: { action: 'click', selector: result.ref },
+        expectedEffect: 'The browser should open the News Releases hub page where the site-specific release search is available.',
+        feedback: result.feedback,
+        score: 38,
+        reasoningTag: 'POLICY OVERRIDE',
+      };
+    },
+
+    // 4. Visible news release result override (score 36)
+    (ctx: OverrideContext) => {
+      const result = chooseVisibleNewsReleaseResultOverride(ctx.state, ctx.goal, ctx.action);
+      if (!result) return undefined;
+      return {
+        name: 'visibleNewsReleaseResultOverride',
+        action: { action: 'click', selector: result.ref },
+        expectedEffect: 'The matching visible release result should open directly from the News Releases hub.',
+        feedback: result.feedback,
+        score: 36,
+        reasoningTag: 'POLICY OVERRIDE',
+      };
+    },
+
+    // 5. Visible search result override (score 34)
+    (ctx: OverrideContext) => {
+      const result = chooseVisibleSearchResultOverride(ctx.state, ctx.goal, ctx.allowedDomains, ctx.action);
+      if (!result) return undefined;
+      return {
+        name: 'visibleSearchResultOverride',
+        action: { action: 'click', selector: result.ref },
+        expectedEffect: 'The strongest visible search result should open directly.',
+        feedback: result.feedback,
+        score: 34,
+        reasoningTag: 'POLICY OVERRIDE',
+      };
+    },
+
+    // 6. Visible link override (score = match.score * 3)
+    (ctx: OverrideContext) => {
+      const result = chooseVisibleLinkOverride(ctx.state, ctx.action, ctx.visibleLinkMatch);
+      if (!result) return undefined;
+      return {
+        name: 'visibleLinkOverride',
+        action: { action: 'click', selector: result.ref },
+        expectedEffect: 'URL should change',
+        feedback: result.feedback,
+        score: (ctx.visibleLinkMatch?.score ?? 10) * 3,
+        reasoningTag: 'POLICY OVERRIDE',
+      };
+    },
+
+    // 7. Scout link override (score = confidence * 30)
+    (ctx: OverrideContext) => {
+      const result = chooseScoutLinkOverride(ctx.state, ctx.action, ctx.scoutLinkRecommendation);
+      if (!result) return undefined;
+      return {
+        name: 'scoutLinkOverride',
+        action: { action: 'click', selector: result.ref },
+        expectedEffect: 'URL should change',
+        feedback: result.feedback,
+        score: (ctx.scoutLinkRecommendation?.confidence ?? 0.7) * 30,
+        reasoningTag: 'SCOUT OVERRIDE',
+      };
+    },
+
+    // 8. Branch link override (score = confidence * 28)
+    (ctx: OverrideContext) => {
+      const result = chooseBranchLinkOverride(ctx.state, ctx.action, ctx.branchLinkRecommendation);
+      if (!result) return undefined;
+      return {
+        name: 'branchLinkOverride',
+        action: { action: 'click', selector: result.ref },
+        expectedEffect: 'URL should change',
+        feedback: result.feedback,
+        score: (ctx.branchLinkRecommendation?.confidence ?? 0.72) * 28,
+        reasoningTag: 'BRANCH OVERRIDE',
+      };
+    },
+
+    // 9. AI Tangle partner completion (score 100 — terminal, highest)
+    (ctx: OverrideContext) => {
+      if (!ctx.aiTanglePartnerCompletion) return undefined;
+      if (ctx.action.action === 'complete' || ctx.action.action === 'abort') return undefined;
+      return {
+        name: 'aiTanglePartnerCompletion',
+        action: { action: 'complete', result: ctx.aiTanglePartnerCompletion.result },
+        expectedEffect: 'Run should terminate after verifying the partner template page.',
+        feedback: ctx.aiTanglePartnerCompletion.feedback,
+        score: 100,
+        reasoningTag: 'POLICY OVERRIDE',
+      };
+    },
+
+    // 10. AI Tangle output completion (score 95 — terminal)
+    (ctx: OverrideContext) => {
+      if (!ctx.aiTangleOutputCompletion) return undefined;
+      if (ctx.action.action === 'complete' || ctx.action.action === 'abort') return undefined;
+      return {
+        name: 'aiTangleOutputCompletion',
+        action: { action: 'complete', result: ctx.aiTangleOutputCompletion.result },
+        expectedEffect: 'Run should terminate with a verified visible output state.',
+        feedback: ctx.aiTangleOutputCompletion.feedback,
+        score: 95,
+        reasoningTag: 'POLICY OVERRIDE',
+      };
+    },
+
+    // 11. Expandable list gate (score 20 — lowest)
+    (ctx: OverrideContext) => {
+      const result = chooseExpandableListCompletionOverride(ctx.state, ctx.goal, ctx.action);
+      if (!result) return undefined;
+      return {
+        name: 'expandableListGate',
+        action: { action: 'click', selector: result.ref },
+        expectedEffect: 'The remaining list items should become visible.',
+        feedback: result.feedback,
+        score: 20,
+        reasoningTag: 'POLICY OVERRIDE',
+      };
+    },
+  ];
 }
 
 export function buildGoalVerificationClaim(claimedResult: string, evidence: string[]): string {
