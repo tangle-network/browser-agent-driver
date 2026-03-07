@@ -542,7 +542,7 @@ export class Brain {
     const useCompactFirstTurn = this.compactFirstTurn && turnInfo?.current === 1;
     const visibleSnapshot = useCompactFirstTurn
       ? compactFirstTurnSnapshot(state.snapshot)
-      : state.snapshot;
+      : budgetSnapshot(state.snapshot);
     let textContent = `GOAL: ${goal}`;
 
     if (turnInfo) {
@@ -1040,6 +1040,37 @@ Only include facts that are genuinely useful. Quality over quantity. Max 10 fact
       };
     }
   }
+}
+
+/**
+ * Cap snapshot size for non-first turns to control token cost on large pages.
+ * Keeps the full snapshot when it fits within budget; otherwise truncates
+ * non-interactive decorative lines first, then hard-caps with a notice.
+ */
+function budgetSnapshot(snapshot: string, maxChars = 16_000): string {
+  if (snapshot.length <= maxChars) return snapshot;
+
+  // First pass: drop non-interactive lines (images, paragraphs, decorative text)
+  // to keep interactive elements (buttons, links, textboxes, headings).
+  const lines = snapshot.split('\n');
+  const interactive: string[] = [];
+  const decorative: string[] = [];
+  for (const line of lines) {
+    if (/\b(?:button|link|textbox|combobox|menuitem|checkbox|radio|select|heading|dialog|alertdialog)\b/i.test(line) && /\[ref=/.test(line)) {
+      interactive.push(line);
+    } else {
+      decorative.push(line);
+    }
+  }
+
+  // If interactive-only fits, use it with a truncation note
+  const interactiveText = interactive.join('\n');
+  if (interactiveText.length <= maxChars) {
+    return interactiveText + `\n... [${decorative.length} decorative elements omitted for brevity]`;
+  }
+
+  // Hard cap: take the first maxChars of the full snapshot
+  return snapshot.slice(0, maxChars) + '\n... [snapshot truncated — large page]';
 }
 
 function compactFirstTurnSnapshot(snapshot: string): string {

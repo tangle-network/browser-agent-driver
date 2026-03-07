@@ -660,10 +660,14 @@ async function main(): Promise<void> {
     const pageStartedAt = Date.now();
     const page = await context.newPage();
     const pageCreateMs = Date.now() - pageStartedAt;
+    // Cap per-action timeout so one stuck click can't consume the whole case budget.
+    // Default 30s is fine for long runs; for short cases (120s) use at most 15s.
+    const actionTimeout = Math.min(30_000, Math.max(5_000, Math.floor(timeoutMs / 8)));
     const driver = new PlaywrightDriver(page, {
       captureScreenshots: config.vision,
       screenshotQuality: 50,
       disableCdp: driverConfig.disableCdp,
+      timeout: actionTimeout,
     });
     // Apply resource blocking if configured
     const resourceBlockingStartedAt = Date.now();

@@ -60,9 +60,25 @@ export function detectStuck(turns: Turn[], threshold = 3): boolean {
   const firstUrl = recent[0].state.url;
   const firstHash = snapshotHash(recent[0].state.snapshot);
 
-  return recent.every(
+  // Classic stuck: identical state across all turns
+  if (recent.every(
     (t) => t.state.url === firstUrl && snapshotHash(t.state.snapshot) === firstHash
-  );
+  )) {
+    return true;
+  }
+
+  // Oscillating stuck: same URL, alternating between two states (e.g., menu open/close)
+  if (recent.length >= 4) {
+    const last4 = turns.slice(-4);
+    const sameUrl = last4.every((t) => t.state.url === firstUrl);
+    if (sameUrl) {
+      const hashes = last4.map((t) => snapshotHash(t.state.snapshot));
+      const isOscillating = hashes[0] === hashes[2] && hashes[1] === hashes[3] && hashes[0] !== hashes[1];
+      if (isOscillating) return true;
+    }
+  }
+
+  return false;
 }
 
 /**
@@ -454,6 +470,23 @@ export function analyzeRecovery(ctx: RecoveryContext): RecoveryAction | null {
   if (detectStuck(recentTurns, 3)) {
     const lastActions = recentTurns.slice(-3).map((t) => JSON.stringify(t.action));
     const allSame = lastActions.every((a) => a === lastActions[0]);
+
+    // Check for oscillating stuck (menu open/close loop)
+    if (recentTurns.length >= 4) {
+      const last4 = recentTurns.slice(-4);
+      const hashes = last4.map((t) => snapshotHash(t.state.snapshot));
+      if (hashes[0] === hashes[2] && hashes[1] === hashes[3] && hashes[0] !== hashes[1]) {
+        return {
+          strategy: 'stuck-oscillating',
+          feedback:
+            'STUCK: You are toggling between two states (e.g., opening and closing a menu/dialog) without making progress. ' +
+            'The URL has not changed. Stop repeating these actions. ' +
+            'Try a completely different approach: use the search box if one is available, navigate directly via URL, ' +
+            'or scroll to find alternative navigation elements.',
+          forceAction: 'escape',
+        };
+      }
+    }
 
     if (allSame) {
       return {
