@@ -61,9 +61,10 @@ if (!Array.isArray(cases) || cases.length === 0) {
 
 fs.mkdirSync(outRoot, { recursive: true });
 const jobs = cases.map((scenario, index) => {
-  const startUrl = typeof scenario.startUrl === 'string'
-    ? scenario.startUrl.replace('__FIXTURE_BASE_URL__', fixtureBaseUrl ?? '__FIXTURE_BASE_URL__')
-    : scenario.startUrl;
+  const rawUrl = scenario.startUrl ?? scenario.url;
+  const startUrl = typeof rawUrl === 'string'
+    ? rawUrl.replace('__FIXTURE_BASE_URL__', fixtureBaseUrl ?? '__FIXTURE_BASE_URL__')
+    : rawUrl;
   if (String(startUrl).includes('__FIXTURE_BASE_URL__')) {
     throw new Error(
       `Scenario "${scenario.id ?? scenario.name ?? 'unknown'}" contains __FIXTURE_BASE_URL__ but --fixture-base-url was not provided.`,
