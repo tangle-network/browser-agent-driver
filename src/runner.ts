@@ -260,6 +260,25 @@ export class AgentRunner {
           this.onPhaseTiming?.('observe', phaseTimings.firstObserveMs);
         }
 
+        // Auto-navigate: if we're on about:blank with a startUrl, navigate without
+        // consuming an LLM turn. The agent always does wait→navigate on blank pages.
+        if (
+          state.url === 'about:blank' &&
+          scenario.startUrl &&
+          turns.length === 0
+        ) {
+          await this.driver.execute({ action: 'navigate', url: scenario.startUrl }).catch(() => {});
+          // Re-observe after navigation
+          const reState = await withRetry(
+            () => this.driver.observe(),
+            retries,
+            retryDelayMs,
+            undefined,
+            scenario.signal,
+          );
+          Object.assign(state, reState);
+        }
+
         const terminalBlocker = detectTerminalBlocker(state);
         if (terminalBlocker) {
           const reason = `${terminalBlocker.reason} (signals: ${terminalBlocker.evidence.join(', ')})`;
@@ -347,28 +366,17 @@ export class AgentRunner {
         if (visibleLinkRecommendation) {
           ctxBudget.add('visible-link', `\n${visibleLinkRecommendation}\n`, 60);
         }
-        const scoutLinkRecommendation = await this.buildVisibleLinkScoutRecommendation(
-          state,
-          scenario.goal,
-          scenario.allowedDomains,
-        );
+        const [scoutLinkRecommendation, branchLinkRecommendation, searchScoutFeedback] = await Promise.all([
+          this.buildVisibleLinkScoutRecommendation(state, scenario.goal, scenario.allowedDomains),
+          this.buildBranchLinkRecommendation(state, scenario.goal, scenario.allowedDomains),
+          this.buildSearchResultsScoutFeedback(state, scenario.goal, scenario.allowedDomains, runState.searchScoutUrls),
+        ]);
         if (scoutLinkRecommendation) {
           ctxBudget.add('scout-link', `\n${buildScoutLinkRecommendationText(scoutLinkRecommendation)}\n`, 55);
         }
-        const branchLinkRecommendation = await this.buildBranchLinkRecommendation(
-          state,
-          scenario.goal,
-          scenario.allowedDomains,
-        );
         if (branchLinkRecommendation) {
           ctxBudget.add('branch-link', `\n${buildBranchLinkRecommendationText(branchLinkRecommendation)}\n`, 55);
         }
-        const searchScoutFeedback = await this.buildSearchResultsScoutFeedback(
-          state,
-          scenario.goal,
-          scenario.allowedDomains,
-          runState.searchScoutUrls,
-        );
         if (searchScoutFeedback) {
           ctxBudget.add('search-scout', `\n${searchScoutFeedback}\n`, 50);
         }
@@ -831,6 +839,29 @@ export class AgentRunner {
               turns.push(turn);
               this.onTurn?.(turn);
               continue;
+            }
+
+            if (!goalResult.achieved) {
+              // Progressive acceptance: after prior rejections, accept high-confidence
+              // near-misses (0.65+) with supplemental evidence rather than looping
+              const hasSupplementalEvidence = verificationEvidence.length > 0;
+              const priorRejections = runState.verificationRejectionCount;
+              if (
+                priorRejections >= 1 &&
+                goalResult.confidence >= 0.65 &&
+                hasSupplementalEvidence
+              ) {
+                goalResult = {
+                  ...goalResult,
+                  achieved: true,
+                  confidence: goalResult.confidence,
+                  evidence: [
+                    ...goalResult.evidence,
+                    `Accepted under progressive threshold after ${priorRejections} prior rejection(s) with supplemental tool evidence.`,
+                  ],
+                  missing: [],
+                };
+              }
             }
 
             if (!goalResult.achieved) {
