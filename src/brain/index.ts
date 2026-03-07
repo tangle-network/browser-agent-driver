@@ -66,6 +66,7 @@ RULES:
 14. If the same action triggers the same blocker twice, switch strategy immediately (different button/path), do not repeat blind retries
 15. SEARCH FORMS: Always interact with the form (type in search box, then click Search or press Enter). Do NOT navigate to a URL with search query parameters — many sites require form submission to trigger filtering. If a search yields no results, try the page's own search box rather than the site-wide search
 16. CONTENT DISCOVERY: If the ELEMENTS list doesn't show the link/content you need (e.g., the page has many links but the a11y tree is truncated), use runScript to find it: document.querySelectorAll('a[href]') filtered by keyword. Navigate to the discovered URL directly instead of clicking blindly through menus
+17. EXTERNAL SEARCH REDIRECTS: If a site's search form redirects to an external search engine (e.g., search.usa.gov for .gov sites), the results still link back to the original site. Click a relevant search result link — it will take you to the target domain. Do NOT abandon search results to navigate the target site manually
 
 REASONING FRAMEWORK — before choosing an action:
 1. What is the current state vs. the goal state? What is missing?
