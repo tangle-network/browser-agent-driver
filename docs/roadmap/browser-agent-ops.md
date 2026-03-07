@@ -392,7 +392,7 @@ This is the canonical finish-line tracker. Work is done only when every item her
 | --- | --- | --- | --- |
 | Tier 1 deterministic fixtures | Verified baseline | Stable at 100% on repeated local runs | `npm run bench:tier1:gate` |
 | Tier 2 authenticated core flows | Verified baseline | Stable at 100% with real auth state and complete artifacts across repeated runs | `npm run bench:tier2:repeat -- --storage-state ./.auth/ai-tangle-tools.json` |
-| Tier 3 public-web `reach3` baseline | Verified baseline | At least 5 repeated seeded runs with no case below 80% pass and no structural false-positive class open | `npm run bench:tier3:gate -- --existing-root ./agent-results/reach3-contenthub-v4-repeat-1772786885` |
+| Tier 3 public-web `reach3` baseline | Verified baseline | At least 5 repeated seeded runs with no case below 80% pass and no structural false-positive class open | `npm run bench:tier3:gate -- --existing-root ./agent-results/tier3-gate-visible-release-1772847117` |
 | Search/domain policy correctness | Verified baseline | Disallowed-host clicks and false-positive completions are blocked deterministically | repeated NIH runs + targeted tests |
 | Artifact completeness | Verified baseline | Every serious run emits report, manifest, and recording | artifact completeness checks in baseline/gate summaries |
 | Cost and turn efficiency | In progress | Median turns, duration, and token cost are non-regressive on the promoted slice | repeated baseline summaries |
@@ -405,11 +405,12 @@ This section is an operational snapshot, not roadmap authority. Keep policy and 
 
 Current honest status:
 - Tier 1 deterministic control is green on the promoted local fixture set
-- repeated `reach3` control is now green across 5 repeated runs
+- repeated `reach3` control is green across 5 repeated runs on the current promoted baseline
 - current repeated control sample: Yale `5/5`, Alberta `5/5`, NIH `5/5`
 - Tier 3 is now good enough to support promotion decisions on this slice
 - selective `auto` vision is currently a challenger only; it regressed on NIH and is not baseline-ready
-- NIH token burn has been reduced on focused post-fix repeats, though broader Tier 3 efficiency work remains open
+- the current promoted Tier 3 baseline materially reduced NIH median cost and Alberta median duration versus the older guarded baseline
+- a Yale latency outlier still exists on one rep; pass-rate stability is promoted, latency variance remains open
 - Tier 2 repeated authenticated control is now green across three valid repetitions
 - the Tier 2 Coinbase template-verification fast-explore regression has been corrected on post-fix repeats; it no longer needs to launch runs or over-prove actionability to satisfy the goal
 - local product-path readiness is now verified in `abd-app` with real app -> worker -> orchestrator -> artifact evidence
@@ -424,8 +425,9 @@ Current best evidence:
 - Tier 1 deterministic summary: `./agent-results/tier1-green-1772794410/tier1-gate-summary.json`
 - Tier 1 deterministic markdown: `./agent-results/tier1-green-1772794410/tier1-gate-summary.md`
 - clean corrected `reach3`: `./agent-results/reach3-contenthub-v4-1772786683/track-summary.json`
-- repeated `reach3`: `./agent-results/reach3-contenthub-v4-repeat-1772786885/`
-- executable Tier 3 summary: `./agent-results/reach3-contenthub-v4-repeat-1772786885/tier3-gate-summary.json`
+- current promoted repeated `reach3`: `./agent-results/tier3-gate-visible-release-1772847117/`
+- current promoted Tier 3 summary: `./agent-results/tier3-gate-visible-release-1772847117/tier3-gate-summary.json`
+- current promoted Tier 3 markdown: `./agent-results/tier3-gate-visible-release-1772847117/tier3-gate-summary.md`
 - Tier 2 repeated authenticated summary: `./agent-results/tier2-repeat-green-1772792440/tier2-repeat-summary.json`
 - Tier 2 repeated authenticated markdown: `./agent-results/tier2-repeat-green-1772792440/tier2-repeat-summary.md`
 - Tier 2 post-fix template verification summary: `./agent-results/tier2-repeat-post-template-fix-1772794740/tier2-repeat-summary.json`
@@ -433,18 +435,18 @@ Current best evidence:
 - local product-path evidence lives in `abd-app`: `/tmp/abd-real-ui-e2e-gate-1772826110/`
 - provider screen, OpenAI control: `./agent-results/provider-openai-gpt54-reach3-1772840341/track-summary.json`
 - provider screen, Codex challenger: `./agent-results/provider-codex-gpt54-reach3-1772840486/track-summary.json`
-- focused NIH correctness + cost pass: `./agent-results/nih-content-guard-v2-1772842499/baseline-summary.json`
-- latest guarded `reach3`: `./agent-results/reach3-content-guard-v2-1772842574/track-summary.json`
+- focused NIH correctness + cost pass: `./agent-results/nih-visible-release-1772847031/baseline-summary.json`
+- older guarded `reach3`: `./agent-results/reach3-content-guard-v2-1772842574/track-summary.json`
 - top-2 branch challenger NIH smoke: `./agent-results/nih-top2-branch-smoke-1772843605/baseline-summary.json`
 - top-2 branch challenger `reach3`: `./agent-results/reach3-top2-branch-1772843662/track-summary.json`
 - Tier 2 validated repetition summaries:
   - `./agent-results/tier2-repeat-green-1772792440/rep-1/tier2-gate-summary.json`
   - `./agent-results/tier2-repeat-green-1772792440/rep-2/tier2-gate-summary.json`
   - `./agent-results/tier2-repeat-green-1772792440/rep-3/tier2-gate-summary.json`
-- repeated control medians:
-  - Yale (`webbench-2204`): `5/5`, median `28.9s`, median `5` turns, median `27.2k` tokens
-  - NIH (`webbench-2605`): `5/5`, median `77.9s`, median `12` turns, median `185.8k` tokens
-  - Alberta (`webbench-32`): `5/5`, median `50.2s`, median `7` turns, median `56.3k` tokens
+- current promoted repeated control medians:
+  - Yale (`webbench-2204`): `5/5`, median `19.4s`, median `4` turns, median `18.5k` tokens
+  - NIH (`webbench-2605`): `5/5`, median `57.0s`, median `11` turns, median `153.1k` tokens
+  - Alberta (`webbench-32`): `5/5`, median `37.5s`, median `7` turns, median `54.5k` tokens
 - latest provider screen on the guarded `reach3` slice:
   - OpenAI `gpt-5.4`: Yale pass `19.1s` / `4` turns / `18.6k`; NIH pass `53.8s` / `11` turns / `133.9k`; Alberta pass `47.2s` / `8` turns / `74.0k`
   - Codex CLI `gpt-5.4`: Yale pass `45.5s` / `4` turns / `51.4k`; NIH fail `120.0s` / `9` turns / `178.5k`; Alberta pass `93.4s` / `7` turns / `113.4k`
@@ -452,6 +454,10 @@ Current best evidence:
   - Yale (`webbench-2204`): pass `22.8s` / `4` turns / `18.6k`
   - NIH (`webbench-2605`): pass `66.9s` / `12` turns / `153.4k` on `https://www.nih.gov/news-events/news-releases/...`
   - Alberta (`webbench-32`): pass `49.6s` / `8` turns / `74.1k`
+- current promoted repeated baseline:
+  - Yale (`webbench-2204`): `5/5`, median `19.4s` / `4` turns / `18.5k`
+  - NIH (`webbench-2605`): `5/5`, median `57.0s` / `11` turns / `153.1k`
+  - Alberta (`webbench-32`): `5/5`, median `37.5s` / `7` turns / `54.5k`
 - top-2 branch challenger:
   - focused NIH smoke: pass `41.8s` / `9` turns / `83.2k`
   - full `reach3`: Yale improved, Alberta improved, NIH regressed to timeout; do not promote

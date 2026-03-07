@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildGoalVerificationClaim,
+  collectSearchWorkflowEvidence,
   detectCompletionContentTypeMismatch,
   detectAiTanglePartnerTemplateVisibleState,
   detectAiTangleVerifiedOutputState,
+  shouldAcceptSearchWorkflowCompletion,
   shouldAcceptScriptBackedCompletion,
 } from '../src/runner.js';
 
@@ -53,6 +55,59 @@ describe('buildGoalVerificationClaim', () => {
       ].join('\n'),
       [
         'SCRIPT RESULT:\n{"date":"February 28, 2019","title":"Example"}',
+      ],
+    );
+
+    expect(accepted).toBe(true);
+  });
+
+  it('collects persisted site-search evidence from an earlier turn', () => {
+    const evidence = collectSearchWorkflowEvidence(
+      'Use the site’s search feature to find information on "Alzheimer\'s disease" and extract the title and publication date of the first related press release.',
+      [
+        'Title: Study measuring changes in protein structure establishes new class of Alzheimer’s biomarkers',
+        'Publication date: February 27, 2026',
+        'URL: https://www.nih.gov/news-events/news-releases/study-measuring-changes-protein-structure-establishes-new-class-alzheimers-biomarkers',
+      ].join('\n'),
+      [
+        {
+          turn: 1,
+          durationMs: 1,
+          action: { action: 'click', selector: '@l2eda' },
+          state: {
+            url: 'https://www.nih.gov/news-events/news-releases',
+            title: 'News Releases',
+            snapshot: [
+              '- searchbox "Search NIH news releases" [ref=s1eec] [value="Alzheimer\'s disease"]:',
+              '- link "Study measuring changes in protein structure establishes new class of Alzheimer’s biomarkers February 27, 2026" [ref=l2eda]',
+            ].join('\n'),
+          },
+        },
+      ],
+    );
+
+    expect(evidence).toHaveLength(1);
+    expect(evidence[0]).toContain('SEARCH WORKFLOW EVIDENCE:');
+    expect(evidence[0]).toContain('Query visible in site search: Alzheimer\'s disease');
+    expect(evidence[0]).toContain('Visible date evidence: February 27, 2026');
+  });
+
+  it('accepts completion when prior turns captured the required search workflow evidence', () => {
+    const accepted = shouldAcceptSearchWorkflowCompletion(
+      'Use the site’s search feature to find information on "Alzheimer\'s disease" and extract the title and publication date of the first related press release.',
+      {
+        achieved: false,
+        confidence: 0.71,
+        evidence: ['The article page matches the claimed result.'],
+        missing: ['Current final page state does not show the site search field or filtered search-results state.'],
+      },
+      [
+        'Title: Study measuring changes in protein structure establishes new class of Alzheimer’s biomarkers',
+        'Publication date: February 27, 2026',
+        'URL: https://www.nih.gov/news-events/news-releases/study-measuring-changes-protein-structure-establishes-new-class-alzheimers-biomarkers',
+      ].join('\n'),
+      [
+        'SEARCH WORKFLOW EVIDENCE:\nURL: https://www.nih.gov/news-events/news-releases\nQuery visible in site search: Alzheimer\'s disease',
       ],
     );
 

@@ -4,6 +4,10 @@ import {
   buildVisibleLinkRecommendation,
   chooseBranchLinkOverride,
   chooseExpandableListCompletionOverride,
+  chooseNewsReleasesHubOverride,
+  chooseSearchQueryOverride,
+  chooseSearchResultsNewsTabOverride,
+  chooseVisibleNewsReleaseResultOverride,
   chooseScoutLinkOverride,
   chooseVisibleLinkOverride,
   rankSearchCandidates,
@@ -119,7 +123,7 @@ describe('buildSearchResultsGuidance', () => {
     expect(recommendation).not.toContain('@l9e3');
   });
 
-  it('overrides detours to all news releases when the target release is already visible', () => {
+  it('does not override deliberate structural hub clicks to all news releases', () => {
     const state = {
       url: 'https://www.nih.gov/news-events',
       title: 'News & Events',
@@ -135,8 +139,7 @@ describe('buildSearchResultsGuidance', () => {
       { ref: '@l1a78', text: 'Study measuring changes in protein structure establishes new class of Alzheimer’s biomarkers', score: 17 },
     );
 
-    expect(override?.ref).toBe('@l1a78');
-    expect(override?.feedback).toContain('Do not search again');
+    expect(override).toBeUndefined();
   });
 
   it('uses scout on ambiguous visible link choices', () => {
@@ -196,6 +199,78 @@ describe('buildSearchResultsGuidance', () => {
 
     expect(override?.ref).toBe('@l1a78');
     expect(override?.feedback).toContain('Scout recommendation');
+  });
+
+  it('switches to the visible News tab before opening generic search results for press-release tasks', () => {
+    const override = chooseSearchResultsNewsTabOverride(
+      {
+        url: 'https://search.usa.gov/search?affiliate=nih&query=alzheimers',
+        title: 'Search Results | NIH',
+        snapshot: [
+          '- link "Everything" [ref=l12a4]',
+          '- link "News" [ref=l3712]',
+          '- link "Alzheimer\'s Disease | National Institute on Aging" [ref=l2e2c]',
+        ].join('\n'),
+      },
+      'Use the site’s search feature to find information on "Alzheimer\'s disease" and extract the title and publication date of the first related press release.',
+      { action: 'click', selector: '@l2e2c' },
+    );
+
+    expect(override?.ref).toBe('@l3712');
+    expect(override?.feedback).toContain('News tab');
+  });
+
+  it('uses the exact quoted task query in site search boxes', () => {
+    const override = chooseSearchQueryOverride(
+      {
+        url: 'https://www.nih.gov/',
+        title: 'NIH',
+        snapshot: '- searchbox "Search" [ref=s28e8]:',
+      },
+      'Use the site’s search feature to find information on "Alzheimer\'s disease" and extract the title and publication date of the first related press release.',
+      { action: 'type', selector: '@s28e8', text: "Alzheimer's disease press release" },
+    );
+
+    expect(override?.selector).toBe('@s28e8');
+    expect(override?.query).toBe("Alzheimer's disease");
+    expect(override?.feedback).toContain('exact task query');
+  });
+
+  it('routes NIH news-event clicks through the news releases hub for search-backed press-release tasks', () => {
+    const override = chooseNewsReleasesHubOverride(
+      {
+        url: 'https://www.nih.gov/news-events',
+        title: 'News & Events',
+        snapshot: [
+          '- link "Automated CT scan analysis could fast-track clinical assessments March 4, 2026" [ref=lfad]',
+          '- link "All news releases »" [ref=l2baa]',
+        ].join('\n'),
+      },
+      'Use the site’s search feature to find information on "Alzheimer\'s disease" and extract the title and publication date of the first related press release.',
+      { action: 'click', selector: '@lfad' },
+    );
+
+    expect(override?.ref).toBe('@l2baa');
+    expect(override?.feedback).toContain('News Releases hub');
+  });
+
+  it('clicks the visible matching release instead of re-submitting the news releases search', () => {
+    const override = chooseVisibleNewsReleaseResultOverride(
+      {
+        url: 'https://www.nih.gov/news-events/news-releases',
+        title: 'News Releases',
+        snapshot: [
+          '- searchbox "Search NIH news releases" [ref=s1eec] [value="alzheimer\'s disease"]:',
+          '- button "Search" [ref=b3aed_1]:',
+          '- link "Study measuring changes in protein structure establishes new class of Alzheimer’s biomarkers February 27, 2026 — NIH-funded insights into Alzheimer’s biology could help with early diagnosis, future clinical trials." [ref=l2eda]',
+        ].join('\n'),
+      },
+      'Use the site’s search feature to find information on "Alzheimer\'s disease" and extract the title and publication date of the first related press release.',
+      { action: 'press', selector: '@s1eec', key: 'Enter' },
+    );
+
+    expect(override?.ref).toBe('@l2eda');
+    expect(override?.feedback).toContain('already visible');
   });
 
   it('forces SHOW MORE expansion before completing list/category goals', () => {
