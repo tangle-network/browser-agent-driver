@@ -306,6 +306,30 @@ export class AgentRunner {
         }
 
         let extraContext = '';
+
+        // Post-blocker-dismissal: if the previous turn's recovery dismissed a modal
+        // and the URL hasn't changed, warn the agent that prior actions may have been voided.
+        if (turns.length >= 2) {
+          const prevTurn = turns[turns.length - 1];
+          const prevPrevTurn = turns.length >= 3 ? turns[turns.length - 2] : undefined;
+          const prevStrategy = prevTurn?.reasoning || '';
+          const modalWasDismissed =
+            prevStrategy.includes('cookie/consent dialog') ||
+            prevStrategy.includes('dialog/modal is obstructing') ||
+            prevStrategy.includes('dialog/modal is present') ||
+            (prevTurn?.action?.action === 'click' &&
+              /reject|accept|allow|deny|dismiss|consent|cookie/i.test(
+                prevTurn?.action?.selector || prevTurn?.rawLLMResponse || '',
+              ));
+          if (modalWasDismissed && prevPrevTurn && state.url === prevPrevTurn.state.url) {
+            extraContext +=
+              '\nBLOCKER RECOVERY NOTE: A blocking dialog was just dismissed, but the URL has not changed ' +
+              'since before the dialog appeared. Any form submission, search, or navigation that was attempted ' +
+              'before the dialog may have been intercepted and voided. ' +
+              'Re-check the page state and re-submit your prior action if needed.\n';
+          }
+        }
+
         const turnsLeft = maxTurns - i + 1;
         if (turnsLeft <= 3) {
           extraContext +=
@@ -600,6 +624,19 @@ export class AgentRunner {
           action = { action: 'click', selector: visibleNewsReleaseOverride.ref };
           reasoning = `${reasoning}\n[POLICY OVERRIDE] ${visibleNewsReleaseOverride.feedback}`;
           expectedEffect = 'The matching visible release result should open directly from the News Releases hub.';
+          nextActions = [];
+        }
+        const visibleSearchResultOverride = chooseVisibleSearchResultOverride(
+          state,
+          scenario.goal,
+          scenario.allowedDomains,
+          action,
+        );
+        if (visibleSearchResultOverride) {
+          this.brain.injectFeedback(visibleSearchResultOverride.feedback);
+          action = { action: 'click', selector: visibleSearchResultOverride.ref };
+          reasoning = `${reasoning}\n[POLICY OVERRIDE] ${visibleSearchResultOverride.feedback}`;
+          expectedEffect = 'The strongest visible search result should open directly.';
           nextActions = [];
         }
         const visibleLinkOverride = chooseVisibleLinkOverride(state, action, visibleLinkMatch);
@@ -2069,6 +2106,42 @@ export function chooseVisibleNewsReleaseResultOverride(
   return {
     ref: recommendation.ref,
     feedback: `A matching news release is already visible for the exact query "${explicitQuery}". Click the visible release instead of re-submitting the search.`,
+  };
+}
+
+export function chooseVisibleSearchResultOverride(
+  state: PageState,
+  goal: string,
+  allowedDomains: string[] | undefined,
+  action: Action,
+): { ref: string; feedback: string } | undefined {
+  if (!looksLikeSearchResultsPage(state)) return undefined;
+
+  const recommendation = getVisibleLinkRecommendation(state, goal, allowedDomains);
+  if (!recommendation || recommendation.score < 10) return undefined;
+  if (action.action === 'click' && action.selector === recommendation.ref) return undefined;
+
+  const isCandidateClick = action.action === 'click'
+    && 'selector' in action
+    && action.selector?.startsWith('@')
+    && !!findElementForRef(state.snapshot, action.selector);
+  if (!isCandidateClick && !isSearchAction(state, action)) return undefined;
+
+  const targetText = isCandidateClick
+    ? (findElementForRef(state.snapshot, action.selector) ?? '').toLowerCase()
+    : '';
+  const lowerGoal = goal.toLowerCase();
+  const wantsProductSearch =
+    lowerGoal.includes('top result')
+    || lowerGoal.includes('product search')
+    || (lowerGoal.includes('review') && lowerGoal.includes('summary'));
+  const chosenLooksDistracting = /\bcustomer services\b|\breviews policy\b|\bhelp\b|\bshopping with us\b/.test(targetText);
+
+  if (!wantsProductSearch && !chosenLooksDistracting) return undefined;
+
+  return {
+    ref: recommendation.ref,
+    feedback: `A stronger visible search result is already present. Click ${recommendation.ref} (${recommendation.text}) instead of the lower-signal search/help link you chose.`,
   };
 }
 

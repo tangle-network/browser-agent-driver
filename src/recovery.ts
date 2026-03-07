@@ -258,6 +258,40 @@ export function detectBlockingModal(snapshot: string): BlockingModalDetection | 
     };
   }
 
+  // Cookie / consent banners — dismiss deterministically before the LLM wastes a turn.
+  const isCookieConsent =
+    /\bcookie/i.test(snapshotLower) ||
+    /\bconsent/i.test(snapshotLower) ||
+    /\bpersonalise your/i.test(snapshotLower) ||
+    /\bpersonalize your/i.test(snapshotLower) ||
+    /\bprivacy preference/i.test(snapshotLower);
+  if (isCookieConsent) {
+    const consentDismissRef = pickRefByName(elements, [
+      /^reject all$/,
+      /^decline all$/,
+      /^deny$/,
+      /^reject$/,
+      /^accept all$/,
+      /^allow all$/,
+      /^accept cookies?$/,
+      /^got it$/,
+      /^ok$/,
+      /^close$/,
+      /^continue$/,
+    ]);
+    if (consentDismissRef) {
+      return {
+        kind: 'blocking-modal',
+        strategy: 'cookie-consent-dismiss',
+        feedback:
+          'BLOCKER: A cookie/consent dialog was intercepting the page. It has been dismissed. ' +
+          'If you submitted a form or search before this dialog appeared, the submission may have been blocked. ' +
+          'Re-verify whether your last action took effect (check the URL and page content) and re-submit if needed.',
+        action: { action: 'click', selector: `@${consentDismissRef}` },
+      };
+    }
+  }
+
   const closeRef = pickRefByName(elements, [
     /^close$/,
     /dismiss/,

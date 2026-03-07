@@ -64,6 +64,36 @@ describe('recovery blocker handling', () => {
     expect(detection?.action).toEqual({ action: 'click', selector: '@b2' });
   });
 
+  it('detects cookie consent dialog and dismisses deterministically', () => {
+    const snapshot = `
+- dialog:
+  - heading "Personalise your shopping experience" [ref=h3733]
+  - paragraph
+  - button "Allow all" [ref=b919]
+  - button "Reject all" [ref=b3efd]
+  - button "Manage cookies" [ref=b139d]
+`;
+
+    const detection = detectBlockingModal(snapshot);
+    expect(detection?.strategy).toBe('cookie-consent-dismiss');
+    expect(detection?.action).toEqual({ action: 'click', selector: '@b3efd' });
+    expect(detection?.feedback).toContain('cookie/consent dialog');
+    expect(detection?.feedback).toContain('Re-verify');
+  });
+
+  it('detects cookie consent with Accept Cookies button', () => {
+    const snapshot = `
+- dialog "Cookie Policy" [ref=d1]:
+  - text "We use cookies to improve your experience."
+  - button "Accept Cookies" [ref=b5]
+  - button "Settings" [ref=b6]
+`;
+
+    const detection = detectBlockingModal(snapshot);
+    expect(detection?.strategy).toBe('cookie-consent-dismiss');
+    expect(detection?.action).toEqual({ action: 'click', selector: '@b5' });
+  });
+
   it('detects generic modal and chooses a dismiss button', () => {
     const snapshot = `
 - dialog "Welcome back" [ref=d1]:

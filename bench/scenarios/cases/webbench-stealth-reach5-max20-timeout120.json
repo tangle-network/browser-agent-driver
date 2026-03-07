@@ -1,0 +1,52 @@
+[
+  {
+    "id": "stealth-crunchyroll",
+    "name": "Stealth reach: Crunchyroll anime browse",
+    "startUrl": "https://www.crunchyroll.com",
+    "goal": "Navigate to the anime browsing section and list 5 popular or featured anime titles currently shown on the homepage or browse page.\nOnly use https://www.crunchyroll.com to achieve the task.",
+    "allowedDomains": ["www.crunchyroll.com"],
+    "maxTurns": 20,
+    "tags": ["stealth-reach", "anti-bot", "www.crunchyroll.com"],
+    "timeoutMs": 120000
+  },
+  {
+    "id": "stealth-apkpure",
+    "name": "Stealth reach: APKPure app search",
+    "startUrl": "https://apkpure.com",
+    "goal": "Use the site search to find \"WhatsApp\" and extract the latest version number and download count shown for the top result.\nOnly use https://apkpure.com to achieve the task.",
+    "allowedDomains": ["apkpure.com", "m.apkpure.com"],
+    "maxTurns": 20,
+    "tags": ["stealth-reach", "anti-bot", "apkpure.com"],
+    "timeoutMs": 120000
+  },
+  {
+    "id": "stealth-johnlewis",
+    "name": "Stealth reach: John Lewis commerce search",
+    "startUrl": "https://www.johnlewis.com",
+    "goal": "Use the product search function to look up \"organic cotton towels\" and extract the name and price of the top search result.\nOnly use https://www.johnlewis.com to achieve the task.",
+    "allowedDomains": ["www.johnlewis.com"],
+    "maxTurns": 20,
+    "tags": ["stealth-reach", "commerce", "cookie-consent", "www.johnlewis.com"],
+    "timeoutMs": 120000
+  },
+  {
+    "id": "stealth-target",
+    "name": "Stealth reach: Target product browse",
+    "startUrl": "https://www.target.com",
+    "goal": "Navigate to the Electronics section and list 3 featured or promoted products currently shown.\nOnly use https://www.target.com to achieve the task.",
+    "allowedDomains": ["www.target.com"],
+    "maxTurns": 20,
+    "tags": ["stealth-reach", "commerce", "www.target.com"],
+    "timeoutMs": 120000
+  },
+  {
+    "id": "stealth-bestbuy",
+    "name": "Stealth reach: Best Buy deals page",
+    "startUrl": "https://www.bestbuy.com",
+    "goal": "Navigate to the deals or top deals page and extract the name and discounted price of the first 3 deals listed.\nOnly use https://www.bestbuy.com to achieve the task.",
+    "allowedDomains": ["www.bestbuy.com"],
+    "maxTurns": 20,
+    "tags": ["stealth-reach", "commerce", "www.bestbuy.com"],
+    "timeoutMs": 120000
+  }
+]

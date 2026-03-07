@@ -416,7 +416,10 @@ Current honest status:
 - local product-path readiness is now verified in `abd-app` with real app -> worker -> orchestrator -> artifact evidence
 - `openai/gpt-5.4` remains the promoted default runtime on the guarded public-web slice
 - `codex-cli/gpt-5.4` is currently an optional cost path only; on the same guarded `reach3` slice it was slower on Yale and Alberta and timed out on NIH
-- `benchmark-webbench-stealth` is now the explicit reach challenger for anti-bot-prone public-web tasks; it cleared Crunchyroll and APKPure where the default benchmark profile was blocked immediately
+- `benchmark-webbench-stealth` is the explicit reach challenger for anti-bot-prone public-web tasks; it cleared Crunchyroll and APKPure where the default benchmark profile was blocked immediately
+- cookie/consent dialog recovery is now deterministic: `detectBlockingModal` recognizes consent patterns and dismisses them, then post-dismissal guidance tells the agent to re-verify prior actions
+- first measured stealth reach5 benchmark: 3/5 pass (Crunchyroll, John Lewis, Best Buy pass; APKPure timeout due to search-field a11y, Target timeout due to path inefficiency — not anti-bot)
+- the cookie consent fix is non-regressive on reach3 (3/3 pass, no material duration or token change) and Tier 1 (100% gate pass)
 - `scout` remains challenger-only; the architecture is right, but the current policy has not earned promotion
 - the guarded baseline now includes explicit content-type rejection for press-release tasks, preventing false-positive completions on Research Matters/topic pages
 - the latest guarded `reach3` run stayed green while restoring NIH correctness with materially lower cost than the first honest content-type run
@@ -465,6 +468,16 @@ Current best evidence:
 - top-2 branch challenger:
   - focused NIH smoke: pass `41.8s` / `9` turns / `83.2k`
   - full `reach3`: Yale improved, Alberta improved, NIH regressed to timeout; do not promote
+- cookie-fix verification (post-fix baseline):
+  - Tier 1 gate: PASS (100%)
+  - reach3 regression check: Yale pass `18.2s` / `4` turns / `16.4k`; NIH pass `65.5s` / `13` turns / `184.8k`; Alberta pass `36.3s` / `7` turns / `47.4k`
+  - John Lewis focused: pass `53.7s` / `4` turns / `32.9k`
+- stealth reach5 baseline (`benchmark-webbench-stealth` + cookie fix):
+  - Crunchyroll: pass `14.1s` / `3` turns / `11.5k`
+  - APKPure: fail (timeout, search-field a11y issue)
+  - John Lewis: pass `49.3s` / `4` turns / `33.0k`
+  - Target: fail (timeout, path inefficiency)
+  - Best Buy: pass `96.2s` / `9` turns / `237.3k`
 
 Exit rule:
 - do not call the browser agent production-ready until Tier 1 is green, Tier 2 is green, and repeated Tier 3 control runs are stable enough to support promotion decisions
@@ -481,7 +494,10 @@ P0:
 P1:
 - continue reducing Tier 3 cost variance, especially NIH, on the promoted slice
 - reduce wasted-turn variance on Yale and Alberta after NIH is stable
-- turn the new anti-bot reach challenger into a measured benchmark path; keep it separate from the promoted baseline until it has repeated data
+- run repeated seeded stealth reach5 experiments to build promotion-grade evidence for the reach challenger
+- fix APKPure search-field a11y detection (likely hidden search bar that needs click-to-expand)
+- fix Target path inefficiency (agent navigates to category menu instead of using search or direct links)
+- reduce Best Buy token cost (237k tokens is expensive; investigate whether the page snapshot is bloated)
 - raise Tier 2 authenticated coverage with the same artifact standards
 - reduce `fast-explore` cost and turn variance on authenticated template verification before considering it a Tier 2 default
 - keep Tier 2 repeated gate and Tier 3 public gate healthy in CI

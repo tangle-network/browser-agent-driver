@@ -130,6 +130,18 @@ Non-goals:
 - For broad WebBench sweeps, prefer lower per-call timeouts and fewer retries before changing prompts or policies.
 - For promotion-grade GPT-5 WebBench studies, prefer outer experiment concurrency `1` unless a lower-contention calibration run proves otherwise.
 
+## Recent Lessons (2026-03-06)
+
+1. Cookie/consent dialogs intercept form submissions:
+- Sites with lazy cookie consent dialogs (John Lewis, many e-commerce) block search/form submissions fired before the dialog is dismissed.
+- Deterministic cookie-dialog detection + post-dismissal re-verify guidance prevents wasted turns.
+- Always re-check whether the prior action took effect after dismissing any blocking modal.
+
+2. Stealth reach benchmark needs its own case file and repeated data:
+- `benchmark-webbench-stealth` is orthogonal to the promoted baseline.
+- Anti-bot-prone sites need separate reach tracking, not promotion-grade baseline mixing.
+- Page structure issues (hidden search fields, complex navigation menus) are distinct from anti-bot failures.
+
 ## Execution Standard
 
 1. Operate as reliability engineering, not feature exploration.

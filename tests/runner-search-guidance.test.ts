@@ -8,6 +8,7 @@ import {
   chooseSearchQueryOverride,
   chooseSearchResultsNewsTabOverride,
   chooseVisibleNewsReleaseResultOverride,
+  chooseVisibleSearchResultOverride,
   chooseScoutLinkOverride,
   chooseVisibleLinkOverride,
   rankSearchCandidates,
@@ -271,6 +272,28 @@ describe('buildSearchResultsGuidance', () => {
 
     expect(override?.ref).toBe('@l2eda');
     expect(override?.feedback).toContain('already visible');
+  });
+
+  it('prefers the visible product result over help or policy links on search pages', () => {
+    const override = chooseVisibleSearchResultOverride(
+      {
+        url: 'https://www.johnlewis.com/search?search-term=organic+cotton+towels',
+        title: 'Search results',
+        snapshot: [
+          '- textbox "Search" [ref=t104b] [value="organic cotton towels"]',
+          '- heading "\'organic cotton towels\'" [ref=h22ff]:',
+          '- link "John Lewis Organic Cotton Towels" [ref=l49c]:',
+          '- link "Customer services" [ref=l1533]',
+          '- link "Reviews policy" [ref=l3ab8]',
+        ].join('\n'),
+      },
+      'Use the product search function to look up "organic cotton towels" and extract the customer review section summary for the top result.',
+      ['www.johnlewis.com'],
+      { action: 'click', selector: '@l3ab8' },
+    );
+
+    expect(override?.ref).toBe('@l49c');
+    expect(override?.feedback).toContain('stronger visible search result');
   });
 
   it('forces SHOW MORE expansion before completing list/category goals', () => {
