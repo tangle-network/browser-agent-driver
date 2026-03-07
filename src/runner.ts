@@ -334,6 +334,14 @@ export class AgentRunner {
         if (scoutLinkRecommendation) {
           extraContext += `\n${buildScoutLinkRecommendationText(scoutLinkRecommendation)}\n`;
         }
+        const branchLinkRecommendation = await this.buildBranchLinkRecommendation(
+          state,
+          scenario.goal,
+          scenario.allowedDomains,
+        );
+        if (branchLinkRecommendation) {
+          extraContext += `\n${buildBranchLinkRecommendationText(branchLinkRecommendation)}\n`;
+        }
         const searchScoutFeedback = await this.buildSearchResultsScoutFeedback(
           state,
           scenario.goal,
@@ -578,6 +586,14 @@ export class AgentRunner {
           expectedEffect = 'URL should change';
           nextActions = [];
         }
+        const branchLinkOverride = chooseBranchLinkOverride(state, action, branchLinkRecommendation);
+        if (branchLinkOverride) {
+          this.brain.injectFeedback(branchLinkOverride.feedback);
+          action = { action: 'click', selector: branchLinkOverride.ref };
+          reasoning = `${reasoning}\n[BRANCH OVERRIDE] ${branchLinkOverride.feedback}`;
+          expectedEffect = 'URL should change';
+          nextActions = [];
+        }
         if (aiTanglePartnerCompletion && action.action !== 'complete' && action.action !== 'abort') {
           this.brain.injectFeedback(aiTanglePartnerCompletion.feedback);
           action = {
@@ -595,6 +611,14 @@ export class AgentRunner {
           };
           reasoning = `${reasoning}\n[POLICY OVERRIDE] ${aiTangleOutputCompletion.feedback}`;
           expectedEffect = 'Run should terminate with a verified visible output state.';
+          nextActions = [];
+        }
+        const expandableListGate = chooseExpandableListCompletionOverride(state, scenario.goal, action);
+        if (expandableListGate) {
+          this.brain.injectFeedback(expandableListGate.feedback);
+          action = { action: 'click', selector: expandableListGate.ref };
+          reasoning = `${reasoning}\n[POLICY OVERRIDE] ${expandableListGate.feedback}`;
+          expectedEffect = 'The remaining list items should become visible.';
           nextActions = [];
         }
 
@@ -1308,6 +1332,46 @@ export class AgentRunner {
     };
   }
 
+  private async buildBranchLinkRecommendation(
+    state: PageState,
+    goal: string,
+    allowedDomains: string[] | undefined,
+  ): Promise<{ ref: string; text: string; confidence: number; reasoning: string } | undefined> {
+    const scoutConfig = this.config.scout;
+    if (!scoutConfig?.enabled || !scoutConfig.readOnlyTop2Challenger) return undefined;
+    if (!shouldUseVisibleLinkScoutPage(state, goal, allowedDomains)) return undefined;
+
+    const ranked = getRankedVisibleLinkCandidates(state, goal, allowedDomains);
+    const candidates = ranked.slice(0, 2);
+    if (!shouldUseBoundedBranchExplorer(candidates, scoutConfig)) return undefined;
+    if (!this.driver.inspectSelectorHref || !this.driver.getPage) return undefined;
+
+    const page = this.driver.getPage();
+    if (!page) return undefined;
+
+    const previews: Array<{ ref: string; text: string; href: string; score: number; preview: BranchPreview }> = [];
+    for (const candidate of candidates) {
+      const href = await this.driver.inspectSelectorHref(candidate.ref).catch(() => undefined);
+      if (!href) continue;
+      const preview = await inspectBranchPreview(page, href, 8000);
+      if (!preview) continue;
+      previews.push({ ref: candidate.ref, text: candidate.text, href, score: scoreBranchPreview(goal, preview, allowedDomains), preview });
+    }
+
+    if (previews.length < 2) return undefined;
+    previews.sort((a, b) => b.score - a.score);
+    const [top, second] = previews;
+    if (top.score <= second.score) return undefined;
+    if (top.score < 4) return undefined;
+
+    return {
+      ref: top.ref,
+      text: top.text,
+      confidence: Math.min(0.95, 0.7 + Math.max(0, top.score - second.score) / 20),
+      reasoning: `Branch preview favored ${top.href} (${top.preview.title || top.preview.finalUrl}) over ${second.href} based on content-type and goal-match signals.`,
+    };
+  }
+
   private async filterScoutCandidatesByAllowedDomains(
     candidates: Array<{ ref: string; text: string; score: number }>,
     allowedDomains: string[] | undefined,
@@ -1650,6 +1714,12 @@ function rankVisibleLinkCandidates(
     .slice(0, 5);
 }
 
+interface BranchPreview {
+  finalUrl: string;
+  title: string;
+  text: string;
+}
+
 export function chooseVisibleLinkOverride(
   state: PageState,
   action: Action,
@@ -1709,6 +1779,27 @@ export function chooseScoutLinkOverride(
   };
 }
 
+export function chooseBranchLinkOverride(
+  state: PageState,
+  action: Action,
+  recommendation: { ref: string; text: string; confidence: number; reasoning: string } | undefined,
+): { ref: string; feedback: string } | undefined {
+  if (!recommendation || recommendation.confidence < 0.72) return undefined;
+  if (action.action === 'click' && action.selector === recommendation.ref) return undefined;
+
+  const isCandidateClick = action.action === 'click'
+    && action.selector.startsWith('@')
+    && !!findElementForRef(state.snapshot, action.selector);
+  if (!isSearchAction(state, action) && !isContentHubDetourAction(state, action) && !isCandidateClick) {
+    return undefined;
+  }
+
+  return {
+    ref: recommendation.ref,
+    feedback: `Bounded branch preview recommends ${recommendation.ref} (${recommendation.text}) instead. ${recommendation.reasoning}`,
+  };
+}
+
 function buildScoutLinkRecommendationText(
   recommendation: { ref: string; text: string; confidence: number; reasoning: string },
 ): string {
@@ -1717,6 +1808,17 @@ function buildScoutLinkRecommendationText(
     `Prefer clicking ${recommendation.ref} (${recommendation.text}).`,
     `Scout confidence: ${recommendation.confidence.toFixed(2)}.`,
     `Scout reasoning: ${recommendation.reasoning}`,
+  ].join('\n');
+}
+
+function buildBranchLinkRecommendationText(
+  recommendation: { ref: string; text: string; confidence: number; reasoning: string },
+): string {
+  return [
+    'BOUNDED BRANCH RECOMMENDATION:',
+    `Prefer clicking ${recommendation.ref} (${recommendation.text}).`,
+    `Branch confidence: ${recommendation.confidence.toFixed(2)}.`,
+    `Branch reasoning: ${recommendation.reasoning}`,
   ].join('\n');
 }
 
@@ -1737,6 +1839,26 @@ function isContentHubDetourAction(state: PageState, action: Action): boolean {
   );
 }
 
+export function chooseExpandableListCompletionOverride(
+  state: PageState,
+  goal: string,
+  action: Action,
+): { ref: string; feedback: string } | undefined {
+  if (action.action !== 'complete') return undefined;
+  if (!/\blist\b|\bcategories\b|\bcategory\b/.test(goal.toLowerCase())) return undefined;
+  const lines = state.snapshot.split('\n');
+  const topicIndex = lines.findIndex((line) => /\btopic\b/i.test(line));
+  if (topicIndex === -1) return undefined;
+  const window = lines.slice(topicIndex, Math.min(lines.length, topicIndex + 12)).join('\n');
+  const match = window.match(/- link "SHOW MORE \((\d+)\)" \[ref=([^\]]+)\]/i);
+  if (!match) return undefined;
+
+  return {
+    ref: `@${match[2]}`,
+    feedback: `The requested category list is not fully visible yet. Expand SHOW MORE (${match[1]}) before completing.`,
+  };
+}
+
 function isFirstPartyContentHub(state: PageState): boolean {
   const url = state.url.toLowerCase();
   const snapshot = state.snapshot.toLowerCase();
@@ -1744,6 +1866,77 @@ function isFirstPartyContentHub(state: PageState): boolean {
     url.includes('/news-events') &&
     snapshot.includes('recent news releases')
   );
+}
+
+export function shouldUseBoundedBranchExplorer(
+  candidates: Array<{ ref: string; text: string; score: number }>,
+  config: { minTopScore?: number; maxScoreGap?: number },
+): boolean {
+  if (candidates.length < 2) return false;
+  const [top, second] = candidates;
+  const minTopScore = config.minTopScore ?? 12;
+  const maxScoreGap = config.maxScoreGap ?? 4;
+  return top.score < minTopScore || top.score - second.score <= maxScoreGap;
+}
+
+async function inspectBranchPreview(
+  currentPage: import('playwright').Page,
+  href: string,
+  timeoutMs: number,
+): Promise<BranchPreview | undefined> {
+  const branchPage = await currentPage.context().newPage();
+  try {
+    await branchPage.goto(href, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
+    const preview = await branchPage.evaluate(() => ({
+      finalUrl: window.location.href,
+      title: document.title,
+      text: (document.body?.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 2500),
+    }));
+    return preview;
+  } catch {
+    return undefined;
+  } finally {
+    await branchPage.close().catch(() => {});
+  }
+}
+
+export function scoreBranchPreview(
+  goal: string,
+  preview: BranchPreview,
+  allowedDomains?: string[],
+): number {
+  const signals = extractGoalSignals(goal);
+  const haystack = `${preview.finalUrl} ${preview.title} ${preview.text}`.toLowerCase();
+  let score = 0;
+  const host = safeHostname(preview.finalUrl);
+  const allowedHosts = new Set((allowedDomains ?? []).map((domain) => domain.toLowerCase()));
+
+  for (const keyword of signals.keywords) {
+    if (haystack.includes(keyword)) score += 2;
+  }
+  for (const phrase of signals.exactPhrases) {
+    if (haystack.includes(phrase)) score += 4;
+  }
+  if (signals.wantsPressRelease && /\bpress release\b|\bnews release\b|\/news-releases?\//.test(haystack)) {
+    score += 10;
+  }
+  if (signals.wantsPressRelease && /\bpress room\b|\brecent news releases\b|\bnews events\b/.test(haystack)) {
+    score += 5;
+  }
+  if (/\berror\b|\baccess denied\b|\brequest could not be satisfied\b|\b403\b/.test(haystack)) {
+    score -= 12;
+  }
+  if (signals.wantsPressRelease && /\bnih research matters\b|\bnews in health\b|\bfact sheet\b|\bwhat causes\b|\bwhat are the signs\b/.test(haystack)) {
+    score -= 10;
+  }
+  if (signals.wantsPressRelease && /\/nih-research-matters\/|\/health\/|\/research\/|\/blog\//.test(haystack)) {
+    score -= 8;
+  }
+  if (allowedHosts.size > 0) {
+    if (host && allowedHosts.has(host)) score += 5;
+    else if (host) score -= 8;
+  }
+  return score;
 }
 
 function selectRelevantSnapshotSection(snapshot: string, goal: string): string {

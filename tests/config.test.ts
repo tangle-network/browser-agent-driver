@@ -271,6 +271,7 @@ describe('toAgentConfig', () => {
         maxCandidates: 3,
         minTopScore: 11,
         maxScoreGap: 2,
+        readOnlyTop2Challenger: true,
       },
     };
 
@@ -283,6 +284,7 @@ describe('toAgentConfig', () => {
       maxCandidates: 3,
       minTopScore: 11,
       maxScoreGap: 2,
+      readOnlyTop2Challenger: true,
     });
   });
 

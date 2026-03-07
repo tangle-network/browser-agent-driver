@@ -418,6 +418,7 @@ Current honest status:
 - `scout` remains challenger-only; the architecture is right, but the current policy has not earned promotion
 - the guarded baseline now includes explicit content-type rejection for press-release tasks, preventing false-positive completions on Research Matters/topic pages
 - the latest guarded `reach3` run stayed green while restoring NIH correctness with materially lower cost than the first honest content-type run
+- the new top-2 read-only branch challenger is implemented behind `scout.readOnlyTop2Challenger`, but it is still experimental and not promoted
 
 Current best evidence:
 - Tier 1 deterministic summary: `./agent-results/tier1-green-1772794410/tier1-gate-summary.json`
@@ -434,6 +435,8 @@ Current best evidence:
 - provider screen, Codex challenger: `./agent-results/provider-codex-gpt54-reach3-1772840486/track-summary.json`
 - focused NIH correctness + cost pass: `./agent-results/nih-content-guard-v2-1772842499/baseline-summary.json`
 - latest guarded `reach3`: `./agent-results/reach3-content-guard-v2-1772842574/track-summary.json`
+- top-2 branch challenger NIH smoke: `./agent-results/nih-top2-branch-smoke-1772843605/baseline-summary.json`
+- top-2 branch challenger `reach3`: `./agent-results/reach3-top2-branch-1772843662/track-summary.json`
 - Tier 2 validated repetition summaries:
   - `./agent-results/tier2-repeat-green-1772792440/rep-1/tier2-gate-summary.json`
   - `./agent-results/tier2-repeat-green-1772792440/rep-2/tier2-gate-summary.json`
@@ -449,6 +452,9 @@ Current best evidence:
   - Yale (`webbench-2204`): pass `22.8s` / `4` turns / `18.6k`
   - NIH (`webbench-2605`): pass `66.9s` / `12` turns / `153.4k` on `https://www.nih.gov/news-events/news-releases/...`
   - Alberta (`webbench-32`): pass `49.6s` / `8` turns / `74.1k`
+- top-2 branch challenger:
+  - focused NIH smoke: pass `41.8s` / `9` turns / `83.2k`
+  - full `reach3`: Yale improved, Alberta improved, NIH regressed to timeout; do not promote
 
 Exit rule:
 - do not call the browser agent production-ready until Tier 1 is green, Tier 2 is green, and repeated Tier 3 control runs are stable enough to support promotion decisions
@@ -469,7 +475,7 @@ P1:
 - reduce `fast-explore` cost and turn variance on authenticated template verification before considering it a Tier 2 default
 - keep Tier 2 repeated gate and Tier 3 public gate healthy in CI
 - improve the guarded search/content path before promoting any new subagent policy
-- add the first bounded-branch challenger only at ambiguous result/content-hub choice points, not as a baseline behavior
+- use the top-2 branch challenger only as a measured experiment until it beats the guarded baseline on repeated seeded runs
 
 P2:
 - resume supervisor and policy challenger experiments only after the slice is stable

@@ -225,6 +225,8 @@ export interface ScoutConfig {
   minTopScore?: number;
   /** Skip scout when the top-vs-second score gap is wider than this threshold */
   maxScoreGap?: number;
+  /** Enable a top-2 read-only challenger on ambiguous visible-link pages */
+  readOnlyTop2Challenger?: boolean;
 }
 
 export interface SupervisorConfig {

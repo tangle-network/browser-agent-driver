@@ -92,6 +92,7 @@ export interface DriverConfig {
     maxCandidates?: number;
     minTopScore?: number;
     maxScoreGap?: number;
+    readOnlyTop2Challenger?: boolean;
   };
   observability?: {
     enabled?: boolean;
@@ -167,6 +168,7 @@ const DEFAULTS: DriverConfig = {
     maxCandidates: 3,
     minTopScore: 12,
     maxScoreGap: 4,
+    readOnlyTop2Challenger: false,
   },
   observability: {
     enabled: true,
@@ -304,6 +306,7 @@ export function toAgentConfig(config: DriverConfig): AgentConfig {
           maxCandidates: config.scout.maxCandidates,
           minTopScore: config.scout.minTopScore,
           maxScoreGap: config.scout.maxScoreGap,
+          readOnlyTop2Challenger: config.scout.readOnlyTop2Challenger,
         }
       : undefined,
     observability: config.observability

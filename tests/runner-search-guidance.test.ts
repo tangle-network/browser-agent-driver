@@ -2,9 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   buildSearchResultsGuidance,
   buildVisibleLinkRecommendation,
+  chooseBranchLinkOverride,
+  chooseExpandableListCompletionOverride,
   chooseScoutLinkOverride,
   chooseVisibleLinkOverride,
   rankSearchCandidates,
+  scoreBranchPreview,
+  shouldUseBoundedBranchExplorer,
   shouldUseVisibleLinkScout,
   shouldUseVisibleLinkScoutPage,
 } from '../src/runner.js';
@@ -192,5 +196,72 @@ describe('buildSearchResultsGuidance', () => {
 
     expect(override?.ref).toBe('@l1a78');
     expect(override?.feedback).toContain('Scout recommendation');
+  });
+
+  it('forces SHOW MORE expansion before completing list/category goals', () => {
+    const override = chooseExpandableListCompletionOverride(
+      {
+        url: 'https://open.alberta.ca/opendata',
+        title: 'opendata - Open Government',
+        snapshot: [
+          '- heading "Topic"',
+          '- link "Agriculture" [ref=la1]',
+          '- link "SHOW MORE (23)" [ref=l705]',
+        ].join('\n'),
+      },
+      'Visit the Open Government portal and list dataset categories.',
+      { action: 'complete', result: 'Categories listed.' },
+    );
+
+    expect(override?.ref).toBe('@l705');
+    expect(override?.feedback).toContain('not fully visible');
+  });
+
+  it('uses bounded-branch override on ambiguous candidate clicks', () => {
+    const override = chooseBranchLinkOverride(
+      {
+        url: 'https://search.usa.gov/search?affiliate=nih&query=alzheimers',
+        title: 'Search Results | NIH',
+        snapshot: '- link "Research Matters article" [ref=l1]\n- link "NIH News Releases" [ref=l2]',
+      },
+      { action: 'click', selector: '@l1' },
+      {
+        ref: '@l2',
+        text: 'NIH News Releases',
+        confidence: 0.8,
+        reasoning: 'Preview of the release hub is a stronger content-type match.',
+      },
+    );
+
+    expect(override?.ref).toBe('@l2');
+    expect(override?.feedback).toContain('Bounded branch preview');
+  });
+
+  it('scores release pages above research-matters pages for press-release goals', () => {
+    const goal = 'Use the site search to find the first related press release and extract the title and date.';
+    const releaseScore = scoreBranchPreview(goal, {
+      finalUrl: 'https://www.nih.gov/news-events/news-releases/example-release',
+      title: 'Example release | National Institutes of Health (NIH)',
+      text: 'News Releases Friday, February 27, 2026 Example release body text',
+    }, ['www.nih.gov']);
+    const articleScore = scoreBranchPreview(goal, {
+      finalUrl: 'https://www.nih.gov/news-events/nih-research-matters/example-article',
+      title: 'Example article | National Institutes of Health (NIH)',
+      text: 'NIH Research Matters May 14, 2019 Example article body text',
+    }, ['www.nih.gov']);
+
+    expect(releaseScore).toBeGreaterThan(articleScore);
+  });
+
+  it('enables bounded branching only for ambiguous candidate sets', () => {
+    expect(shouldUseBoundedBranchExplorer([
+      { ref: '@a1', text: 'Primary result', score: 10 },
+      { ref: '@a2', text: 'Secondary result', score: 9 },
+    ], { minTopScore: 12, maxScoreGap: 4 })).toBe(true);
+
+    expect(shouldUseBoundedBranchExplorer([
+      { ref: '@a1', text: 'Primary result', score: 18 },
+      { ref: '@a2', text: 'Secondary result', score: 8 },
+    ], { minTopScore: 12, maxScoreGap: 4 })).toBe(false);
   });
 });
