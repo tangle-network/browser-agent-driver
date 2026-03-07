@@ -44,27 +44,56 @@ describe('ContextBudget', () => {
     expect(midIdx).toBeLessThan(lowIdx);
   });
 
-  it('truncates when exceeding 8000 character budget', () => {
+  it('truncates second part when total exceeds 8000 char budget', () => {
     const budget = new ContextBudget();
     budget.add('big', 'A'.repeat(7000), 100);
     budget.add('medium', 'B'.repeat(2000), 50);
     const result = budget.build();
-    expect(result.length).toBeLessThanOrEqual(8100); // budget + truncation marker
-    expect(result).toContain('A'.repeat(100)); // high-priority content present
-    // Medium should be truncated
-    if (result.includes('B')) {
-      expect(result).toContain('[truncated]');
-    }
+    // High-priority 7000-char part fits fully
+    expect(result).toContain('A'.repeat(7000));
+    // Medium part gets truncated to remaining ~1000 chars + marker
+    expect(result).toContain('B'.repeat(100)); // some B content present
+    expect(result).toContain('...[truncated]');
+    expect(result.length).toBeLessThanOrEqual(8100);
   });
 
-  it('drops low-priority content that does not fit even partially', () => {
+  it('drops content after first truncation (break behavior)', () => {
+    const budget = new ContextBudget();
+    budget.add('fills', 'A'.repeat(7500), 100);
+    budget.add('truncated', 'B'.repeat(1000), 50);
+    budget.add('dropped', 'C'.repeat(500), 25);
+    const result = budget.build();
+    // A fits fully, B is truncated, C is dropped entirely due to break
+    expect(result).toContain('A'.repeat(7500));
+    expect(result).toContain('...[truncated]');
+    expect(result).not.toContain('C');
+  });
+
+  it('drops low-priority content when remaining budget is <= 200', () => {
     const budget = new ContextBudget();
     budget.add('fills', 'X'.repeat(7900), 100);
-    budget.add('tiny', 'Y'.repeat(50), 50); // only ~100 chars left, but truncation needs >200
+    // 200 chars exceeds remaining (8000-7900=100), and remaining <= 200, so dropped entirely
+    budget.add('overflow', 'Y'.repeat(200), 50);
     const result = budget.build();
-    // The tiny part has only 50 chars remaining budget after fills, which is < 200
-    // so it should be dropped entirely
-    expect(result).toContain('X'.repeat(100));
+    expect(result).toContain('X'.repeat(7900));
+    expect(result).not.toContain('Y');
+    expect(result).not.toContain('[truncated]');
+  });
+
+  it('includes low-priority content that fits within remaining budget', () => {
+    const budget = new ContextBudget();
+    budget.add('fills', 'X'.repeat(7900), 100);
+    budget.add('tiny', 'Y'.repeat(50), 50); // 7900 + 50 = 7950 < 8000, fits
+    const result = budget.build();
+    expect(result).toContain('X'.repeat(7900));
+    expect(result).toContain('Y'.repeat(50));
+  });
+
+  it('includes part that exactly fills the budget', () => {
+    const budget = new ContextBudget();
+    budget.add('exact', 'Z'.repeat(8000), 100);
+    const result = budget.build();
+    expect(result).toBe('Z'.repeat(8000));
   });
 
   it('handles parts with same priority', () => {

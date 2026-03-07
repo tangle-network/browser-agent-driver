@@ -137,6 +137,26 @@ describe('runOverridePipeline', () => {
     expect(receivedCtx?.aiTangleOutputCompletion?.result).toBe('output');
   });
 
+  it('selects negative-score candidate when it is the only one', () => {
+    const negative = makeCandidate({ name: 'negative', score: -5 });
+    const result = runOverridePipeline(baseCtx, [
+      makeProducer(undefined),
+      makeProducer(negative),
+    ]);
+    expect(result?.name).toBe('negative');
+    expect(result?.score).toBe(-5);
+  });
+
+  it('prefers less-negative score over more-negative', () => {
+    const a = makeCandidate({ name: 'bad', score: -10 });
+    const b = makeCandidate({ name: 'less-bad', score: -1 });
+    const result = runOverridePipeline(baseCtx, [
+      makeProducer(a),
+      makeProducer(b),
+    ]);
+    expect(result?.name).toBe('less-bad');
+  });
+
   it('selects across many candidates efficiently', () => {
     const producers: OverrideProducer[] = [];
     for (let i = 0; i < 50; i++) {
