@@ -1,0 +1,80 @@
+[
+  {
+    "id": "webbench-143",
+    "name": "WebBench read #143 (reachable max100)",
+    "startUrl": "https://www.bbc.com",
+    "goal": "Navigate to the Live section and give me the first topic that has \"Trump\" in it\nOnly use http://bbc.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.bbc.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.bbc.com"
+    ],
+    "timeoutMs": 120000
+  },
+  {
+    "id": "webbench-314",
+    "name": "WebBench read #314 (reachable max100)",
+    "startUrl": "https://www.crunchbase.com",
+    "goal": "Search for companies categorized under \"Artificial Intelligence\" located in San Francisco and list the top 5 by funding amount.\nOnly use http://crunchbase.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.crunchbase.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.crunchbase.com"
+    ],
+    "timeoutMs": 120000
+  },
+  {
+    "id": "webbench-695",
+    "name": "WebBench read #695 (reachable max100)",
+    "startUrl": "https://www.goal.com/en-us",
+    "goal": "Find the match analysis of the last Champions League game and write down the main tactical observation discussed in the article.\nOnly use http://goal.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.goal.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.goal.com"
+    ],
+    "timeoutMs": 120000
+  },
+  {
+    "id": "webbench-114",
+    "name": "WebBench read #114 (reachable max100)",
+    "startUrl": "https://www.asos.com",
+    "goal": "Search for \"summer tote bag\" using the search bar and list the first 5 results including their prices and available color options.\nOnly use http://asos.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.asos.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.asos.com"
+    ],
+    "timeoutMs": 120000
+  },
+  {
+    "id": "webbench-1506",
+    "name": "WebBench read #1506 (reachable max100)",
+    "startUrl": "https://www.scribd.com",
+    "goal": "Search for a free ebook on \u201cHealthy Cooking\u201d and list the title and author of the first result you see.\nOnly use http://scribd.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.scribd.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.scribd.com"
+    ],
+    "timeoutMs": 120000
+  },
+  {
+    "id": "webbench-90",
+    "name": "WebBench read #90 (reachable max100)",
+    "startUrl": "https://www.apa.org",
+    "goal": "Use the APA website\u2019s search function to look for articles related to \"cognitive behavioral therapy\" and output the titles of the first three search results.\nOnly use http://apa.org to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.apa.org for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.apa.org"
+    ],
+    "timeoutMs": 120000
+  }
+]

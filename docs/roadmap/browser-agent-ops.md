@@ -489,6 +489,12 @@ Current best evidence:
   - rep1: Yale pass `4` turns / `26k`; NIH pass `13` turns / `217k`; Alberta pass `11` turns / `151k`
   - rep2: Yale pass `15` turns / `191k`; NIH pass `9` turns / `120k`; Alberta pass `9` turns / `98k`
   - result: 3/3 (100%) × 2 reps — NIH was previously ~62% (5/8), now 100% (4/4 counting both NIH-only and full runs)
+- reach4 with expert-level improvements (budget pressure + extraction guard + same-page snapshot):
+  - Yale: pass `5` turns / `36k`
+  - NIH: pass `11` turns / `170k`
+  - Alberta: pass `8` turns / `76k`
+  - Encyclopedia.com: pass `6` turns / `61k` (was 25-turn timeout / 564k)
+  - result: 4/4 (100%) — encyclopedia.com unlocked by extraction guard
 
 Exit rule:
 - do not call the browser agent production-ready until Tier 1 is green, Tier 2 is green, and repeated Tier 3 control runs are stable enough to support promotion decisions
