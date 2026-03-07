@@ -122,7 +122,7 @@ function applyProfileBrowserArgs(
   profile: NonNullable<DriverConfig['profile']>,
   browserArgs: string[],
 ): void {
-  if (profile === 'default') return;
+  if (profile === 'default' || profile === 'benchmark-webbench') return;
 
   // Stealth-ish launch posture: low-risk Chromium flags that reduce noisy automation fingerprints.
   const profileArgs = [

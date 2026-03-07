@@ -9,6 +9,11 @@ export const BENCHMARK_PROFILES = {
     driverProfile: 'benchmark-webbench',
     description: 'Fast, low-noise profile for broad WebBench-style sweeps.',
   },
+  'webbench-stealth': {
+    id: 'webbench-stealth',
+    driverProfile: 'benchmark-webbench-stealth',
+    description: 'Reach-oriented WebBench profile for anti-bot-prone public-web tasks.',
+  },
   webvoyager: {
     id: 'webvoyager',
     driverProfile: 'benchmark-webvoyager',
@@ -24,4 +29,3 @@ export function resolveBenchmarkProfile(profileId = 'default') {
   }
   return resolved;
 }
-

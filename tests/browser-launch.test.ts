@@ -139,4 +139,18 @@ describe('buildBrowserLaunchPlan', () => {
       '--no-default-browser-check',
     ]);
   });
+
+  it('applies stealth-ish launch args for benchmark-webbench-stealth', () => {
+    const plan = buildBrowserLaunchPlan({
+      profile: 'benchmark-webbench-stealth',
+    }, { cwd: '/repo', platform: 'darwin' });
+
+    expect(plan.profile).toBe('benchmark-webbench-stealth');
+    expect(plan.browserArgs).toEqual([
+      '--disable-blink-features=AutomationControlled',
+      '--disable-infobars',
+      '--no-first-run',
+      '--no-default-browser-check',
+    ]);
+  });
 });

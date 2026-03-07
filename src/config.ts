@@ -13,7 +13,7 @@ import type { ResourceBlockingOptions } from './drivers/types.js';
 
 export interface DriverConfig {
   /** Execution profile preset (applies launch/runtime defaults) */
-  profile?: 'default' | 'stealth' | 'benchmark-webbench' | 'benchmark-webvoyager';
+  profile?: 'default' | 'stealth' | 'benchmark-webbench' | 'benchmark-webbench-stealth' | 'benchmark-webvoyager';
   browser?: 'chromium' | 'firefox' | 'webkit';
 
   // LLM

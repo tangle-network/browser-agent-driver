@@ -416,6 +416,7 @@ Current honest status:
 - local product-path readiness is now verified in `abd-app` with real app -> worker -> orchestrator -> artifact evidence
 - `openai/gpt-5.4` remains the promoted default runtime on the guarded public-web slice
 - `codex-cli/gpt-5.4` is currently an optional cost path only; on the same guarded `reach3` slice it was slower on Yale and Alberta and timed out on NIH
+- `benchmark-webbench-stealth` is now the explicit reach challenger for anti-bot-prone public-web tasks; it cleared Crunchyroll and APKPure where the default benchmark profile was blocked immediately
 - `scout` remains challenger-only; the architecture is right, but the current policy has not earned promotion
 - the guarded baseline now includes explicit content-type rejection for press-release tasks, preventing false-positive completions on Research Matters/topic pages
 - the latest guarded `reach3` run stayed green while restoring NIH correctness with materially lower cost than the first honest content-type run
@@ -437,6 +438,9 @@ Current best evidence:
 - provider screen, Codex challenger: `./agent-results/provider-codex-gpt54-reach3-1772840486/track-summary.json`
 - focused NIH correctness + cost pass: `./agent-results/nih-visible-release-1772847031/baseline-summary.json`
 - older guarded `reach3`: `./agent-results/reach3-content-guard-v2-1772842574/track-summary.json`
+- wider sanity slice on the current baseline: `./agent-results/webbench-sanity6-1772848273/track-summary.json`
+- anti-bot reach challenger on Crunchyroll: `./agent-results/crunchyroll-webbench-stealth-1772849365/report.json`
+- anti-bot reach challenger on APKPure: `./agent-results/apkpure-webbench-stealth-1772849425/report.json`
 - top-2 branch challenger NIH smoke: `./agent-results/nih-top2-branch-smoke-1772843605/baseline-summary.json`
 - top-2 branch challenger `reach3`: `./agent-results/reach3-top2-branch-1772843662/track-summary.json`
 - Tier 2 validated repetition summaries:
@@ -477,6 +481,7 @@ P0:
 P1:
 - continue reducing Tier 3 cost variance, especially NIH, on the promoted slice
 - reduce wasted-turn variance on Yale and Alberta after NIH is stable
+- turn the new anti-bot reach challenger into a measured benchmark path; keep it separate from the promoted baseline until it has repeated data
 - raise Tier 2 authenticated coverage with the same artifact standards
 - reduce `fast-explore` cost and turn variance on authenticated template verification before considering it a Tier 2 default
 - keep Tier 2 repeated gate and Tier 3 public gate healthy in CI

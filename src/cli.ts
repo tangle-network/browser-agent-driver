@@ -28,7 +28,7 @@ import { loadLocalEnvFiles } from './env-loader.js';
 type RunMode = 'fast-explore' | 'full-evidence';
 const RUN_MODES: RunMode[] = ['fast-explore', 'full-evidence'];
 type DriverProfile = NonNullable<DriverConfig['profile']>;
-const DRIVER_PROFILES: DriverProfile[] = ['default', 'stealth', 'benchmark-webbench', 'benchmark-webvoyager'];
+const DRIVER_PROFILES: DriverProfile[] = ['default', 'stealth', 'benchmark-webbench', 'benchmark-webbench-stealth', 'benchmark-webvoyager'];
 
 type StorageStateFile = {
   cookies?: Array<{
@@ -361,7 +361,7 @@ async function main(): Promise<void> {
       enabled: true,
       maxActionsPerTurn: cliOverrides.microPlan?.maxActionsPerTurn ?? 2,
     };
-  } else if (profile === 'benchmark-webbench') {
+  } else if (profile === 'benchmark-webbench' || profile === 'benchmark-webbench-stealth') {
     if (!values['llm-timeout']) cliOverrides.llmTimeoutMs = 20_000;
     cliOverrides.compactFirstTurn = true;
     if (!values.retries) cliOverrides.retries = 1;
@@ -369,12 +369,19 @@ async function main(): Promise<void> {
     if (values.vision === undefined) cliOverrides.vision = false;
     if (!values['screenshot-interval']) cliOverrides.screenshotInterval = 0;
     if (values['goal-verification'] === undefined) cliOverrides.goalVerification = true;
+    if (profile === 'benchmark-webbench-stealth' && values.headless === undefined) {
+      cliOverrides.headless = false;
+    }
     if (!values['block-analytics'] && !values['block-images'] && !values['block-media']) {
       cliOverrides.resourceBlocking = {
         ...(cliOverrides.resourceBlocking ?? {}),
         blockAnalytics: true,
-        blockImages: true,
-        blockMedia: true,
+        ...(profile === 'benchmark-webbench'
+          ? {
+              blockImages: true,
+              blockMedia: true,
+            }
+          : {}),
       };
     }
     cliOverrides.microPlan = {

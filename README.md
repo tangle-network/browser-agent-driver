@@ -376,6 +376,7 @@ agent-driver run --goal "Prompt variant run" --url https://example.com --prompt-
 - `default`: balanced defaults.
 - `stealth`: headed + anti-detection Chromium args + micro-plan on.
 - `benchmark-webbench`: speed-oriented benchmark profile (vision off, heavy resource blocking, micro-plan on).
+- `benchmark-webbench-stealth`: reach-oriented WebBench challenger (stealth-ish Chromium args, headed by default, analytics-only blocking, micro-plan on).
 - `benchmark-webvoyager`: evidence-oriented benchmark profile (vision on, micro-plan on).
 - Profiles are orthogonal to modes; use both when needed.
 
