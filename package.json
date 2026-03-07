@@ -38,6 +38,7 @@
     "webbench:import": "node ./scripts/import-webbench-cases.mjs",
     "reliability:scorecard": "node ./scripts/reliability-scorecard.mjs",
     "reliability:trend": "node ./scripts/reliability-trend.mjs",
+    "bench:scoreboard": "node ./scripts/benchmark-scoreboard.mjs",
     "bench:classify": "node ./scripts/reliability-scorecard.mjs",
     "bench:tier1:gate": "node ./scripts/run-tier1-gate.mjs",
     "bench:tier2:gate": "node ./scripts/run-tier2-gate.mjs",
