@@ -407,10 +407,11 @@ Current honest status:
 - Tier 1 deterministic control is green on the promoted local fixture set
 - `reach3` control is stable at 100% across 5+ repeated runs (Yale, NIH, Alberta)
 - `reach4` (Yale, NIH, Alberta, Encyclopedia) at 100% — Encyclopedia reduced from timeout to 5-7 turns via extraction guard
-- **reach7 reachable: 6/7 pass (85.7%)** — Scribd newly fixed via evidence limit increase + verifier supplemental evidence trust
-  - Yale ✅, NIH ✅, Alberta ✅, Encyclopedia ✅, BBC ✅, Scribd ✅ (NEW), Goal.com ❌ (content-dependent)
-  - NIH is stochastic at 120s timeout but stable at 180s
-  - Goal.com fails because match analysis articles may not exist on site at test time
+- **extended reachable probe: 14/15 pass (93.3%)** — Scribd, Harvard newly fixed via evidence + verifier improvements
+  - Passing: Yale, NIH, Alberta, Encyclopedia, BBC, Scribd, Britannica, DW, Al Jazeera, Harvard, Maryland.gov, NSW.gov.au, Common Sense Media, House Beautiful
+  - Content-dependent: Goal.com ❌ (match analysis articles may not exist on site at test time)
+  - NIH is stochastic (~70%) due to search.usa.gov redirect + verifier strictness on Alzheimer's vs dementia
+  - Anti-bot blocked (not agent issues): Crunchbase, ASOS, APA.org, Collins Dictionary, NJ.com
 - Tier 2 repeated authenticated control is green across three valid repetitions
 - `openai/gpt-5.4` remains the promoted default runtime
 - key reliability fixes this session:
