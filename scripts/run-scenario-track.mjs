@@ -160,6 +160,21 @@ const executionFailures = results
   .map((result) => `${result.scenarioId} exited with code ${result.exitCode}`);
 const artifactFailures = formatArtifactCheckFailures(artifactRows);
 
+// Compute total cost across all runs
+let totalTokens = 0;
+let totalInputTokens = 0;
+let totalOutputTokens = 0;
+let totalCostUsd = 0;
+for (const result of results) {
+  for (const run of result.summary?.runs ?? []) {
+    const m = run?.metrics ?? {};
+    totalTokens += Number(m.tokensUsed ?? 0);
+    totalInputTokens += Number(m.inputTokens ?? 0);
+    totalOutputTokens += Number(m.outputTokens ?? 0);
+    totalCostUsd += Number(m.estimatedCostUsd ?? 0);
+  }
+}
+
 const aggregate = {
   generatedAt: new Date().toISOString(),
   gitSha: safeGitSha(rootDir),
@@ -176,6 +191,10 @@ const aggregate = {
     memoryScopeId: memoryScopeId ?? null,
   },
   totalScenarios: results.length,
+  totalTokens,
+  totalInputTokens: totalInputTokens || undefined,
+  totalOutputTokens: totalOutputTokens || undefined,
+  totalCostUsd: totalCostUsd ? Number(totalCostUsd.toFixed(4)) : undefined,
   artifactChecks,
   results,
 };
@@ -183,6 +202,9 @@ const aggregate = {
 const aggregatePath = path.join(outRoot, 'track-summary.json');
 fs.writeFileSync(aggregatePath, `${JSON.stringify(aggregate, null, 2)}\n`);
 console.log(`\nTrack summary: ${aggregatePath}`);
+if (totalCostUsd > 0) {
+  console.log(`Total cost: $${totalCostUsd.toFixed(2)} (${totalTokens.toLocaleString()} tokens: ${totalInputTokens.toLocaleString()} input + ${totalOutputTokens.toLocaleString()} output)`);
+}
 
 await syncBenchmarkOutput({
   rootDir,

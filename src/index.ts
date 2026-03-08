@@ -73,6 +73,10 @@ export type { TestRunnerOptions } from './test-runner.js';
 export { generateReport, compareReports } from './test-report.js';
 export type { ReportOptions } from './test-report.js';
 
+// Model pricing (LiteLLM-backed cost calculation)
+export { loadPricing, calculateCost, getModelPricing } from './model-pricing.js';
+export type { ModelPricing } from './model-pricing.js';
+
 // Preview verification
 export { verifyPreview } from './preview.js';
 

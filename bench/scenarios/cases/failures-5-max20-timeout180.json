@@ -1,0 +1,47 @@
+[
+  {
+    "id": "webbench-929",
+    "name": "WebBench read #929",
+    "startUrl": "https://www.justdial.com",
+    "goal": "Search for reputed plumber services in Mumbai and list the names, phone numbers, and addresses of the top 5 verified listings.\nOnly use http://justdial.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.justdial.com for this task.",
+    "maxTurns": 20,
+    "tags": ["webbench", "read", "www.justdial.com"],
+    "timeoutMs": 180000
+  },
+  {
+    "id": "webbench-45",
+    "name": "WebBench read #45",
+    "startUrl": "https://aliexpress.com",
+    "goal": "Find a smart watch with more than 20 reviews. Filter the reviews to the most recent and summarize the most common positive and negative points mentioned by customers.\nOnly use http://aliexpress.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use aliexpress.com for this task.",
+    "maxTurns": 20,
+    "tags": ["webbench", "read", "aliexpress.com"],
+    "timeoutMs": 180000
+  },
+  {
+    "id": "webbench-719",
+    "name": "WebBench read #719",
+    "startUrl": "https://www.groupon.com",
+    "goal": "Use the search functionality to look for spa and wellness deals in Los Angeles, CA, filter the results by deals under $50, and extract the merchant ratings for the first five deals.\nOnly use http://groupon.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.groupon.com for this task.",
+    "maxTurns": 20,
+    "tags": ["webbench", "read", "www.groupon.com"],
+    "timeoutMs": 180000
+  },
+  {
+    "id": "webbench-695",
+    "name": "WebBench read #695",
+    "startUrl": "https://www.goal.com/en-us",
+    "goal": "Find the match analysis of the last Champions League game and write down the main tactical observation discussed in the article.\nOnly use http://goal.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.goal.com for this task.",
+    "maxTurns": 20,
+    "tags": ["webbench", "read", "www.goal.com"],
+    "timeoutMs": 180000
+  },
+  {
+    "id": "webbench-197",
+    "name": "WebBench read #197",
+    "startUrl": "https://www.cambridge.org",
+    "goal": "Use Cambridge to search for articles related to \"climate education\" and list the titles of the first 5 articles displayed.\nOnly use http://cambridge.org to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.cambridge.org for this task.",
+    "maxTurns": 20,
+    "tags": ["webbench", "read", "www.cambridge.org"],
+    "timeoutMs": 180000
+  }
+]

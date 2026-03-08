@@ -325,7 +325,31 @@ export class AgentRunner {
               'FINAL TURN REQUIREMENT: return a terminal action now (`complete` if enough evidence exists, otherwise `abort` with explicit blocker reason).\n';
           }
           ctxBudget.add('turn-budget', turnBudgetText, 100);
+        } else if (i >= Math.floor(maxTurns * 0.5) && runState.goalVerificationEvidence.length === 0) {
+          // Mid-run: agent has used 50%+ turns without extracting any evidence
+          ctxBudget.add('extraction-reminder',
+            '\nEXTRACTION REMINDER: You have used over half your turn budget without extracting data. ' +
+            'STOP navigating between individual pages. Use runScript NOW to extract ALL data from the CURRENT page: ' +
+            'document.querySelectorAll("[class*=card], [class*=result], [class*=listing], li, tr").forEach(el => ...) ' +
+            'to get names, prices, phone numbers, addresses, ratings. ' +
+            'If you are on a listing/directory/search results page, extract everything visible and complete. ' +
+            'Do NOT click into more individual items — extract from the list.\n', 85);
         }
+
+        // Early filter strategy nudge: if goal mentions filtering and agent hasn't
+        // extracted evidence by turn 8, remind to use filter controls efficiently
+        if (i >= 8 && i < Math.floor(maxTurns * 0.5) && runState.goalVerificationEvidence.length === 0) {
+          const goalLower = scenario.goal.toLowerCase();
+          const isFilterTask = /filter|under \$|over \$|\d+\+ (star|rating)|sort by|price range|less than/i.test(goalLower);
+          if (isFilterTask) {
+            ctxBudget.add('filter-strategy',
+              '\nFILTER STRATEGY: This goal requires filtering. If you are on the results page, ' +
+              'use runScript to find filter controls: document.querySelectorAll(\'input[type="range"], select, [class*="filter"], [class*="price"], [class*="slider"]\'). ' +
+              'Apply the filter, wait 2s, then extract results via runScript. ' +
+              'Do NOT keep browsing — apply the filter and extract data NOW.\n', 80);
+          }
+        }
+
         const searchResultsGuidance = buildSearchResultsGuidance(state, scenario.goal, scenario.allowedDomains);
         if (searchResultsGuidance) {
           ctxBudget.add('search-guidance', `\n${searchResultsGuidance}\n`, 70);
@@ -578,7 +602,7 @@ export class AgentRunner {
           this.onPhaseTiming?.('decide', phaseTimings.firstDecideMs);
         }
 
-        let { action, nextActions, raw, reasoning, plan, currentStep, expectedEffect, tokensUsed } = decision;
+        let { action, nextActions, raw, reasoning, plan, currentStep, expectedEffect, tokensUsed, inputTokens, outputTokens } = decision;
 
         // -- 4b. Override pipeline — scored selection of post-decision overrides --
         const overrideCtx: OverrideContext = {
@@ -611,6 +635,8 @@ export class AgentRunner {
           currentStep,
           expectedEffect,
           tokensUsed,
+          inputTokens,
+          outputTokens,
           durationMs: Date.now() - turnStart,
         };
         const executedActions: Action[] = [action];
@@ -815,11 +841,13 @@ export class AgentRunner {
               // rather than burning turns in verification loops.
               // Tier A: 1+ rejection + confidence ≥0.55 + supplemental evidence → accept
               // Tier B: 2+ rejections + confidence ≥0.50 → accept (agent has tried hard enough)
+              // Tier C: 3+ rejections + confidence ≥0.40 → accept (prevent total turn exhaustion)
               const hasSupplementalEvidence = verificationEvidence.length > 0;
               const priorRejections = runState.verificationRejectionCount;
               const shouldAccept =
                 (priorRejections >= 1 && goalResult.confidence >= 0.55 && hasSupplementalEvidence) ||
-                (priorRejections >= 2 && goalResult.confidence >= 0.50);
+                (priorRejections >= 2 && goalResult.confidence >= 0.50) ||
+                (priorRejections >= 3 && goalResult.confidence >= 0.40);
               if (shouldAccept) {
                 goalResult = {
                   ...goalResult,
@@ -839,14 +867,21 @@ export class AgentRunner {
               turn.verificationFailure = goalResult.missing.join('; ') || 'Goal verification failed';
               runState.firstSufficientEvidenceTurn ??= i;
               // Goal not met — reject completion and feed back what's missing
-              const escalation = runState.verificationRejectionCount >= 2
-                ? '\nYou have been rejected multiple times. CHANGE YOUR STRATEGY COMPLETELY. ' +
-                  'Use runScript to extract the exact data needed from the current page. ' +
-                  'If you need to prove a search was done, complete FROM the search results page showing the query and results. ' +
-                  'If you need specific content details, navigate to the content page first.'
-                : '\nBefore trying again, ensure ALL required evidence is visible on the current page. ' +
+              const escalation = runState.verificationRejectionCount >= 3
+                ? '\nFINAL WARNING: You have been rejected 3+ times. ' +
+                  'Use runScript NOW to extract the EXACT data the goal asks for: ' +
+                  'document.querySelector/querySelectorAll to get text content, prices, ratings, dates, etc. ' +
+                  'Include the extracted data verbatim in your completion result. ' +
+                  'The verification system trusts runScript evidence — use it.'
+                : runState.verificationRejectionCount >= 2
+                ? '\nYou have been rejected multiple times. CHANGE YOUR STRATEGY: ' +
+                  'Use runScript to extract the exact data needed: e.g., document.querySelector(".title").textContent. ' +
+                  'Include ALL extracted data in your completion result. ' +
+                  'If you need to prove a search was done, complete FROM the search results page. ' +
+                  'The verifier trusts SCRIPT RESULT evidence — extract data programmatically.'
+                : '\nBefore trying again, ensure ALL required evidence is visible or extracted. ' +
                   'Use runScript to extract structured data if the a11y tree is incomplete. ' +
-                  'Complete only when every requirement in the goal can be verified from the page state.';
+                  'Complete only when every requirement in the goal can be verified from the page state or extracted via script.';
               this.brain.injectFeedback(
                 `COMPLETION REJECTED — goal verification failed (confidence: ${goalResult.confidence.toFixed(2)}).\n` +
                 `Missing: ${goalResult.missing.join('; ')}\n` +
@@ -942,10 +977,15 @@ export class AgentRunner {
         }
 
         // -- 7. Execute (with stale-ref auto-retry) --
+        // Wall-clock cap: entire execute chain (including overlay recovery and retries)
+        // gets a hard 45s cap. Prevents heavy JS sites from consuming
+        // the entire case budget on a single action (e.g., AliExpress 46s click
+        // where withOverlayRecovery × withRetry multiplied a 22s timeout to 135s).
+        const executeWallClockMs = 45_000;
         let execResult: Awaited<ReturnType<Driver['execute']>>;
         try {
           const executeStartedAt = Date.now();
-          execResult = await withRetry(
+          const executePromise = withRetry(
             () => this.driver.execute(action),
             retries,
             retryDelayMs,
@@ -956,6 +996,10 @@ export class AgentRunner {
             },
             scenario.signal,
           );
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error(`Execute wall-clock timeout after ${executeWallClockMs}ms`)), executeWallClockMs),
+          );
+          execResult = await Promise.race([executePromise, timeoutPromise]);
           if (phaseTimings.firstExecuteMs === undefined) {
             phaseTimings.firstExecuteMs = Date.now() - executeStartedAt;
             this.onPhaseTiming?.('execute', phaseTimings.firstExecuteMs);

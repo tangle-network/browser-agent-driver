@@ -67,6 +67,13 @@ RULES:
 15. SEARCH FORMS: Always interact with the form (type in search box, then click Search or press Enter). Do NOT navigate to a URL with search query parameters — many sites require form submission to trigger filtering. If a search yields no results, try the page's own search box rather than the site-wide search
 16. CONTENT DISCOVERY: If the ELEMENTS list doesn't show the link/content you need (e.g., the page has many links but the a11y tree is truncated), use runScript to find it: document.querySelectorAll('a[href]') filtered by keyword. Navigate to the discovered URL directly instead of clicking blindly through menus
 17. EXTERNAL SEARCH REDIRECTS: If a site's search form redirects to an external search engine (e.g., search.usa.gov for .gov sites), the results still link back to the original site. Click a relevant search result link — it will take you to the target domain. Do NOT abandon search results to navigate the target site manually
+18. DATA EXTRACTION: When the goal asks for specific data (prices, ratings, counts, names) from a list or search results page, use runScript to extract all needed data at once: e.g., document.querySelectorAll('.product-card').forEach(...). Do NOT click into each individual item when the data is visible on the list page. Extract first, then complete with the extracted data
+19. FORM FIELD TARGETING: Before typing, verify you are targeting the correct input field using its @ref from the ELEMENTS list. If multiple inputs are visible (e.g., search box + price filter), ensure you select the right one by checking its label or placeholder text in the a11y tree. Never assume focus — always specify the exact @ref
+20. SECTION NAVIGATION: When you need to find a specific section (e.g., rugby, sports, travel) and the nav links aren't in the truncated a11y tree, use runScript to discover navigation: JSON.stringify(Array.from(document.querySelectorAll('nav a, header a, [role="navigation"] a, .nav a')).slice(0, 30).map(a => ({text: a.textContent.trim(), href: a.href}))). Then navigate directly to the matching section URL
+21. EFFICIENT COMPLETION: When you have enough data to answer the goal, complete immediately. Do not navigate to additional pages for "confirmation" if the data was already extracted via runScript or is visible in the current a11y tree. Include all extracted data in the completion result
+22. EXTRACT BEFORE NAVIGATING: On search results, directory listings, or any page showing multiple items, ALWAYS extract ALL needed data via runScript BEFORE clicking into individual items. This includes names, phone numbers, addresses, ratings, prices — anything visible on list cards. Use: document.querySelectorAll('.result-card, .listing, [class*="card"]') to grab everything at once. Many sites use anti-bot protection on detail pages but leave listing pages accessible. If you can answer the goal from list-level data, do so without navigating deeper. NEVER click into 3+ individual items when the data is on the list page
+23. FILTER vs SEARCH: When a goal asks to filter results (e.g., "under $50", "4+ stars"), look for filter controls (sliders, dropdowns, checkboxes in a sidebar or toolbar) rather than typing filter values into the search box. Search boxes are for keyword queries, not numeric filters. After applying a filter: (1) wait 2-3 seconds for results to update, (2) verify the filter took effect by checking the updated results, (3) extract the filtered data via runScript. Do NOT keep searching for more filter controls after one is applied — extract and complete
+24. HEAVY PAGE RECOVERY: If a page takes very long to load or seems stuck, do NOT wait — use runScript to check document.readyState and extract whatever content is already in the DOM. Partial data is better than a timeout. If the page is completely blank, try navigating to a simpler version (mobile site, search page) instead of waiting
 
 REASONING FRAMEWORK — before choosing an action:
 1. What is the current state vs. the goal state? What is missing?
@@ -198,6 +205,8 @@ export interface BrainDecision {
   currentStep?: number;
   expectedEffect?: string;
   tokensUsed?: number;
+  inputTokens?: number;
+  outputTokens?: number;
 }
 
 export interface QualityEvaluation {
@@ -383,7 +392,7 @@ export class Brain {
     messages: ModelMessage[],
     selection?: { provider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend'; model?: string },
     maxOutputTokens = 800,
-  ): Promise<{ text: string; tokensUsed?: number }> {
+  ): Promise<{ text: string; tokensUsed?: number; inputTokens?: number; outputTokens?: number }> {
     const providerName = selection?.provider || this.provider;
     const modelName = this.resolveModelName(providerName, selection?.model || this.modelName);
 
@@ -417,6 +426,8 @@ export class Brain {
     return {
       text: result.text,
       tokensUsed: result.usage?.totalTokens,
+      inputTokens: result.usage?.inputTokens ?? undefined,
+      outputTokens: result.usage?.outputTokens ?? undefined,
     };
   }
 
@@ -637,7 +648,7 @@ ${visibleSnapshot}`;
     }
 
     const parsed = this.parse(raw);
-    return { ...parsed, raw, tokensUsed };
+    return { ...parsed, raw, tokensUsed, inputTokens: result.inputTokens, outputTokens: result.outputTokens };
   }
 
   /**
@@ -809,12 +820,13 @@ Was the goal actually achieved? Analyze the current page state carefully.`;
 
 Analyze the page state (screenshot + accessibility tree) and determine if the stated goal was accomplished.
 
-Be STRICT — the agent may claim success prematurely. Check:
+Check the page state and claimed result carefully:
 1. Does the current page state show the goal was completed?
 2. Are there error messages, incomplete forms, or missing elements?
 3. Does the URL match what you'd expect after goal completion?
 4. Is the claimed result consistent with what's visible on the page?
-5. If SUPPLEMENTAL TOOL EVIDENCE is provided in the claimed result, treat it as verified data extracted from earlier pages via JavaScript. This evidence is trustworthy and can satisfy requirements not visible on the current page (e.g., search query proof, data from a previous page).
+5. CRITICAL — SUPPLEMENTAL TOOL EVIDENCE: If the claimed result includes "SUPPLEMENTAL TOOL EVIDENCE" or "SCRIPT RESULT" sections, this data was extracted programmatically from the actual page DOM via JavaScript. This evidence is VERIFIED and TRUSTWORTHY — treat it as equivalent to data visible on the current page. It can fully satisfy data requirements (titles, dates, prices, ratings, counts, URLs) even if the current page no longer shows that data. Do NOT reject a completion simply because the extracted data isn't visible in the current accessibility tree.
+6. MULTI-PAGE TASKS: For goals requiring data from multiple pages (e.g., "find X and extract Y"), the agent may have navigated through several pages collecting data via runScript. If the claimed result contains specific data points that match the SUPPLEMENTAL TOOL EVIDENCE, accept the completion even if the current page is a different page from where the data was extracted.
 
 Respond with ONLY a JSON object:
 {

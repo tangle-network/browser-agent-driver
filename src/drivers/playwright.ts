@@ -159,7 +159,12 @@ export class PlaywrightDriver implements Driver {
     const quality = this.options.screenshotQuality ?? 50;
 
     const waitStart = performance.now();
-    await this.page.waitForLoadState('domcontentloaded').catch(() => {});
+    // Cap load state wait at 10s — heavy JS sites (AliExpress) can stall
+    // domcontentloaded for 30s+. The page usually has usable DOM much earlier.
+    await Promise.race([
+      this.page.waitForLoadState('domcontentloaded').catch(() => {}),
+      new Promise<void>(resolve => setTimeout(resolve, 10_000)),
+    ]);
     const waitForLoadMs = performance.now() - waitStart;
 
     this.snapshot.reset();
@@ -401,9 +406,24 @@ export class PlaywrightDriver implements Driver {
           return { success: true };
         }
 
-        case 'navigate':
-          await this.page.goto(action.url, { timeout, waitUntil: 'domcontentloaded' });
+        case 'navigate': {
+          // Cap navigation at 15s — heavy JS sites (AliExpress, etc.) can stall domcontentloaded
+          // for 40s+. Better to proceed with partial DOM than timeout the whole case.
+          const navTimeout = Math.min(timeout, 15_000);
+          try {
+            await this.page.goto(action.url, { timeout: navTimeout, waitUntil: 'domcontentloaded' });
+          } catch (navErr) {
+            // If domcontentloaded timed out but the page has started loading,
+            // proceed — the agent can still interact with whatever is in the DOM.
+            const currentUrl = this.page.url();
+            if (currentUrl !== 'about:blank' && currentUrl !== '') {
+              // Page partially loaded — continue with what we have
+              return { success: true };
+            }
+            throw navErr;
+          }
           return { success: true };
+        }
 
         case 'wait':
           await this.page.waitForTimeout(action.ms);

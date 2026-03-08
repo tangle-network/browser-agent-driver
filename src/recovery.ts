@@ -321,6 +321,42 @@ export function detectBlockingModal(snapshot: string): BlockingModalDetection | 
         action: { action: 'click', selector: `@${consentDismissRef}` },
       };
     }
+
+    // Iframe-based consent dialogs (e.g., SP Consent Message, OneTrust):
+    // buttons are inside an iframe so pickRefByName can't find them.
+    // Use runScript to click the accept/reject button inside the consent iframe.
+    const hasConsentIframe = /iframe\s+"[^"]*consent/i.test(snapshot);
+    if (hasConsentIframe) {
+      return {
+        kind: 'blocking-modal',
+        strategy: 'cookie-consent-iframe-dismiss',
+        feedback:
+          'BLOCKER: A cookie/consent dialog inside an iframe was detected and is being dismissed via script.',
+        action: {
+          action: 'runScript',
+          script: `(function() {
+            const selectors = [
+              'button[title*="Accept"]', 'button[title*="Agree"]', 'button[title*="OK"]',
+              'button[title*="Reject"]', 'button[title*="Decline"]',
+              '.sp_choice_type_11', '.sp_choice_type_12', // SourcePoint accept/reject
+              '[class*="accept"]', '[class*="agree"]', '[class*="consent-accept"]',
+              'button:not([class*="manage"]):not([class*="setting"])',
+            ];
+            for (const iframe of document.querySelectorAll('iframe')) {
+              try {
+                const doc = iframe.contentDocument;
+                if (!doc) continue;
+                for (const sel of selectors) {
+                  const btn = doc.querySelector(sel);
+                  if (btn && btn.offsetHeight > 0) { btn.click(); return 'dismissed:' + sel; }
+                }
+              } catch(e) { /* cross-origin iframe, skip */ }
+            }
+            return 'no-dismiss-target-found';
+          })()`,
+        },
+      };
+    }
   }
 
   const closeRef = pickRefByName(elements, [

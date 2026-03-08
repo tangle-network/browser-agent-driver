@@ -203,10 +203,18 @@ export class AriaSnapshotHelper {
       const refId = selector.slice(1);
       const entry = this.refMap.get(refId);
       if (entry) {
-        return page.getByRole(entry.role as Parameters<Page['getByRole']>[0], {
+        const roleLocator = page.getByRole(entry.role as Parameters<Page['getByRole']>[0], {
           name: entry.name,
-          exact: false,
-        }).first();
+          exact: entry.name.length > 0,
+        });
+        // Suffixed refs (e.g., t31b3_2) represent the Nth duplicate of a role+name combo.
+        // Use nth() to target the correct instance instead of always picking first().
+        const suffixMatch = refId.match(/_(\d+)$/);
+        if (suffixMatch) {
+          const index = parseInt(suffixMatch[1], 10);
+          return roleLocator.nth(index);
+        }
+        return roleLocator.first();
       }
       // Ref not found in current snapshot -- throw with available refs for
       // auto-retry or Brain feedback

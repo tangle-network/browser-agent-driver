@@ -31,6 +31,8 @@ import { generateReport } from './test-report.js';
 
 const DEFAULT_MAX_TURNS = 30;
 
+import { loadPricing, calculateCost } from './model-pricing.js';
+
 interface RuntimeObservabilityOutcome {
   passed: boolean;
   verdict: string;
@@ -344,6 +346,8 @@ export class TestRunner {
 
       // Save trajectory if memory enabled
       const tokensUsed = agentResult.turns.reduce((sum, t) => sum + (t.tokensUsed || 0), 0);
+      const totalInputTokens = agentResult.turns.reduce((sum, t) => sum + (t.inputTokens || 0), 0);
+      const totalOutputTokens = agentResult.turns.reduce((sum, t) => sum + (t.outputTokens || 0), 0);
       if (this.store) {
         this.store.save(
           testCase.goal,
@@ -357,6 +361,10 @@ export class TestRunner {
       const endedAt = new Date();
       const verdict = this.buildVerdict(agentResult, verified, criteriaResults);
 
+      // Calculate cost from LiteLLM's pricing database
+      const modelName = this.config.model || 'gpt-5.4';
+      const estimatedCostUsd = calculateCost(modelName, totalInputTokens, totalOutputTokens);
+
       const result: TestResult = {
         testCase,
         agentResult,
@@ -366,6 +374,9 @@ export class TestRunner {
         verdict,
         turnsUsed: agentResult.turns.length,
         tokensUsed,
+        inputTokens: totalInputTokens || undefined,
+        outputTokens: totalOutputTokens || undefined,
+        estimatedCostUsd: estimatedCostUsd || undefined,
         durationMs: endedAt.getTime() - startedAt.getTime(),
         phaseTimings: agentResult.phaseTimings,
         startupDiagnostics: agentResult.startupDiagnostics,
@@ -409,6 +420,7 @@ export class TestRunner {
         durationMs: result.durationMs,
         turnsUsed: result.turnsUsed,
         tokensUsed: result.tokensUsed,
+        estimatedCostUsd: result.estimatedCostUsd,
       });
       runtimeOutcome = {
         passed: result.verified && result.agentSuccess,
@@ -435,6 +447,8 @@ export class TestRunner {
 
   /** Run a suite of test cases with dependency resolution and optional parallelism */
   async runSuite(cases: TestCase[]): Promise<TestSuiteResult> {
+    // Pre-load pricing database (async fetch, cached 24h)
+    loadPricing().catch(() => {});
     this.onProgress?.({ type: 'suite:start', totalTests: cases.length, concurrency: this.concurrency });
 
     let result: TestSuiteResult;
@@ -510,12 +524,14 @@ export class TestRunner {
       }
     }
 
+    const totalCostUsd = result.results.reduce((sum, r) => sum + (r.estimatedCostUsd || 0), 0);
     this.onProgress?.({
       type: 'suite:complete',
       passed: result.summary.passed,
       failed: result.summary.failed,
       skipped: result.summary.skipped,
       totalMs: result.summary.totalDurationMs,
+      totalCostUsd: totalCostUsd || undefined,
       manifestUri,
     });
 

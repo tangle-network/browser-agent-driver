@@ -435,8 +435,14 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // Dynamic imports — keeps startup fast and allows tree-shaking
-  const { chromium, firefox, webkit } = await import('playwright');
+  // Dynamic imports — keeps startup fast and allows tree-shaking.
+  // Use patchright (Playwright fork with CDP leak fixes) for stealth profiles
+  // to avoid Cloudflare/DataDome detection via Runtime.enable.
+  const isStealthProfile = launchPlan.profile.includes('stealth');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { chromium, firefox, webkit } = (isStealthProfile
+    ? await import('patchright')
+    : await import('playwright')) as any;
   const { PlaywrightDriver } = await import('./drivers/playwright.js');
   const { TestRunner } = await import('./test-runner.js');
   const { FilesystemSink } = await import('./artifacts/filesystem-sink.js');
@@ -586,7 +592,7 @@ async function main(): Promise<void> {
 
     const persistentLaunchStartedAt = Date.now();
     persistentContext = await chromium.launchPersistentContext(userDataDir, {
-      channel: 'chromium',
+      channel: isStealthProfile ? 'chrome' : 'chromium',
       headless: false,
       args: launchPlan.browserArgs,
       viewport,
@@ -645,6 +651,8 @@ async function main(): Promise<void> {
     browser = await browserType.launch({
       headless: launchPlan.headless,
       ...(browserName === 'chromium' ? { args: launchPlan.browserArgs } : {}),
+      // Use system Chrome for stealth profiles — real TLS/JA3 fingerprint vs bundled Chromium
+      ...(isStealthProfile && browserName === 'chromium' ? { channel: 'chrome' } : {}),
     });
     launchDiagnostics.browserLaunchMs = Date.now() - browserLaunchStartedAt;
   }
@@ -661,9 +669,11 @@ async function main(): Promise<void> {
         'Accept-Language': 'en-US,en;q=0.9',
       },
     });
-    // Stealth: patch navigator properties to reduce automation fingerprint.
+    // Stealth: patch navigator/browser properties to reduce automation fingerprint.
     // This runs in the browser context (not Node), so we use a string to avoid TS issues.
     await context.addInitScript(`
+      // navigator.webdriver — explicit override (backup for --disable-blink-features)
+      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
       // navigator.plugins — empty in headless, non-empty in real browsers
       Object.defineProperty(navigator, 'plugins', {
         get: () => [
@@ -677,9 +687,32 @@ async function main(): Promise<void> {
       // hardware signals — realistic desktop values
       Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
       Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
-      // Ensure window.chrome exists (missing in headless)
+      // window.chrome — full stub matching real Chrome
       if (!window.chrome) window.chrome = {};
       if (!window.chrome.runtime) window.chrome.runtime = { id: undefined };
+      if (!window.chrome.app) window.chrome.app = { isInstalled: false, InstallState: { DISABLED: 'disabled', INSTALLED: 'installed', NOT_INSTALLED: 'not_installed' }, RunningState: { CANNOT_RUN: 'cannot_run', READY_TO_RUN: 'ready_to_run', RUNNING: 'running' } };
+      if (!window.chrome.csi) window.chrome.csi = function() { return { onloadT: Date.now(), startE: Date.now(), pageT: Date.now() - performance.timing.navigationStart }; };
+      if (!window.chrome.loadTimes) window.chrome.loadTimes = function() { return { commitLoadTime: Date.now() / 1000, connectionInfo: 'h2', finishDocumentLoadTime: Date.now() / 1000, finishLoadTime: Date.now() / 1000, firstPaintAfterLoadTime: 0, firstPaintTime: Date.now() / 1000, navigationType: 'Other', npnNegotiatedProtocol: 'h2', requestTime: Date.now() / 1000 - 0.16, startLoadTime: Date.now() / 1000 - 0.16, wasAlternateProtocolAvailable: false, wasFetchedViaSpdy: true, wasNpnNegotiated: true }; };
+      // WebGL vendor/renderer — match real GPU values
+      try {
+        const getParameter = WebGLRenderingContext.prototype.getParameter;
+        WebGLRenderingContext.prototype.getParameter = function(parameter) {
+          if (parameter === 37445) return 'Intel Inc.';
+          if (parameter === 37446) return 'Intel Iris OpenGL Engine';
+          return getParameter.call(this, parameter);
+        };
+      } catch (_) {}
+      try {
+        const getParameter2 = WebGL2RenderingContext.prototype.getParameter;
+        WebGL2RenderingContext.prototype.getParameter = function(parameter) {
+          if (parameter === 37445) return 'Intel Inc.';
+          if (parameter === 37446) return 'Intel Iris OpenGL Engine';
+          return getParameter2.call(this, parameter);
+        };
+      } catch (_) {}
+      // window.outerWidth/outerHeight — 0 in headless, match viewport in real browsers
+      if (window.outerWidth === 0) Object.defineProperty(window, 'outerWidth', { get: () => window.innerWidth });
+      if (window.outerHeight === 0) Object.defineProperty(window, 'outerHeight', { get: () => window.innerHeight + 85 });
       // Patch permissions API for notification checks
       try {
         const origQuery = navigator.permissions.query.bind(navigator.permissions);
@@ -770,16 +803,20 @@ async function main(): Promise<void> {
             console.log(`    turn ${event.turn}: ${event.action} (${event.durationMs}ms)`);
           }
           break;
-        case 'test:complete':
-          console.log(`  ${event.passed ? '✓' : '✗'} ${event.testId} — ${event.verdict.slice(0, 80)} (${event.turnsUsed} turns, ${Math.round(event.durationMs / 1000)}s)`);
+        case 'test:complete': {
+          const costStr = event.estimatedCostUsd ? `, $${event.estimatedCostUsd.toFixed(3)}` : '';
+          console.log(`  ${event.passed ? '✓' : '✗'} ${event.testId} — ${event.verdict.slice(0, 80)} (${event.turnsUsed} turns, ${Math.round(event.durationMs / 1000)}s${costStr})`);
           break;
-        case 'suite:complete':
+        }
+        case 'suite:complete': {
           console.log('');
-          console.log(`Done: ${event.passed} passed, ${event.failed} failed, ${event.skipped} skipped (${Math.round(event.totalMs / 1000)}s)`);
+          const suiteCostStr = event.totalCostUsd ? ` | $${event.totalCostUsd.toFixed(2)}` : '';
+          console.log(`Done: ${event.passed} passed, ${event.failed} failed, ${event.skipped} skipped (${Math.round(event.totalMs / 1000)}s${suiteCostStr})`);
           if (event.manifestUri) {
             console.log(`Artifacts: ${event.manifestUri}`);
           }
           break;
+        }
       }
     },
   });

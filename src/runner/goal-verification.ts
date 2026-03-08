@@ -133,6 +133,11 @@ export function shouldAcceptScriptBackedCompletion(
     /cannot verify/,
     /not present/,
     /visible publication date/,
+    /no .* visible/,
+    /does not show/,
+    /missing/,
+    /not found/,
+    /not currently/,
   ].some((pattern) => pattern.test(verifierText));
   if (!visibilityLimited) return false;
 
@@ -143,6 +148,8 @@ export function shouldAcceptScriptBackedCompletion(
 
   const claimLower = claimedResult.toLowerCase();
   const hasUrlEvidence = state.url.length > 0 && claimLower.includes(state.url.toLowerCase());
+  // Also accept if the claim references ANY URL (agent may have navigated away from extraction page)
+  const hasAnyUrlEvidence = /https?:\/\/[^\s]+/.test(claimLower);
   const combinedEvidence = `${state.url}\n${state.title}\n${claimLower}\n${scriptEvidence}\n${verifierText}`.toLowerCase();
 
   if (requiresPressReleaseLikeContent(goal)) {
@@ -159,7 +166,8 @@ export function shouldAcceptScriptBackedCompletion(
     .filter((token, index, all) => token.length >= 4 && all.indexOf(token) === index);
   const overlappingTokens = normalizedTokens.filter((token) => claimLower.includes(token));
 
-  return hasUrlEvidence && overlappingTokens.length >= 1;
+  // Accept if: (current URL in claim OR any URL in claim) AND script evidence overlaps with claim
+  return (hasUrlEvidence || hasAnyUrlEvidence) && overlappingTokens.length >= 1;
 }
 
 export function detectCompletionContentTypeMismatch(

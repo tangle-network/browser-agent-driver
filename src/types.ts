@@ -292,6 +292,10 @@ export interface Turn {
   verificationFailure?: string;
   /** Tokens used for this turn */
   tokensUsed?: number;
+  /** Input (prompt) tokens for this turn */
+  inputTokens?: number;
+  /** Output (completion) tokens for this turn */
+  outputTokens?: number;
   /** Time taken for this turn in ms */
   durationMs: number;
   /** Error message if turn failed */
@@ -417,6 +421,12 @@ export interface TestResult {
   turnsUsed: number;
   /** Total tokens consumed */
   tokensUsed: number;
+  /** Total input (prompt) tokens */
+  inputTokens?: number;
+  /** Total output (completion) tokens */
+  outputTokens?: number;
+  /** Estimated cost in USD (based on model pricing) */
+  estimatedCostUsd?: number;
   /** Duration in ms */
   durationMs: number;
   /** Phase timing instrumentation copied from agentResult for report consumers */
