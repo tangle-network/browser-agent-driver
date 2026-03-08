@@ -4,7 +4,7 @@
 
 import type { PageState } from '../types.js';
 import { buildSearchResultsGuidance, extractGoalSignals, isFirstPartyContentHub } from './search-guidance.js';
-import { safeHostname } from './utils.js';
+import { safeHostname, PRESS_RELEASE_RE, NON_RELEASE_CONTENT_RE, NON_RELEASE_URL_RE } from './utils.js';
 
 export interface BranchPreview {
   finalUrl: string;
@@ -83,7 +83,7 @@ export function scoreBranchPreview(
   for (const phrase of signals.exactPhrases) {
     if (haystack.includes(phrase)) score += 4;
   }
-  if (signals.wantsPressRelease && /\bpress release\b|\bnews release\b|\/news-releases?\//.test(haystack)) {
+  if (signals.wantsPressRelease && (PRESS_RELEASE_RE.test(haystack) || /\/news-releases?\//.test(haystack))) {
     score += 10;
   }
   if (signals.wantsPressRelease && /\bpress room\b|\brecent news releases\b|\bnews events\b/.test(haystack)) {
@@ -92,10 +92,10 @@ export function scoreBranchPreview(
   if (/\berror\b|\baccess denied\b|\brequest could not be satisfied\b|\b403\b/.test(haystack)) {
     score -= 12;
   }
-  if (signals.wantsPressRelease && /\bnih research matters\b|\bnews in health\b|\bfact sheet\b|\bwhat causes\b|\bwhat are the signs\b/.test(haystack)) {
+  if (signals.wantsPressRelease && NON_RELEASE_CONTENT_RE.test(haystack)) {
     score -= 10;
   }
-  if (signals.wantsPressRelease && /\/nih-research-matters\/|\/health\/|\/research\/|\/blog\//.test(haystack)) {
+  if (signals.wantsPressRelease && NON_RELEASE_URL_RE.test(haystack)) {
     score -= 8;
   }
   if (allowedHosts.size > 0) {

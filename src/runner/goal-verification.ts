@@ -6,8 +6,12 @@
 import type { PageState } from '../types.js';
 import {
   requiresSearchWorkflowEvidence,
+  requiresPressReleaseLikeContent,
   normalizeLooseText,
   extractRelevantSnapshotExcerpt,
+  NON_RELEASE_CONTENT_RE,
+  NON_RELEASE_URL_RE,
+  PRESS_RELEASE_RE,
 } from './utils.js';
 
 const MAX_GOAL_VERIFICATION_EVIDENCE = 5;
@@ -137,14 +141,13 @@ export function shouldAcceptScriptBackedCompletion(
     .join('\n');
   if (!scriptEvidence) return false;
 
-  const lowerGoal = goal.toLowerCase();
   const claimLower = claimedResult.toLowerCase();
   const hasUrlEvidence = state.url.length > 0 && claimLower.includes(state.url.toLowerCase());
   const combinedEvidence = `${state.url}\n${state.title}\n${claimLower}\n${scriptEvidence}\n${verifierText}`.toLowerCase();
 
-  if (/\bpress release\b|\bnews release\b/.test(lowerGoal)) {
+  if (requiresPressReleaseLikeContent(goal)) {
     const explicitlyNotRelease = /\bnot a press release page\b|\bnot a press release\b/.test(verifierText);
-    const releaseLikeEvidence = /\bpress release\b|\bnews release\b|\/news-releases?\//.test(combinedEvidence);
+    const releaseLikeEvidence = PRESS_RELEASE_RE.test(combinedEvidence) || /\/news-releases?\//.test(combinedEvidence);
     if (explicitlyNotRelease || !releaseLikeEvidence) {
       return false;
     }
@@ -165,8 +168,7 @@ export function detectCompletionContentTypeMismatch(
   claimedResult: string,
   evidence: string[],
 ): string | undefined {
-  const lowerGoal = goal.toLowerCase();
-  if (!/\bpress release\b|\bnews release\b/.test(lowerGoal)) return undefined;
+  if (!requiresPressReleaseLikeContent(goal)) return undefined;
 
   const combined = [
     state.url,
@@ -176,11 +178,11 @@ export function detectCompletionContentTypeMismatch(
     ...evidence,
   ].join('\n').toLowerCase();
 
-  const releaseLike = /\bpress release\b|\bnews release\b|\/news-releases?\//.test(combined);
+  const releaseLike = PRESS_RELEASE_RE.test(combined) || /\/news-releases?\//.test(combined);
   if (releaseLike) return undefined;
 
-  const mismatchedContent = /\bnih research matters\b|\bnews in health\b|\bcatalyst\b|\bfact sheet\b|\bwhat causes\b|\bwhat are the signs\b|\btreated\b/.test(combined)
-    || /\/nih-research-matters\/|\/science-updates\/|\/health\/|\/research\/|\/blog\//.test(combined);
+  const mismatchedContent = NON_RELEASE_CONTENT_RE.test(combined)
+    || NON_RELEASE_URL_RE.test(combined);
   if (!mismatchedContent) return undefined;
 
   return 'The current page/result is not a press release or news release. Continue until the completion evidence points to an actual release page or release listing.';

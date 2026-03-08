@@ -5,7 +5,6 @@
 import type { Action, PageState } from '../types.js';
 import type { OverrideProducer, OverrideContext } from '../override-pipeline.js';
 import {
-  buildSearchResultsGuidance,
   getVisibleLinkRecommendation,
   isFirstPartyContentHub,
 } from './search-guidance.js';
@@ -206,10 +205,7 @@ export function chooseScoutLinkOverride(
   if (!recommendation || recommendation.confidence < 0.7) return undefined;
   if (action.action === 'click' && action.selector === recommendation.ref) return undefined;
 
-  const isCandidateClick = action.action === 'click'
-    && action.selector.startsWith('@')
-    && !!findElementForRef(state.snapshot, action.selector);
-  if (!isSearchAction(state, action) && !isContentHubDetourAction(state, action) && !isCandidateClick) {
+  if (!isSearchAction(state, action) && !isContentHubDetourAction(state, action) && !isCandidateClick(state, action)) {
     return undefined;
   }
 
@@ -227,10 +223,7 @@ export function chooseBranchLinkOverride(
   if (!recommendation || recommendation.confidence < 0.72) return undefined;
   if (action.action === 'click' && action.selector === recommendation.ref) return undefined;
 
-  const isCandidateClick = action.action === 'click'
-    && action.selector.startsWith('@')
-    && !!findElementForRef(state.snapshot, action.selector);
-  if (!isSearchAction(state, action) && !isContentHubDetourAction(state, action) && !isCandidateClick) {
+  if (!isSearchAction(state, action) && !isContentHubDetourAction(state, action) && !isCandidateClick(state, action)) {
     return undefined;
   }
 
@@ -274,12 +267,7 @@ export function chooseSearchResultsNewsTabOverride(
   if (!newsTabRef) return undefined;
   if (action.action === 'click' && action.selector === newsTabRef) return undefined;
 
-  const actingOnVisibleResult = action.action === 'click'
-    && 'selector' in action
-    && action.selector?.startsWith('@')
-    && !!findElementForRef(state.snapshot, action.selector);
-
-  if (!actingOnVisibleResult && !isSearchAction(state, action)) return undefined;
+  if (!isCandidateClick(state, action) && !isSearchAction(state, action)) return undefined;
 
   return {
     ref: newsTabRef,
@@ -323,11 +311,7 @@ export function chooseNewsReleasesHubOverride(
   if (!hubRef) return undefined;
   if (action.action === 'click' && action.selector === hubRef) return undefined;
 
-  const actingOnVisibleResult = action.action === 'click'
-    && 'selector' in action
-    && action.selector?.startsWith('@')
-    && !!findElementForRef(state.snapshot, action.selector);
-  if (!actingOnVisibleResult) return undefined;
+  if (!isCandidateClick(state, action)) return undefined;
 
   return {
     ref: hubRef,
@@ -357,12 +341,7 @@ export function chooseVisibleNewsReleaseResultOverride(
   const shouldOverride =
     isSearchAction(state, action)
     || action.action === 'press'
-    || (
-      action.action === 'click'
-      && 'selector' in action
-      && action.selector?.startsWith('@')
-      && !!findElementForRef(state.snapshot, action.selector)
-    );
+    || isCandidateClick(state, action);
   if (!shouldOverride) return undefined;
 
   return {
@@ -383,13 +362,10 @@ export function chooseVisibleSearchResultOverride(
   if (!recommendation || recommendation.score < 10) return undefined;
   if (action.action === 'click' && action.selector === recommendation.ref) return undefined;
 
-  const isCandidateClick = action.action === 'click'
-    && 'selector' in action
-    && action.selector?.startsWith('@')
-    && !!findElementForRef(state.snapshot, action.selector);
-  if (!isCandidateClick && !isSearchAction(state, action)) return undefined;
+  const candidateClick = isCandidateClick(state, action);
+  if (!candidateClick && !isSearchAction(state, action)) return undefined;
 
-  const targetText = isCandidateClick
+  const targetText = candidateClick && action.action === 'click'
     ? (findElementForRef(state.snapshot, action.selector) ?? '').toLowerCase()
     : '';
   const lowerGoal = goal.toLowerCase();
@@ -425,6 +401,14 @@ export function chooseExpandableListCompletionOverride(
     ref: `@${match[2]}`,
     feedback: `The requested category list is not fully visible yet. Expand SHOW MORE (${match[1]}) before completing.`,
   };
+}
+
+function isCandidateClick(state: PageState, action: Action): boolean {
+  return (
+    action.action === 'click'
+    && action.selector.startsWith('@')
+    && !!findElementForRef(state.snapshot, action.selector)
+  );
 }
 
 function isSearchAction(state: PageState, action: Action): boolean {

@@ -3,7 +3,14 @@
  */
 
 import type { PageState } from '../types.js';
-import { hasFullDate, safeHostname } from './utils.js';
+import {
+  hasFullDate,
+  safeHostname,
+  requiresPressReleaseLikeContent,
+  PRESS_RELEASE_RE,
+  NON_RELEASE_CONTENT_RE,
+  NON_RELEASE_URL_RE,
+} from './utils.js';
 
 export function buildSearchResultsGuidance(
   state: PageState,
@@ -33,7 +40,7 @@ export function buildSearchResultsGuidance(
       'If the ranking is ambiguous, use runScript to extract the top result titles and URLs first, then choose the best match.',
       'Prefer result titles or URLs that match the requested content type exactly (for example, press release, news release, pricing, docs, settings).',
     ];
-    if (/\bpress release\b|\bnews release\b/.test(goal.toLowerCase())) {
+    if (requiresPressReleaseLikeContent(goal)) {
       lines.push('For press-release tasks, avoid topic pages, fact sheets, and Research Matters-style articles unless no release/news hub is visible.');
     }
     if (allowedDomains && allowedDomains.length > 0) {
@@ -78,7 +85,7 @@ export function extractGoalSignals(goal: string): { keywords: string[]; exactPhr
         .filter((token) => !stopwords.has(token)),
     ),
   );
-  const wantsPressRelease = /\bpress release\b|\bnews release\b/.test(lowerGoal);
+  const wantsPressRelease = PRESS_RELEASE_RE.test(lowerGoal);
   return { keywords, exactPhrases, wantsPressRelease };
 }
 
@@ -115,10 +122,10 @@ export function rankSearchCandidates(
       if (/\/science-updates\//.test(haystack)) {
         score -= 2;
       }
-      if (signals.wantsPressRelease && /\bnih research matters\b|\bnews in health\b|\bcatalyst\b|\bfact sheet\b|\bwhat causes\b|\bwhat are the signs\b|\btreated\b|\bresearch centers\b/.test(haystack)) {
+      if (signals.wantsPressRelease && (NON_RELEASE_CONTENT_RE.test(haystack) || /\bresearch centers\b/.test(haystack))) {
         score -= 12;
       }
-      if (signals.wantsPressRelease && /\/nih-research-matters\/|\/science-updates\/|\/health\/|\/research\/|\/blog\//.test(haystack)) {
+      if (signals.wantsPressRelease && NON_RELEASE_URL_RE.test(haystack)) {
         score -= 8;
       }
       if (allowedHosts.size > 0) {
@@ -206,7 +213,7 @@ function rankVisibleLinkCandidates(
       for (const phrase of signals.exactPhrases) {
         if (haystack.includes(phrase)) score += 4;
       }
-      if (signals.wantsPressRelease && /\bpress release\b|\bnews release\b|\bnews releases\b/.test(haystack)) {
+      if (signals.wantsPressRelease && (PRESS_RELEASE_RE.test(haystack) || /\bnews releases\b/.test(haystack))) {
         score += 6;
       }
       if (signals.wantsPressRelease && context?.firstPartyContentHub && !/all news releases/.test(haystack)) {
@@ -220,7 +227,7 @@ function rankVisibleLinkCandidates(
       if (/all news releases/.test(haystack)) {
         score -= 3;
       }
-      if (signals.wantsPressRelease && /\bnih research matters\b|\bnews in health\b|\bcatalyst\b|\bcalendar of events\b|\bsocial media\b/.test(haystack)) {
+      if (signals.wantsPressRelease && (NON_RELEASE_CONTENT_RE.test(haystack) || /\bcalendar of events\b|\bsocial media\b/.test(haystack))) {
         score -= 8;
       }
       return { ...candidate, score };
@@ -231,7 +238,7 @@ function rankVisibleLinkCandidates(
 
 function selectRelevantSnapshotSection(snapshot: string, goal: string): string {
   const lowerGoal = goal.toLowerCase();
-  if (!/\bpress release\b|\bnews release\b/.test(lowerGoal) || !snapshot.toLowerCase().includes('recent news releases')) {
+  if (!PRESS_RELEASE_RE.test(lowerGoal) || !snapshot.toLowerCase().includes('recent news releases')) {
     return snapshot;
   }
 

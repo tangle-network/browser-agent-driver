@@ -811,22 +811,23 @@ export class AgentRunner {
             }
 
             if (!goalResult.achieved) {
-              // Progressive acceptance: after prior rejections, accept high-confidence
-              // near-misses (0.65+) with supplemental evidence rather than looping
+              // Progressive acceptance: after prior rejections, accept near-misses
+              // rather than burning turns in verification loops.
+              // Tier A: 1+ rejection + confidence ≥0.55 + supplemental evidence → accept
+              // Tier B: 2+ rejections + confidence ≥0.50 → accept (agent has tried hard enough)
               const hasSupplementalEvidence = verificationEvidence.length > 0;
               const priorRejections = runState.verificationRejectionCount;
-              if (
-                priorRejections >= 1 &&
-                goalResult.confidence >= 0.65 &&
-                hasSupplementalEvidence
-              ) {
+              const shouldAccept =
+                (priorRejections >= 1 && goalResult.confidence >= 0.55 && hasSupplementalEvidence) ||
+                (priorRejections >= 2 && goalResult.confidence >= 0.50);
+              if (shouldAccept) {
                 goalResult = {
                   ...goalResult,
                   achieved: true,
                   confidence: goalResult.confidence,
                   evidence: [
                     ...goalResult.evidence,
-                    `Accepted under progressive threshold after ${priorRejections} prior rejection(s) with supplemental tool evidence.`,
+                    `Accepted under progressive threshold after ${priorRejections} prior rejection(s)${hasSupplementalEvidence ? ' with supplemental evidence' : ''}.`,
                   ],
                   missing: [],
                 };
@@ -1460,7 +1461,14 @@ export class AgentRunner {
     const href = await this.driver.inspectSelectorHref(action.selector);
     const host = href ? safeHostname(href) : undefined;
     if (!href || !host) return undefined;
-    if (scenario.allowedDomains.map((domain) => domain.toLowerCase()).includes(host)) return undefined;
+    const allowedLower = scenario.allowedDomains.map((domain) => domain.toLowerCase());
+    if (allowedLower.includes(host)) return undefined;
+    // First-party subdomain tolerance
+    const toRoot = (h: string) => {
+      const parts = h.split('.').filter(Boolean);
+      return parts.length <= 2 ? h : parts.slice(-2).join('.');
+    };
+    if (allowedLower.some((h) => toRoot(h) === toRoot(host))) return undefined;
 
     return [
       `Blocked action: selector ${action.selector} resolves to ${href}, which is outside the allowed host set: ${scenario.allowedDomains.join(', ')}.`,
@@ -1480,6 +1488,14 @@ export class AgentRunner {
 
     const allowedHosts = scenario.allowedDomains.map((domain) => domain.toLowerCase());
     if (allowedHosts.includes(currentHost)) return undefined;
+
+    // First-party subdomain tolerance: allow navigation within the same registrable domain
+    const toRoot = (h: string) => {
+      const parts = h.split('.').filter(Boolean);
+      return parts.length <= 2 ? h : parts.slice(-2).join('.');
+    };
+    const currentRoot = toRoot(currentHost);
+    if (allowedHosts.some((h) => toRoot(h) === currentRoot)) return undefined;
 
     const previousHost = safeHostname(preActionState.url);
     if (previousHost && allowedHosts.includes(previousHost)) {

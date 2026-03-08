@@ -75,8 +75,17 @@ export function requiresSearchWorkflowEvidence(goal: string): boolean {
 
 export function requiresPressReleaseLikeContent(goal: string): boolean {
   const goalLower = goal.toLowerCase();
-  return /\bpress release\b|\bnews release\b/.test(goalLower);
+  return PRESS_RELEASE_RE.test(goalLower);
 }
+
+/** Matches press-release / news-release mentions in text. */
+export const PRESS_RELEASE_RE = /\bpress release\b|\bnews release\b/i;
+
+/** Matches NIH non-release content signals (research matters, fact sheets, topic pages). */
+export const NON_RELEASE_CONTENT_RE = /\bnih research matters\b|\bnews in health\b|\bcatalyst\b|\bfact sheet\b|\bwhat causes\b|\bwhat are the signs\b|\btreated\b/i;
+
+/** Matches URL path patterns typical of non-release content pages. */
+export const NON_RELEASE_URL_RE = /\/nih-research-matters\/|\/science-updates\/|\/health\/|\/research\/|\/blog\//i;
 
 export function looksLikeSearchResultsPage(state: PageState): boolean {
   const haystack = `${state.url}\n${state.title}\n${state.snapshot}`.toLowerCase();

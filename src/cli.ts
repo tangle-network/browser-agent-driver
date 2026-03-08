@@ -655,7 +655,40 @@ async function main(): Promise<void> {
       viewport,
       recordVideo: { dir: videoDir, size: viewport },
       storageState: storageStatePath,
+      locale: 'en-US',
+      timezoneId: 'America/New_York',
+      extraHTTPHeaders: {
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
     });
+    // Stealth: patch navigator properties to reduce automation fingerprint.
+    // This runs in the browser context (not Node), so we use a string to avoid TS issues.
+    await context.addInitScript(`
+      // navigator.plugins — empty in headless, non-empty in real browsers
+      Object.defineProperty(navigator, 'plugins', {
+        get: () => [
+          { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+          { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: '' },
+          { name: 'Native Client', filename: 'internal-nacl-plugin', description: '' },
+        ],
+      });
+      // navigator.languages — must match Accept-Language header
+      Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+      // hardware signals — realistic desktop values
+      Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
+      Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
+      // Ensure window.chrome exists (missing in headless)
+      if (!window.chrome) window.chrome = {};
+      if (!window.chrome.runtime) window.chrome.runtime = { id: undefined };
+      // Patch permissions API for notification checks
+      try {
+        const origQuery = navigator.permissions.query.bind(navigator.permissions);
+        navigator.permissions.query = (params) =>
+          params.name === 'notifications'
+            ? Promise.resolve({ state: 'denied', onchange: null })
+            : origQuery(params);
+      } catch (_) {}
+    `);
     const contextCreateMs = Date.now() - contextStartedAt;
     const pageStartedAt = Date.now();
     const page = await context.newPage();
