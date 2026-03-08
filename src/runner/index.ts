@@ -1,41 +1,48 @@
 /**
- * Runner barrel — backwards-compatible re-export from src/runner/ modules.
- *
- * All existing imports from './runner.js' or '../src/runner.js' continue to work.
+ * Runner barrel — re-exports all public symbols from the runner submodules.
  */
+
+// Core runner
+export { AgentRunner, runAgent } from './runner.js';
+export type { RunnerOptions } from './runner.js';
+
+// Utilities
+export { withRetry } from './utils.js';
+
+// Search guidance
 export {
-  // Core
-  AgentRunner,
-  runAgent,
-
-  // Utilities
-  withRetry,
-
-  // Search guidance
   buildSearchResultsGuidance,
   rankSearchCandidates,
   buildVisibleLinkRecommendation,
   getVisibleLinkRecommendation,
   getRankedVisibleLinkCandidates,
+} from './search-guidance.js';
 
-  // Goal verification
+// Goal verification
+export {
   buildGoalVerificationClaim,
   collectSearchWorkflowEvidence,
   shouldAcceptSearchWorkflowCompletion,
   shouldAcceptScriptBackedCompletion,
   detectCompletionContentTypeMismatch,
+} from './goal-verification.js';
 
-  // Page analysis
+// Page analysis
+export {
   detectAiTangleVerifiedOutputState,
   detectAiTanglePartnerTemplateVisibleState,
+} from './page-analysis.js';
 
-  // Scout
+// Scout
+export {
   shouldUseVisibleLinkScout,
   shouldUseVisibleLinkScoutPage,
   shouldUseBoundedBranchExplorer,
   scoreBranchPreview,
+} from './scout.js';
 
-  // Overrides
+// Overrides
+export {
   chooseVisibleLinkOverride,
   chooseScoutLinkOverride,
   chooseBranchLinkOverride,
@@ -45,6 +52,4 @@ export {
   chooseVisibleNewsReleaseResultOverride,
   chooseVisibleSearchResultOverride,
   chooseExpandableListCompletionOverride,
-} from './runner/index.js';
-
-export type { RunnerOptions } from './runner/index.js';
+} from './overrides.js';
