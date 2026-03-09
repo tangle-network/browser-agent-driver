@@ -134,6 +134,33 @@ Prompt thrash without evaluation discipline.
 
 If a change is not tied to a challenger config, seeded run set, and confidence-aware comparison, it is not research; it is guesswork.
 
+## Cost Optimization Research (2026-03-08)
+
+### Model Routing (Tested, Mixed Results)
+
+Academic systems (RouteLLM, BEST-Route, Select-then-Route) report 40-60% cost savings by routing easy tasks to cheap models. In practice for browser agents, this is **counterproductive** because:
+- Cheaper models make worse navigation decisions → more turns → more total tokens
+- The per-token savings are overwhelmed by the turn multiplier
+- Empirically tested: gpt-4.1-mini routing increased total cost by 45-130% vs gpt-5.4 only
+
+Exception: **verification routing works**. Goal verification is a simple yes/no task that gpt-4.1-mini handles as well as gpt-5.4.
+
+### Prompt Caching (Free Win)
+
+OpenAI auto-caches prompts >1024 tokens at 50% input discount (90% with cache hits). Our system prompt is stable, so we benefit automatically. Key: don't embed dynamic content (turn count, timestamps) in the system prompt prefix.
+
+### Observation Compression (Already Implemented)
+
+AgentOccam (Amazon) and similar work on "pivotal node" filtering. Our `budgetSnapshot()` already does this — 16k char cap, interactive-first filtering, same-page budget reduction.
+
+### Multi-Model Decomposition
+
+Surfer-H (H Company, 92.2% WebVoyager at $0.13/task) uses a three-model architecture: policy VLM + localizer + validator. Impressive but requires major architecture changes and our bottleneck is page load time, not LLM inference.
+
+### Plan Caching
+
+Agentic Plan Caching (NeurIPS 2025) reports 50% cost reduction by reusing plan templates from completed executions. Interesting for repeated similar tasks but our trajectory memory already serves a similar role.
+
 ## Research Gaps Competitors Are Not Solving Well
 
 These are the highest-value areas where there is still room to win:

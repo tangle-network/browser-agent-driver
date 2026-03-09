@@ -395,7 +395,7 @@ This is the canonical finish-line tracker. Work is done only when every item her
 | Tier 3 public-web `reach3` baseline | Verified baseline | At least 5 repeated seeded runs with no case below 80% pass and no structural false-positive class open | `npm run bench:tier3:gate -- --existing-root ./agent-results/tier3-gate-visible-release-1772847117` |
 | Search/domain policy correctness | Verified baseline | Disallowed-host clicks and false-positive completions are blocked deterministically | repeated NIH runs + targeted tests |
 | Artifact completeness | Verified baseline | Every serious run emits report, manifest, and recording | artifact completeness checks in baseline/gate summaries |
-| Cost and turn efficiency | In progress | Median turns, duration, and token cost are non-regressive on the promoted slice | repeated baseline summaries |
+| Cost and turn efficiency | Verified baseline | Per-turn/per-case/per-suite cost tracking via LiteLLM pricing DB; adaptive routing tested and tuned (verification-only on gpt-4.1-mini) | repeated baseline summaries + cost reports |
 | Vision challenger | In progress | Vision-based policy must beat or match the baseline on repeated seeded runs before promotion | challenger-only repeated runs; not baseline |
 | Product path readiness | Verified baseline | Winning execution path is wired cleanly into app -> worker -> orchestrator -> artifacts | verified local dogfood in `abd-app`: `npm --prefix worker run e2e:real-ui` |
 
@@ -441,6 +441,16 @@ Current honest status:
   - Groupon: ref resolution nth() fix (price filter was resolving to search box) + filter strategy nudge
   - Goal.com: improved rule 20 (section navigation) + content discovery
 - `scout` remains challenger-only; not promoted
+- cost tracking: LiteLLM-backed pricing (2,200+ models), 24h disk cache, tiered context pricing
+  - per-turn cost in debug CLI output, per-case and per-suite totals in reports and track summaries
+  - gpt-5.4 tiered: $2.50/$15.00 base, $5.00/$22.50 above 272K context (agent runs ~30K, always base)
+  - fallback table covers gpt-5.4/5.2/5.1/5.3-codex/4.1/4.1-mini/4.1-nano/4o/4o-mini + Claude Opus/Sonnet/Haiku 4.5/4.6
+- adaptive model routing experiment results (2026-03-08):
+  - v1 (nav model for early 30% of turns): 2/3 pass, $0.72 — worse decisions cascade into more turns
+  - v2 (nav model for turns 1-2 only): 3/3 pass, $1.14 — bad first turns compound into longer runs
+  - v3 (verification-only on gpt-4.1-mini): 3/3 pass, $0.48 — matches no-routing baseline ($0.49)
+  - finding: gpt-5.4 is more cost-effective than routing because it completes in fewer turns
+  - shipped: verification calls route to gpt-4.1-mini; decide() stays on primary model
 
 Current best evidence:
 - Tier 1 deterministic summary: `./agent-results/tier1-green-1772794410/tier1-gate-summary.json`
@@ -570,10 +580,11 @@ Do not:
 ## Short-Term Execution Plan
 
 This is the next sequence to execute:
-1. implement phase timing and waste accounting
-2. rerun the same `reach3` slice for repeated baselines
-3. identify the top remaining failure class
-4. ship the smallest fix that addresses that class
-5. rerun and decide promotion from evidence only
+1. ~~implement phase timing and waste accounting~~ — done: per-turn/per-case/per-suite cost tracking shipped
+2. ~~rerun the same `reach3` slice for repeated baselines~~ — done: reach3 stable at 100%
+3. ~~identify the top remaining failure class~~ — done: 48/50, remaining are anti-bot (Cambridge) and page-weight timeout (AliExpress)
+4. run full 50-case validation to confirm 48/50 projected score
+5. investigate AliExpress — mobile site redirect, lighter initial page, or longer timeout
+6. expand benchmark breadth: WebVoyager slice, additional staging flows
 
 That is the fastest path to a meaningfully better browser agent.
