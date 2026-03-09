@@ -3,7 +3,7 @@ name: Publish NPM
 on:
   push:
     tags:
-      - 'agent-browser-driver-v*'
+      - 'browser-agent-driver-v*'
   workflow_dispatch:
     inputs:
       version:
@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   publish:
-    if: github.repository == 'tangle-network/agent-browser-driver'
+    if: github.repository == 'tangle-network/browser-agent-driver'
     runs-on: ubuntu-latest
     env:
       NODE_AUTH_TOKEN: ''
@@ -52,14 +52,14 @@ jobs:
       - name: Validate publish target
         id: validate
         run: |
-          PKG_NAME="@tangle-network/agent-browser-driver"
+          PKG_NAME="@tangle-network/browser-agent-driver"
           PKG_VERSION="$(node -p "require('./package.json').version")"
           EXPECTED_VERSION=""
 
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             EXPECTED_VERSION="${{ github.event.inputs.version }}"
-          elif [ "${GITHUB_REF_TYPE}" = "tag" ] && [[ "${GITHUB_REF_NAME}" == agent-browser-driver-v* ]]; then
-            EXPECTED_VERSION="${GITHUB_REF_NAME#agent-browser-driver-v}"
+          elif [ "${GITHUB_REF_TYPE}" = "tag" ] && [[ "${GITHUB_REF_NAME}" == browser-agent-driver-v* ]]; then
+            EXPECTED_VERSION="${GITHUB_REF_NAME#browser-agent-driver-v}"
           fi
 
           if [ -z "${EXPECTED_VERSION}" ]; then

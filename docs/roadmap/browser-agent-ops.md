@@ -1,6 +1,6 @@
 # Browser Agent Ops
 
-Canonical operating roadmap for `agent-browser-driver`.
+Canonical operating roadmap for `browser-agent-driver`.
 
 This is the single planning document for:
 - mission
@@ -11,9 +11,9 @@ This is the single planning document for:
 - execution order
 - immediate priorities
 
-Use [RELIABILITY.md](/Users/drew/webb/agent-browser-driver/RELIABILITY.md) for the day-to-day run loop.
-Use [competitor-analysis-2026-03.md](/Users/drew/webb/agent-browser-driver/docs/research/competitor-analysis-2026-03.md) for external reference points.
-Use [README.md](/Users/drew/webb/agent-browser-driver/README.md) for package/API/CLI surface only.
+Use [RELIABILITY.md](/Users/drew/webb/browser-agent-driver/RELIABILITY.md) for the day-to-day run loop.
+Use [competitor-analysis-2026-03.md](/Users/drew/webb/browser-agent-driver/docs/research/competitor-analysis-2026-03.md) for external reference points.
+Use [README.md](/Users/drew/webb/browser-agent-driver/README.md) for package/API/CLI surface only.
 
 ## Mission
 

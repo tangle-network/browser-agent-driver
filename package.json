@@ -1,5 +1,5 @@
 {
-  "name": "@tangle-network/agent-browser-driver",
+  "name": "@tangle-network/browser-agent-driver",
   "version": "0.5.0",
   "description": "LLM-driven browser agent for UI automation, testing, and evaluation",
   "publishConfig": {
@@ -9,7 +9,7 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "agent-driver": "./dist/cli.js"
+    "bad": "./dist/cli.js"
   },
   "exports": {
     ".": {
@@ -68,11 +68,11 @@
   "license": "(MIT OR Apache-2.0)",
   "repository": {
     "type": "git",
-    "url": "https://github.com/tangle-network/agent-browser-driver.git"
+    "url": "https://github.com/tangle-network/browser-agent-driver.git"
   },
-  "homepage": "https://github.com/tangle-network/agent-browser-driver#readme",
+  "homepage": "https://github.com/tangle-network/browser-agent-driver#readme",
   "bugs": {
-    "url": "https://github.com/tangle-network/agent-browser-driver/issues"
+    "url": "https://github.com/tangle-network/browser-agent-driver/issues"
   },
   "engines": {
     "node": ">=18"

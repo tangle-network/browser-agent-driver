@@ -49,7 +49,7 @@ describe('reliability trend', () => {
       '--append-scorecard', scorecardA,
       '--profile', 'tier1',
       '--root', '/tmp/run-a',
-    ], { cwd: '/Users/drew/webb/agent-browser-driver', encoding: 'utf-8' });
+    ], { cwd: path.resolve(import.meta.dirname, '..'), encoding: 'utf-8' });
 
     const stdout = execFileSync('node', [
       'scripts/reliability-trend.mjs',
@@ -57,7 +57,7 @@ describe('reliability trend', () => {
       '--append-scorecard', scorecardB,
       '--profile', 'tier1',
       '--root', '/tmp/run-b',
-    ], { cwd: '/Users/drew/webb/agent-browser-driver', encoding: 'utf-8' });
+    ], { cwd: path.resolve(import.meta.dirname, '..'), encoding: 'utf-8' });
 
     const trend = JSON.parse(stdout);
     expect(trend.filteredEntries).toBe(2);

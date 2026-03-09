@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 
 /**
- * CLI for agent-browser-driver — run agent test cases from the command line.
+ * CLI for browser-agent-driver — run agent test cases from the command line.
  *
  * Usage:
- *   agent-driver run --goal "Sign up" --url http://localhost:3000
- *   agent-driver run --cases ./cases.json --concurrency 4
- *   agent-driver run --cases ./cases.json --sink ./results/ --model claude-sonnet-4-20250514
+ *   bad run --goal "Sign up" --url http://localhost:3000
+ *   bad run --cases ./cases.json --concurrency 4
+ *   bad run --cases ./cases.json --sink ./results/ --model claude-sonnet-4-20250514
  *
  * Designed for sandbox/container execution:
- *   docker run agent-driver run --cases /data/cases.json --sink /output/
+ *   docker run bad run --cases /data/cases.json --sink /output/
  */
 
 import { parseArgs } from 'node:util';
@@ -543,7 +543,7 @@ async function main(): Promise<void> {
   }
 
   if (!quiet && !values.json) {
-    console.log(`agent-driver v${JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf-8')).version}`);
+    console.log(`bad v${JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf-8')).version}`);
     console.log(`Model: ${config.provider}/${config.model} | Browser: ${browserName} | Tests: ${cases.length} | Concurrency: ${concurrency}`);
     if (mode) console.log(`Mode: ${mode}`);
     if (driverConfig.profile && driverConfig.profile !== 'default') {
@@ -646,16 +646,28 @@ async function main(): Promise<void> {
       ? firefox
       : browserName === 'webkit'
         ? webkit
-        : chromium;
+        : chromium
 
-    const browserLaunchStartedAt = Date.now();
-    browser = await browserType.launch({
-      headless: launchPlan.headless,
-      ...(browserName === 'chromium' ? { args: launchPlan.browserArgs } : {}),
-      // Use system Chrome for stealth profiles — real TLS/JA3 fingerprint vs bundled Chromium
-      ...(isStealthProfile && browserName === 'chromium' ? { channel: 'chrome' } : {}),
-    });
-    launchDiagnostics.browserLaunchMs = Date.now() - browserLaunchStartedAt;
+    if (process.env.BROWSER_ENDPOINT) {
+      const endpoint = process.env.BROWSER_ENDPOINT
+      const browserLaunchStartedAt = Date.now()
+      // CDP endpoint (chrome, android-chrome) vs Playwright endpoint (firefox, webkit)
+      if (browserName === 'chromium' || endpoint.includes('/devtools/')) {
+        browser = await chromium.connectOverCDP(endpoint)
+      } else {
+        browser = await browserType.connect(endpoint)
+      }
+      launchDiagnostics.browserLaunchMs = Date.now() - browserLaunchStartedAt
+    } else {
+      const browserLaunchStartedAt = Date.now()
+      browser = await browserType.launch({
+        headless: launchPlan.headless,
+        ...(browserName === 'chromium' ? { args: launchPlan.browserArgs } : {}),
+        // Use system Chrome for stealth profiles — real TLS/JA3 fingerprint vs bundled Chromium
+        ...(isStealthProfile && browserName === 'chromium' ? { channel: 'chrome' } : {}),
+      })
+      launchDiagnostics.browserLaunchMs = Date.now() - browserLaunchStartedAt
+    }
   }
 
   const driverFactory = async () => {
@@ -883,25 +895,25 @@ async function main(): Promise<void> {
 
 function printHelp(): void {
   console.log(`
-agent-driver — LLM-driven browser automation CLI
+bad — LLM-driven browser automation CLI
 
 USAGE:
-  agent-driver run [options]
+  bad run [options]
 
 SINGLE TASK:
-  agent-driver run --goal "Sign up for account" --url http://localhost:3000
-  agent-driver run -g "Build a todo app" -u http://localhost:5173 -m claude-sonnet-4-20250514
-  agent-driver run --goal "Create Coinbase blueprint and verify preview" --url https://ai.tangle.tools --persona alice-blueprint-builder
-  agent-driver run --goal "Create partner project and verify preview works" --url https://ai.tangle.tools --persona auto
-  agent-driver run --goal "Explore key routes quickly" --url https://example.com --mode fast-explore
+  bad run --goal "Sign up for account" --url http://localhost:3000
+  bad run -g "Build a todo app" -u http://localhost:5173 -m claude-sonnet-4-20250514
+  bad run --goal "Create Coinbase blueprint and verify preview" --url https://ai.tangle.tools --persona alice-blueprint-builder
+  bad run --goal "Create partner project and verify preview works" --url https://ai.tangle.tools --persona auto
+  bad run --goal "Explore key routes quickly" --url https://example.com --mode fast-explore
 
 TEST SUITE:
-  agent-driver run --cases ./cases.json --concurrency 4
-  agent-driver run --cases ./cases.json --sink ./results/ --model gpt-5.4
+  bad run --cases ./cases.json --concurrency 4
+  bad run --cases ./cases.json --sink ./results/ --model gpt-5.4
 
 DOCKER:
   docker run -v ./cases.json:/data/cases.json -v ./out:/output \\
-    agent-driver run --cases /data/cases.json --sink /output/
+    bad run --cases /data/cases.json --sink /output/
 
 OPTIONS:
       --config <path>         Path to config file (default: auto-detect)

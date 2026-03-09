@@ -134,7 +134,7 @@ Disable with `ABD_BENCHMARK_SYNC=0`. Manual import:
 
 ```bash
 cd ../abd-app/worker
-npm run bench:import-local -- --path ../../agent-browser-driver/agent-results/<run-dir>
+npm run bench:import-local -- --path ../../browser-agent-driver/agent-results/<run-dir>
 ```
 
 ## Promotion Rules

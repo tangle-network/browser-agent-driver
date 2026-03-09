@@ -14,7 +14,7 @@ import { join } from 'node:path';
 const LITELLM_PRICING_URL =
   'https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json';
 
-const CACHE_PATH = join(tmpdir(), 'agent-browser-driver-model-pricing.json');
+const CACHE_PATH = join(tmpdir(), 'browser-agent-driver-model-pricing.json');
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 export interface ModelPricing {

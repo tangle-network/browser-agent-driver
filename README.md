@@ -1,4 +1,4 @@
-# @tangle-network/agent-browser-driver
+# @tangle-network/browser-agent-driver
 
 LLM-driven browser automation. Reads page state via accessibility tree, decides actions via LLM, executes in a loop until the goal is done.
 
@@ -7,7 +7,7 @@ LLM-driven browser automation. Reads page state via accessibility tree, decides 
 ## Install
 
 ```bash
-pnpm add @tangle-network/agent-browser-driver
+pnpm add @tangle-network/browser-agent-driver
 pnpm add -D playwright
 ```
 
@@ -17,7 +17,7 @@ pnpm add -D playwright
 
 ```typescript
 import { chromium } from 'playwright'
-import { PlaywrightDriver, AgentRunner } from '@tangle-network/agent-browser-driver'
+import { PlaywrightDriver, AgentRunner } from '@tangle-network/browser-agent-driver'
 
 const browser = await chromium.launch()
 const page = await browser.newPage()
@@ -42,28 +42,28 @@ await browser.close()
 
 ```bash
 # single task
-agent-driver run --goal "Sign up for account" --url http://localhost:3000
+bad run --goal "Sign up for account" --url http://localhost:3000
 
 # test suite from case file
-agent-driver run --cases ./cases.json
+bad run --cases ./cases.json
 
 # authenticated session
-agent-driver run --goal "Open settings" --url https://app.example.com \
+bad run --goal "Open settings" --url https://app.example.com \
   --storage-state ./.auth/session.json
 
 # speed-optimized mode
-agent-driver run --cases ./cases.json --mode fast-explore
+bad run --cases ./cases.json --mode fast-explore
 
 # evidence-rich mode for signoff
-agent-driver run --cases ./cases.json --mode full-evidence
+bad run --cases ./cases.json --mode full-evidence
 ```
 
 ## Config File
 
-Create `agent-browser-driver.config.ts` in your project root:
+Create `browser-agent-driver.config.ts` in your project root:
 
 ```typescript
-import { defineConfig } from '@tangle-network/agent-browser-driver'
+import { defineConfig } from '@tangle-network/browser-agent-driver'
 
 export default defineConfig({
   model: 'gpt-5.4',
@@ -81,7 +81,7 @@ Auto-detected by CLI and programmatic API. CLI flags override config values. Sup
 ## Test Suites
 
 ```typescript
-import { TestRunner } from '@tangle-network/agent-browser-driver'
+import { TestRunner } from '@tangle-network/browser-agent-driver'
 
 const suite = await runner.runSuite([
   {
@@ -133,7 +133,7 @@ npm run skills:install
 
 ## Publishing
 
-Tag-triggered via `.github/workflows/publish-npm.yml`. Push `agent-browser-driver-vX.Y.Z` to publish.
+Tag-triggered via `.github/workflows/publish-npm.yml`. Push `browser-agent-driver-vX.Y.Z` to publish.
 
 ## Development
 

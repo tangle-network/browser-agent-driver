@@ -6,20 +6,20 @@ Default provider is `openai` with `gpt-5.4`.
 
 ```bash
 export OPENAI_API_KEY=sk-...
-agent-driver run --goal "..." --url https://...
+bad run --goal "..." --url https://...
 ```
 
 Custom endpoint (LiteLLM, Azure, etc.):
 
 ```bash
-agent-driver run --goal "..." --url https://... --base-url http://localhost:4000/v1
+bad run --goal "..." --url https://... --base-url http://localhost:4000/v1
 ```
 
 ## Anthropic
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...
-agent-driver run --goal "..." --url https://... --provider anthropic --model claude-sonnet-4-6
+bad run --goal "..." --url https://... --provider anthropic --model claude-sonnet-4-6
 ```
 
 ## Codex CLI
@@ -28,7 +28,7 @@ Uses AI SDK v6 via [`ai-sdk-provider-codex-cli`](https://github.com/ben-vargas/a
 
 ```bash
 codex login
-agent-driver run --goal "..." --url https://... --provider codex-cli --model gpt-5
+bad run --goal "..." --url https://... --provider codex-cli --model gpt-5
 ```
 
 - Uses `codex login` auth or `OPENAI_API_KEY` fallback.
@@ -41,7 +41,7 @@ Uses the local `claude` CLI via `ai-sdk-provider-claude-code`. Useful for subscr
 
 ```bash
 claude login
-agent-driver run --goal "..." --url https://... --provider claude-code
+bad run --goal "..." --url https://... --provider claude-code
 ```
 
 - Uses `claude login` auth or `ANTHROPIC_API_KEY` fallback.
@@ -53,7 +53,7 @@ agent-driver run --goal "..." --url https://... --provider claude-code
 Native sidecar-runtime path for `agent-dev-container` environments.
 
 ```bash
-agent-driver run --goal "..." --url https://... \
+bad run --goal "..." --url https://... \
   --provider sandbox-backend \
   --sandbox-backend-type claude-code \
   --model sonnet

@@ -2,10 +2,10 @@
 
 ## Config File
 
-Create `agent-browser-driver.config.ts` in your project root:
+Create `browser-agent-driver.config.ts` in your project root:
 
 ```typescript
-import { defineConfig } from '@tangle-network/agent-browser-driver'
+import { defineConfig } from '@tangle-network/browser-agent-driver'
 
 export default defineConfig({
   model: 'gpt-5.4',

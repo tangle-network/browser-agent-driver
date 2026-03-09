@@ -3,7 +3,7 @@
 ## Report Formats
 
 ```typescript
-import { generateReport } from '@tangle-network/agent-browser-driver'
+import { generateReport } from '@tangle-network/browser-agent-driver'
 
 generateReport(suiteResult, { format: 'json' })      // full TestSuiteResult
 generateReport(suiteResult, { format: 'markdown' })   // summary + per-test table
@@ -18,7 +18,7 @@ JUnit XML is parsed natively by GitHub Actions, Jenkins, and GitLab. Tests group
 ### FilesystemSink
 
 ```typescript
-import { FilesystemSink } from '@tangle-network/agent-browser-driver'
+import { FilesystemSink } from '@tangle-network/browser-agent-driver'
 
 const sink = new FilesystemSink('./results')
 // writes: results/{testId}/turn-05.jpg, results/manifest.json
@@ -29,7 +29,7 @@ const sink = new FilesystemSink('./results')
 POST artifact events to Slack, Discord, or any URL:
 
 ```typescript
-import { WebhookSink } from '@tangle-network/agent-browser-driver'
+import { WebhookSink } from '@tangle-network/browser-agent-driver'
 
 const sink = new WebhookSink({
   url: 'https://hooks.slack.com/services/...',
@@ -51,7 +51,7 @@ Webhook failures are logged, never thrown.
 Chain multiple sinks:
 
 ```typescript
-import { CompositeSink, FilesystemSink, WebhookSink } from '@tangle-network/agent-browser-driver'
+import { CompositeSink, FilesystemSink, WebhookSink } from '@tangle-network/browser-agent-driver'
 
 const sink = new CompositeSink([
   new FilesystemSink('./results'),

@@ -1,7 +1,7 @@
 /**
- * Configuration system for agent-browser-driver.
+ * Configuration system for browser-agent-driver.
  *
- * Supports config files (agent-browser-driver.config.ts/js/mjs),
+ * Supports config files (browser-agent-driver.config.ts/js/mjs),
  * programmatic config via defineConfig(), and CLI flag overrides.
  */
 
@@ -202,14 +202,14 @@ export function defineTests(tests: TestCase[]): TestCase[] {
 }
 
 const CONFIG_FILENAMES = [
-  'agent-browser-driver.config.ts',
-  'agent-browser-driver.config.js',
-  'agent-browser-driver.config.mjs',
+  'browser-agent-driver.config.ts',
+  'browser-agent-driver.config.js',
+  'browser-agent-driver.config.mjs',
 ];
 
 /**
  * Load config from a file. Searches CWD and parent directories for
- * agent-browser-driver.config.{ts,js,mjs}. Returns defaults if no config found.
+ * browser-agent-driver.config.{ts,js,mjs}. Returns defaults if no config found.
  */
 export async function loadConfig(configPath?: string): Promise<DriverConfig> {
   const resolved = configPath

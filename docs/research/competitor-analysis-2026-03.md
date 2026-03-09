@@ -1,10 +1,10 @@
 # Browser-Agent Competitive Analysis (2026-03)
 
-Purpose: keep a durable, repo-local record of what strong external browser-agent systems are doing well, where they are weak, and which ideas are worth copying into `agent-browser-driver`.
+Purpose: keep a durable, repo-local record of what strong external browser-agent systems are doing well, where they are weak, and which ideas are worth copying into `browser-agent-driver`.
 
 ## Bottom Line
 
-`agent-browser-driver` should not be replaced by a third-party agent framework.
+`browser-agent-driver` should not be replaced by a third-party agent framework.
 
 It should copy the strongest proven techniques from the market while preserving its own advantages:
 - tight Playwright control
@@ -209,7 +209,7 @@ Opportunity:
 
 These should be treated as current product direction, not brainstorms.
 
-1. Keep `agent-browser-driver` as the core execution/eval engine.
+1. Keep `browser-agent-driver` as the core execution/eval engine.
 2. Build a minimal layered control loop: actor -> scout -> verifier -> supervisor.
 3. Keep scout narrow: ambiguous link/result ranking only, no new action surface.
 4. Make the supervisor vision-aware when screenshots exist.

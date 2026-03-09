@@ -1,5 +1,5 @@
 /**
- * @tangle-network/agent-browser-driver
+ * @tangle-network/browser-agent-driver
  *
  * LLM-driven browser agent for UI automation, testing, and evaluation.
  * Built on Playwright with accessibility tree observation, planning,

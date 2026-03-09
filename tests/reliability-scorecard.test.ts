@@ -49,7 +49,7 @@ describe('reliability scorecard', () => {
       'node',
       ['scripts/reliability-scorecard.mjs', '--root', root],
       {
-        cwd: '/Users/drew/webb/agent-browser-driver',
+        cwd: path.resolve(import.meta.dirname, '..'),
         encoding: 'utf-8',
       },
     );

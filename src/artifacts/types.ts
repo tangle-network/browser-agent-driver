@@ -2,7 +2,7 @@
  * Artifact pipeline types — pluggable storage for test artifacts.
  *
  * Artifacts flow through an ArtifactSink interface that can be backed by
- * filesystem, S3, R2, or any custom storage. The agent-driver package
+ * filesystem, S3, R2, or any custom storage. The bad package
  * ships FilesystemSink; cloud sinks live in consumer repos.
  */
 

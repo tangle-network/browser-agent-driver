@@ -1,10 +1,10 @@
-# agent-driver — prebuilt sandbox image for LLM-driven browser automation
+# bad — prebuilt sandbox image for LLM-driven browser automation
 #
 # Usage:
-#   docker build -t agent-driver .
-#   docker run -e OPENAI_API_KEY=sk-... agent-driver run --goal "Sign up" --url http://host.docker.internal:3000
+#   docker build -t bad .
+#   docker run -e OPENAI_API_KEY=sk-... bad run --goal "Sign up" --url http://host.docker.internal:3000
 #   docker run -v ./cases.json:/data/cases.json -v ./out:/output \
-#     agent-driver run --cases /data/cases.json --sink /output/ --concurrency 4
+#     bad run --cases /data/cases.json --sink /output/ --concurrency 4
 
 FROM mcr.microsoft.com/playwright:v1.58.2-noble
 

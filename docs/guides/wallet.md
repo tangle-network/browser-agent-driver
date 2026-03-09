@@ -5,7 +5,7 @@ For browser extension flows (MetaMask, Rabby, etc.), use persistent Chromium con
 ## Config
 
 ```typescript
-import { defineConfig } from '@tangle-network/agent-browser-driver'
+import { defineConfig } from '@tangle-network/browser-agent-driver'
 
 export default defineConfig({
   headless: false,
@@ -27,7 +27,7 @@ export default defineConfig({
 ## CLI
 
 ```bash
-agent-driver run \
+bad run \
   --cases ./wallet-cases.json \
   --wallet \
   --extension ./extensions/metamask \

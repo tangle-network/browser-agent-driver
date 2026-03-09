@@ -15,11 +15,11 @@ Use this skill when you need real, non-mocked browser-agent testing with reprodu
 
 ## Baseline Matrix Pattern
 1. Control:
-`agent-driver run --cases ... --model gpt-5.2`
+`bad run --cases ... --model gpt-5.2`
 2. Adaptive:
-`agent-driver run --cases ... --model gpt-5.2 --model-adaptive --nav-model gpt-5-mini`
+`bad run --cases ... --model gpt-5.2 --model-adaptive --nav-model gpt-5-mini`
 3. Adaptive + memory:
-`agent-driver run --cases ... --model gpt-5.2 --model-adaptive --nav-model gpt-5-mini --memory --trace-scoring`
+`bad run --cases ... --model gpt-5.2 --model-adaptive --nav-model gpt-5-mini --memory --trace-scoring`
 
 ## Memory Experiment Rules
 - Never reuse the same memory directory across control and non-memory arms.

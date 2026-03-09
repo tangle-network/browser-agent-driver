@@ -1,6 +1,6 @@
 # Reliability Runbook
 
-Canonical strategy, promotion policy, and roadmap live in [docs/roadmap/browser-agent-ops.md](/Users/drew/webb/agent-browser-driver/docs/roadmap/browser-agent-ops.md).
+Canonical strategy, promotion policy, and roadmap live in [docs/roadmap/browser-agent-ops.md](/Users/drew/webb/browser-agent-driver/docs/roadmap/browser-agent-ops.md).
 This file is the execution runbook only.
 
 Goal: drive task completion to 100% on scoped benchmark tiers with minimal complexity.

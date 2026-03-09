@@ -120,7 +120,7 @@ describe('loadConfig', () => {
   });
 
   it('loads config from an explicit .ts path that uses defineConfig', async () => {
-    const configPath = path.join(tmpDir, 'agent-browser-driver.config.ts');
+    const configPath = path.join(tmpDir, 'browser-agent-driver.config.ts');
     fs.writeFileSync(
       configPath,
       [
@@ -149,12 +149,12 @@ describe('loadConfig', () => {
     expect(config.headless).toBe(true);
   });
 
-  it('auto-discovers agent-browser-driver.config.ts from parent directories', async () => {
+  it('auto-discovers browser-agent-driver.config.ts from parent directories', async () => {
     const projectRoot = path.join(tmpDir, 'project');
     const nestedDir = path.join(projectRoot, 'packages', 'web');
     fs.mkdirSync(nestedDir, { recursive: true });
 
-    const configPath = path.join(projectRoot, 'agent-browser-driver.config.ts');
+    const configPath = path.join(projectRoot, 'browser-agent-driver.config.ts');
     fs.writeFileSync(
       configPath,
       [

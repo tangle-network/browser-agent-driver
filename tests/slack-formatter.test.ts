@@ -21,7 +21,7 @@ describe('slackFormatter', () => {
 
     // Header block
     expect(result.blocks![0].type).toBe('header');
-    expect(result.blocks![0].text!.text).toBe('agent-browser-driver');
+    expect(result.blocks![0].text!.text).toBe('browser-agent-driver');
 
     // Summary text should mention pass/fail
     const summaryBlock = result.blocks![1];

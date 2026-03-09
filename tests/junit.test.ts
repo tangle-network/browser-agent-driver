@@ -70,7 +70,7 @@ describe('generateJUnitXml', () => {
     const xml = generateJUnitXml(suite);
 
     expect(xml).toContain('<?xml version="1.0" encoding="UTF-8"?>');
-    expect(xml).toContain('<testsuites name="agent-browser-driver"');
+    expect(xml).toContain('<testsuites name="browser-agent-driver"');
     expect(xml).toContain('</testsuites>');
   });
 

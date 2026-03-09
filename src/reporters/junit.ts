@@ -23,7 +23,7 @@ export function generateJUnitXml(suite: TestSuiteResult): string {
   const lines: string[] = [];
   lines.push('<?xml version="1.0" encoding="UTF-8"?>');
   lines.push(
-    `<testsuites name="agent-browser-driver" tests="${summary.total}" failures="${summary.failed}" errors="0" skipped="${summary.skipped}" time="${totalTimeSeconds}">`,
+    `<testsuites name="browser-agent-driver" tests="${summary.total}" failures="${summary.failed}" errors="0" skipped="${summary.skipped}" time="${totalTimeSeconds}">`,
   );
 
   // Group by category (or "default" if none)

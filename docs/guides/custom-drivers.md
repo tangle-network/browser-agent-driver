@@ -3,7 +3,7 @@
 Implement the `Driver` interface to use a non-Playwright browser backend:
 
 ```typescript
-import type { Driver, PageState, Action, ActionResult } from '@tangle-network/agent-browser-driver'
+import type { Driver, PageState, Action, ActionResult } from '@tangle-network/browser-agent-driver'
 import type { Page } from 'playwright'
 
 class MyDriver implements Driver {

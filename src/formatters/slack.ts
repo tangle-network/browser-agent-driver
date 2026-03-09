@@ -51,7 +51,7 @@ function formatSuiteComplete(payload: Extract<WebhookPayload, { event: 'suite:co
   const blocks: SlackBlock[] = [
     {
       type: 'header',
-      text: { type: 'plain_text', text: 'agent-browser-driver', emoji: true },
+      text: { type: 'plain_text', text: 'browser-agent-driver', emoji: true },
     },
     {
       type: 'section',
