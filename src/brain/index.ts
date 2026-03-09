@@ -495,6 +495,11 @@ export class Brain {
   /**
    * Compact conversation history: strip ELEMENTS blocks and screenshots
    * from all but the most recent observation.
+   *
+   * Note: Aggressive one-line compression was tested (2026-03-08) and found
+   * counterproductive — the agent loses context about visited pages and
+   * wastes turns revisiting them. The current approach (strip snapshots,
+   * keep full text) is the empirically best balance.
    */
   private compactHistory(): ModelMessage[] {
     if (this.history.length === 0) return [];
@@ -558,12 +563,22 @@ export class Brain {
       ? compactFirstTurnSnapshot(state.snapshot)
       : budgetSnapshot(state.snapshot, snapshotBudget);
     this.lastDecisionUrl = state.url;
-    let textContent = `GOAL: ${goal}`;
+
+    // Build user message with stable prefix (GOAL) for prompt caching,
+    // then dynamic per-turn content (turn budget, page state, elements).
+    let textContent = `GOAL: ${goal}
+
+CURRENT PAGE:
+URL: ${state.url}
+Title: ${state.title}
+
+ELEMENTS:
+${visibleSnapshot}`;
 
     if (turnInfo) {
       const remaining = turnInfo.max - turnInfo.current;
       const budgetUsed = turnInfo.current / turnInfo.max;
-      textContent += `\nTURN: ${turnInfo.current}/${turnInfo.max} (${remaining} remaining)`;
+      textContent += `\n\nTURN: ${turnInfo.current}/${turnInfo.max} (${remaining} remaining)`;
       if (remaining === 1) {
         textContent += ` — FINAL TURN: return a terminal action only (complete or abort)`;
       } else if (remaining <= 3) {
@@ -572,15 +587,6 @@ export class Brain {
         textContent += ` — HALF BUDGET USED. If you have extracted useful data, try completing now. Do not navigate away from pages with relevant content without attempting completion first`;
       }
     }
-
-    textContent += `
-
-CURRENT PAGE:
-URL: ${state.url}
-Title: ${state.title}
-
-ELEMENTS:
-${visibleSnapshot}`;
 
     // Append snapshot diff when available and compact (< 30% of full snapshot)
     if (state.snapshotDiff && state.snapshotDiff.length < state.snapshot.length * 0.3) {
