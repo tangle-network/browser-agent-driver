@@ -75,7 +75,7 @@ export interface ArtifactManifestEntry {
 export type ProgressEvent =
   | { type: 'suite:start'; totalTests: number; concurrency: number }
   | { type: 'test:start'; testId: string; testName: string; workerId: number }
-  | { type: 'test:turn'; testId: string; turn: number; action: string; durationMs: number; tokensUsed?: number }
+  | { type: 'test:turn'; testId: string; turn: number; action: string; durationMs: number; tokensUsed?: number; modelUsed?: string }
   | { type: 'test:artifact'; testId: string; artifactType: ArtifactType; uri: string }
   | { type: 'test:complete'; testId: string; passed: boolean; verdict: string; durationMs: number; turnsUsed: number; tokensUsed: number; estimatedCostUsd?: number }
   | { type: 'suite:complete'; passed: number; failed: number; skipped: number; totalMs: number; totalCostUsd?: number; manifestUri?: string };

@@ -237,6 +237,7 @@ export class TestRunner {
             action: turn.action.action,
             durationMs: turn.durationMs,
             tokensUsed: turn.tokensUsed,
+            modelUsed: turn.modelUsed,
           });
 
           if (this.screenshotInterval > 0 && turn.turn % this.screenshotInterval === 0) {

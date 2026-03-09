@@ -296,6 +296,8 @@ export interface Turn {
   inputTokens?: number;
   /** Output (completion) tokens for this turn */
   outputTokens?: number;
+  /** Which model handled this turn (for adaptive routing cost tracking) */
+  modelUsed?: string;
   /** Time taken for this turn in ms */
   durationMs: number;
   /** Error message if turn failed */

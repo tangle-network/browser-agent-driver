@@ -207,6 +207,8 @@ export interface BrainDecision {
   tokensUsed?: number;
   inputTokens?: number;
   outputTokens?: number;
+  /** Which model handled this decision (for cost tracking with adaptive routing) */
+  modelUsed?: string;
 }
 
 export interface QualityEvaluation {
@@ -260,7 +262,8 @@ export class Brain {
     this.provider = config.provider || 'openai';
     this.modelName = config.model || 'gpt-5.4';
     this.adaptiveModelRouting = config.adaptiveModelRouting === true;
-    this.navModelName = config.navModel;
+    // Default nav model to gpt-4.1-mini when adaptive routing is on (9x cheaper output than gpt-5.4)
+    this.navModelName = config.navModel || (this.adaptiveModelRouting ? 'gpt-4.1-mini' : undefined);
     this.navProvider = config.navProvider;
     this.explicitApiKey = config.apiKey;
     this.baseUrl = config.baseUrl;
@@ -431,31 +434,24 @@ export class Brain {
     };
   }
 
+  /**
+   * Classify whether this turn should use the nav (cheap) model for decide().
+   *
+   * Empirically tested: routing early navigation turns to gpt-4.1-mini causes
+   * worse decisions that cascade into longer runs (more turns = more total cost).
+   * gpt-5.4 without routing is cheaper overall because it navigates more efficiently.
+   *
+   * Current strategy: nav model is ONLY used for verification (see verifyGoalCompletion),
+   * not for decide(). The flag is kept for future experiments with better routing signals.
+   */
   private shouldUseNavigationModel(
-    state: PageState,
-    extraContext?: string,
-    turnInfo?: { current: number; max: number },
+    _state: PageState,
+    _extraContext?: string,
+    _turnInfo?: { current: number; max: number },
   ): boolean {
-    if (!this.adaptiveModelRouting || !this.navModelName) return false;
-    if (turnInfo && turnInfo.current > 4) return false;
-
-    const combined = `${extraContext || ''}\n${state.snapshot}`.toLowerCase();
-    const blockerPatterns = [
-      /blocker/,
-      /quota/,
-      /limit reached/,
-      /modal/,
-      /permission/,
-      /verification failed/,
-      /stuck/,
-      /captcha/,
-      /unauthorized/,
-      /forbidden/,
-      /terminal access required/,
-      /subscribe to a plan/,
-      /run failed/,
-    ];
-    return !blockerPatterns.some((p) => p.test(combined));
+    // Disabled for decide() — primary model is more cost-effective overall.
+    // Verification still routes to nav model (separate code path).
+    return false;
   }
 
   /** Reset conversation history (call between scenarios) */
@@ -610,7 +606,7 @@ ${visibleSnapshot}`;
       console.log(`[Brain] Turn ${turnNum} | URL: ${state.url} | Vision: ${usingVision}`);
       if (this.adaptiveModelRouting) {
         const mode = useNavModel ? 'nav-model' : 'primary-model';
-        console.log(`[Brain] Model route: ${mode} (${effectiveProvider}/${effectiveModel})`);
+        console.log(`[Brain] Model route: ${mode} (${effectiveProvider}/${effectiveModel}) turn=${turnInfo?.current}/${turnInfo?.max}`);
       }
     }
 
@@ -648,7 +644,14 @@ ${visibleSnapshot}`;
     }
 
     const parsed = this.parse(raw);
-    return { ...parsed, raw, tokensUsed, inputTokens: result.inputTokens, outputTokens: result.outputTokens };
+    return {
+      ...parsed,
+      raw,
+      tokensUsed,
+      inputTokens: result.inputTokens,
+      outputTokens: result.outputTokens,
+      modelUsed: effectiveModel,
+    };
   }
 
   /**
@@ -815,6 +818,14 @@ Was the goal actually achieved? Analyze the current page state carefully.`;
 
     const userContent = this.buildUserContent(textContent, state.screenshot, true);
 
+    // Verification is a structured yes/no task — use nav model if available
+    const verifyProvider = this.adaptiveModelRouting && this.navModelName
+      ? (this.navProvider || this.provider)
+      : undefined;
+    const verifyModel = this.adaptiveModelRouting && this.navModelName
+      ? this.navModelName
+      : undefined;
+
     const result = await this.generate(
       `You are verifying whether a browser automation agent actually achieved its goal.
 
@@ -841,7 +852,7 @@ Respond with ONLY a JSON object:
       - evidence: specific observations supporting your judgment
       - missing: what's still needed (empty array if achieved)`,
       [{ role: 'user', content: userContent }],
-      undefined,
+      verifyProvider && verifyModel ? { provider: verifyProvider, model: verifyModel } : undefined,
       600,
     );
 

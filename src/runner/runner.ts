@@ -602,7 +602,7 @@ export class AgentRunner {
           this.onPhaseTiming?.('decide', phaseTimings.firstDecideMs);
         }
 
-        let { action, nextActions, raw, reasoning, plan, currentStep, expectedEffect, tokensUsed, inputTokens, outputTokens } = decision;
+        let { action, nextActions, raw, reasoning, plan, currentStep, expectedEffect, tokensUsed, inputTokens, outputTokens, modelUsed } = decision;
 
         // -- 4b. Override pipeline — scored selection of post-decision overrides --
         const overrideCtx: OverrideContext = {
@@ -637,6 +637,7 @@ export class AgentRunner {
           tokensUsed,
           inputTokens,
           outputTokens,
+          modelUsed,
           durationMs: Date.now() - turnStart,
         };
         const executedActions: Action[] = [action];

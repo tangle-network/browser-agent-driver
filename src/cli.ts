@@ -550,7 +550,8 @@ async function main(): Promise<void> {
       console.log(`Profile: ${driverConfig.profile}`);
     }
     if (config.adaptiveModelRouting) {
-      console.log(`Adaptive routing: ON (nav=${config.navProvider || config.provider}/${config.navModel || config.model})`);
+      const effectiveNavModel = config.navModel || 'gpt-4.1-mini';
+      console.log(`Adaptive routing: ON (nav=${config.navProvider || config.provider}/${effectiveNavModel})`);
     }
     console.log(`Output: ${sinkDir}`);
     console.log('');
@@ -800,7 +801,8 @@ async function main(): Promise<void> {
           break;
         case 'test:turn':
           if (debug) {
-            console.log(`    turn ${event.turn}: ${event.action} (${event.durationMs}ms)`);
+            const modelTag = event.modelUsed ? ` [${event.modelUsed}]` : '';
+            console.log(`    turn ${event.turn}: ${event.action} (${event.durationMs}ms)${modelTag}`);
           }
           break;
         case 'test:complete': {
