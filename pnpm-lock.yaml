@@ -23,6 +23,9 @@ importers:
       ffmpeg-static:
         specifier: ^5.3.0
         version: 5.3.0
+      patchright:
+        specifier: 1.58.2
+        version: 1.58.2
     devDependencies:
       '@ai-sdk/anthropic':
         specifier: ^3.0.49
@@ -689,6 +692,16 @@ packages:
 
   parse-cache-control@1.0.1:
     resolution: {integrity: sha512-60zvsJReQPX5/QP0Kzfd/VrpjScIQ7SHBW6bFCYfEP+fp0Eppr1SHhIO5nd1PjZtvclzSzES9D/p5nFJurwfWg==}
+
+  patchright-core@1.58.2:
+    resolution: {integrity: sha512-f3r0u6as+4nd0Vmr4ndH/zwijMHj7ECxelSa5iMeIJPxtLOwbo22LQPC1qjZZtSIhAVzUDStx4nw/BW3MqhJIQ==}
+    engines: {node: '>=18'}
+    hasBin: true
+
+  patchright@1.58.2:
+    resolution: {integrity: sha512-B1pufT2A5uZKL4e5/s2cykUo4RpVupHfJ8eTvuS560D/B7H8McjLzN9n6ruYFIi5/e17WJL428bFMUOEgPL5OQ==}
+    engines: {node: '>=18'}
+    hasBin: true
 
   pathe@2.0.3:
     resolution: {integrity: sha512-WUjGcAqP1gQacoQe+OBJsFA7Ld4DyXuUIjZ5cc75cLHvJ7dtNsTugphxIADwspS+AraAUePCKrSVtPLFj/F88w==}
@@ -1365,6 +1378,14 @@ snapshots:
   obug@2.1.1: {}
 
   parse-cache-control@1.0.1: {}
+
+  patchright-core@1.58.2: {}
+
+  patchright@1.58.2:
+    dependencies:
+      patchright-core: 1.58.2
+    optionalDependencies:
+      fsevents: 2.3.2
 
   pathe@2.0.3: {}
 

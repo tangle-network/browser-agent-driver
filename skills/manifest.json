@@ -11,6 +11,11 @@
       "name": "agent-friendly-app-design",
       "path": "skills/agent-friendly-app-design",
       "description": "How to design app UX/markup that remains fast and robust for general browser agents."
+    },
+    {
+      "name": "stealth-tuning",
+      "path": "skills/stealth-tuning",
+      "description": "How to configure browser stealth profiles, anti-bot evasion, WebDriver suppression, JA3 fingerprinting, and CDP leak patches."
     }
   ]
 }
