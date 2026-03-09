@@ -451,6 +451,15 @@ Current honest status:
   - v3 (verification-only on gpt-4.1-mini): 3/3 pass, $0.48 — matches no-routing baseline ($0.49)
   - finding: gpt-5.4 is more cost-effective than routing because it completes in fewer turns
   - shipped: verification calls route to gpt-4.1-mini; decide() stays on primary model
+- history compression experiment (2026-03-08):
+  - aggressive one-line summaries: COUNTERPRODUCTIVE — agent loses visited-page context, 2x turns
+  - current compactHistory() (strip ELEMENTS, keep full text) is empirically optimal
+- warm memory experiment (2026-03-08, clean A/B with fixed compression):
+  - baseline (no memory): 3/3 pass, 20 turns total, $0.51
+  - cold memory: 3/3 pass, 22 turns, $0.56 (+10% overhead from trajectory storage)
+  - warm memory: 3/3 pass, **16 turns**, $0.49 (Yale 7→5, NIH 11→9 turns)
+  - trajectory matching is the main value: stores successful run paths for reuse
+  - recommend: enable `--memory` for repeated benchmarks, keep `--memory-isolation per-run` for A/B
 
 Current best evidence:
 - Tier 1 deterministic summary: `./agent-results/tier1-green-1772794410/tier1-gate-summary.json`
