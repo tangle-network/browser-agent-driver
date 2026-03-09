@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Agent Browser Driver — general-purpose agentic browser automation.
+Browser Agent Driver (`bad` CLI) — general-purpose agentic browser automation.
 
 ## Gates
 
