@@ -49,7 +49,7 @@ Auto-detected by CLI and programmatic API. CLI flags override config values. Sup
 | `sinks` | `ArtifactSink[]` | — | Custom artifact sinks |
 | `resourceBlocking` | `ResourceBlockingOptions` | — | Block analytics/images/media |
 | `wallet` | `WalletConfig` | — | Extension mode for wallet flows |
-| `memory` | `{ enabled, dir, traceScoring, traceTtlDays }` | disabled | Trajectory memory |
+| `memory` | `{ enabled, dir, traceScoring, traceTtlDays }` | enabled | Trajectory memory |
 | `supervisor` | `SupervisorConfig` | enabled | Hard-stall intervention policy |
 | `projects` | `Array<{ name, config, testDir, testMatch }>` | — | Named project configs |
 

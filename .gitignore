@@ -9,3 +9,4 @@ agent-results/
 .auth/
 audit-results/
 bench/results/
+.agent-memory/

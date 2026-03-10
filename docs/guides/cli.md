@@ -75,17 +75,17 @@ bad run \
 
 ## Trajectory Memory
 
-Reuse successful run trajectories:
+Memory is enabled by default. Successful run trajectories are stored in `.agent-memory/` and reused on subsequent runs to reduce turns and improve reliability.
 
 ```bash
-bad run --cases ./cases.json --memory --memory-dir ./.agent-memory
-```
+# disable memory for a clean run
+bad run --cases ./cases.json --no-memory
 
-With trace scoring:
+# custom memory directory
+bad run --cases ./cases.json --memory-dir ./.my-memory
 
-```bash
-bad run --cases ./cases.json \
-  --memory --trace-scoring --trace-ttl-days 30
+# with trace scoring
+bad run --cases ./cases.json --trace-scoring --trace-ttl-days 30
 ```
 
 ## Personas

@@ -962,7 +962,8 @@ OPTIONS:
       --wallet-seed-url <u>  Preflight URL to authorize/switch-chain (repeatable)
       --wallet-chain-id <n>  Target chain ID for preflight switch/add
       --wallet-chain-rpc-url <u>  RPC URL for preflight wallet_addEthereumChain
-      --memory               Enable trajectory memory reuse
+      --memory               Enable trajectory memory reuse (default: on)
+      --no-memory            Disable trajectory memory
       --memory-dir <dir>     Memory directory (default: .agent-memory)
       --timeout <ms>          Per-test timeout in ms (default: 600000)
   -s, --sink <dir>            Output directory for artifacts (default: ./agent-results)

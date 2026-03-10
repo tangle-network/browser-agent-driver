@@ -7,7 +7,7 @@ Browser Agent Driver (`bad` CLI) — general-purpose agentic browser automation.
 Required before merge:
 - `pnpm lint` — type-check
 - `pnpm check:boundaries` — architecture boundaries
-- `pnpm test` — unit + integration (252 tests)
+- `pnpm test` — unit + integration (549 tests)
 - Tier1 deterministic gate on PRs and `main`
 - Tier2 staging gate when secrets available
 
@@ -20,13 +20,14 @@ Non-goals: over-specializing for a single app; features without measurable compl
 ## Defaults
 
 - Model: `gpt-5.4`. Single-model unless `--model-adaptive` is set.
+- Memory: ON by default. Disable with `--no-memory`.
 - Wallet mode: only when `wallet.enabled=true` or extension paths provided.
 - Evidence: `fast-explore` for iteration, `full-evidence` for release signoff.
 - General-purpose first: Tangle personas/hints are optional, never required.
 
 ## Experiments
 
-Adaptive routing (`--model-adaptive`), trajectory memory (`--memory`, `--trace-scoring`) stay flagged until non-regressive vs control.
+Adaptive routing (`--model-adaptive`), trace scoring (`--trace-scoring`) stay flagged until non-regressive vs control.
 
 ## Benchmark Tiers
 
@@ -75,7 +76,7 @@ Promotion: no pass-rate regression + meaningful latency/token improvement.
 
 ## Rollback
 
-1. Runtime: disable adaptive routing + memory/scoring → control defaults.
+1. Runtime: `--no-memory` + disable adaptive routing → control defaults.
 2. Wallet: restore legacy activation in `src/browser-launch.ts` if needed.
 3. Full: revert feature commit on `main`.
 

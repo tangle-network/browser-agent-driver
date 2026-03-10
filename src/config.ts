@@ -180,7 +180,7 @@ const DEFAULTS: DriverConfig = {
   },
   outputDir: './agent-results',
   reporters: ['json'],
-  memory: { enabled: false, dir: '.agent-memory', traceScoring: false, traceTtlDays: 30 },
+  memory: { enabled: true, dir: '.agent-memory', traceScoring: false, traceTtlDays: 30 },
   supervisor: {
     enabled: true,
     useVision: true,

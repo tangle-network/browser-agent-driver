@@ -2,7 +2,7 @@
 
 LLM-driven browser automation. Reads page state via accessibility tree, decides actions via LLM, executes in a loop until the goal is done.
 
-96% pass rate on WebBench-50. Default model: `gpt-5.4`.
+90% pass rate on WebBench-50. Default model: `gpt-5.4`.
 
 ## Install
 
@@ -111,6 +111,7 @@ Recovery is automatic: cookie consent, modal blockers, stuck loops (A-B-A-B osci
 
 - [Configuration Reference](./docs/guides/configuration.md) — all config options
 - [CLI Reference](./docs/guides/cli.md) — commands, modes, profiles, auth
+- [Memory System](./docs/guides/memory.md) — trajectory store, app knowledge, selector cache
 - [Benchmarks & Experiments](./docs/guides/benchmarks.md) — tiered gates, AB specs, research cycles
 - [Wallet Automation](./docs/guides/wallet.md) — MetaMask, Rabby, extension flows
 - [Providers](./docs/guides/providers.md) — OpenAI, Anthropic, Codex CLI, Claude Code, sandbox backend
