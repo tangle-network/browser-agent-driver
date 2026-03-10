@@ -10,3 +10,7 @@ agent-results/
 audit-results/
 bench/results/
 .agent-memory/
+extensions/
+.agent-wallet-profile/
+.anvil.pid
+mm-*.png

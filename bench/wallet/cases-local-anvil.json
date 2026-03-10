@@ -1,0 +1,51 @@
+[
+  {
+    "id": "wallet-connect-uniswap",
+    "name": "Uniswap: connect wallet",
+    "startUrl": "https://app.uniswap.org",
+    "goal": "Connect the MetaMask wallet to Uniswap by clicking the Connect button in the top right, selecting MetaMask from the wallet list, and approving the connection. Verify the wallet address is visible in the UI after connection.",
+    "maxTurns": 15
+  },
+  {
+    "id": "wallet-swap-uniswap",
+    "name": "Uniswap: initiate swap",
+    "startUrl": "https://app.uniswap.org/#/swap",
+    "goal": "With wallet connected, set up a swap: select ETH as input, select USDC as output, enter 0.01 as the input amount. Wait for the quote to load, then click the Swap or Review button. Stop at the confirmation dialog — do NOT confirm the actual swap transaction. Verify the swap review is visible.",
+    "maxTurns": 20
+  },
+  {
+    "id": "wallet-connect-aave",
+    "name": "Aave: connect wallet",
+    "startUrl": "https://app.aave.com",
+    "goal": "Connect the MetaMask wallet to Aave by clicking the Connect Wallet button and selecting MetaMask. Verify the connected wallet address appears in the header.",
+    "maxTurns": 15
+  },
+  {
+    "id": "wallet-supply-aave",
+    "name": "Aave: supply ETH",
+    "startUrl": "https://app.aave.com",
+    "goal": "With wallet connected, find ETH or WETH in the supply markets list, click Supply, enter 0.01 as the amount, and proceed to the supply confirmation dialog. Stop before confirming the transaction. Verify the supply review shows the correct amount.",
+    "maxTurns": 20
+  },
+  {
+    "id": "wallet-connect-1inch",
+    "name": "1inch: connect wallet",
+    "startUrl": "https://app.1inch.io",
+    "goal": "Connect the MetaMask wallet to 1inch by clicking Connect Wallet and selecting MetaMask. Verify the wallet address is shown in the UI.",
+    "maxTurns": 15
+  },
+  {
+    "id": "wallet-connect-sushiswap",
+    "name": "SushiSwap: connect wallet",
+    "startUrl": "https://www.sushi.com/swap",
+    "goal": "Connect the MetaMask wallet to SushiSwap by clicking Connect Wallet and choosing MetaMask. Verify the connected address appears.",
+    "maxTurns": 15
+  },
+  {
+    "id": "wallet-swap-sushiswap",
+    "name": "SushiSwap: initiate swap",
+    "startUrl": "https://www.sushi.com/swap",
+    "goal": "With wallet connected, set up a swap on SushiSwap: ETH as input, USDC as output, enter 0.01 ETH. Wait for the quote, then click the Swap button. Stop at the confirmation dialog — do NOT confirm. Verify the swap review is visible.",
+    "maxTurns": 20
+  }
+]

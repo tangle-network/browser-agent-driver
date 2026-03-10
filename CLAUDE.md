@@ -74,6 +74,35 @@ Promotion: no pass-rate regression + meaningful latency/token improvement.
 - Supervisor should consume screenshots when available (behind config flag).
 - Outer experiment concurrency `1` for promotion-grade studies.
 
+## Wallet Testing
+
+Wallet validation lives in `bench/wallet/`. Chromium-only (extension APIs are Chromium-specific).
+
+**Setup (one-time):**
+```bash
+pnpm wallet:setup      # download MetaMask extension
+pnpm wallet:onboard    # automate MetaMask first-run wizard
+```
+
+**Running:**
+```bash
+pnpm wallet:anvil      # start Anvil mainnet fork, seed 100 ETH + 10 WETH + 10k USDC
+pnpm wallet:validate   # run all wallet cases
+pnpm wallet:anvil:stop # stop Anvil
+```
+
+**Learned patterns:**
+- MetaMask 13.x onboarding: Welcome → "I have an existing wallet" → "Import using SRP" → SRP textarea → password → analytics → "Open wallet".
+- MetaMask's LavaMoat blocks `page.evaluate()` on extension pages. Use CDP (`DOM.focus`, `Input.insertText`) or coordinate-based `page.mouse.click()` + `page.keyboard.type()`.
+- The SRP textarea is invisible to Playwright locators (LavaMoat scuttling). CDP `DOM.querySelectorAll` with `pierce: true` finds it. Focus via CDP, type via `keyboard.type()` (fires React-compatible input events). `insertText` sets value but doesn't trigger React onChange.
+- "Open wallet" button stays disabled for ~20s during background sync. Force-click or navigate directly to `home.html`.
+- Preflight `eth_requestAccounts` times out on first visit to any dApp — expected. The agent handles wallet connection during test turns.
+- DeFi apps on Anvil fork work because they read state through MetaMask's injected provider, which routes to Anvil.
+- `pnpm exec bad` doesn't work in dev (pnpm doesn't self-link bin entries). Use `node dist/cli.js` directly.
+- Test wallet: `test test test...junk` mnemonic → `0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266`.
+- Seed USDC via storage slot manipulation (`anvil_setStorageAt` on slot 9) — faster than whale impersonation.
+- Wallet connect cases: 4/4 pass (Uniswap, Aave, 1inch, SushiSwap). Supply/swap cases need funded Anvil fork.
+
 ## Rollback
 
 1. Runtime: `--no-memory` + disable adaptive routing → control defaults.
