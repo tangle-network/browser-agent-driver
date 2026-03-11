@@ -97,11 +97,13 @@ pnpm wallet:anvil:stop # stop Anvil
 - The SRP textarea is invisible to Playwright locators (LavaMoat scuttling). CDP `DOM.querySelectorAll` with `pierce: true` finds it. Focus via CDP, type via `keyboard.type()` (fires React-compatible input events). `insertText` sets value but doesn't trigger React onChange.
 - "Open wallet" button stays disabled for ~20s during background sync. Force-click or navigate directly to `home.html`.
 - Preflight `eth_requestAccounts` times out on first visit to any dApp — expected. The agent handles wallet connection during test turns.
-- DeFi apps on Anvil fork work because they read state through MetaMask's injected provider, which routes to Anvil.
+- DeFi dApps use BOTH their own RPC endpoints (Infura, QuikNode, Tenderly, or self-hosted on their own domain like `app.aave.com`) AND MetaMask's injected provider. `context.route('**/*')` with JSON-RPC body check (eth_/net_/web3_ prefixes) intercepts page-level RPC. Content-Type `json` check as fast early exit prevents interfering with non-RPC POST requests. MetaMask's service worker RPC is handled by the LevelDB custom endpoint config.
 - `pnpm exec bad` doesn't work in dev (pnpm doesn't self-link bin entries). Use `node dist/cli.js` directly.
 - Test wallet: `test test test...junk` mnemonic → `0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266`.
 - Seed USDC via storage slot manipulation (`anvil_setStorageAt` on slot 9) — faster than whale impersonation.
-- Wallet connect cases: 4/4 pass (Uniswap, Aave, 1inch, SushiSwap). Supply/swap cases need funded Anvil fork.
+- DeFi validation (2026-03-11): 5/7 pass. Connect: 5/5 (Uniswap, Aave, 1inch, SushiSwap). Swap/supply: Uniswap swap passes, Aave supply and SushiSwap swap fail on UI navigation (not infra).
+- MetaMask RPC config: MUST keep `networkClientId: "mainnet"` as `type: "infura"` — changing breaks MetaMask ("No Infura network client found"). Instead ADD a new `type: "custom"` endpoint with UUID clientId alongside Infura, set as default. Modify LevelDB at `.agent-wallet-profile/Default/Local Extension Settings/<extId>/` using `classic-level`. Key: `NetworkController`. Also update `SelectedNetworkController.domains`.
+- Setup order: `pnpm wallet:setup && pnpm wallet:onboard && pnpm wallet:anvil && pnpm wallet:configure && pnpm wallet:validate`.
 
 ## Rollback
 

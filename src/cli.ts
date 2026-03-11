@@ -16,7 +16,7 @@ import { parseArgs } from 'node:util';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { spawn } from 'node:child_process';
-import type { BrowserContext } from 'playwright';
+import type { BrowserContext, Route } from 'playwright';
 import { loadConfig, mergeConfig, toAgentConfig } from './config.js';
 import type { DriverConfig } from './config.js';
 import { buildBrowserLaunchPlan } from './browser-launch.js';
@@ -603,6 +603,46 @@ async function main(): Promise<void> {
     await applyStorageStateToPersistentContext(persistentContext, storageStatePath);
 
     const walletConfig = driverConfig.wallet ?? {};
+
+    // Intercept page-level RPC calls to public providers so dApps read
+    // from the local fork instead of mainnet.
+    const walletRpcUrl = walletConfig.preflight?.chain?.rpcUrl;
+    if (walletRpcUrl) {
+      // DApps use their own RPC endpoints for balance/contract reads.
+      // Some use external providers (Infura, Alchemy), others proxy RPC
+      // through their own domain (e.g. app.aave.com → eth_call).
+      // Intercept all page POST requests, check for JSON-RPC body, and
+      // proxy matching calls to the local fork.
+      const rpcMethodPrefixes = ['eth_', 'net_', 'web3_']
+      await persistentContext.route('**/*', async (route: Route) => {
+        if (route.request().method() !== 'POST') { await route.continue(); return }
+        const ct = route.request().headers()['content-type'] ?? ''
+        if (!ct.includes('json')) { await route.continue(); return }
+        const postData = route.request().postData()
+        if (!postData) { await route.continue(); return }
+        try {
+          const body = JSON.parse(postData)
+          const methods: unknown[] = Array.isArray(body)
+            ? body.map((b: Record<string, unknown>) => b.method)
+            : [body.method]
+          const isRpc = methods.some(
+            m => typeof m === 'string' && rpcMethodPrefixes.some(p => m.startsWith(p)),
+          )
+          if (!isRpc) { await route.continue(); return }
+          const res = await fetch(walletRpcUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: postData,
+          })
+          await route.fulfill({
+            status: res.status,
+            contentType: 'application/json',
+            body: await res.text(),
+          })
+        } catch { await route.continue() }
+      })
+    }
+
     const shouldAutoApprove = walletConfig.autoApprove ?? true;
     if (shouldAutoApprove) {
       stopWalletAutoApprover = await startWalletAutoApprover(persistentContext, {
