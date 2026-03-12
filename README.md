@@ -113,7 +113,7 @@ Recovery is automatic: cookie consent, modal blockers, stuck loops (A-B-A-B osci
 - [CLI Reference](./docs/guides/cli.md) — commands, modes, profiles, auth
 - [Memory System](./docs/guides/memory.md) — trajectory store, app knowledge, selector cache
 - [Benchmarks & Experiments](./docs/guides/benchmarks.md) — tiered gates, AB specs, research cycles
-- [Wallet Automation](./docs/guides/wallet.md) — MetaMask, Rabby, extension flows
+- [Wallet & EVM Apps](./docs/guides/wallet.md) — MetaMask, DeFi testing, RPC interception, Anvil forks
 - [Providers](./docs/guides/providers.md) — OpenAI, Anthropic, Codex CLI, Claude Code, sandbox backend
 - [Reporters & Sinks](./docs/guides/reporters.md) — JUnit, HTML, webhooks, custom sinks
 - [Custom Drivers](./docs/guides/custom-drivers.md) — implement the `Driver` interface

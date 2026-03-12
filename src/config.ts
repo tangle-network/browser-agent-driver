@@ -35,6 +35,8 @@ export interface DriverConfig {
   browserArgs?: string[];
   wallet?: {
     enabled?: boolean;
+    /** Wallet address (hex with 0x prefix). Auto-detected from MetaMask if not set. Used for RPC interception. */
+    address?: string;
     extensionPaths?: string[];
     userDataDir?: string;
     autoApprove?: boolean;

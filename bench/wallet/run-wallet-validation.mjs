@@ -130,20 +130,75 @@ if (dryRun) {
   process.exit(0)
 }
 
-// Auto-start Anvil if requested
-if (autoAnvil) {
-  console.log('Starting Anvil fork...')
+// Auto-start Anvil: always for defi suite, or when --anvil is passed
+const needsAnvil = autoAnvil || suite === 'defi' || suite === 'all'
+if (needsAnvil) {
+  // Always restart fresh — stale fork state causes RPC failures
+  console.log('Restarting Anvil fork (fresh state)...')
+  try {
+    execSync(`node ${path.join(__dirname, 'setup-anvil.mjs')} --stop`, {
+      cwd: rootDir,
+      stdio: 'inherit',
+      timeout: 10_000,
+    })
+  } catch { /* may not be running */ }
   try {
     execSync(`node ${path.join(__dirname, 'setup-anvil.mjs')}`, {
       cwd: rootDir,
       stdio: 'inherit',
-      timeout: 60_000,
+      timeout: 120_000,
     })
   } catch (e) {
     console.error('Anvil setup failed:', e.message)
     process.exit(1)
   }
   console.log()
+}
+
+// Start RPC proxy (intercepts MetaMask service worker → Infura traffic)
+const proxyScript = path.join(__dirname, 'rpc-proxy.mjs')
+let proxyProcess = null
+
+function startProxy() {
+  console.log('Starting RPC proxy...')
+  proxyProcess = spawn('node', [proxyScript, '--target', chainRpc], {
+    cwd: rootDir,
+    stdio: 'pipe',
+  })
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('Proxy startup timeout')), 10_000)
+    proxyProcess.stdout.on('data', (data) => {
+      const line = data.toString()
+      process.stdout.write(`  [proxy] ${line}`)
+      if (line.includes('RPC proxy:')) {
+        clearTimeout(timeout)
+        resolve()
+      }
+    })
+    proxyProcess.stderr.on('data', (data) => {
+      process.stderr.write(`  [proxy] ${data}`)
+    })
+    proxyProcess.on('exit', (code) => {
+      if (code) {
+        clearTimeout(timeout)
+        reject(new Error(`Proxy exited with code ${code}`))
+      }
+    })
+  })
+}
+
+function stopProxy() {
+  if (proxyProcess) {
+    proxyProcess.kill('SIGTERM')
+    console.log('Stopped RPC proxy')
+  }
+}
+
+try {
+  await startProxy()
+} catch (e) {
+  console.error('RPC proxy failed to start:', e.message)
+  process.exit(1)
 }
 
 // Write combined cases to a temp file for the CLI
@@ -153,6 +208,7 @@ fs.writeFileSync(tmpCasesPath, JSON.stringify(cases, null, 2))
 
 const cliArgs = [
   path.join(rootDir, 'dist/cli.js'), 'run',
+  '--config', path.join(__dirname, 'wallet.config.ts'),
   '--cases', tmpCasesPath,
   '--model', model,
   '--wallet',
@@ -185,8 +241,12 @@ const child = spawn('node', cliArgs, {
 })
 
 child.on('exit', (code) => {
+  stopProxy()
   console.log()
   console.log(`=== Wallet validation ${code === 0 ? 'PASSED' : 'FINISHED'} (exit ${code}) ===`)
   console.log(`Results: ${outDir}`)
   process.exit(code ?? 1)
 })
+
+process.on('SIGINT', () => { stopProxy(); process.exit(1) })
+process.on('SIGTERM', () => { stopProxy(); process.exit(1) })

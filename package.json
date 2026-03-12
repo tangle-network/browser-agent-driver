@@ -57,6 +57,8 @@
     "wallet:setup": "node ./bench/wallet/setup-extension.mjs",
     "wallet:onboard": "node ./bench/wallet/setup-onboarding.mjs",
     "wallet:configure": "node ./bench/wallet/configure-network.mjs",
+    "wallet:proxy": "node ./bench/wallet/rpc-proxy.mjs",
+    "wallet:proxy:stop": "node ./bench/wallet/rpc-proxy.mjs --stop",
     "wallet:validate": "node ./bench/wallet/run-wallet-validation.mjs",
     "wallet:validate:tangle": "node ./bench/wallet/run-wallet-validation.mjs --suite tangle",
     "wallet:validate:defi": "node ./bench/wallet/run-wallet-validation.mjs --suite defi",

@@ -506,7 +506,32 @@ export function analyzeRecovery(ctx: RecoveryContext): RecoveryAction | null {
   // Strategy 0: Blocker modal/dialog handling — run before stuck detection.
   // Without this, repeated blocked actions often look like generic "stuck".
   const blockingModal = detectBlockingModal(currentState.snapshot);
-  if (blockingModal) {
+  // If a dialog has been present for 3+ consecutive turns and the detection
+  // is generic (no specific strategy like quota/cookie), skip it — likely a
+  // persistent false positive (e.g. embedded support/help widget).
+  const isGenericModal = blockingModal?.strategy === 'modal-dismiss-click'
+    || blockingModal?.strategy === 'modal-present-no-force';
+  if (blockingModal && isGenericModal) {
+    const dialogPattern = /(?:^|\n)\s*-\s*(?:dialog|alertdialog)\b/i;
+    const consecutiveDialogTurns = recentTurns
+      .slice()
+      .reverse()
+      .findIndex((t) => !dialogPattern.test(t.state.snapshot));
+    const dialogPersistCount = consecutiveDialogTurns === -1
+      ? recentTurns.length
+      : consecutiveDialogTurns;
+    // If < 3 turns, still treat as a real blocker
+    if (dialogPersistCount < 3) {
+      return {
+        strategy: blockingModal.strategy,
+        feedback: blockingModal.feedback,
+        forceAction: blockingModal.forceAction,
+        forceBrowserAction: blockingModal.action,
+        waitMs: 500,
+      };
+    }
+    // 3+ turns with same dialog = persistent false positive, fall through
+  } else if (blockingModal) {
     return {
       strategy: blockingModal.strategy,
       feedback: blockingModal.feedback,

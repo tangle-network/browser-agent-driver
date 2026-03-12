@@ -24,7 +24,7 @@
     "id": "wallet-supply-aave",
     "name": "Aave: supply ETH",
     "startUrl": "https://app.aave.com",
-    "goal": "With wallet connected, find ETH or WETH in the supply markets list, click Supply, enter 0.01 as the amount, and proceed to the supply confirmation dialog. Stop before confirming the transaction. Verify the supply review shows the correct amount.",
+    "goal": "With wallet connected, find ETH in the 'Assets to supply' table on the dashboard (not WETH), click its Supply button, enter 0.01 as the amount. Click 'Supply ETH' to proceed. If a supply review/confirmation dialog appears inside Aave (showing the amount and transaction details), verify it shows 0.01 ETH and stop there — do NOT confirm in MetaMask. If MetaMask pops up for approval, that also counts as having reached the supply step.",
     "maxTurns": 20
   },
   {
@@ -44,8 +44,8 @@
   {
     "id": "wallet-swap-sushiswap",
     "name": "SushiSwap: initiate swap",
-    "startUrl": "https://www.sushi.com/swap",
-    "goal": "With wallet connected, set up a swap on SushiSwap: ETH as input, USDC as output, enter 0.01 ETH. Wait for the quote, then click the Swap button. Stop at the confirmation dialog — do NOT confirm. Verify the swap review is visible.",
+    "startUrl": "https://www.sushi.com/swap?chainId=1&token0=NATIVE&token1=0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+    "goal": "With wallet connected, set up a swap on SushiSwap. The URL pre-selects ETH→USDC on the Swap tab. If any cookie banners or support popups appear, dismiss them by pressing Escape or clicking their close/X button — do not click links inside them. Then enter 0.01 as the sell amount. Wait for the quote to load, then click the Swap button. Stop at the confirmation/review dialog — do NOT confirm. Verify the swap review is visible.",
     "maxTurns": 20
   }
 ]

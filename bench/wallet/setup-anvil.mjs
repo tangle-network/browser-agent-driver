@@ -40,11 +40,14 @@ const WETH = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2'
 const ANVIL_PORT = parseInt(getArg('port', '8545'), 10)
 const ANVIL_RPC = `http://127.0.0.1:${ANVIL_PORT}`
 
-// Public RPCs for forking (no API key needed)
+// Public RPCs for forking (no API key needed).
+// drpc.org first — fast and handles complex calls well.
+// publicnode and 1rpc have historical state retention issues.
 const DEFAULT_FORK_URLS = [
+  'https://eth.drpc.org',
+  'https://ethereum-rpc.publicnode.com',
+  'https://1rpc.io/eth',
   'https://eth.llamarpc.com',
-  'https://rpc.ankr.com/eth',
-  'https://ethereum.publicnode.com',
 ]
 
 function isAnvilRunning() {
@@ -159,15 +162,18 @@ if (isAnvilRunning()) {
     stopAnvil()
     process.exit(1)
   }
+
+  // Wait for Anvil to fully initialize (fork state loaded)
+  await new Promise(r => setTimeout(r, 3000))
 }
 
 // Seed test wallet
 console.log(`\nSeeding ${TEST_WALLET}...`)
 
-function cast(args) {
+function cast(args, timeoutMs = 30_000) {
   return execSync(`cast ${args} --rpc-url ${ANVIL_RPC}`, {
     encoding: 'utf-8',
-    timeout: 15_000,
+    timeout: timeoutMs,
     stdio: ['pipe', 'pipe', 'pipe'],
   }).trim()
 }
@@ -207,6 +213,43 @@ try {
 } catch (e) {
   console.error(`  USDC seeding failed: ${e.message}`)
 }
+
+// Pre-warm: cache contract state so Anvil doesn't need upstream later.
+// These are the contracts Aave V3 queries for the supply flow.
+console.log('\nPre-warming contract state...')
+const AAVE_POOL = '0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2'
+const AAVE_UI_POOL_DATA = '0xe3dff4052f0bf6134acb73beae8fe2317d71f047'
+const AAVE_INCENTIVES = '0x56b7a1012765c285afac8b8f25c69bf10ccfe978'
+const AAVE_WALLET_BAL = '0xc7be5307ba715ce89b152f3df0658295b3dba8e2'
+const AAVE_POOL_PROVIDER = '0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e'
+const WETH_GATEWAY = '0xD322A49006FC828F9B5B37Ab215F99B4E5caB19C'
+const warmCalls = [
+  // Pool data provider — getReservesData(provider)
+  `call ${AAVE_UI_POOL_DATA} "0x976fafc5000000000000000000000000${AAVE_POOL_PROVIDER.slice(2).toLowerCase()}"`,
+  // Incentives data
+  `call ${AAVE_INCENTIVES} "0xec489c21000000000000000000000000${AAVE_POOL_PROVIDER.slice(2).toLowerCase()}"`,
+  `call ${AAVE_INCENTIVES} "0x6f90b9d1000000000000000000000000${AAVE_POOL_PROVIDER.slice(2).toLowerCase()}"`,
+  // User reserve data
+  `call ${AAVE_UI_POOL_DATA} "0x799bdcf5000000000000000000000000${AAVE_POOL_PROVIDER.slice(2).toLowerCase()}000000000000000000000000${TEST_WALLET.slice(2).toLowerCase()}"`,
+  // Wallet balance provider
+  `call ${AAVE_WALLET_BAL} "0x02405343000000000000000000000000${AAVE_POOL_PROVIDER.slice(2).toLowerCase()}000000000000000000000000${TEST_WALLET.slice(2).toLowerCase()}"`,
+  // User incentives
+  `call ${AAVE_INCENTIVES} "0x51974cc0000000000000000000000000${AAVE_POOL_PROVIDER.slice(2).toLowerCase()}000000000000000000000000${TEST_WALLET.slice(2).toLowerCase()}"`,
+  // Supply simulation (ETH via WETHGateway)
+  `estimate ${WETH_GATEWAY} "depositETH(address,address,uint16)" ${AAVE_POOL} ${TEST_WALLET} 0 --value 0.01ether --from ${TEST_WALLET}`,
+]
+let warmed = 0
+for (const call of warmCalls) {
+  try {
+    cast(call, 60_000)
+    warmed++
+    process.stdout.write('.')
+  } catch (e) {
+    process.stdout.write('x')
+  }
+}
+console.log()
+console.log(`  Warmed: ${warmed}/${warmCalls.length}`)
 
 console.log(`\n✓ Anvil fork ready at ${ANVIL_RPC}`)
 console.log(`  Chain ID: 1 (mainnet fork)`)
