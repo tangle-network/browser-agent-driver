@@ -75,28 +75,25 @@ jobs:
       - name: Generate release notes
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          cat > release-notes.md <<EOF
+          cat > release-notes.md << 'NOTES'
           ## Install
 
-          ### npm (recommended)
-          \`\`\`bash
+          ### One-liner (recommended)
+          ```bash
+          curl -fsSL https://raw.githubusercontent.com/tangle-network/browser-agent-driver/main/scripts/install.sh | sh
+          ```
+
+          ### npm
+          ```bash
           npm i -g @tangle-network/browser-agent-driver
           npx playwright install chromium
-          \`\`\`
+          ```
 
-          ### Standalone (requires Node.js 20+)
-          \`\`\`bash
-          curl -fsSL https://github.com/tangle-network/browser-agent-driver/releases/download/browser-agent-driver-v${VERSION}/bad-v${VERSION}-node.tar.gz | tar xz
-          export PATH="\\\$PWD/bad-v${VERSION}:\\\$PATH"
-          npx playwright install chromium
-          bad run --goal "..." --url https://...
-          \`\`\`
-
-          ### Verify checksum
-          \`\`\`bash
-          curl -fsSL https://github.com/tangle-network/browser-agent-driver/releases/download/browser-agent-driver-v${VERSION}/bad-v${VERSION}-node.tar.gz.sha256 | sha256sum -c
-          \`\`\`
-          EOF
+          ### Uninstall
+          ```bash
+          curl -fsSL https://raw.githubusercontent.com/tangle-network/browser-agent-driver/main/scripts/uninstall.sh | sh
+          ```
+          NOTES
 
       - name: Create GitHub release
         env:
