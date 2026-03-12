@@ -16,7 +16,7 @@ import { parseArgs } from 'node:util';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { spawn } from 'node:child_process';
-import type { BrowserContext } from 'playwright';
+import type { BrowserContext, Route } from 'playwright';
 import { loadConfig, mergeConfig, toAgentConfig } from './config.js';
 import type { DriverConfig } from './config.js';
 import { buildBrowserLaunchPlan } from './browser-launch.js';
@@ -488,6 +488,8 @@ async function main(): Promise<void> {
         }
       : undefined,
     debug,
+    walletMode: Boolean(driverConfig.wallet?.enabled),
+    walletAddress: driverConfig.wallet?.address,
   };
 
   // Build test cases
@@ -603,6 +605,77 @@ async function main(): Promise<void> {
     await applyStorageStateToPersistentContext(persistentContext, storageStatePath);
 
     const walletConfig = driverConfig.wallet ?? {};
+
+    // Intercept page-level JSON-RPC so dApps see wallet balances from the
+    // local Anvil fork. Only forward user-specific calls (eth_getBalance
+    // for the wallet, eth_call with wallet address in calldata). Pool data
+    // and protocol calls go to real endpoints for reliability.
+    const walletRpcUrl = walletConfig.preflight?.chain?.rpcUrl;
+    if (walletRpcUrl) {
+      // Default to Anvil's first derived address if no wallet address configured
+      const walletAddrFull = (walletConfig.address ?? '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266').toLowerCase()
+      const walletAddrHex = walletAddrFull.replace('0x', '')
+      await persistentContext.route('**/*', async (route: Route) => {
+        try {
+          const frame = route.request().frame()
+          if (frame && frame.url().startsWith('chrome-extension://')) { await route.continue(); return }
+        } catch {
+          await route.continue()
+          return
+        }
+        if (route.request().method() !== 'POST') { await route.continue(); return }
+        const ct = route.request().headers()['content-type'] ?? ''
+        if (!ct.includes('json')) { await route.continue(); return }
+        const postData = route.request().postData()
+        if (!postData) { await route.continue(); return }
+        try {
+          const body = JSON.parse(postData)
+          const items: Record<string, unknown>[] = Array.isArray(body) ? body : [body]
+          // Check if any item involves the wallet (balance, contract call, simulation)
+          const isUserQuery = items.some((item) => {
+            const method = item.method as string | undefined
+            if (!method) return false
+            if (method === 'eth_getBalance') {
+              const params = item.params as string[] | undefined
+              return params?.[0]?.toLowerCase() === walletAddrFull
+            }
+            if (method === 'eth_call' || method === 'eth_estimateGas') {
+              const params = item.params as Record<string, string>[] | undefined
+              const txObj = params?.[0]
+              if (!txObj) return false
+              const from = txObj.from?.toLowerCase() ?? ''
+              const data = txObj.data?.toLowerCase() ?? ''
+              return from === walletAddrFull || data.includes(walletAddrHex)
+            }
+            if (method === 'eth_getTransactionCount') {
+              const params = item.params as string[] | undefined
+              return params?.[0]?.toLowerCase() === walletAddrFull
+            }
+            return false
+          })
+          if (!isUserQuery) { await route.continue(); return }
+          // Normalize: some dApps (Aave) omit jsonrpc/id — Anvil requires them
+          let nextId = 1
+          const normalized = items.map((item) => {
+            const out: Record<string, unknown> = { ...item, jsonrpc: '2.0', id: item.id ?? nextId++ }
+            delete out.chainId
+            return out
+          })
+          const payload = Array.isArray(body) ? normalized : normalized[0]
+          const res = await fetch(walletRpcUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          })
+          await route.fulfill({
+            status: res.status,
+            contentType: 'application/json',
+            body: await res.text(),
+          })
+        } catch { await route.continue() }
+      })
+    }
+
     const shouldAutoApprove = walletConfig.autoApprove ?? true;
     if (shouldAutoApprove) {
       stopWalletAutoApprover = await startWalletAutoApprover(persistentContext, {

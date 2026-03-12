@@ -74,6 +74,39 @@ Promotion: no pass-rate regression + meaningful latency/token improvement.
 - Supervisor should consume screenshots when available (behind config flag).
 - Outer experiment concurrency `1` for promotion-grade studies.
 
+## Wallet Testing
+
+Wallet validation lives in `bench/wallet/`. Chromium-only (extension APIs are Chromium-specific).
+
+**Setup (one-time):**
+```bash
+pnpm wallet:setup      # download MetaMask extension
+pnpm wallet:onboard    # automate MetaMask first-run wizard
+```
+
+**Running:**
+```bash
+pnpm wallet:anvil      # start Anvil mainnet fork, seed 100 ETH + 10 WETH + 10k USDC
+pnpm wallet:validate   # run all wallet cases
+pnpm wallet:anvil:stop # stop Anvil
+```
+
+**Learned patterns:**
+- MetaMask 13.x onboarding: Welcome → "I have an existing wallet" → "Import using SRP" → SRP textarea → password → analytics → "Open wallet".
+- MetaMask's LavaMoat blocks `page.evaluate()` on extension pages. Use CDP (`DOM.focus`, `Input.insertText`) or coordinate-based `page.mouse.click()` + `page.keyboard.type()`.
+- The SRP textarea is invisible to Playwright locators (LavaMoat scuttling). CDP `DOM.querySelectorAll` with `pierce: true` finds it. Focus via CDP, type via `keyboard.type()` (fires React-compatible input events). `insertText` sets value but doesn't trigger React onChange.
+- "Open wallet" button stays disabled for ~20s during background sync. Force-click or navigate directly to `home.html`.
+- Preflight `eth_requestAccounts` times out on first visit to any dApp — expected. The agent handles wallet connection during test turns.
+- **Hybrid RPC interception** (cli.ts): only forward user-specific calls (eth_getBalance for wallet addr, eth_call/eth_estimateGas with wallet addr in from/data) to Anvil. Pool/protocol data goes to real endpoints. JSON-RPC normalization required: add `jsonrpc`/`id`, remove `chainId` (Aave omits standard fields). MetaMask's service worker RPC is handled separately by the HTTPS reverse proxy (rpc-proxy.mjs on port 8443) + host-resolver-rules.
+- **Anvil fork freshness**: free RPCs (publicnode, 1rpc) retain ~128 blocks (~25min) of state. Always restart Anvil before test runs. `drpc.org` is most reliable free fork RPC. `run-wallet-validation.mjs` auto-restarts Anvil for defi suite.
+- **Pre-warming**: setup-anvil.mjs caches Aave contract state after fork creation so Anvil doesn't need upstream for user-specific queries.
+- `pnpm exec bad` doesn't work in dev (pnpm doesn't self-link bin entries). Use `node dist/cli.js` directly.
+- Test wallet: `test test test...junk` mnemonic → `0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266`.
+- Seed USDC via storage slot manipulation (`anvil_setStorageAt` on slot 9) — faster than whale impersonation.
+- **DeFi validation (2026-03-12): 7/7 pass**, $0.98 total, 267s. Connect: 5/5 (Uniswap, Aave, 1inch, SushiSwap). Swap: 2/2 (Uniswap, SushiSwap). Supply: 1/1 (Aave ETH).
+- MetaMask RPC config: MUST keep `networkClientId: "mainnet"` as `type: "infura"` — changing breaks MetaMask ("No Infura network client found"). Instead ADD a new `type: "custom"` endpoint with UUID clientId alongside Infura, set as default. Modify LevelDB at `.agent-wallet-profile/Default/Local Extension Settings/<extId>/` using `classic-level`. Key: `NetworkController`. Also update `SelectedNetworkController.domains`.
+- Setup order: `pnpm wallet:setup && pnpm wallet:onboard && pnpm wallet:anvil && pnpm wallet:configure && pnpm wallet:validate`.
+
 ## Rollback
 
 1. Runtime: `--no-memory` + disable adaptive routing → control defaults.

@@ -186,6 +186,10 @@ export interface AgentConfig {
   supervisor?: SupervisorConfig;
   /** Runtime observability artifacts (console/network/trace) */
   observability?: ObservabilityConfig;
+  /** Enable DeFi/crypto app awareness in the brain (auto-set when wallet mode is active) */
+  walletMode?: boolean;
+  /** Wallet address (hex, with 0x prefix) — used for RPC interception calldata matching */
+  walletAddress?: string;
 }
 
 export interface ObservabilityConfig {

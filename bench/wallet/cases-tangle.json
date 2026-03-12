@@ -1,0 +1,23 @@
+[
+  {
+    "id": "wallet-connect-tangle-app",
+    "name": "Tangle App: connect wallet",
+    "startUrl": "https://app.tangle.tools",
+    "goal": "Connect the MetaMask or injected wallet to the Tangle App. Verify the wallet address is displayed in the UI.",
+    "maxTurns": 15
+  },
+  {
+    "id": "wallet-stake-tangle",
+    "name": "Tangle App: staking flow",
+    "startUrl": "https://app.tangle.tools",
+    "goal": "Connect wallet, navigate to the staking section, select a validator or staking option, enter a small amount, and reach the staking confirmation dialog. Do NOT confirm the final transaction.",
+    "maxTurns": 25
+  },
+  {
+    "id": "wallet-bridge-tangle",
+    "name": "Tangle App: bridge flow",
+    "startUrl": "https://app.tangle.tools",
+    "goal": "Connect wallet, navigate to the bridge section, select a source and destination chain, enter a small amount, and reach the bridge review. Do NOT confirm.",
+    "maxTurns": 25
+  }
+]

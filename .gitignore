@@ -10,3 +10,9 @@ agent-results/
 audit-results/
 bench/results/
 .agent-memory/
+extensions/
+.agent-wallet-profile/
+.anvil.pid
+.rpc-proxy-cert/
+.rpc-proxy.pid
+mm-*.png

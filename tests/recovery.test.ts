@@ -177,6 +177,86 @@ describe('recovery blocker handling', () => {
     expect(recovery?.forceAction).toBeUndefined();
     expect(recovery?.forceBrowserAction).toBeUndefined();
   });
+
+  it('suppresses generic modal recovery after 3+ consecutive turns with dialog', () => {
+    // The dialog appears on every turn but actions and URLs vary so stuck detection doesn't fire.
+    const dialogSnapshotA = `
+- heading "Page A" [ref=h1]
+- alertdialog "Support" [ref=d1]:
+  - button "Close" [ref=b1]
+`;
+    const dialogSnapshotB = `
+- heading "Page B" [ref=h2]
+- alertdialog "Support" [ref=d1]:
+  - button "Close" [ref=b1]
+`;
+    const recentTurns = [
+      makeTurn(dialogSnapshotA, 1, { action: 'click', selector: '@h1' }),
+      makeTurn(dialogSnapshotB, 2, { action: 'click', selector: '@h2' }),
+      makeTurn(dialogSnapshotA, 3, { action: 'click', selector: '@h1' }),
+    ];
+
+    const recovery = analyzeRecovery({
+      recentTurns,
+      currentState: {
+        url: 'https://app.example.com',
+        title: 'Test',
+        snapshot: dialogSnapshotB,
+      },
+      consecutiveErrors: 0,
+    });
+
+    expect(recovery).toBeNull();
+  });
+
+  it('returns generic modal recovery when dialog present for fewer than 3 turns', () => {
+    const noDialogSnapshot = `
+- heading "Dashboard" [ref=h1]
+- button "Settings" [ref=b2]
+`;
+    const dialogSnapshot = `
+- alertdialog "Support" [ref=d1]:
+  - button "Close" [ref=b1]
+`;
+    const recentTurns = [
+      makeTurn(noDialogSnapshot, 1, { action: 'click', selector: '@b2' }),
+      makeTurn(dialogSnapshot, 2, { action: 'click', selector: '@b1' }),
+      makeTurn(dialogSnapshot, 3, { action: 'click', selector: '@b1' }),
+    ];
+
+    const recovery = analyzeRecovery({
+      recentTurns,
+      currentState: recentTurns[2].state,
+      consecutiveErrors: 0,
+    });
+
+    expect(recovery).not.toBeNull();
+    expect(recovery?.strategy).toBe('modal-dismiss-click');
+  });
+
+  it('always returns specific modal recovery regardless of persistence', () => {
+    const cookieSnapshot = `
+- dialog "Cookie Policy" [ref=d1]:
+  - text "We use cookies to improve your experience."
+  - button "Accept Cookies" [ref=b5]
+  - button "Settings" [ref=b6]
+`;
+    const recentTurns = [
+      makeTurn(cookieSnapshot, 1, { action: 'click', selector: '@b5' }),
+      makeTurn(cookieSnapshot, 2, { action: 'click', selector: '@b5' }),
+      makeTurn(cookieSnapshot, 3, { action: 'click', selector: '@b5' }),
+      makeTurn(cookieSnapshot, 4, { action: 'click', selector: '@b5' }),
+    ];
+
+    const recovery = analyzeRecovery({
+      recentTurns,
+      currentState: recentTurns[3].state,
+      consecutiveErrors: 0,
+    });
+
+    expect(recovery).not.toBeNull();
+    expect(recovery?.strategy).toBe('cookie-consent-dismiss');
+  });
 });
 
 describe('terminal blocker detection', () => {
