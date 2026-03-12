@@ -23,8 +23,6 @@ jobs:
   publish:
     if: github.repository == 'tangle-network/browser-agent-driver'
     runs-on: ubuntu-latest
-    env:
-      NODE_AUTH_TOKEN: ''
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -39,12 +37,16 @@ jobs:
         with:
           node-version: '22'
           cache: pnpm
+          registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Build
         run: pnpm build
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
 
       - name: Test
         run: pnpm test
@@ -81,3 +83,5 @@ jobs:
 
       - name: Publish to npm
         run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

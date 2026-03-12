@@ -11,16 +11,23 @@ LLM-driven browser automation. Reads page state via accessibility tree, decides 
 ```bash
 # global install — gives you the `bad` command
 npm i -g @tangle-network/browser-agent-driver
+npx playwright install chromium
 
 # or run without installing
 npx @tangle-network/browser-agent-driver run --goal "..." --url https://...
 ```
 
-Requires Playwright's Chromium. Install it after:
+### Standalone (no npm)
 
 ```bash
+# download, extract, add to PATH
+curl -fsSL https://github.com/tangle-network/browser-agent-driver/releases/latest/download/bad-v0.7.0-node.tar.gz | tar xz
+export PATH="$PWD/bad-v0.7.0:$PATH"
 npx playwright install chromium
+bad run --goal "..." --url https://...
 ```
+
+Requires Node.js 20+. See [Releases](https://github.com/tangle-network/browser-agent-driver/releases) for all versions.
 
 ### As a library
 

@@ -1,0 +1,112 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'browser-agent-driver-v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: github.repository == 'tangle-network/browser-agent-driver'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION="${GITHUB_REF_NAME#browser-agent-driver-v}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Version: ${VERSION}"
+
+      - name: Package standalone tarball
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          STAGING="bad-v${VERSION}"
+          mkdir -p "${STAGING}"
+
+          # Copy dist, package.json, and required runtime files
+          cp -r dist "${STAGING}/"
+          cp package.json "${STAGING}/"
+          cp README.md LICENSE "${STAGING}/" 2>/dev/null || true
+
+          # Install production dependencies only
+          cd "${STAGING}"
+          pnpm install --prod --no-lockfile
+          cd ..
+
+          # Create launcher script
+          cat > "${STAGING}/bad" << 'LAUNCHER'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          DIR="$(cd "$(dirname "$0")" && pwd)"
+          exec node "${DIR}/dist/cli.js" "$@"
+          LAUNCHER
+          chmod +x "${STAGING}/bad"
+
+          # Tar it up
+          tar czf "bad-v${VERSION}-node.tar.gz" "${STAGING}"
+          sha256sum "bad-v${VERSION}-node.tar.gz" > "bad-v${VERSION}-node.tar.gz.sha256"
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          cat > release-notes.md << EOF
+          ## Install
+
+          ### npm (recommended)
+          \`\`\`bash
+          npm i -g @tangle-network/browser-agent-driver
+          npx playwright install chromium
+          \`\`\`
+
+          ### Standalone (requires Node.js 20+)
+          \`\`\`bash
+          curl -fsSL https://github.com/tangle-network/browser-agent-driver/releases/download/browser-agent-driver-v${VERSION}/bad-v${VERSION}-node.tar.gz | tar xz
+          export PATH="\$PWD/bad-v${VERSION}:\$PATH"
+          npx playwright install chromium
+          bad run --goal "..." --url https://...
+          \`\`\`
+
+          ### Verify checksum
+          \`\`\`bash
+          curl -fsSL https://github.com/tangle-network/browser-agent-driver/releases/download/browser-agent-driver-v${VERSION}/bad-v${VERSION}-node.tar.gz.sha256 | sha256sum -c
+          \`\`\`
+
+          ---
+
+          See [CHANGELOG](https://github.com/tangle-network/browser-agent-driver/blob/main/CHANGELOG.md) for details.
+          EOF
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "v${VERSION}" \
+            --notes-file release-notes.md \
+            "bad-v${VERSION}-node.tar.gz" \
+            "bad-v${VERSION}-node.tar.gz.sha256"
