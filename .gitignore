@@ -13,4 +13,6 @@ bench/results/
 extensions/
 .agent-wallet-profile/
 .anvil.pid
+.rpc-proxy-cert/
+.rpc-proxy.pid
 mm-*.png

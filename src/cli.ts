@@ -657,8 +657,7 @@ async function main(): Promise<void> {
           // Normalize: some dApps (Aave) omit jsonrpc/id — Anvil requires them
           let nextId = 1
           const normalized = items.map((item) => {
-            const out: Record<string, unknown> = { jsonrpc: '2.0', id: item.id ?? nextId++, ...item }
-            if (!out.jsonrpc) out.jsonrpc = '2.0'
+            const out: Record<string, unknown> = { ...item, jsonrpc: '2.0', id: item.id ?? nextId++ }
             delete out.chainId
             return out
           })

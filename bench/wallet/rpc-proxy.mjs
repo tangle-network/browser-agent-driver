@@ -162,7 +162,7 @@ const server = https.createServer({ key, cert }, (req, res) => {
 
     proxyReq.on('error', (err) => {
       res.writeHead(502, { 'Content-Type': 'application/json' })
-      res.end(`{"jsonrpc":"2.0","error":{"code":-32603,"message":"${err.message}"},"id":null}`)
+      res.end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32603, message: err.message }, id: null }))
     })
 
     proxyReq.end(body)
