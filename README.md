@@ -6,6 +6,24 @@ LLM-driven browser automation. Reads page state via accessibility tree, decides 
 
 ## Install
 
+### CLI
+
+```bash
+# global install — gives you the `bad` command
+npm i -g @tangle-network/browser-agent-driver
+
+# or run without installing
+npx @tangle-network/browser-agent-driver run --goal "..." --url https://...
+```
+
+Requires Playwright's Chromium. Install it after:
+
+```bash
+npx playwright install chromium
+```
+
+### As a library
+
 ```bash
 pnpm add @tangle-network/browser-agent-driver
 pnpm add -D playwright
