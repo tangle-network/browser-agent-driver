@@ -901,7 +901,8 @@ Respond with ONLY a JSON object:
   async auditDesign(
     state: PageState,
     goal: string,
-    checkpoints: string[]
+    checkpoints: string[],
+    systemPrompt?: string,
   ): Promise<{ score: number; findings: DesignFinding[]; raw: string; tokensUsed?: number }> {
     const textContent = `GOAL: ${goal}
 
@@ -920,10 +921,10 @@ Audit this page for design quality, UX issues, and visual bugs.`;
     const userContent = this.buildUserContent(textContent, state.screenshot, true);
 
     const result = await this.generate(
-      DESIGN_AUDIT_PROMPT,
+      systemPrompt ?? DESIGN_AUDIT_PROMPT,
       [{ role: 'user', content: userContent }],
       undefined,
-      1500,
+      4000,
     );
 
     const raw = result.text;
@@ -938,7 +939,19 @@ Audit this page for design quality, UX issues, and visual bugs.`;
       if (text.startsWith('```')) {
         text = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
       }
-      const parsed = JSON.parse(text);
+      // Extract JSON object if surrounded by non-JSON text or truncated
+      let parsed: Record<string, unknown>;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        const start = text.indexOf('{');
+        const end = text.lastIndexOf('}');
+        if (start >= 0 && end > start) {
+          parsed = JSON.parse(text.slice(start, end + 1));
+        } else {
+          throw new Error('No JSON object found');
+        }
+      }
 
       const VALID_CATEGORIES = new Set(['visual-bug', 'layout', 'contrast', 'alignment', 'spacing', 'typography', 'accessibility', 'ux']);
       const VALID_SEVERITIES = new Set(['critical', 'major', 'minor']);

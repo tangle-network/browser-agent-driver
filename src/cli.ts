@@ -123,6 +123,7 @@ async function main(): Promise<void> {
       'storage-state': { type: 'string' },
       concurrency: { type: 'string' },
       'max-turns': { type: 'string' },
+      pages: { type: 'string' },
       'llm-timeout': { type: 'string' },
       retries: { type: 'string' },
       'retry-delay-ms': { type: 'string' },
@@ -185,8 +186,29 @@ async function main(): Promise<void> {
 
   const command = positionals[0];
 
+  if (command === 'design-audit') {
+    if (!values.url) {
+      console.error('Error: --url is required for design-audit.');
+      process.exit(1);
+    }
+    const { runDesignAudit } = await import('./cli-design-audit.js');
+    await runDesignAudit({
+      url: values.url,
+      pages: values.pages ? parseInt(values.pages) : undefined,
+      profile: values.profile,
+      model: values.model,
+      provider: values.provider,
+      apiKey: values['api-key'],
+      output: values.sink,
+      json: values.json,
+      headless: values.headless,
+      debug: values.debug,
+    });
+    process.exit(0);
+  }
+
   if (command !== 'run') {
-    console.error(`Unknown command: ${command}. Use "run".`);
+    console.error(`Unknown command: ${command}. Use "run" or "design-audit".`);
     process.exit(1);
   }
 
@@ -983,6 +1005,14 @@ SINGLE TASK:
 TEST SUITE:
   bad run --cases ./cases.json --concurrency 4
   bad run --cases ./cases.json --sink ./results/ --model gpt-5.4
+
+DESIGN AUDIT:
+  bad design-audit --url https://stripe.com
+  bad design-audit --url https://app.uniswap.org --profile defi
+  bad design-audit --url http://localhost:3000 --profile saas --pages 10
+  bad design-audit --url https://example.com --profile marketing --json
+
+  Profiles: general, saas, defi, marketing
 
 DOCKER:
   docker run -v ./cases.json:/data/cases.json -v ./out:/output \\
