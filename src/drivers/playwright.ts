@@ -50,6 +50,10 @@ export interface PlaywrightDriverOptions {
   screenshotQuality?: number;
   /** Disable CDP fast-path (fall back to Playwright for everything) */
   disableCdp?: boolean;
+  /** Vision strategy — controls when screenshots are sent to the LLM */
+  visionStrategy?: 'always' | 'never' | 'auto';
+  /** Capture a screenshot every N turns for artifact storage (0 = disabled) */
+  screenshotInterval?: number;
 }
 
 export class PlaywrightDriver implements Driver {
@@ -57,6 +61,7 @@ export class PlaywrightDriver implements Driver {
   private cdpSession: CDPSession | null = null;
   private cdpFailed = false;
   private lastTiming: ObserveTiming | undefined;
+  private observeCount = 0;
 
   constructor(
     private page: Page,
@@ -155,8 +160,19 @@ export class PlaywrightDriver implements Driver {
 
   async observe(): Promise<PageState> {
     const observeStart = performance.now();
-    const captureScreenshot = this.options.captureScreenshots ?? true;
+    this.observeCount++;
     const quality = this.options.screenshotQuality ?? 50;
+
+    // Only capture screenshots when they'll actually be used:
+    // - visionStrategy 'always': brain will consume every screenshot
+    // - screenshotInterval: artifact sink needs a screenshot on matching turns
+    // For 'auto'/'never', skip the JPEG encode (~50-150ms). The runner's
+    // attachDecisionScreenshot() captures on-demand when escalation fires.
+    const wantedForVision = (this.options.captureScreenshots ?? true)
+      && this.options.visionStrategy === 'always';
+    const interval = this.options.screenshotInterval ?? 0;
+    const wantedForArtifact = interval > 0 && this.observeCount % interval === 0;
+    const captureScreenshot = wantedForVision || wantedForArtifact;
 
     const waitStart = performance.now();
     // Cap load state wait at 10s — heavy JS sites (AliExpress) can stall

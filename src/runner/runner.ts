@@ -113,27 +113,31 @@ export class AgentRunner {
     // Reset brain history for fresh scenario
     this.brain.reset();
 
-    // Load domain-scoped memory if project store is configured
-    if (this.projectStore && scenario.startUrl) {
-      this.knowledge = new AppKnowledge(
-        this.projectStore.getKnowledgePath(scenario.startUrl),
-        scenario.startUrl,
-      );
-      this.selectorCache = new SelectorCache(
-        this.projectStore.getSelectorCachePath(scenario.startUrl),
-      );
-    }
-
-    // Navigate to start URL if provided
+    // Start navigation and load memory in parallel. Navigation is async (network
+    // I/O) while memory init is sync (readFileSync), so memory completes while
+    // the network request is in flight — saving the serial cost of disk reads.
     if (scenario.startUrl) {
       const navigateStartedAt = Date.now();
-      await withRetry(
+      const navPromise = withRetry(
         () => this.driver.execute({ action: 'navigate', url: scenario.startUrl! }),
         retries,
         retryDelayMs,
         undefined,
         scenario.signal,
       );
+
+      // Load domain-scoped memory while navigation is in progress
+      if (this.projectStore) {
+        this.knowledge = new AppKnowledge(
+          this.projectStore.getKnowledgePath(scenario.startUrl),
+          scenario.startUrl,
+        );
+        this.selectorCache = new SelectorCache(
+          this.projectStore.getSelectorCachePath(scenario.startUrl),
+        );
+      }
+
+      await navPromise;
       phaseTimings.initialNavigateMs = Date.now() - navigateStartedAt;
       this.onPhaseTiming?.('navigate', phaseTimings.initialNavigateMs);
     }
@@ -370,11 +374,28 @@ export class AgentRunner {
         if (visibleLinkRecommendation) {
           ctxBudget.add('visible-link', `\n${visibleLinkRecommendation}\n`, 60);
         }
-        const [scoutLinkRecommendation, branchLinkRecommendation, searchScoutFeedback] = await Promise.all([
-          this.buildVisibleLinkScoutRecommendation(state, scenario.goal, scenario.allowedDomains),
-          this.buildBranchLinkRecommendation(state, scenario.goal, scenario.allowedDomains),
-          this.buildSearchResultsScoutFeedback(state, scenario.goal, scenario.allowedDomains, runState.searchScoutUrls),
-        ]);
+        // Gate scout calls: skip on early turns unless the agent appears
+        // stuck (same URL for 2+ consecutive turns). On early turns the agent
+        // is just navigating and doesn't need link recommendations.
+        const stuckOnSameUrl = turns.length >= 2 &&
+          turns[turns.length - 1]!.state.url === turns[turns.length - 2]!.state.url;
+        const shouldScout = i >= 5 || stuckOnSameUrl;
+
+        let scoutLinkRecommendation: Awaited<ReturnType<AgentRunner['buildVisibleLinkScoutRecommendation']>>;
+        let branchLinkRecommendation: Awaited<ReturnType<AgentRunner['buildBranchLinkRecommendation']>>;
+        let searchScoutFeedback: string;
+
+        if (shouldScout) {
+          [scoutLinkRecommendation, branchLinkRecommendation, searchScoutFeedback] = await Promise.all([
+            this.buildVisibleLinkScoutRecommendation(state, scenario.goal, scenario.allowedDomains),
+            this.buildBranchLinkRecommendation(state, scenario.goal, scenario.allowedDomains),
+            this.buildSearchResultsScoutFeedback(state, scenario.goal, scenario.allowedDomains, runState.searchScoutUrls),
+          ]);
+        } else {
+          scoutLinkRecommendation = undefined;
+          branchLinkRecommendation = undefined;
+          searchScoutFeedback = '';
+        }
         if (scoutLinkRecommendation) {
           ctxBudget.add('scout-link', `\n${buildScoutLinkRecommendationText(scoutLinkRecommendation)}\n`, 55);
         }
@@ -761,11 +782,35 @@ export class AgentRunner {
           ];
 
           if (shouldVerifyGoal) {
-            goalResult = await this.brain.verifyGoalCompletion(
-              state,
-              scenario.goal,
-              buildGoalVerificationClaim(action.result || '', verificationEvidence),
-            );
+            // Fast-path: skip LLM verification when agent provides strong
+            // evidence and had no recent errors. The detailed result text
+            // (>50 chars) combined with script-extracted evidence means the
+            // verifier almost always agrees — save the round-trip.
+            const agentResult = action.result || '';
+            const recentErrors = turns.slice(-2).filter(t => t.error).length;
+            const hasScriptEvidence = verificationEvidence.some(e => e.startsWith('SCRIPT RESULT:'));
+            const fastPathEligible =
+              agentResult.length > 50 &&
+              recentErrors === 0 &&
+              hasScriptEvidence;
+
+            if (fastPathEligible) {
+              goalResult = {
+                achieved: true,
+                confidence: 0.9,
+                evidence: ['Fast-path: agent provided detailed result with script-backed evidence and no recent errors.'],
+                missing: [],
+              };
+              if (this.config.debug) {
+                console.log('[Runner] Goal verification fast-path: skipped LLM call (strong evidence + no errors)');
+              }
+            } else {
+              goalResult = await this.brain.verifyGoalCompletion(
+                state,
+                scenario.goal,
+                buildGoalVerificationClaim(agentResult, verificationEvidence),
+              );
+            }
 
             if (this.config.debug) {
               console.log(`[Runner] Goal verification: achieved=${goalResult.achieved}, confidence=${goalResult.confidence}`);

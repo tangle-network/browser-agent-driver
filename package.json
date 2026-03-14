@@ -1,6 +1,6 @@
 {
   "name": "@tangle-network/browser-agent-driver",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "LLM-driven browser agent for UI automation, testing, and evaluation",
   "publishConfig": {
     "access": "public"

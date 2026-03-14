@@ -1096,11 +1096,79 @@ Only include facts that are genuinely useful. Quality over quantity. Max 10 fact
 }
 
 /**
+ * Collapse consecutive runs of similar elements (same indent + role, names
+ * differing only by a trailing number/short suffix) into a single representative
+ * line with a count.  Reduces token cost on pages with long pagination, nav
+ * lists, or repeated product cards.
+ *
+ * Skips dialog/alertdialog (agent must see each one) and groups < 3 items.
+ */
+function deduplicateSnapshot(snapshot: string): string {
+  const lines = snapshot.split('\n')
+  const out: string[] = []
+
+  // Extract (indent, role) from a snapshot line. Returns null for non-element lines.
+  const parseLine = (line: string) => {
+    const m = line.match(/^(\s*-\s+)(\w+)\s+"([^"]*)"\s*\[ref=(\w+)\]/)
+    if (!m) return null
+    return { indent: m[1], role: m[2], name: m[3], ref: m[4], full: line }
+  }
+
+  // Strip trailing numbers/ordinals to get a "name stem" for grouping.
+  // "Page 1" and "Page 20" → "Page ", "Item #3" and "Item #42" → "Item #"
+  const nameStem = (name: string): string =>
+    name.replace(/\d+/g, '#')
+
+  let i = 0
+  while (i < lines.length) {
+    const parsed = parseLine(lines[i])
+
+    // Non-element line or dialog/alertdialog — emit as-is
+    if (!parsed || /\b(?:dialog|alertdialog)\b/i.test(parsed.role)) {
+      out.push(lines[i])
+      i++
+      continue
+    }
+
+    // Collect a consecutive run of same (indent, role) with similar name stems
+    const group: NonNullable<ReturnType<typeof parseLine>>[] = [parsed]
+    const stem = nameStem(parsed.name)
+    let j = i + 1
+    while (j < lines.length) {
+      const next = parseLine(lines[j])
+      if (
+        !next ||
+        next.indent !== parsed.indent ||
+        next.role !== parsed.role ||
+        nameStem(next.name) !== stem
+      ) break
+      group.push(next)
+      j++
+    }
+
+    if (group.length < 3) {
+      // Not enough to dedup — emit originals
+      for (const g of group) out.push(g.full)
+    } else {
+      // Emit first element with a summary of the rest
+      const last = group[group.length - 1]
+      out.push(`${parsed.full} (+${group.length - 1} similar: "${group[1].name}"\u2026"${last.name}")`)
+    }
+    i = j
+  }
+
+  return out.join('\n')
+}
+
+/**
  * Cap snapshot size for non-first turns to control token cost on large pages.
  * Keeps the full snapshot when it fits within budget; otherwise truncates
  * non-interactive decorative lines first, then hard-caps with a notice.
  */
 function budgetSnapshot(snapshot: string, maxChars = 16_000): string {
+  // Deduplicate consecutive similar elements before any budget logic
+  snapshot = deduplicateSnapshot(snapshot)
+
   if (snapshot.length <= maxChars) return snapshot;
 
   // First pass: drop non-interactive lines (images, paragraphs, decorative text)

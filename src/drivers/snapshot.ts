@@ -396,12 +396,12 @@ export async function dismissOverlays(page: Page): Promise<'clicked' | 'found' |
 
   if (result === 'clicked') {
     // Close button handled it -- just wait for animation, no Escape needed
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(150);
   } else if (result === 'found') {
     // Overlay detected but no close button -- try Escape as fallback
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(150);
     await page.keyboard.press('Escape');
-    await page.waitForTimeout(200);
+    await page.waitForTimeout(100);
   }
   // result === false: no overlay, no action needed
   return result;

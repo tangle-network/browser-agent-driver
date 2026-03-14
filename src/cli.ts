@@ -844,6 +844,8 @@ async function main(): Promise<void> {
       screenshotQuality: 50,
       disableCdp: driverConfig.disableCdp,
       timeout: actionTimeout,
+      visionStrategy: config.visionStrategy,
+      screenshotInterval,
     });
     // Apply resource blocking if configured
     const resourceBlockingStartedAt = Date.now();
