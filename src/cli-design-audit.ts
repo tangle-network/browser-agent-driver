@@ -996,19 +996,46 @@ async function dismissCookieBanners(page: Page): Promise<void> {
   }
 }
 
-async function runTokenExtraction(opts: DesignAuditOptions): Promise<void> {
-  console.log('=== Design Token Extraction ===')
-  console.log(`URL: ${opts.url}`)
-  console.log('')
+// ---------------------------------------------------------------------------
+// Programmatic API — extractDesignTokens()
+// ---------------------------------------------------------------------------
 
-  const outputDir = opts.output ?? `./audit-results/${new URL(opts.url).hostname}-tokens-${Date.now()}`
+export interface ExtractDesignTokensOptions {
+  url: string
+  headless?: boolean
+  outputDir?: string
+  viewports?: Array<{ name: string; width: number; height: number }>
+  onProgress?: (viewport: string, width: number, height: number, stats: { colors: number; fonts: number; buttons: number; inputs: number; cards: number }) => void
+}
+
+export interface ExtractionResult {
+  tokens: DesignTokens
+  outputDir: string
+  screenshotPaths: Record<string, string>
+}
+
+/**
+ * Extract design tokens from a URL at multiple viewports.
+ * Pure DOM extraction — no LLM calls.
+ *
+ * ```typescript
+ * import { extractDesignTokens } from '@tangle-network/browser-agent-driver'
+ *
+ * const { tokens } = await extractDesignTokens({ url: 'https://stripe.com' })
+ * console.log(tokens.colors.filter(c => c.cluster === 'primary'))
+ * console.log(tokens.typography.families)
+ * console.log(tokens.brand)
+ * ```
+ */
+export async function extractDesignTokens(opts: ExtractDesignTokensOptions): Promise<ExtractionResult> {
+  const viewports = opts.viewports ?? [...VIEWPORTS]
+  const outputDir = opts.outputDir ?? `./audit-results/${new URL(opts.url).hostname}-tokens-${Date.now()}`
   fs.mkdirSync(outputDir, { recursive: true })
   const screenshotDir = path.join(outputDir, 'screenshots')
   fs.mkdirSync(screenshotDir, { recursive: true })
 
   const browser = await chromium.launch({ headless: opts.headless ?? true })
 
-  // Merged token storage
   const allCustomProps: Record<string, string> = {}
   const allColors = new Map<string, { count: number; properties: Set<string> }>()
   const allFamilies = new Map<string, { weights: Set<number>; headingUse: boolean; monoUse: boolean }>()
@@ -1017,9 +1044,9 @@ async function runTokenExtraction(opts: DesignAuditOptions): Promise<void> {
   const allLogos: LogoAsset[] = []
   const allIcons: SvgIcon[] = []
   const responsiveTokens: Record<string, ViewportTokens> = {}
+  const screenshotPaths: Record<string, string> = {}
 
-  for (const vp of VIEWPORTS) {
-    console.log(`[${vp.name}] Extracting at ${vp.width}x${vp.height}...`)
+  for (const vp of viewports) {
     const context = await browser.newContext({ viewport: { width: vp.width, height: vp.height } })
     const page = await context.newPage()
 
@@ -1031,19 +1058,16 @@ async function runTokenExtraction(opts: DesignAuditOptions): Promise<void> {
       await dismissCookieBanners(page)
       await page.waitForTimeout(500)
 
-      // Screenshot
       const screenshotPath = path.join(screenshotDir, `${vp.name}.png`)
       await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() =>
         page.screenshot({ path: screenshotPath, fullPage: false })
       )
+      screenshotPaths[vp.name] = screenshotPath
 
-      // Extract
       const raw = await page.evaluate(extractTokensFromDOM)
 
-      // Merge custom properties (same across viewports, but some may differ)
       Object.assign(allCustomProps, raw.customProperties)
 
-      // Merge colors
       for (const c of raw.colors) {
         const existing = allColors.get(c.value)
         if (existing) {
@@ -1054,7 +1078,6 @@ async function runTokenExtraction(opts: DesignAuditOptions): Promise<void> {
         }
       }
 
-      // Merge typography
       for (const f of raw.typography.families) {
         const existing = allFamilies.get(f.family)
         if (existing) {
@@ -1067,12 +1090,10 @@ async function runTokenExtraction(opts: DesignAuditOptions): Promise<void> {
       }
       allScaleEntries.push(...raw.typography.scale)
 
-      // Brand: desktop wins for meta tags
       if (vp.name === 'desktop' || !brand.title) {
         brand = raw.brand
       }
 
-      // Logos & icons: merge, dedup by src/content
       for (const logo of raw.logos) {
         if (!allLogos.some(l => l.src === logo.src && l.svgContent === logo.svgContent)) {
           allLogos.push(logo)
@@ -1084,7 +1105,6 @@ async function runTokenExtraction(opts: DesignAuditOptions): Promise<void> {
         }
       }
 
-      // Per-viewport tokens
       responsiveTokens[vp.name] = {
         width: vp.width,
         height: vp.height,
@@ -1097,14 +1117,13 @@ async function runTokenExtraction(opts: DesignAuditOptions): Promise<void> {
         screenshotPath,
       }
 
-      const nColors = raw.colors.length
-      const nFonts = raw.typography.families.length
-      const nBtns = raw.components.buttons.length
-      const nInputs = raw.components.inputs.length
-      const nCards = raw.components.cards.length
-      console.log(`  ${nColors} colors, ${nFonts} fonts, ${nBtns} button styles, ${nInputs} input styles, ${nCards} card patterns`)
-    } catch (err) {
-      console.error(`  Error: ${err instanceof Error ? err.message : err}`)
+      opts.onProgress?.(vp.name, vp.width, vp.height, {
+        colors: raw.colors.length,
+        fonts: raw.typography.families.length,
+        buttons: raw.components.buttons.length,
+        inputs: raw.components.inputs.length,
+        cards: raw.components.cards.length,
+      })
     } finally {
       await context.close()
     }
@@ -1112,7 +1131,7 @@ async function runTokenExtraction(opts: DesignAuditOptions): Promise<void> {
 
   await browser.close()
 
-  // Deduplicate type scale across viewports
+  // Deduplicate type scale
   const scaleMap = new Map<string, TypeScaleEntry>()
   for (const entry of allScaleEntries) {
     const key = `${entry.fontSize}|${entry.fontWeight}|${entry.lineHeight}|${entry.fontFamily}`
@@ -1126,27 +1145,15 @@ async function runTokenExtraction(opts: DesignAuditOptions): Promise<void> {
       if (isHeading) usage = 'heading'
       else if (fontSize <= 12) usage = 'caption'
       else if (fontSize <= 14 && entry.fontWeight >= '500') usage = 'label'
-
-      scaleMap.set(key, {
-        fontSize: entry.fontSize,
-        fontWeight: entry.fontWeight,
-        lineHeight: entry.lineHeight,
-        letterSpacing: entry.letterSpacing,
-        fontFamily: entry.fontFamily,
-        usage,
-        tag: entry.tag,
-        count: entry.count,
-      })
+      scaleMap.set(key, { fontSize: entry.fontSize, fontWeight: entry.fontWeight, lineHeight: entry.lineHeight, letterSpacing: entry.letterSpacing, fontFamily: entry.fontFamily, usage, tag: entry.tag, count: entry.count })
     }
   }
 
-  // Cluster colors
   const mergedColors = Array.from(allColors.entries())
     .map(([value, data]) => ({ value, count: data.count, properties: Array.from(data.properties) }))
     .sort((a, b) => b.count - a.count)
   const clusteredColors = clusterColors(mergedColors)
 
-  // Build final token set
   const families: FontFamily[] = Array.from(allFamilies.entries()).map(([family, data]) => ({
     family,
     weights: Array.from(data.weights).sort((a, b) => a - b),
@@ -1158,59 +1165,100 @@ async function runTokenExtraction(opts: DesignAuditOptions): Promise<void> {
   const tokens: DesignTokens = {
     url: opts.url,
     extractedAt: new Date().toISOString(),
-    viewportsAudited: VIEWPORTS.map(v => v.name),
+    viewportsAudited: viewports.map(v => v.name),
     customProperties: allCustomProps,
     colors: clusteredColors,
-    typography: {
-      families,
-      scale: Array.from(scaleMap.values()).sort((a, b) => b.count - a.count),
-    },
+    typography: { families, scale: Array.from(scaleMap.values()).sort((a, b) => b.count - a.count) },
     brand,
     logos: allLogos,
     icons: allIcons.slice(0, 50),
     responsive: responsiveTokens,
   }
 
-  // Write output
   const tokenPath = path.join(outputDir, 'tokens.json')
   fs.writeFileSync(tokenPath, JSON.stringify(tokens, null, 2))
 
+  return { tokens, outputDir, screenshotPaths }
+}
+
+// ---------------------------------------------------------------------------
+// Zip packaging
+// ---------------------------------------------------------------------------
+
+async function createZipBundle(outputDir: string, tokens: DesignTokens): Promise<string> {
+  const { execSync } = await import('node:child_process')
+  const zipPath = `${outputDir}.zip`
+  // Use system zip (available on macOS/Linux)
+  execSync(`cd "${path.dirname(outputDir)}" && zip -r "${path.basename(zipPath)}" "${path.basename(outputDir)}"`, { stdio: 'pipe' })
+  return zipPath
+}
+
+// ---------------------------------------------------------------------------
+// CLI wrapper for token extraction
+// ---------------------------------------------------------------------------
+
+async function runTokenExtraction(opts: DesignAuditOptions): Promise<void> {
+  console.log('=== Design Token Extraction ===')
+  console.log(`URL: ${opts.url}`)
+  console.log('')
+
+  const outputDir = opts.output ?? `./audit-results/${new URL(opts.url).hostname}-tokens-${Date.now()}`
+
+  const { tokens, screenshotPaths } = await extractDesignTokens({
+    url: opts.url,
+    headless: opts.headless,
+    outputDir,
+    onProgress: (name, width, height, stats) => {
+      console.log(`[${name}] ${width}x${height} — ${stats.colors} colors, ${stats.fonts} fonts, ${stats.buttons} button styles, ${stats.inputs} input styles, ${stats.cards} card patterns`)
+    },
+  })
+
   // Print summary
-  const primaryColors = clusteredColors.filter(c => c.cluster === 'primary')
-  const secondaryColors = clusteredColors.filter(c => c.cluster === 'secondary')
-  const accentColors = clusteredColors.filter(c => c.cluster === 'accent')
-  const neutralColors = clusteredColors.filter(c => c.cluster === 'neutral')
+  const primaryColors = tokens.colors.filter(c => c.cluster === 'primary')
+  const secondaryColors = tokens.colors.filter(c => c.cluster === 'secondary')
+  const accentColors = tokens.colors.filter(c => c.cluster === 'accent')
+  const neutralColors = tokens.colors.filter(c => c.cluster === 'neutral')
 
   console.log('')
   console.log('=== Extraction Summary ===')
   console.log('')
-  console.log(`Colors:            ${clusteredColors.length} unique`)
+  console.log(`Colors:            ${tokens.colors.length} unique`)
   console.log(`  Primary:         ${primaryColors.length} (${primaryColors.slice(0, 3).map(c => c.hex).join(', ')})`)
   console.log(`  Secondary:       ${secondaryColors.length} (${secondaryColors.slice(0, 3).map(c => c.hex).join(', ')})`)
   console.log(`  Accent:          ${accentColors.length} (${accentColors.slice(0, 3).map(c => c.hex).join(', ')})`)
   console.log(`  Neutral:         ${neutralColors.length}`)
-  console.log(`Font families:     ${families.length}`)
-  for (const f of families.slice(0, 5)) {
+  console.log(`Font families:     ${tokens.typography.families.length}`)
+  for (const f of tokens.typography.families.slice(0, 5)) {
     console.log(`  ${f.classification.padEnd(8)} ${f.family.slice(0, 50)} [${f.weights.join(', ')}]`)
   }
-  console.log(`Type scale:        ${scaleMap.size} entries`)
-  console.log(`CSS variables:     ${Object.keys(allCustomProps).length}`)
-  console.log(`Logos found:       ${allLogos.length}`)
-  console.log(`Icons found:       ${allIcons.length}`)
+  console.log(`Type scale:        ${tokens.typography.scale.length} entries`)
+  console.log(`CSS variables:     ${Object.keys(tokens.customProperties).length}`)
+  console.log(`Logos found:       ${tokens.logos.length}`)
+  console.log(`Icons found:       ${tokens.icons.length}`)
   console.log(`Brand:`)
-  if (brand.title) console.log(`  Title:           ${brand.title}`)
-  if (brand.themeColor) console.log(`  Theme color:     ${brand.themeColor}`)
-  if (brand.favicon) console.log(`  Favicon:         ${brand.favicon}`)
-  if (brand.ogImage) console.log(`  OG image:        ${brand.ogImage}`)
+  if (tokens.brand.title) console.log(`  Title:           ${tokens.brand.title}`)
+  if (tokens.brand.themeColor) console.log(`  Theme color:     ${tokens.brand.themeColor}`)
+  if (tokens.brand.favicon) console.log(`  Favicon:         ${tokens.brand.favicon}`)
+  if (tokens.brand.ogImage) console.log(`  OG image:        ${tokens.brand.ogImage}`)
   console.log('')
 
-  for (const [name, vt] of Object.entries(responsiveTokens)) {
+  for (const [name, vt] of Object.entries(tokens.responsive)) {
     const gridUnit = vt.gridBaseUnit ? `${vt.gridBaseUnit}px grid` : 'no clear grid'
     console.log(`[${name}] ${vt.spacing.length} spacing values (${gridUnit}), ${vt.borders.length} border-radius values, ${vt.shadows.length} shadow styles`)
     console.log(`  Components: ${vt.components.buttons.length} button styles, ${vt.components.inputs.length} input styles, ${vt.components.cards.length} card patterns, ${vt.components.nav.length} nav patterns`)
   }
 
-  console.log('')
-  console.log(`Output: ${tokenPath}`)
-  console.log(`Screenshots: ${screenshotDir}`)
+  // Create zip bundle
+  try {
+    const zipPath = await createZipBundle(outputDir, tokens)
+    const zipSize = fs.statSync(zipPath).size
+    const sizeStr = zipSize > 1024 * 1024 ? `${(zipSize / 1024 / 1024).toFixed(1)} MB` : `${(zipSize / 1024).toFixed(0)} KB`
+    console.log('')
+    console.log(`Zip:         ${zipPath} (${sizeStr})`)
+  } catch {
+    console.log('\n(zip not available — output directory contains all files)')
+  }
+
+  console.log(`Output:      ${outputDir}`)
+  console.log(`Screenshots: ${path.join(outputDir, 'screenshots')}`)
 }

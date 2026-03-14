@@ -45,6 +45,19 @@ export type {
   AuditFlow,
   GoalVerification,
   PreviewVerification,
+  DesignTokens,
+  ColorToken,
+  FontFamily,
+  TypeScaleEntry,
+  LogoAsset,
+  SvgIcon,
+  ViewportTokens,
+  SpacingToken,
+  BorderToken,
+  ShadowToken,
+  ComponentFingerprint,
+  NavPattern,
+  AnimationToken,
 } from './types.js';
 
 // Driver interface + implementations
@@ -82,6 +95,10 @@ export { verifyPreview } from './preview.js';
 
 // Design audit
 export { DesignAuditor, generateDesignAuditReport } from './design-audit.js';
+
+// Design token extraction
+export { extractDesignTokens } from './cli-design-audit.js';
+export type { ExtractDesignTokensOptions, ExtractionResult } from './cli-design-audit.js';
 
 // Recovery
 export {
