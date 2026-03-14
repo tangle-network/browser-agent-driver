@@ -77,6 +77,10 @@ export class PlaywrightDriver implements Driver {
     return this.page;
   }
 
+  getUrl(): string {
+    return this.page.url();
+  }
+
   async inspectSelectorHref(selector: string): Promise<string | undefined> {
     const locator = this.snapshot.resolveLocator(this.page, selector);
     return locator.evaluate((node) => {

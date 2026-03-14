@@ -1321,14 +1321,12 @@ export class AgentRunner {
     preActionState: PageState
   ): Promise<{ verified: boolean; reason?: string }> {
     // Wait briefly for the effect to take hold
-    await new Promise(r => setTimeout(r, 500));
+    await new Promise(r => setTimeout(r, 200));
 
-    // Re-observe — this resets the refMap but that's OK since the next
-    // turn's observe() will rebuild it fresh before the brain decides.
-    const postState = await this.driver.observe().catch(() => preActionState);
-
-    // URL-based verification
+    // URL-based verification — skip full AX tree rebuild
     if (/url\s+should/i.test(expectedEffect)) {
+      const currentUrl = this.driver.getUrl?.() ?? (await this.driver.observe().catch(() => preActionState)).url;
+
       // Extract target: prefer quoted value (handles complex phrases like
       // "URL should change to include '/chat/'"), fall back to word after verb
       const quotedVal = expectedEffect.match(/['"]([^'"]+)['"]/);
@@ -1336,24 +1334,27 @@ export class AgentRunner {
       const expected = quotedVal?.[1] ?? verbVal?.[1];
 
       if (expected) {
-        if (postState.url.includes(expected)) {
+        if (currentUrl.includes(expected)) {
           return { verified: true };
         }
         return {
           verified: false,
-          reason: `Expected URL to contain "${expected}" but got "${postState.url}"`,
+          reason: `Expected URL to contain "${expected}" but got "${currentUrl}"`,
         };
       }
 
       // "URL should change" without a specific target — just check if URL changed
-      if (postState.url !== preActionState.url) {
+      if (currentUrl !== preActionState.url) {
         return { verified: true };
       }
       return {
         verified: false,
-        reason: `Expected URL to change but it stayed at "${postState.url}"`,
+        reason: `Expected URL to change but it stayed at "${currentUrl}"`,
       };
     }
+
+    // Non-URL effects need the full snapshot for content verification
+    const postState = await this.driver.observe().catch(() => preActionState);
 
     const effect = expectedEffect.toLowerCase();
 
@@ -1512,14 +1513,18 @@ export class AgentRunner {
     const page = this.driver.getPage();
     if (!page) return undefined;
 
-    const previews: Array<{ ref: string; text: string; href: string; score: number; preview: BranchPreview }> = [];
-    for (const candidate of candidates) {
-      const href = await this.driver.inspectSelectorHref(candidate.ref).catch(() => undefined);
-      if (!href) continue;
-      const preview = await inspectBranchPreview(page, href, 8000);
-      if (!preview) continue;
-      previews.push({ ref: candidate.ref, text: candidate.text, href, score: scoreBranchPreview(goal, preview, allowedDomains), preview });
-    }
+    const settled = await Promise.all(
+      candidates.map(async (candidate) => {
+        const href = await this.driver.inspectSelectorHref!(candidate.ref).catch(() => undefined);
+        if (!href) return undefined;
+        const preview = await inspectBranchPreview(page, href, 8000);
+        if (!preview) return undefined;
+        return { ref: candidate.ref, text: candidate.text, href, score: scoreBranchPreview(goal, preview, allowedDomains), preview };
+      }),
+    );
+    const previews = settled.filter(
+      (r): r is { ref: string; text: string; href: string; score: number; preview: BranchPreview } => r !== undefined,
+    );
 
     if (previews.length < 2) return undefined;
     previews.sort((a, b) => b.score - a.score);
@@ -1544,15 +1549,16 @@ export class AgentRunner {
     }
 
     const allowedHosts = new Set(allowedDomains.map((domain) => domain.toLowerCase()));
-    const filtered: Array<{ ref: string; text: string; score: number }> = [];
-    for (const candidate of candidates) {
-      const href = await this.driver.inspectSelectorHref(candidate.ref).catch(() => undefined);
-      const host = href ? safeHostname(href) : undefined;
-      if (!host || allowedHosts.has(host)) {
-        filtered.push(candidate);
-      }
-    }
-    return filtered;
+    const resolved = await Promise.all(
+      candidates.map(async (candidate) => {
+        const href = await this.driver.inspectSelectorHref!(candidate.ref).catch(() => undefined);
+        const host = href ? safeHostname(href) : undefined;
+        return { candidate, host };
+      }),
+    );
+    return resolved
+      .filter(({ host }) => !host || allowedHosts.has(host))
+      .map(({ candidate }) => candidate);
   }
 
   private async inspectDisallowedSearchClick(
@@ -1589,8 +1595,8 @@ export class AgentRunner {
   ): Promise<string | undefined> {
     if (!scenario.allowedDomains || scenario.allowedDomains.length === 0) return undefined;
 
-    const postState = await this.driver.observe().catch(() => preActionState);
-    const currentHost = safeHostname(postState.url);
+    const currentUrl = this.driver.getUrl?.() ?? preActionState.url;
+    const currentHost = safeHostname(currentUrl);
     if (!currentHost) return undefined;
 
     const allowedHosts = scenario.allowedDomains.map((domain) => domain.toLowerCase());
@@ -1612,7 +1618,7 @@ export class AgentRunner {
     }
 
     return [
-      `Boundary violation: landed on ${postState.url}, but the allowed host set is ${allowedHosts.join(', ')}.`,
+      `Boundary violation: landed on ${currentUrl}, but the allowed host set is ${allowedHosts.join(', ')}.`,
       'Return to an allowed host and continue from there; do not rely on disallowed subdomains even if their snippet looks relevant.',
     ].join(' ');
   }

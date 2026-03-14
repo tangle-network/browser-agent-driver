@@ -32,6 +32,9 @@ export interface Driver {
   /** Get the underlying Playwright page (if available) */
   getPage?(): import('playwright').Page | undefined;
 
+  /** Get current page URL without rebuilding the AX tree */
+  getUrl?(): string;
+
   /** Take a screenshot on demand */
   screenshot?(): Promise<Buffer>;
 
