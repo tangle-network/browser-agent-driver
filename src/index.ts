@@ -58,6 +58,7 @@ export type {
   ComponentFingerprint,
   NavPattern,
   AnimationToken,
+  FontFile,
 } from './types.js';
 
 // Driver interface + implementations

@@ -607,6 +607,7 @@ export interface DesignTokens {
   }
   logos: LogoAsset[]
   icons: SvgIcon[]
+  fontFiles: FontFile[]
   responsive: Record<string, ViewportTokens>
 }
 
@@ -703,6 +704,15 @@ export interface AnimationToken {
   property: string
   value: string
   count: number
+}
+
+export interface FontFile {
+  family: string
+  weight: string
+  style: string
+  src: string
+  format: string
+  localPath?: string
 }
 
 // ============================================================================

@@ -9,7 +9,7 @@ import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright'
 import { Brain } from './brain/index.js'
-import type { DesignFinding, PageState, DesignTokens, ColorToken, FontFamily, TypeScaleEntry, LogoAsset, SvgIcon, ViewportTokens, SpacingToken, BorderToken, ShadowToken, ComponentFingerprint, NavPattern, AnimationToken } from './types.js'
+import type { DesignFinding, PageState, DesignTokens, ColorToken, FontFamily, TypeScaleEntry, LogoAsset, SvgIcon, ViewportTokens, SpacingToken, BorderToken, ShadowToken, ComponentFingerprint, NavPattern, AnimationToken, FontFile } from './types.js'
 import { PlaywrightDriver } from './drivers/playwright.js'
 import { resolveProviderApiKey, resolveProviderModelName, type SupportedProvider } from './provider-defaults.js'
 import { loadLocalEnvFiles } from './env-loader.js'
@@ -488,14 +488,16 @@ interface RawExtractionResult {
     nav: NavPattern[]
   }
   animations: Array<{ property: string; value: string; count: number }>
+  fontFiles: Array<{ family: string; weight: string; style: string; src: string; format: string }>
 }
 
 // The in-page extraction function — runs inside page.evaluate()
 function extractTokensFromDOM(): RawExtractionResult {
   const MAX_ELEMENTS = 5000
 
-  // --- CSS Custom Properties ---
+  // --- CSS Custom Properties & Font Files ---
   const customProperties: Record<string, string> = {}
+  const fontFiles: Array<{ family: string; weight: string; style: string; src: string; format: string }> = []
   for (const sheet of document.styleSheets) {
     try {
       for (const rule of sheet.cssRules) {
@@ -508,9 +510,62 @@ function extractTokensFromDOM(): RawExtractionResult {
             }
           }
         }
+        if (rule instanceof CSSFontFaceRule) {
+          const family = rule.style.getPropertyValue('font-family').replace(/['"]/g, '').trim()
+          const weight = rule.style.getPropertyValue('font-weight') || '400'
+          const style = rule.style.getPropertyValue('font-style') || 'normal'
+          const src = rule.style.getPropertyValue('src')
+          const urlMatch = src.match(/url\(["']?([^"')]+)["']?\)/)
+          const formatMatch = src.match(/format\(["']?([^"')]+)["']?\)/)
+          if (urlMatch) {
+            fontFiles.push({
+              family,
+              weight,
+              style,
+              src: urlMatch[1],
+              format: formatMatch?.[1] || 'unknown',
+            })
+          }
+        }
       }
     } catch { /* cross-origin stylesheet */ }
   }
+
+  // Supplement with document.fonts API (catches cross-origin @font-face)
+  const seenFontSrcs = new Set(fontFiles.map(f => f.src))
+  try {
+    for (const face of document.fonts) {
+      if (face.status === 'loaded') {
+        // face.family is the CSS font-family, face.weight/style are strings
+        // Check if we already captured this via @font-face rules
+        const family = face.family.replace(/['"]/g, '').trim()
+        const weight = face.weight || '400'
+        const style = face.style || 'normal'
+        // document.fonts doesn't expose the URL, but we can match against loaded resources
+        if (!fontFiles.some(f => f.family === family && f.weight === weight && f.style === style)) {
+          // Will be supplemented by Performance API below
+        }
+      }
+    }
+  } catch { /* older browser */ }
+
+  // Use Performance API to find all loaded font resources (works cross-origin)
+  try {
+    const resources = performance.getEntriesByType('resource') as PerformanceResourceTiming[]
+    for (const r of resources) {
+      if (/\.(woff2?|ttf|otf|eot)(\?|$)/i.test(r.name) && !seenFontSrcs.has(r.name)) {
+        seenFontSrcs.add(r.name)
+        const formatMatch = r.name.match(/\.(woff2?|ttf|otf|eot)/i)
+        fontFiles.push({
+          family: '',  // can't determine from URL alone
+          weight: '',
+          style: '',
+          src: r.name,
+          format: formatMatch?.[1] || 'unknown',
+        })
+      }
+    }
+  } catch { /* Performance API not available */ }
 
   // --- Element traversal ---
   const colorMap = new Map<string, { count: number; properties: Set<string> }>()
@@ -564,17 +619,12 @@ function extractTokensFromDOM(): RawExtractionResult {
   const HEADING_TAGS = new Set(['H1', 'H2', 'H3', 'H4', 'H5', 'H6'])
   const MONO_FAMILIES = /mono|consolas|courier|fira\s*code|jetbrains|source\s*code/i
 
-  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT)
   let elementCount = 0
-  let el: Element | null = walker.currentNode as Element
 
-  while (el && elementCount < MAX_ELEMENTS) {
-    elementCount++
+  // Per-element extraction — shared between light DOM walker and shadow DOM walker
+  function processElement(el: Element) {
     const htmlEl = el as HTMLElement
-    if (htmlEl.offsetWidth === 0 && htmlEl.offsetHeight === 0) {
-      el = walker.nextNode() as Element | null
-      continue
-    }
+    if (htmlEl.offsetWidth === 0 && htmlEl.offsetHeight === 0) return
 
     const cs = getComputedStyle(el)
 
@@ -665,8 +715,38 @@ function extractTokensFromDOM(): RawExtractionResult {
         animationMap.set(key, { property: 'animation', value: `${cs.animationName} ${cs.animationDuration} ${cs.animationTimingFunction}`, count: 1 })
       }
     }
+  }
 
+  // --- Light DOM walk ---
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT)
+  let el: Element | null = walker.currentNode as Element
+
+  while (el && elementCount < MAX_ELEMENTS) {
+    elementCount++
+    processElement(el)
     el = walker.nextNode() as Element | null
+  }
+
+  // --- Shadow DOM walk ---
+  function walkShadowRoots(root: ShadowRoot) {
+    const shadowWalker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT)
+    // currentNode starts at root (ShadowRoot, not Element) — advance to first element
+    let shadowEl: Element | null = shadowWalker.nextNode() as Element | null
+    while (shadowEl && elementCount < MAX_ELEMENTS) {
+      elementCount++
+      processElement(shadowEl)
+      if ((shadowEl as any).shadowRoot) {
+        walkShadowRoots((shadowEl as any).shadowRoot)
+      }
+      shadowEl = shadowWalker.nextNode() as Element | null
+    }
+  }
+
+  const allElements = document.body.querySelectorAll('*')
+  for (const bodyEl of allElements) {
+    if ((bodyEl as any).shadowRoot && elementCount < MAX_ELEMENTS) {
+      walkShadowRoots((bodyEl as any).shadowRoot)
+    }
   }
 
   // --- Components: Buttons ---
@@ -872,6 +952,7 @@ function extractTokensFromDOM(): RawExtractionResult {
       nav: navPatterns,
     },
     animations: Array.from(animationMap.values()).sort((a, b) => b.count - a.count),
+    fontFiles,
   }
 }
 
@@ -1043,6 +1124,7 @@ export async function extractDesignTokens(opts: ExtractDesignTokensOptions): Pro
   let brand: RawExtractionResult['brand'] = {}
   const allLogos: LogoAsset[] = []
   const allIcons: SvgIcon[] = []
+  const allFontFiles = new Map<string, { family: string; weight: string; style: string; src: string; format: string }>()
   const responsiveTokens: Record<string, ViewportTokens> = {}
   const screenshotPaths: Record<string, string> = {}
 
@@ -1104,6 +1186,11 @@ export async function extractDesignTokens(opts: ExtractDesignTokensOptions): Pro
           allIcons.push(icon)
         }
       }
+      for (const ff of raw.fontFiles) {
+        if (!allFontFiles.has(ff.src)) {
+          allFontFiles.set(ff.src, ff)
+        }
+      }
 
       responsiveTokens[vp.name] = {
         width: vp.width,
@@ -1162,6 +1249,27 @@ export async function extractDesignTokens(opts: ExtractDesignTokensOptions): Pro
       data.headingUse ? 'display' as const : 'body' as const,
   }))
 
+  // Download font files
+  const downloadedFontFiles: FontFile[] = []
+  if (allFontFiles.size > 0) {
+    const fontDir = path.join(outputDir, 'fonts')
+    fs.mkdirSync(fontDir, { recursive: true })
+    for (const ff of allFontFiles.values()) {
+      try {
+        const res = await fetch(ff.src)
+        if (!res.ok) continue
+        const buffer = Buffer.from(await res.arrayBuffer())
+        const urlPath = new URL(ff.src).pathname
+        const filename = path.basename(urlPath) || `${ff.family.replace(/\s+/g, '-')}-${ff.weight}-${ff.style}.${ff.format === 'unknown' ? 'bin' : ff.format}`
+        const localPath = path.join(fontDir, filename)
+        fs.writeFileSync(localPath, buffer)
+        downloadedFontFiles.push({ ...ff, localPath })
+      } catch {
+        downloadedFontFiles.push({ ...ff })
+      }
+    }
+  }
+
   const tokens: DesignTokens = {
     url: opts.url,
     extractedAt: new Date().toISOString(),
@@ -1172,6 +1280,7 @@ export async function extractDesignTokens(opts: ExtractDesignTokensOptions): Pro
     brand,
     logos: allLogos,
     icons: allIcons.slice(0, 50),
+    fontFiles: downloadedFontFiles,
     responsive: responsiveTokens,
   }
 
@@ -1235,6 +1344,12 @@ async function runTokenExtraction(opts: DesignAuditOptions): Promise<void> {
   console.log(`CSS variables:     ${Object.keys(tokens.customProperties).length}`)
   console.log(`Logos found:       ${tokens.logos.length}`)
   console.log(`Icons found:       ${tokens.icons.length}`)
+  const downloadedCount = tokens.fontFiles.filter(f => f.localPath).length
+  console.log(`Font files:        ${tokens.fontFiles.length} found, ${downloadedCount} downloaded`)
+  for (const ff of tokens.fontFiles.slice(0, 5)) {
+    const status = ff.localPath ? path.basename(ff.localPath) : '(not downloaded)'
+    console.log(`  ${ff.family} ${ff.weight} ${ff.style} [${ff.format}] ${status}`)
+  }
   console.log(`Brand:`)
   if (tokens.brand.title) console.log(`  Title:           ${tokens.brand.title}`)
   if (tokens.brand.themeColor) console.log(`  Theme color:     ${tokens.brand.themeColor}`)
