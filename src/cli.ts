@@ -124,6 +124,7 @@ async function main(): Promise<void> {
       concurrency: { type: 'string' },
       'max-turns': { type: 'string' },
       pages: { type: 'string' },
+      'extract-tokens': { type: 'boolean' },
       'llm-timeout': { type: 'string' },
       retries: { type: 'string' },
       'retry-delay-ms': { type: 'string' },
@@ -203,6 +204,7 @@ async function main(): Promise<void> {
       json: values.json,
       headless: values.headless,
       debug: values.debug,
+      extractTokens: values['extract-tokens'],
     });
     process.exit(0);
   }
@@ -1013,6 +1015,14 @@ DESIGN AUDIT:
   bad design-audit --url https://example.com --profile marketing --json
 
   Profiles: general, saas, defi, marketing
+
+DESIGN TOKEN EXTRACTION:
+  bad design-audit --url https://stripe.com --extract-tokens
+  bad design-audit --url https://app.example.com --extract-tokens --json
+
+  Extracts colors, typography, spacing, components, logos, icons,
+  CSS custom properties, and brand assets at mobile/tablet/desktop viewports.
+  Outputs tokens.json — no LLM calls, pure DOM extraction.
 
 DOCKER:
   docker run -v ./cases.json:/data/cases.json -v ./out:/output \\
