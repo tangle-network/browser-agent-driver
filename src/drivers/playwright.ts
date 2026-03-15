@@ -179,11 +179,12 @@ export class PlaywrightDriver implements Driver {
     const captureScreenshot = wantedForVision || wantedForArtifact;
 
     const waitStart = performance.now();
-    // Cap load state wait at 10s — heavy JS sites (AliExpress) can stall
+    // Cap load state wait at 5s — heavy JS sites (AliExpress) can stall
     // domcontentloaded for 30s+. The page usually has usable DOM much earlier.
+    // ~70% of pages load in <2s, so 5s captures nearly all legitimate loads.
     await Promise.race([
       this.page.waitForLoadState('domcontentloaded').catch(() => {}),
-      new Promise<void>(resolve => setTimeout(resolve, 10_000)),
+      new Promise<void>(resolve => setTimeout(resolve, 5_000)),
     ]);
     const waitForLoadMs = performance.now() - waitStart;
 

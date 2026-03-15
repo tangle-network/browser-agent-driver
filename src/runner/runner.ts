@@ -233,7 +233,7 @@ export class AgentRunner {
         const observeStartedAt = Date.now();
         const state = this.cachedPostState ?? await withRetry(
           () => this.driver.observe(),
-          retries,
+          1, // Observe failures are DOM access issues, not transient — retrying 3x wastes 3s
           retryDelayMs,
           (attempt, err) => {
             if (this.config.debug) {
@@ -1073,20 +1073,18 @@ export class AgentRunner {
           }
         } catch (err) {
           if (err instanceof StaleRefError) {
-            // Stale ref — re-observe and ask the Brain to pick a new ref
-            // without burning a full turn. Feed back the fresh snapshot
-            // so the Brain can immediately re-decide.
+            // Stale ref — re-observe and cache for next turn (avoid double observe).
+            // Only inject available refs, not the full snapshot — next turn's observe
+            // provides the complete snapshot, so duplicating it here wastes 3-8k tokens.
             if (this.config.debug) {
               console.log(`[Runner] Stale ref @${err.staleRef} — re-observing for immediate retry`);
             }
-            const freshState = await this.driver.observe();
+            this.cachedPostState = await this.driver.observe();
             this.brain.injectFeedback(
-              `Your selector @${err.staleRef} was not found in the current page. ` +
+              `Your selector @${err.staleRef} was not found. ` +
               `Available refs: ${err.availableRefs.slice(0, 20).join(', ')}. ` +
-              `Here is the FRESH page state — pick a valid ref:\n\n` +
-              `URL: ${freshState.url}\nELEMENTS:\n${freshState.snapshot}`
+              `Pick a valid ref from the next observation.`
             );
-            // Let the loop continue — Brain sees feedback and next observe() has fresh refs.
             runState.recordError();
             turn.error = `Stale ref @${err.staleRef} — auto-retrying`;
             turn.durationMs = Date.now() - turnStart;

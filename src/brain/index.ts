@@ -130,35 +130,9 @@ Rules:
 5. Do not over-explore on the first turn.
 6. Respond with JSON only.`;
 
-const LINK_SCOUT_PROMPT = `You are a browser navigation scout.
-
-Your job is NOT to browse freely. Your only job is to pick the best next visible link from a short candidate list.
-
-You will receive:
-- the user goal
-- the current URL/title
-- the current page structure
-- a small ranked candidate list of visible links
-
-Choose the single best candidate that most directly advances the goal.
-Prefer:
-- first-party links already visible on the current page
-- links whose text matches the requested entity/content type
-- links that avoid unnecessary search detours
-
-Respond with ONLY a JSON object:
-{
-  "selector": "@ref",
-  "reasoning": "brief reason",
-  "confidence": 0.82
-}
-
-Rules:
-1. selector must exactly match one candidate ref
-2. choose only one candidate
-3. do not invent refs
-4. confidence must be 0 to 1
-5. if none are viable, choose the best available candidate anyway`;
+const LINK_SCOUT_PROMPT = `Pick the best link from CANDIDATES to advance the GOAL. Respond with ONLY JSON:
+{"selector":"@ref","reasoning":"brief reason","confidence":0.82}
+Rules: use exact candidate ref, pick one, confidence 0-1, prefer first-party and text-matching links.`;
 
 const DESIGN_AUDIT_PROMPT = `You are a senior product designer and UX engineer auditing a web application.
 
@@ -855,19 +829,15 @@ Please evaluate the quality of this page/application.`;
     extraContext?: string,
   ): Promise<LinkScoutRecommendation> {
     const topCandidates = candidates.slice(0, 5);
+    // Scout only needs candidates + context, not the full snapshot (saves 2-8k tokens)
     const lines = [
       `GOAL: ${goal}`,
       '',
-      'CURRENT PAGE:',
-      `URL: ${state.url}`,
-      `Title: ${state.title}`,
-      '',
-      'ELEMENTS:',
-      state.snapshot,
+      `PAGE: ${state.url} — ${state.title}`,
       '',
       'CANDIDATES:',
       ...topCandidates.map((candidate, index) =>
-        `${index + 1}. ${candidate.ref} — ${candidate.text} (deterministic score ${candidate.score})`,
+        `${index + 1}. ${candidate.ref} — ${candidate.text} (score ${candidate.score})`,
       ),
     ];
     if (extraContext) {
@@ -962,30 +932,11 @@ Was the goal actually achieved? Analyze the current page state carefully.`;
       : undefined;
 
     const result = await this.generate(
-      `You are verifying whether a browser automation agent actually achieved its goal.
+      `Verify whether the browser agent achieved its goal. Respond with ONLY JSON:
+{"achieved":true,"confidence":0.9,"evidence":["observation"],"missing":[]}
 
-Analyze the page state (screenshot + accessibility tree) and determine if the stated goal was accomplished.
-
-Check the page state and claimed result carefully:
-1. Does the current page state show the goal was completed?
-2. Are there error messages, incomplete forms, or missing elements?
-3. Does the URL match what you'd expect after goal completion?
-4. Is the claimed result consistent with what's visible on the page?
-5. CRITICAL — SUPPLEMENTAL TOOL EVIDENCE: If the claimed result includes "SUPPLEMENTAL TOOL EVIDENCE" or "SCRIPT RESULT" sections, this data was extracted programmatically from the actual page DOM via JavaScript. This evidence is VERIFIED and TRUSTWORTHY — treat it as equivalent to data visible on the current page. It can fully satisfy data requirements (titles, dates, prices, ratings, counts, URLs) even if the current page no longer shows that data. Do NOT reject a completion simply because the extracted data isn't visible in the current accessibility tree.
-6. MULTI-PAGE TASKS: For goals requiring data from multiple pages (e.g., "find X and extract Y"), the agent may have navigated through several pages collecting data via runScript. If the claimed result contains specific data points that match the SUPPLEMENTAL TOOL EVIDENCE, accept the completion even if the current page is a different page from where the data was extracted.
-
-Respond with ONLY a JSON object:
-{
-  "achieved": true,
-  "confidence": 0.9,
-  "evidence": ["The dashboard shows the new item", "URL changed to /success"],
-  "missing": []
-}
-
-- achieved: true if the goal is clearly met, false if not or uncertain
-      - confidence: 0.0 to 1.0 — how sure are you?
-      - evidence: specific observations supporting your judgment
-      - missing: what's still needed (empty array if achieved)`,
+Check: page state matches goal, no errors, URL is expected, claimed result matches visible data.
+SUPPLEMENTAL TOOL EVIDENCE / SCRIPT RESULT in claimed results = verified DOM data, trustworthy even if page navigated away. Multi-page data collection is valid.`,
       [{ role: 'user', content: userContent }],
       verifyProvider && verifyModel ? { provider: verifyProvider, model: verifyModel } : undefined,
       600,
@@ -1295,8 +1246,10 @@ function deduplicateSnapshot(snapshot: string): string {
  * non-interactive decorative lines first, then hard-caps with a notice.
  */
 function budgetSnapshot(snapshot: string, maxChars = 16_000): string {
-  // Deduplicate consecutive similar elements before any budget logic
-  snapshot = deduplicateSnapshot(snapshot)
+  // Skip dedup on small snapshots — not enough repetition to justify the O(n) scan
+  if (snapshot.length > 6_000) {
+    snapshot = deduplicateSnapshot(snapshot)
+  }
 
   if (snapshot.length <= maxChars) return snapshot;
 
