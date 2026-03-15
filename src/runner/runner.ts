@@ -326,46 +326,27 @@ export class AgentRunner {
               ));
           if (modalWasDismissed && prevPrevTurn && state.url === prevPrevTurn.state.url) {
             ctxBudget.add('blocker-recovery',
-              '\nBLOCKER RECOVERY NOTE: A blocking dialog was just dismissed, but the URL has not changed ' +
-              'since before the dialog appeared. Any form submission, search, or navigation that was attempted ' +
-              'before the dialog may have been intercepted and voided. ' +
-              'Re-check the page state and re-submit your prior action if needed.\n', 90);
+              '\nDialog dismissed but URL unchanged — prior action may have been voided. Re-submit if needed.\n', 90);
           }
         }
 
         const turnsLeft = maxTurns - i + 1;
         if (turnsLeft <= 3) {
-          let turnBudgetText =
-            `\nTURN-BUDGET CRITICAL: ${turnsLeft} turn(s) left including this one.\n` +
-            'Do not start new exploratory navigation.\n' +
-            'Prioritize extracting the final required evidence from the current page context and finish decisively.\n';
-          if (turnsLeft === 1) {
-            turnBudgetText +=
-              'FINAL TURN REQUIREMENT: return a terminal action now (`complete` if enough evidence exists, otherwise `abort` with explicit blocker reason).\n';
-          }
-          ctxBudget.add('turn-budget', turnBudgetText, 100);
+          const finalTurnSuffix = turnsLeft === 1
+            ? ' FINAL TURN: return complete or abort now.'
+            : '';
+          ctxBudget.add('turn-budget',
+            `\nBUDGET: ${turnsLeft} turn(s) left. Extract data and finish.${finalTurnSuffix}\n`, 100);
         } else if (i >= Math.floor(maxTurns * 0.5) && runState.goalVerificationEvidence.length === 0) {
-          // Mid-run: agent has used 50%+ turns without extracting any evidence
           ctxBudget.add('extraction-reminder',
-            '\nEXTRACTION REMINDER: You have used over half your turn budget without extracting data. ' +
-            'STOP navigating between individual pages. Use runScript NOW to extract ALL data from the CURRENT page: ' +
-            'document.querySelectorAll("[class*=card], [class*=result], [class*=listing], li, tr").forEach(el => ...) ' +
-            'to get names, prices, phone numbers, addresses, ratings. ' +
-            'If you are on a listing/directory/search results page, extract everything visible and complete. ' +
-            'Do NOT click into more individual items — extract from the list.\n', 85);
+            '\nHALF BUDGET USED, no data extracted. Use runScript NOW to extract from current page and complete.\n', 85);
         }
 
-        // Early filter strategy nudge: if goal mentions filtering and agent hasn't
-        // extracted evidence by turn 8, remind to use filter controls efficiently
         if (i >= 8 && i < Math.floor(maxTurns * 0.5) && runState.goalVerificationEvidence.length === 0) {
-          const goalLower = scenario.goal.toLowerCase();
-          const isFilterTask = /filter|under \$|over \$|\d+\+ (star|rating)|sort by|price range|less than/i.test(goalLower);
+          const isFilterTask = /filter|under \$|over \$|\d+\+ (star|rating)|sort by|price range|less than/i.test(scenario.goal);
           if (isFilterTask) {
             ctxBudget.add('filter-strategy',
-              '\nFILTER STRATEGY: This goal requires filtering. If you are on the results page, ' +
-              'use runScript to find filter controls: document.querySelectorAll(\'input[type="range"], select, [class*="filter"], [class*="price"], [class*="slider"]\'). ' +
-              'Apply the filter, wait 2s, then extract results via runScript. ' +
-              'Do NOT keep browsing — apply the filter and extract data NOW.\n', 80);
+              '\nFILTER GOAL: use runScript to find filter controls, apply filter, extract results.\n', 80);
           }
         }
 
@@ -585,14 +566,14 @@ export class AgentRunner {
         const lastTurn = turns[turns.length - 1];
         if (lastTurn?.verificationFailure) {
           ctxBudget.add('verification-failure',
-            `\nVERIFICATION FAILED: ${lastTurn.verificationFailure}\nYour last action did NOT produce the expected effect. Try a different approach.\n`, 85);
+            `\nVERIFICATION FAILED: ${lastTurn.verificationFailure}. Try different approach.\n`, 85);
         }
 
         // Extraction guard: if the agent just ran a script that returned data,
         // remind it to consider completing before navigating away.
         if (lastTurn?.action.action === 'runScript' && !lastTurn.error) {
           ctxBudget.add('extraction-guard',
-            '\nYou just extracted data with runScript. If this data answers the goal, use "complete" now instead of navigating away. Do not leave a page with useful data without attempting completion first.\n', 80);
+            '\nData extracted. If it answers the goal, complete now.\n', 80);
         }
 
         const extraContext = ctxBudget.build();
@@ -934,26 +915,11 @@ export class AgentRunner {
               turn.verificationFailure = goalResult.missing.join('; ') || 'Goal verification failed';
               runState.firstSufficientEvidenceTurn ??= i;
               // Goal not met — reject completion and feed back what's missing
-              const escalation = runState.verificationRejectionCount >= 3
-                ? '\nFINAL WARNING: You have been rejected 3+ times. ' +
-                  'Use runScript NOW to extract the EXACT data the goal asks for: ' +
-                  'document.querySelector/querySelectorAll to get text content, prices, ratings, dates, etc. ' +
-                  'Include the extracted data verbatim in your completion result. ' +
-                  'The verification system trusts runScript evidence — use it.'
-                : runState.verificationRejectionCount >= 2
-                ? '\nYou have been rejected multiple times. CHANGE YOUR STRATEGY: ' +
-                  'Use runScript to extract the exact data needed: e.g., document.querySelector(".title").textContent. ' +
-                  'Include ALL extracted data in your completion result. ' +
-                  'If you need to prove a search was done, complete FROM the search results page. ' +
-                  'The verifier trusts SCRIPT RESULT evidence — extract data programmatically.'
-                : '\nBefore trying again, ensure ALL required evidence is visible or extracted. ' +
-                  'Use runScript to extract structured data if the a11y tree is incomplete. ' +
-                  'Complete only when every requirement in the goal can be verified from the page state or extracted via script.';
+              const escalation = runState.verificationRejectionCount >= 2
+                ? ' Use runScript to extract exact data and include in completion.'
+                : '';
               this.brain.injectFeedback(
-                `COMPLETION REJECTED — goal verification failed (confidence: ${goalResult.confidence.toFixed(2)}).\n` +
-                `Missing: ${goalResult.missing.join('; ')}\n` +
-                `Evidence reviewed: ${goalResult.evidence.join('; ')}\n` +
-                `The goal has NOT been achieved yet. Continue working.${escalation}`
+                `REJECTED (${goalResult.confidence.toFixed(2)}). Missing: ${goalResult.missing.join('; ')}.${escalation}`
               );
               turn.durationMs = Date.now() - turnStart;
               turns.push(turn);
@@ -1353,8 +1319,8 @@ export class AgentRunner {
       };
     }
 
-    // Non-URL effects: wait for DOM to settle, then observe
-    await new Promise(r => setTimeout(r, 200));
+    // Non-URL effects: brief wait for DOM to settle, then observe
+    await new Promise(r => setTimeout(r, 100));
     const postState = await this.driver.observe().catch(() => preActionState);
     this.cachedPostState = postState;
 

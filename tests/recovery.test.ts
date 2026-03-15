@@ -78,7 +78,7 @@ describe('recovery blocker handling', () => {
     const detection = detectBlockingModal(snapshot);
     expect(detection?.strategy).toBe('cookie-consent-dismiss');
     expect(detection?.action).toEqual({ action: 'click', selector: '@b3efd' });
-    expect(detection?.feedback).toContain('cookie/consent dialog');
+    expect(detection?.feedback).toContain('ookie');
     expect(detection?.feedback).toContain('Re-verify');
   });
 
@@ -399,6 +399,6 @@ describe('URL cycle detection', () => {
       consecutiveErrors: 0,
     });
     expect(recovery?.strategy).toBe('stuck-url-cycle');
-    expect(recovery?.feedback).toContain('navigating in a circle');
+    expect(recovery?.feedback).toContain('navigating in circle');
   });
 });

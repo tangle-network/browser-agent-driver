@@ -208,8 +208,7 @@ export function detectBlockingModal(snapshot: string): BlockingModalDetection | 
     return {
       kind: 'blocking-modal',
       strategy: 'modal-confirm-delete',
-      feedback:
-        'BLOCKER SUBSTEP: A delete-confirmation modal is present. Confirming deletion to complete quota cleanup, then continue the main goal.',
+      feedback: 'Confirming delete to clear quota, then continuing goal.',
       action: { action: 'click', selector: `@${confirmDeleteRef}` },
     };
   }
@@ -230,8 +229,7 @@ export function detectBlockingModal(snapshot: string): BlockingModalDetection | 
     return {
       kind: 'verification-override',
       strategy: 'modal-use-personal-credits',
-      feedback:
-        'BLOCKER: A partner verification modal is blocking project start. Continue with the current project using personal credits, then resume the main goal.',
+      feedback: 'Verification modal — continuing with personal credits.',
       action: { action: 'click', selector: `@${verificationOverrideRef}` },
     };
   }
@@ -252,9 +250,7 @@ export function detectBlockingModal(snapshot: string): BlockingModalDetection | 
       return {
         kind: 'quota-limit',
         strategy: 'quota-limit-manage',
-        feedback:
-          'BLOCKER: A quota/limit dialog is blocking progress. Opening the project/plan management path. ' +
-          'Resolve the limit (remove/archive old test items or upgrade) and then retry the original goal action.',
+        feedback: 'Quota limit — opening management path to resolve.',
         action: { action: 'click', selector: `@${manageRef}` },
       };
     }
@@ -272,9 +268,7 @@ export function detectBlockingModal(snapshot: string): BlockingModalDetection | 
       return {
         kind: 'quota-limit',
         strategy: 'quota-limit-cleanup',
-        feedback:
-          'BLOCKER: A quota/limit dialog is blocking progress. A cleanup action was selected to free capacity. ' +
-          'After cleanup, confirm the blocker is gone and continue with the main goal.',
+        feedback: 'Quota limit — cleanup action selected to free capacity.',
         action: { action: 'click', selector: `@${cleanupRef}` },
       };
     }
@@ -282,9 +276,7 @@ export function detectBlockingModal(snapshot: string): BlockingModalDetection | 
     return {
       kind: 'quota-limit',
       strategy: 'quota-limit-escape',
-      feedback:
-        'BLOCKER: Quota/limit dialog detected but no clear management button was found. ' +
-        'Dismissing the dialog; then navigate to project/settings areas to free capacity and retry.',
+      feedback: 'Quota dialog dismissed. Navigate to settings to free capacity.',
       forceAction: 'escape',
     };
   }
@@ -314,10 +306,7 @@ export function detectBlockingModal(snapshot: string): BlockingModalDetection | 
       return {
         kind: 'blocking-modal',
         strategy: 'cookie-consent-dismiss',
-        feedback:
-          'BLOCKER: A cookie/consent dialog was intercepting the page. It has been dismissed. ' +
-          'If you submitted a form or search before this dialog appeared, the submission may have been blocked. ' +
-          'Re-verify whether your last action took effect (check the URL and page content) and re-submit if needed.',
+        feedback: 'Cookie/consent dialog dismissed. Re-verify prior action took effect.',
         action: { action: 'click', selector: `@${consentDismissRef}` },
       };
     }
@@ -330,8 +319,7 @@ export function detectBlockingModal(snapshot: string): BlockingModalDetection | 
       return {
         kind: 'blocking-modal',
         strategy: 'cookie-consent-iframe-dismiss',
-        feedback:
-          'BLOCKER: A cookie/consent dialog inside an iframe was detected and is being dismissed via script.',
+        feedback: 'Cookie consent iframe dismissed via script.',
         action: {
           action: 'runScript',
           script: `(function() {
@@ -374,8 +362,7 @@ export function detectBlockingModal(snapshot: string): BlockingModalDetection | 
     return {
       kind: 'blocking-modal',
       strategy: 'modal-dismiss-click',
-      feedback:
-        'BLOCKER: A dialog/modal is obstructing interaction. Dismiss it first, then continue with the goal.',
+      feedback: 'Dialog dismissed. Continue with goal.',
       action: { action: 'click', selector: `@${closeRef}` },
     };
   }
@@ -383,9 +370,7 @@ export function detectBlockingModal(snapshot: string): BlockingModalDetection | 
   return {
     kind: 'blocking-modal',
     strategy: 'modal-present-no-force',
-    feedback:
-      'BLOCKER: A dialog/modal is present. Do not interact with background page elements. ' +
-      'Choose an explicit action inside this modal first (close, cancel, confirm, or required primary action).',
+    feedback: 'Dialog/modal present. Act inside it first (close, cancel, or confirm).',
   };
 }
 
@@ -554,11 +539,7 @@ export function analyzeRecovery(ctx: RecoveryContext): RecoveryAction | null {
       if (hashes[0] === hashes[2] && hashes[1] === hashes[3] && hashes[0] !== hashes[1]) {
         return {
           strategy: 'stuck-oscillating',
-          feedback:
-            'STUCK: You are toggling between two states (e.g., opening and closing a menu/dialog) without making progress. ' +
-            'The URL has not changed. Stop repeating these actions. ' +
-            'Try a completely different approach: use the search box if one is available, navigate directly via URL, ' +
-            'or scroll to find alternative navigation elements.',
+          feedback: 'STUCK: toggling between two states. Use search, direct URL, or scroll instead.',
           forceAction: 'escape',
         };
       }
@@ -574,12 +555,7 @@ export function analyzeRecovery(ctx: RecoveryContext): RecoveryAction | null {
       if (is2Cycle || is3Cycle) {
         return {
           strategy: 'stuck-url-cycle',
-          feedback:
-            'STUCK: You are navigating in a circle between the same pages without making progress. ' +
-            'You have visited the same URLs repeatedly. Stop this loop immediately. ' +
-            'The information you need may already be on the current page — look at the ELEMENTS more carefully. ' +
-            'If not, try a completely different approach: use a direct URL, extract data with runScript, ' +
-            'or look for the answer in the current page content rather than navigating away.',
+          feedback: 'STUCK: navigating in circles. Extract data from current page with runScript or try direct URL.',
         };
       }
     }
@@ -587,10 +563,7 @@ export function analyzeRecovery(ctx: RecoveryContext): RecoveryAction | null {
     if (allSame) {
       return {
         strategy: 'stuck-same-action',
-        feedback:
-          'STUCK: You have repeated the same action 3 times with no effect. ' +
-          'The page has not changed. The page has been reloaded to reset state. ' +
-          'You MUST try a completely different approach.',
+        feedback: 'STUCK: same action 3x with no effect. Page reloaded. Try different approach.',
         waitMs: 1000,
         forceAction: 'reload',
       };
@@ -598,10 +571,7 @@ export function analyzeRecovery(ctx: RecoveryContext): RecoveryAction | null {
 
     return {
       strategy: 'stuck-no-progress',
-      feedback:
-        'STUCK: The page has not changed for 3 turns despite different actions. ' +
-        'Escape has been pressed to dismiss any overlays. ' +
-        'Try a fundamentally different approach — scroll, use different selectors, or navigate elsewhere.',
+      feedback: 'STUCK: no change for 3 turns. Escape pressed. Scroll, use different selectors, or navigate.',
       forceAction: 'escape',
     };
   }
@@ -611,7 +581,7 @@ export function analyzeRecovery(ctx: RecoveryContext): RecoveryAction | null {
   if (detectLoadingState(currentState.snapshot)) {
     return {
       strategy: 'loading-wait',
-      feedback: 'The page appears to be loading. Waiting for it to finish before taking action.',
+      feedback: 'Page loading — waiting.',
       waitMs: 1000,
     };
   }
@@ -620,10 +590,7 @@ export function analyzeRecovery(ctx: RecoveryContext): RecoveryAction | null {
   if (consecutiveErrors >= 2 || detectSelectorFailures(recentTurns, 2)) {
     return {
       strategy: 'selector-failures',
-      feedback:
-        'Multiple actions have failed. The selectors may be stale or elements may be obscured. ' +
-        'Look carefully at the current ELEMENTS list and choose a different element. ' +
-        'If a dialog is present, dismiss or resolve it before retrying.',
+      feedback: 'Multiple selector failures. Choose different elements from ELEMENTS list.',
     };
   }
 
