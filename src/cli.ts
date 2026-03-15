@@ -15,7 +15,7 @@
 import { parseArgs } from 'node:util';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { execSync, spawn } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import type { BrowserContext, Route } from 'playwright';
 import { loadConfig, mergeConfig, toAgentConfig } from './config.js';
 import type { DriverConfig } from './config.js';
@@ -608,20 +608,6 @@ async function main(): Promise<void> {
   process.on('SIGINT', () => { renderer?.destroy(); process.exit(130); });
   process.on('SIGTERM', () => { renderer?.destroy(); process.exit(143); });
 
-  // On macOS headed mode, detect the terminal app so we can refocus after browser steals focus
-  let terminalApp: string | undefined
-  if (process.platform === 'darwin' && !launchPlan.headless) {
-    const termMap: Record<string, string> = {
-      'iTerm.app': 'iTerm2',
-      'Apple_Terminal': 'Terminal',
-      'WezTerm': 'WezTerm',
-      'vscode': 'Visual Studio Code',
-      'Alacritty': 'Alacritty',
-      'kitty': 'kitty',
-    }
-    terminalApp = termMap[process.env.TERM_PROGRAM ?? '']
-  }
-
   renderer?.launchStart(browserName);
 
   // Set up browser
@@ -914,16 +900,6 @@ async function main(): Promise<void> {
   }
 
   renderer?.launchDone();
-
-  // Refocus the terminal after browser launch stole focus
-  if (terminalApp) {
-    try {
-      execSync(
-        `osascript -e 'tell application "${terminalApp}" to activate'`,
-        { stdio: 'ignore', timeout: 2000 },
-      )
-    } catch { /* best-effort */ }
-  }
 
   const runner = new TestRunner({
     config,
