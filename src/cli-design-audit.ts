@@ -7,12 +7,14 @@
 
 import * as fs from 'node:fs'
 import * as path from 'node:path'
+import chalk from 'chalk'
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright'
 import { Brain } from './brain/index.js'
 import type { DesignFinding, PageState, DesignTokens, ColorToken, FontFamily, TypeScaleEntry, LogoAsset, SvgIcon, ViewportTokens, SpacingToken, BorderToken, ShadowToken, ComponentFingerprint, NavPattern, AnimationToken, FontFile } from './types.js'
 import { PlaywrightDriver } from './drivers/playwright.js'
 import { resolveProviderApiKey, resolveProviderModelName, type SupportedProvider } from './provider-defaults.js'
 import { loadLocalEnvFiles } from './env-loader.js'
+import { cliError } from './cli-ui.js'
 
 // ---------------------------------------------------------------------------
 // Audit profiles — domain-specific rubrics injected into the system prompt
@@ -285,7 +287,7 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
 
   const profile = opts.profile ?? 'general'
   if (!PROFILE_RUBRICS[profile]) {
-    console.error(`Unknown profile: ${profile}. Options: ${Object.keys(PROFILE_RUBRICS).join(', ')}`)
+    cliError(`unknown profile: ${profile}. Options: ${Object.keys(PROFILE_RUBRICS).join(', ')}`)
     process.exit(1)
   }
 
@@ -296,12 +298,10 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
 
   const [vw, vh] = (opts.viewport ?? '1440x900').split('x').map(Number)
 
-  console.log('=== Design Audit ===')
-  console.log(`URL:      ${opts.url}`)
-  console.log(`Profile:  ${profile}`)
-  console.log(`Model:    ${modelName}`)
-  console.log(`Pages:    up to ${maxPages}`)
-  console.log(`Viewport: ${vw}x${vh}`)
+  console.log('')
+  console.log(`  ${chalk.bold('bad design-audit')}`)
+  console.log(`  ${profile} ${chalk.dim('·')} ${chalk.cyan(modelName)} ${chalk.dim('·')} ${vw}×${vh} ${chalk.dim('·')} up to ${maxPages} pages`)
+  console.log(`  ${chalk.dim('→')} ${opts.url}`)
   console.log('')
 
   const browser = await chromium.launch({ headless: opts.headless ?? true })
@@ -309,10 +309,10 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
   const page = await context.newPage()
 
   // Discover pages
-  console.log('Discovering pages...')
+  console.log(`  ${chalk.dim('Discovering pages…')}`)
   const pages = await discoverPages(page, opts.url, maxPages)
-  console.log(`Found ${pages.length} page(s):`)
-  for (const p of pages) console.log(`  ${p}`)
+  console.log(`  Found ${chalk.bold(String(pages.length))} page${pages.length !== 1 ? 's' : ''}`)
+  for (const p of pages) console.log(`  ${chalk.dim('·')} ${p}`)
   console.log('')
 
   // Set up output directory
@@ -336,19 +336,27 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
   const results: PageAuditResult[] = []
   for (let i = 0; i < pages.length; i++) {
     const url = pages[i]
-    console.log(`[${i + 1}/${pages.length}] Auditing ${url}...`)
+    console.log(`  ${chalk.dim(`[${i + 1}/${pages.length}]`)} ${url}`)
 
     const result = await auditSinglePage(brain, driver, page, url, profile, screenshotDir)
     results.push(result)
 
-    const icon = result.score >= 8 ? '✓' : result.score >= 5 ? '~' : '✗'
-    console.log(`  ${icon} Score: ${result.score}/10 — ${result.findings.length} findings`)
+    const icon = result.score >= 8 ? chalk.green('✓') : result.score >= 5 ? chalk.yellow('~') : chalk.red('✗')
+    const scoreColor = result.score >= 8 ? chalk.green : result.score >= 5 ? chalk.yellow : chalk.red
+    const findingCount = result.findings.length
+    console.log(`  ${icon} ${scoreColor(`${result.score}/10`)} ${chalk.dim('—')} ${findingCount} finding${findingCount !== 1 ? 's' : ''}`)
   }
 
   // Generate report
   const report = generateReport(results, profile)
   const reportPath = path.join(outputDir, 'report.md')
   fs.writeFileSync(reportPath, report)
+
+  const allFindings = results.flatMap(r => r.findings)
+  const avgScore = results.reduce((s, r) => s + r.score, 0) / results.length
+  const critical = allFindings.filter(f => f.severity === 'critical').length
+  const major = allFindings.filter(f => f.severity === 'major').length
+  const minor = allFindings.filter(f => f.severity === 'minor').length
 
   if (opts.json) {
     const jsonPath = path.join(outputDir, 'report.json')
@@ -357,22 +365,23 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
       profile,
       url: opts.url,
       pages: results,
-      summary: {
-        avgScore: results.reduce((s, r) => s + r.score, 0) / results.length,
-        totalFindings: results.flatMap(r => r.findings).length,
-        critical: results.flatMap(r => r.findings).filter(f => f.severity === 'critical').length,
-        major: results.flatMap(r => r.findings).filter(f => f.severity === 'major').length,
-        minor: results.flatMap(r => r.findings).filter(f => f.severity === 'minor').length,
-      },
+      summary: { avgScore, totalFindings: allFindings.length, critical, major, minor },
     }, null, 2))
-    console.log(`\nJSON:   ${jsonPath}`)
+    console.log(`  ${chalk.dim('JSON →')} ${jsonPath}`)
   }
 
-  console.log(`\nReport: ${reportPath}`)
-  console.log(`Screenshots: ${screenshotDir}`)
-
-  // Print summary
-  console.log('\n' + report.split('\n').slice(0, 15).join('\n'))
+  // Summary
+  console.log('')
+  console.log(`  ${chalk.dim('─'.repeat(52))}`)
+  const avgColor = avgScore >= 8 ? chalk.green : avgScore >= 5 ? chalk.yellow : chalk.red
+  const findingParts: string[] = []
+  if (critical > 0) findingParts.push(chalk.red(`${critical} critical`))
+  if (major > 0) findingParts.push(chalk.yellow(`${major} major`))
+  if (minor > 0) findingParts.push(chalk.dim(`${minor} minor`))
+  console.log(`  Avg: ${avgColor(`${avgScore.toFixed(1)}/10`)}  ${chalk.dim('·')}  ${allFindings.length} findings ${findingParts.length ? chalk.dim('(') + findingParts.join(chalk.dim(' · ')) + chalk.dim(')') : ''}`)
+  console.log(`  ${chalk.dim('Report →')} ${reportPath}`)
+  if (screenshotDir) console.log(`  ${chalk.dim('Screenshots →')} ${screenshotDir}`)
+  console.log('')
 
   await browser.close()
 }
@@ -1307,8 +1316,9 @@ async function createZipBundle(outputDir: string, tokens: DesignTokens): Promise
 // ---------------------------------------------------------------------------
 
 async function runTokenExtraction(opts: DesignAuditOptions): Promise<void> {
-  console.log('=== Design Token Extraction ===')
-  console.log(`URL: ${opts.url}`)
+  console.log('')
+  console.log(`  ${chalk.bold('bad design-audit')} ${chalk.dim('--extract-tokens')}`)
+  console.log(`  ${chalk.dim('→')} ${opts.url}`)
   console.log('')
 
   const outputDir = opts.output ?? `./audit-results/${new URL(opts.url).hostname}-tokens-${Date.now()}`
@@ -1318,49 +1328,54 @@ async function runTokenExtraction(opts: DesignAuditOptions): Promise<void> {
     headless: opts.headless,
     outputDir,
     onProgress: (name, width, height, stats) => {
-      console.log(`[${name}] ${width}x${height} — ${stats.colors} colors, ${stats.fonts} fonts, ${stats.buttons} button styles, ${stats.inputs} input styles, ${stats.cards} card patterns`)
+      console.log(`  ${chalk.dim(`[${name}]`)} ${width}×${height} ${chalk.dim('—')} ${stats.colors} colors ${chalk.dim('·')} ${stats.fonts} fonts ${chalk.dim('·')} ${stats.buttons} buttons ${chalk.dim('·')} ${stats.inputs} inputs ${chalk.dim('·')} ${stats.cards} cards`)
     },
   })
 
-  // Print summary
   const primaryColors = tokens.colors.filter(c => c.cluster === 'primary')
   const secondaryColors = tokens.colors.filter(c => c.cluster === 'secondary')
   const accentColors = tokens.colors.filter(c => c.cluster === 'accent')
   const neutralColors = tokens.colors.filter(c => c.cluster === 'neutral')
 
   console.log('')
-  console.log('=== Extraction Summary ===')
+  console.log(`  ${chalk.dim('─'.repeat(52))}`)
   console.log('')
-  console.log(`Colors:            ${tokens.colors.length} unique`)
-  console.log(`  Primary:         ${primaryColors.length} (${primaryColors.slice(0, 3).map(c => c.hex).join(', ')})`)
-  console.log(`  Secondary:       ${secondaryColors.length} (${secondaryColors.slice(0, 3).map(c => c.hex).join(', ')})`)
-  console.log(`  Accent:          ${accentColors.length} (${accentColors.slice(0, 3).map(c => c.hex).join(', ')})`)
-  console.log(`  Neutral:         ${neutralColors.length}`)
-  console.log(`Font families:     ${tokens.typography.families.length}`)
+
+  const label = (name: string) => chalk.dim(name.padEnd(20))
+  const sub = (name: string) => chalk.dim(`  ${name.padEnd(18)}`)
+
+  console.log(`  ${label('Colors')}${chalk.bold(String(tokens.colors.length))} unique`)
+  if (primaryColors.length) console.log(`  ${sub('Primary')}${primaryColors.length} ${chalk.dim(`(${primaryColors.slice(0, 3).map(c => c.hex).join(', ')})`)}`)
+  if (secondaryColors.length) console.log(`  ${sub('Secondary')}${secondaryColors.length} ${chalk.dim(`(${secondaryColors.slice(0, 3).map(c => c.hex).join(', ')})`)}`)
+  if (accentColors.length) console.log(`  ${sub('Accent')}${accentColors.length} ${chalk.dim(`(${accentColors.slice(0, 3).map(c => c.hex).join(', ')})`)}`)
+  if (neutralColors.length) console.log(`  ${sub('Neutral')}${neutralColors.length}`)
+  console.log(`  ${label('Font families')}${tokens.typography.families.length}`)
   for (const f of tokens.typography.families.slice(0, 5)) {
-    console.log(`  ${f.classification.padEnd(8)} ${f.family.slice(0, 50)} [${f.weights.join(', ')}]`)
+    console.log(`  ${sub(f.classification)}${f.family.slice(0, 50)} ${chalk.dim(`[${f.weights.join(', ')}]`)}`)
   }
-  console.log(`Type scale:        ${tokens.typography.scale.length} entries`)
-  console.log(`CSS variables:     ${Object.keys(tokens.customProperties).length}`)
-  console.log(`Logos found:       ${tokens.logos.length}`)
-  console.log(`Icons found:       ${tokens.icons.length}`)
+  console.log(`  ${label('Type scale')}${tokens.typography.scale.length} entries`)
+  console.log(`  ${label('CSS variables')}${Object.keys(tokens.customProperties).length}`)
+  console.log(`  ${label('Logos')}${tokens.logos.length}`)
+  console.log(`  ${label('Icons')}${tokens.icons.length}`)
   const downloadedCount = tokens.fontFiles.filter(f => f.localPath).length
-  console.log(`Font files:        ${tokens.fontFiles.length} found, ${downloadedCount} downloaded`)
+  console.log(`  ${label('Font files')}${tokens.fontFiles.length} found, ${downloadedCount} downloaded`)
   for (const ff of tokens.fontFiles.slice(0, 5)) {
-    const status = ff.localPath ? path.basename(ff.localPath) : '(not downloaded)'
-    console.log(`  ${ff.family} ${ff.weight} ${ff.style} [${ff.format}] ${status}`)
+    const status = ff.localPath ? chalk.dim(path.basename(ff.localPath)) : chalk.dim('(not downloaded)')
+    console.log(`  ${sub(`${ff.family} ${ff.weight}`)}${ff.style} ${chalk.dim(`[${ff.format}]`)} ${status}`)
   }
-  console.log(`Brand:`)
-  if (tokens.brand.title) console.log(`  Title:           ${tokens.brand.title}`)
-  if (tokens.brand.themeColor) console.log(`  Theme color:     ${tokens.brand.themeColor}`)
-  if (tokens.brand.favicon) console.log(`  Favicon:         ${tokens.brand.favicon}`)
-  if (tokens.brand.ogImage) console.log(`  OG image:        ${tokens.brand.ogImage}`)
+  if (tokens.brand.title || tokens.brand.themeColor || tokens.brand.favicon) {
+    console.log(`  ${label('Brand')}`)
+    if (tokens.brand.title) console.log(`  ${sub('Title')}${tokens.brand.title}`)
+    if (tokens.brand.themeColor) console.log(`  ${sub('Theme color')}${tokens.brand.themeColor}`)
+    if (tokens.brand.favicon) console.log(`  ${sub('Favicon')}${chalk.dim(tokens.brand.favicon)}`)
+    if (tokens.brand.ogImage) console.log(`  ${sub('OG image')}${chalk.dim(tokens.brand.ogImage)}`)
+  }
   console.log('')
 
   for (const [name, vt] of Object.entries(tokens.responsive)) {
     const gridUnit = vt.gridBaseUnit ? `${vt.gridBaseUnit}px grid` : 'no clear grid'
-    console.log(`[${name}] ${vt.spacing.length} spacing values (${gridUnit}), ${vt.borders.length} border-radius values, ${vt.shadows.length} shadow styles`)
-    console.log(`  Components: ${vt.components.buttons.length} button styles, ${vt.components.inputs.length} input styles, ${vt.components.cards.length} card patterns, ${vt.components.nav.length} nav patterns`)
+    console.log(`  ${chalk.dim(`[${name}]`)} ${vt.spacing.length} spacing ${chalk.dim(`(${gridUnit})`)} ${chalk.dim('·')} ${vt.borders.length} radii ${chalk.dim('·')} ${vt.shadows.length} shadows`)
+    console.log(`  ${chalk.dim('  Components:')} ${vt.components.buttons.length} buttons ${chalk.dim('·')} ${vt.components.inputs.length} inputs ${chalk.dim('·')} ${vt.components.cards.length} cards ${chalk.dim('·')} ${vt.components.nav.length} nav`)
   }
 
   // Create zip bundle
@@ -1369,11 +1384,12 @@ async function runTokenExtraction(opts: DesignAuditOptions): Promise<void> {
     const zipSize = fs.statSync(zipPath).size
     const sizeStr = zipSize > 1024 * 1024 ? `${(zipSize / 1024 / 1024).toFixed(1)} MB` : `${(zipSize / 1024).toFixed(0)} KB`
     console.log('')
-    console.log(`Zip:         ${zipPath} (${sizeStr})`)
+    console.log(`  ${chalk.dim('Zip →')} ${zipPath} ${chalk.dim(`(${sizeStr})`)}`)
   } catch {
-    console.log('\n(zip not available — output directory contains all files)')
+    // zip not available — skip silently
   }
 
-  console.log(`Output:      ${outputDir}`)
-  console.log(`Screenshots: ${path.join(outputDir, 'screenshots')}`)
+  console.log(`  ${chalk.dim('Output →')} ${outputDir}`)
+  console.log(`  ${chalk.dim('Screenshots →')} ${path.join(outputDir, 'screenshots')}`)
+  console.log('')
 }

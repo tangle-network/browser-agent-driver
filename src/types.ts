@@ -194,6 +194,12 @@ export interface AgentConfig {
   walletMode?: boolean;
   /** Wallet address (hex, with 0x prefix) — used for RPC interception calldata matching */
   walletAddress?: string;
+  /** CAPTCHA solving using LLM vision (screenshot + model identifies tiles to click) */
+  captcha?: {
+    enabled?: boolean;
+    /** Max solve attempts per encounter (default: 5) */
+    maxAttempts?: number;
+  };
 }
 
 export interface ObservabilityConfig {

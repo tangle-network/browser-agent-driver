@@ -111,6 +111,10 @@ export {
   parseSnapshotElements,
 } from './recovery.js';
 
+// CAPTCHA solving (LLM vision-based)
+export { detectCaptcha, solveCaptcha, isSolvable, canAttemptSolve } from './captcha.js';
+export type { CaptchaConfig, CaptchaType, CaptchaDetection, CaptchaSolveResult, AttemptRecord } from './captcha.js';
+
 // Supervisor
 export { detectSupervisorSignal, formatSupervisorSignal } from './supervisor/policy.js';
 export { requestSupervisorDirective } from './supervisor/critic.js';

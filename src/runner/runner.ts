@@ -14,6 +14,7 @@ import { Brain } from '../brain/index.js';
 import type { Driver } from '../drivers/types.js';
 import type { Scenario, AgentConfig, AgentResult, Turn, PageState, SupervisorConfig, Action } from '../types.js';
 import { analyzeRecovery, detectPersistentTerminalBlocker, detectTerminalBlocker } from '../recovery.js';
+import { solveCaptcha, canAttemptSolve } from '../captcha.js';
 import { StaleRefError, AriaSnapshotHelper } from '../drivers/snapshot.js';
 import { verifyPreview } from '../preview.js';
 import type { ProjectStore } from '../memory/project-store.js';
@@ -267,7 +268,32 @@ export class AgentRunner {
           Object.assign(state, reState);
         }
 
-        const terminalBlocker = detectTerminalBlocker(state);
+        let terminalBlocker = detectTerminalBlocker(state);
+        // Attempt CAPTCHA solving only if: bot-challenge, enabled, and evidence suggests a solvable CAPTCHA
+        if (
+          terminalBlocker?.kind === 'bot-challenge'
+          && this.config.captcha?.enabled !== false
+          && canAttemptSolve(terminalBlocker.evidence)
+        ) {
+          const page = this.driver.getPage?.()
+          if (page) {
+            try {
+              const model = await this.brain.getLanguageModel()
+              const captchaResult = await solveCaptcha(page, model, {
+                maxAttempts: this.config.captcha?.maxAttempts ?? 5,
+              })
+              if (captchaResult.success) {
+                await page.waitForLoadState('domcontentloaded', { timeout: 10_000 }).catch(() => {})
+                const postCaptchaState = await this.driver.observe()
+                Object.assign(state, postCaptchaState)
+                this.brain.injectFeedback(
+                  `CAPTCHA solved: ${captchaResult.type} in ${captchaResult.attempts} attempt(s), ${captchaResult.durationMs}ms. Continuing.`
+                )
+                terminalBlocker = detectTerminalBlocker(state)
+              }
+            } catch { /* CAPTCHA solve failed, fall through to abort */ }
+          }
+        }
         if (terminalBlocker) {
           const reason = `${terminalBlocker.reason} (signals: ${terminalBlocker.evidence.join(', ')})`;
           const blockerTurn: Turn = {

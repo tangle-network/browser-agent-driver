@@ -305,6 +305,11 @@ export class Brain {
     };
   }
 
+  /** Get a LLM model instance, optionally with provider/model override (e.g. for CAPTCHA fallback) */
+  async getLanguageModel(selection?: { provider?: 'openai' | 'anthropic' | 'google'; model?: string }): Promise<LanguageModel> {
+    return this.getModel(selection)
+  }
+
   /** Lazily create the LLM model instance based on provider config */
   private async getModel(selection?: { provider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend'; model?: string }): Promise<LanguageModel> {
     const providerName = selection?.provider || this.provider;

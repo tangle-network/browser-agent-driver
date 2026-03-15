@@ -20,6 +20,9 @@ importers:
       ai-sdk-provider-codex-cli:
         specifier: ^1.1.0
         version: 1.1.0(zod@4.3.6)
+      chalk:
+        specifier: ^5.4.1
+        version: 5.6.2
       ffmpeg-static:
         specifier: ^5.3.0
         version: 5.3.0
@@ -613,6 +616,10 @@ packages:
   chai@6.2.2:
     resolution: {integrity: sha512-NUPRluOfOiTKBKvWPtSD4PhFvWCqOi0BGStNWs57X9js7XGTprSmFoz5F0tWhR4WPjNeR9jXqdC7/UpSJTnlRg==}
     engines: {node: '>=18'}
+
+  chalk@5.6.2:
+    resolution: {integrity: sha512-7NzBL0rN6fMUW+f7A6Io4h40qQlG+xGmtMxfbnH/K7TAtt8JQWVQK+6g0UXKMeVJoyV5EkkNsErQ8pVD3bLHbA==}
+    engines: {node: ^12.17.0 || ^14.13 || >=16.0.0}
 
   classic-level@3.0.0:
     resolution: {integrity: sha512-yGy8j8LjPbN0Bh3+ygmyYvrmskVita92pD/zCoalfcC9XxZj6iDtZTAnz+ot7GG8p9KLTG+MZ84tSA4AhkgVZQ==}
@@ -1341,6 +1348,8 @@ snapshots:
   caseless@0.12.0: {}
 
   chai@6.2.2: {}
+
+  chalk@5.6.2: {}
 
   classic-level@3.0.0:
     dependencies:

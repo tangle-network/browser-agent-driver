@@ -15,7 +15,7 @@
 import { parseArgs } from 'node:util';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { spawn } from 'node:child_process';
+import { execSync, spawn } from 'node:child_process';
 import type { BrowserContext, Route } from 'playwright';
 import { loadConfig, mergeConfig, toAgentConfig } from './config.js';
 import type { DriverConfig } from './config.js';
@@ -24,6 +24,7 @@ import { runWalletPreflight, startWalletAutoApprover } from './wallet/automation
 import { isPersonaId, listPersonaIds, withPersonaDirective } from './personas.js';
 import { resolveProviderApiKey, resolveProviderModelName } from './provider-defaults.js';
 import { loadLocalEnvFiles } from './env-loader.js';
+import { CliRenderer, cliError, cliWarn, cliLog, printStyledHelp } from './cli-ui.js';
 
 type RunMode = 'fast-explore' | 'full-evidence';
 const RUN_MODES: RunMode[] = ['fast-explore', 'full-evidence'];
@@ -181,7 +182,7 @@ async function main(): Promise<void> {
   }
 
   if (values.help || positionals.length === 0) {
-    printHelp();
+    printStyledHelp(RUN_MODES, DRIVER_PROFILES, listPersonaIds());
     process.exit(0);
   }
 
@@ -189,7 +190,7 @@ async function main(): Promise<void> {
 
   if (command === 'design-audit') {
     if (!values.url) {
-      console.error('Error: --url is required for design-audit.');
+      cliError('--url is required for design-audit.');
       process.exit(1);
     }
     const { runDesignAudit } = await import('./cli-design-audit.js');
@@ -210,13 +211,13 @@ async function main(): Promise<void> {
   }
 
   if (command !== 'run') {
-    console.error(`Unknown command: ${command}. Use "run" or "design-audit".`);
+    cliError(`Unknown command: ${command}. Use "run" or "design-audit".`);
     process.exit(1);
   }
 
   // Validate inputs
   if (!values.goal && !values.cases) {
-    console.error('Error: provide --goal "..." --url "..." for a single task, or --cases ./cases.json for a suite.');
+    cliError('provide --goal "..." --url "..." for a single task, or --cases ./cases.json for a suite.');
     process.exit(1);
   }
 
@@ -225,13 +226,13 @@ async function main(): Promise<void> {
 
   const mode = values.mode;
   if (mode && !RUN_MODES.includes(mode as RunMode)) {
-    console.error(`Error: unknown mode "${mode}". Valid modes: ${RUN_MODES.join(', ')}`);
+    cliError(`unknown mode "${mode}". Valid modes: ${RUN_MODES.join(', ')}`);
     process.exit(1);
   }
 
   const profile = values.profile;
   if (profile && !DRIVER_PROFILES.includes(profile as DriverProfile)) {
-    console.error(`Error: unknown profile "${profile}". Valid profiles: ${DRIVER_PROFILES.join(', ')}`);
+    cliError(`unknown profile "${profile}". Valid profiles: ${DRIVER_PROFILES.join(', ')}`);
     process.exit(1);
   }
 
@@ -250,12 +251,12 @@ async function main(): Promise<void> {
   if (values['prompt-file']) {
     const promptPath = path.resolve(values['prompt-file']);
     if (!fs.existsSync(promptPath)) {
-      console.error(`Error: prompt file not found: ${promptPath}`);
+      cliError(`prompt file not found: ${promptPath}`);
       process.exit(1);
     }
     cliOverrides.systemPrompt = fs.readFileSync(promptPath, 'utf-8').trim();
     if (!cliOverrides.systemPrompt) {
-      console.error(`Error: prompt file is empty: ${promptPath}`);
+      cliError(`prompt file is empty: ${promptPath}`);
       process.exit(1);
     }
   }
@@ -448,13 +449,13 @@ async function main(): Promise<void> {
 
   for (const warning of launchPlan.warnings) {
     if (!quiet) {
-      console.warn(`Warning: ${warning}`);
+      cliWarn(warning);
     }
   }
 
   if (launchPlan.errors.length > 0) {
     for (const error of launchPlan.errors) {
-      console.error(`Error: ${error}`);
+      cliError(error);
     }
     process.exit(1);
   }
@@ -552,10 +553,7 @@ async function main(): Promise<void> {
   const persona = values.persona;
   if (persona) {
     if (!isPersonaId(persona)) {
-      console.error(
-        `Error: unknown persona "${persona}". ` +
-        `Valid personas: ${listPersonaIds().join(', ')}`
-      );
+      cliError(`unknown persona "${persona}". Valid personas: ${listPersonaIds().join(', ')}`);
       process.exit(1);
     }
     cases = cases.map((c) => ({
@@ -568,19 +566,24 @@ async function main(): Promise<void> {
     }));
   }
 
-  if (!quiet && !values.json) {
-    console.log(`bad v${JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf-8')).version}`);
-    console.log(`Model: ${config.provider}/${config.model} | Browser: ${browserName} | Tests: ${cases.length} | Concurrency: ${concurrency}`);
-    if (mode) console.log(`Mode: ${mode}`);
-    if (driverConfig.profile && driverConfig.profile !== 'default') {
-      console.log(`Profile: ${driverConfig.profile}`);
-    }
-    if (config.adaptiveModelRouting) {
-      const effectiveNavModel = config.navModel || 'gpt-4.1-mini';
-      console.log(`Adaptive routing: ON (nav=${config.navProvider || config.provider}/${effectiveNavModel})`);
-    }
-    console.log(`Output: ${sinkDir}`);
-    console.log('');
+  const renderer = (!quiet && !values.json) ? new CliRenderer({ debug }) : null;
+  if (renderer) {
+    const version = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf-8')).version;
+    renderer.banner({
+      version,
+      provider: config.provider || 'openai',
+      model: config.model,
+      browser: browserName,
+      testCount: cases.length,
+      concurrency,
+      mode: mode || undefined,
+      profile: driverConfig.profile,
+      adaptiveRouting: config.adaptiveModelRouting ? {
+        navProvider: config.navProvider || config.provider || 'openai',
+        navModel: config.navModel || 'gpt-4.1-mini',
+      } : undefined,
+      outputDir: sinkDir,
+    });
   }
 
   // Set up artifact sink
@@ -592,14 +595,34 @@ async function main(): Promise<void> {
     : undefined;
 
   if (storageStatePath && !fs.existsSync(storageStatePath)) {
-    console.error(`Error: storage state file not found: ${storageStatePath}`);
+    cliError(`storage state file not found: ${storageStatePath}`);
     process.exit(1);
   }
 
   if (launchPlan.walletMode && browserName !== 'chromium') {
-    console.error('Error: wallet mode currently supports Chromium only. Set --browser chromium.');
+    cliError('wallet mode currently supports Chromium only. Set --browser chromium.');
     process.exit(1);
   }
+
+  // Ensure clean exit on interrupt
+  process.on('SIGINT', () => { renderer?.destroy(); process.exit(130); });
+  process.on('SIGTERM', () => { renderer?.destroy(); process.exit(143); });
+
+  // On macOS headed mode, detect the terminal app so we can refocus after browser steals focus
+  let terminalApp: string | undefined
+  if (process.platform === 'darwin' && !launchPlan.headless) {
+    const termMap: Record<string, string> = {
+      'iTerm.app': 'iTerm2',
+      'Apple_Terminal': 'Terminal',
+      'WezTerm': 'WezTerm',
+      'vscode': 'Visual Studio Code',
+      'Alacritty': 'Alacritty',
+      'kitty': 'kitty',
+    }
+    terminalApp = termMap[process.env.TERM_PROGRAM ?? '']
+  }
+
+  renderer?.launchStart(browserName);
 
   // Set up browser
   let browser: Awaited<ReturnType<typeof chromium.launch>> | Awaited<ReturnType<typeof firefox.launch>> | Awaited<ReturnType<typeof webkit.launch>> | undefined;
@@ -727,7 +750,7 @@ async function main(): Promise<void> {
         accountsTimeoutMs: walletConfig.preflight?.accountsTimeoutMs,
         maxChainSwitchAttempts: walletConfig.preflight?.maxChainSwitchAttempts,
         chain: walletConfig.preflight?.chain,
-        log: quiet ? undefined : (message) => console.log(`[wallet] ${message}`),
+        log: quiet ? undefined : (message) => cliLog('wallet', message),
       });
 
       if (!preflight.ok) {
@@ -890,6 +913,18 @@ async function main(): Promise<void> {
     singleDriver = await driverFactory();
   }
 
+  renderer?.launchDone();
+
+  // Refocus the terminal after browser launch stole focus
+  if (terminalApp) {
+    try {
+      execSync(
+        `osascript -e 'tell application "${terminalApp}" to activate'`,
+        { stdio: 'ignore', timeout: 2000 },
+      )
+    } catch { /* best-effort */ }
+  }
+
   const runner = new TestRunner({
     config,
     defaultTimeoutMs: timeoutMs,
@@ -905,31 +940,23 @@ async function main(): Promise<void> {
         console.log(JSON.stringify(event));
         return;
       }
-      if (quiet) return;
+      if (!renderer) return;
       switch (event.type) {
+        case 'suite:start':
+          renderer.suiteStart(event.totalTests);
+          break;
         case 'test:start':
-          console.log(`  ▶ ${event.testName}`);
+          renderer.testStart(event.testId, event.testName);
           break;
         case 'test:turn':
-          if (debug) {
-            const modelTag = event.modelUsed ? ` [${event.modelUsed}]` : '';
-            console.log(`    turn ${event.turn}: ${event.action} (${event.durationMs}ms)${modelTag}`);
-          }
+          renderer.testTurn(event.testId, event.turn, event.action, event.durationMs, event.modelUsed);
           break;
-        case 'test:complete': {
-          const costStr = event.estimatedCostUsd ? `, $${event.estimatedCostUsd.toFixed(3)}` : '';
-          console.log(`  ${event.passed ? '✓' : '✗'} ${event.testId} — ${event.verdict.slice(0, 80)} (${event.turnsUsed} turns, ${Math.round(event.durationMs / 1000)}s${costStr})`);
+        case 'test:complete':
+          renderer.testComplete(event.testId, event.passed, event.verdict, event.turnsUsed, event.durationMs, event.estimatedCostUsd);
           break;
-        }
-        case 'suite:complete': {
-          console.log('');
-          const suiteCostStr = event.totalCostUsd ? ` | $${event.totalCostUsd.toFixed(2)}` : '';
-          console.log(`Done: ${event.passed} passed, ${event.failed} failed, ${event.skipped} skipped (${Math.round(event.totalMs / 1000)}s${suiteCostStr})`);
-          if (event.manifestUri) {
-            console.log(`Artifacts: ${event.manifestUri}`);
-          }
+        case 'suite:complete':
+          renderer.suiteComplete(event.passed, event.failed, event.skipped, event.totalMs, event.totalCostUsd, event.manifestUri);
           break;
-        }
       }
     },
   });
@@ -960,9 +987,7 @@ async function main(): Promise<void> {
         const report = generateReport(result, { format, includeTurns: format === 'markdown' });
         const reportPath = path.join(reportDir, `report.${meta.ext}`);
         fs.writeFileSync(reportPath, report);
-        if (!quiet && !values.json) {
-          console.log(`Report: ${reportPath}`);
-        }
+        renderer?.report(reportPath);
       } catch {
         // Report generation is best-effort
       }
@@ -975,6 +1000,7 @@ async function main(): Promise<void> {
   } catch (err) {
     runError = err;
   } finally {
+    renderer?.destroy();
     await singleDriver?.close?.().catch(() => {});
     stopWalletAutoApprover?.();
     await persistentContext?.close().catch(() => {});
@@ -990,141 +1016,6 @@ async function main(): Promise<void> {
     : `${values.goal!.slice(0, 80)} · cli run`);
 
   process.exit((result?.summary.failed ?? 1) > 0 ? 1 : 0);
-}
-
-function printHelp(): void {
-  console.log(`
-bad — LLM-driven browser automation CLI
-
-USAGE:
-  bad run [options]
-
-SINGLE TASK:
-  bad run --goal "Sign up for account" --url http://localhost:3000
-  bad run -g "Build a todo app" -u http://localhost:5173 -m claude-sonnet-4-20250514
-  bad run --goal "Create Coinbase blueprint and verify preview" --url https://ai.tangle.tools --persona alice-blueprint-builder
-  bad run --goal "Create partner project and verify preview works" --url https://ai.tangle.tools --persona auto
-  bad run --goal "Explore key routes quickly" --url https://example.com --mode fast-explore
-
-TEST SUITE:
-  bad run --cases ./cases.json --concurrency 4
-  bad run --cases ./cases.json --sink ./results/ --model gpt-5.4
-
-DESIGN AUDIT:
-  bad design-audit --url https://stripe.com
-  bad design-audit --url https://app.uniswap.org --profile defi
-  bad design-audit --url http://localhost:3000 --profile saas --pages 10
-  bad design-audit --url https://example.com --profile marketing --json
-
-  Profiles: general, saas, defi, marketing
-
-DESIGN TOKEN EXTRACTION:
-  bad design-audit --url https://stripe.com --extract-tokens
-  bad design-audit --url https://app.example.com --extract-tokens --json
-
-  Extracts colors, typography, spacing, components, logos, icons,
-  CSS custom properties, and brand assets at mobile/tablet/desktop viewports.
-  Outputs tokens.json — no LLM calls, pure DOM extraction.
-
-DOCKER:
-  docker run -v ./cases.json:/data/cases.json -v ./out:/output \\
-    bad run --cases /data/cases.json --sink /output/
-
-OPTIONS:
-      --config <path>         Path to config file (default: auto-detect)
-  -g, --goal <text>           Natural language goal for single task
-  -u, --url <url>             Starting URL
-  -c, --cases <file>          JSON file with test cases array
-      --allowed-domains <csv> Comma-separated host allowlist (e.g. www.nih.gov,docs.foo.com)
-      --vision-strategy <m>   Vision policy: always, never, auto
-  -m, --model <name>          LLM model (default: gpt-5.4)
-      --provider <name>       LLM provider: openai, anthropic, google, codex-cli, claude-code, sandbox-backend (default: openai)
-      --model-adaptive        Enable adaptive model routing for decide() turns
-      --nav-model <name>      Fast navigation model for adaptive routing
-      --nav-provider <name>   Provider for nav model (default: same as --provider)
-      --persona <id>          Append persona directive (${listPersonaIds().join(', ')})
-      --mode <name>           Mode preset: ${RUN_MODES.join(', ')}
-      --profile <name>        Execution profile: ${DRIVER_PROFILES.join(', ')}
-      --prompt-file <path>    Load system prompt from file for experimentable prompt variants
-      --sandbox-backend-type <type>     Native sidecar backend type for --provider sandbox-backend (e.g. claude-code, codex, opencode:with-web-search)
-      --sandbox-backend-profile <id>    Optional native backend profile/preset ID
-      --sandbox-backend-provider <id>   Optional native backend model provider override (mainly for opencode)
-      --api-key <key>         API key (or set OPENAI_API_KEY / ANTHROPIC_API_KEY; codex-cli can use \`codex login\`; claude-code can use \`claude login\`)
-      --base-url <url>        Custom LLM endpoint (e.g., LiteLLM proxy)
-      --browser <name>        Browser: chromium, firefox, webkit (default: chromium)
-      --storage-state <file>  Playwright storage state JSON for pre-authenticated session
-      --concurrency <n>       Parallel workers (default: 1)
-      --max-turns <n>         Max turns per test (default: 30)
-      --llm-timeout <ms>      Timeout per LLM call in milliseconds
-      --retries <n>           Retries for observe/LLM/action transient failures
-      --retry-delay-ms <ms>   Base retry backoff in milliseconds
-      --screenshot-interval <n>  Capture every N turns (default: 5)
-      --scout                 Enable scout/ranker recommendations on ambiguous pages
-      --scout-model <name>    Model override for scout recommendations
-      --scout-provider <name> Provider override for scout recommendations
-      --scout-vision          Let scout inspect screenshots when available
-      --scout-max-candidates <n> Max visible link candidates sent to the scout
-      --scout-min-top-score <n>  Skip scout when the top deterministic score is already strong
-      --scout-max-score-gap <n>  Skip scout when the top-vs-second score gap is already wide
-      --headless              Run browser headless (default: true)
-      --no-headless           Show browser window
-      --wallet               Enable wallet mode (persistent Chromium profile)
-      --extension <path>     Load unpacked wallet/browser extension (repeatable)
-      --user-data-dir <dir>  Persistent profile directory for wallet sessions
-      --wallet-auto-approve  Enable extension prompt auto-approval (default: true in wallet mode)
-      --wallet-password <v>  Wallet unlock password for auto-approval/preflight
-      --wallet-preflight     Run wallet origin preflight before tests (default: true in wallet mode)
-      --wallet-seed-url <u>  Preflight URL to authorize/switch-chain (repeatable)
-      --wallet-chain-id <n>  Target chain ID for preflight switch/add
-      --wallet-chain-rpc-url <u>  RPC URL for preflight wallet_addEthereumChain
-      --memory               Enable trajectory memory reuse (default: on)
-      --no-memory            Disable trajectory memory
-      --memory-dir <dir>     Memory directory (default: .agent-memory)
-      --timeout <ms>          Per-test timeout in ms (default: 600000)
-  -s, --sink <dir>            Output directory for artifacts (default: ./agent-results)
-      --json                  Output progress as JSON lines (for piping)
-  -q, --quiet                 Suppress all output
-      --quality-threshold <n> Min quality score 1-10 (default: 0 = skip)
-      --trace-scoring         Enable trajectory scoring for reference trace selection
-      --trace-ttl-days <n>    Retention window for scored traces (default: 30)
-      --goal-verification     Verify goal completion (default: true)
-      --no-goal-verification  Skip goal verification
-      --vision                Enable vision/screenshots (default: true)
-      --no-vision             Disable vision
-      --block-analytics       Block analytics/tracking scripts
-      --block-images          Block image loading
-      --block-media           Block media loading (video, audio)
-  -d, --debug                 Enable debug logging
-  -h, --help                  Show this help
-  -v, --version               Show version
-
-TEST CASES JSON FORMAT:
-  [
-    {
-      "id": "signup",
-      "name": "User signup flow",
-      "goal": "Create a new account with email test@example.com",
-      "startUrl": "http://localhost:3000/signup",
-      "maxTurns": 20,
-      "timeoutMs": 300000,
-      "successDescription": "Account created and redirected to dashboard"
-    }
-  ]
-
-ENVIRONMENT VARIABLES:
-  OPENAI_API_KEY       OpenAI API key
-  ANTHROPIC_API_KEY    Anthropic API key
-  LLM_BASE_URL         Custom LLM endpoint URL
-  CODEX_CLI_PATH       Optional Codex CLI binary path for --provider codex-cli
-  CODEX_ALLOW_NPX      Set to 0 to disable npx fallback for --provider codex-cli
-  CLAUDE_CODE_CLI_PATH Optional Claude CLI binary path for --provider claude-code
-  SANDBOX_BACKEND_TYPE Native backend type for --provider sandbox-backend
-  SANDBOX_BACKEND_PROFILE    Native backend profile/preset for --provider sandbox-backend
-  SANDBOX_BACKEND_PROFILE_ID Legacy alias for SANDBOX_BACKEND_PROFILE
-  SANDBOX_BACKEND_MODEL_PROVIDER Native backend provider override for --provider sandbox-backend
-  SANDBOX_SIDECAR_URL  Sidecar API URL for --provider sandbox-backend (default: http://127.0.0.1:$SIDECAR_PORT)
-  SANDBOX_SIDECAR_AUTH_TOKEN Sidecar API bearer token for --provider sandbox-backend
-`);
 }
 
 function parseAllowedDomains(value: string | undefined): string[] | undefined {
@@ -1165,11 +1056,11 @@ async function syncLocalBenchmarkRun(outPath: string, label: string): Promise<vo
     if (process.env.ABD_BENCHMARK_SYNC_STRICT === '1') {
       throw new Error(`abd-app benchmark import failed for ${outPath}`);
     }
-    console.warn(`abd-app benchmark import skipped after non-zero exit for ${outPath}`);
+    cliWarn(`abd-app benchmark import skipped after non-zero exit for ${outPath}`);
   }
 }
 
 main().catch((err) => {
-  console.error(err instanceof Error ? err.message : err);
+  cliError(err instanceof Error ? err.message : String(err));
   process.exit(1);
 });
