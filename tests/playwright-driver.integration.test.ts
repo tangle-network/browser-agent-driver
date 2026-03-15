@@ -64,7 +64,6 @@ describe('PlaywrightDriver integration', () => {
 
     const first = await driver.observe();
     expect(first.snapshot).toContain('button "Increment"');
-    expect(first.snapshot).toContain('paragraph');
 
     const incrementRef = first.snapshot.match(/button "Increment" \[ref=([^\]]+)\]/)?.[1];
     expect(incrementRef).toBeTruthy();

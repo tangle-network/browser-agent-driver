@@ -95,6 +95,10 @@ export function stableHash(role: string, name: string): string {
 }
 
 export class AriaSnapshotHelper {
+  static readonly SKIP_ROLES = new Set([
+    'paragraph', 'separator', 'presentation', 'figure', 'figcaption',
+  ]);
+
   private refMap = new Map<string, RefEntry>();
   /** Track how many times each base hash has been seen (for duplicate disambiguation) */
   private hashCounts = new Map<string, number>();
@@ -171,7 +175,7 @@ export class AriaSnapshotHelper {
       const elements = document.querySelectorAll('[data-testid]');
       return Array.from(elements)
         .filter(el => INTERACTIVE.has(el.tagName.toLowerCase()) || el.getAttribute('role'))
-        .slice(0, 30) // Limit to avoid token bloat
+        .slice(0, 10) // Limit to avoid token bloat
         .map(el => ({
           testId: el.getAttribute('data-testid') || '',
           tag: el.tagName.toLowerCase(),
@@ -258,7 +262,12 @@ export class AriaSnapshotHelper {
 
       const [, indent, role, name, rest] = match;
 
-      if (INTERACTIVE_ROLES.has(role) || (name && role !== 'text')) {
+      // Skip decorative roles
+      if (AriaSnapshotHelper.SKIP_ROLES.has(role)) {
+        continue;
+      }
+
+      if (INTERACTIVE_ROLES.has(role) || role === 'heading' || role === 'dialog' || role === 'alertdialog') {
         const baseHash = stableHash(role, name || '');
 
         // Track duplicates: first occurrence gets bare hash, subsequent get _N suffix

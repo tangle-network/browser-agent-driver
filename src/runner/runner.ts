@@ -84,6 +84,7 @@ export class AgentRunner {
   private projectStore?: ProjectStore;
   private knowledge?: AppKnowledge;
   private selectorCache?: SelectorCache;
+  private cachedPostState: PageState | undefined;
 
   constructor(options: RunnerOptions) {
     this.driver = options.driver;
@@ -112,6 +113,7 @@ export class AgentRunner {
 
     // Reset brain history for fresh scenario
     this.brain.reset();
+    this.cachedPostState = undefined;
 
     // Start navigation and load memory in parallel. Navigation is async (network
     // I/O) while memory init is sync (readFileSync), so memory completes while
@@ -227,8 +229,9 @@ export class AgentRunner {
         }
 
         // -- 2. Observe (with retry) --
+        // Reuse the snapshot from verifyEffect if available (no page mutations between them)
         const observeStartedAt = Date.now();
-        const state = await withRetry(
+        const state = this.cachedPostState ?? await withRetry(
           () => this.driver.observe(),
           retries,
           retryDelayMs,
@@ -239,6 +242,7 @@ export class AgentRunner {
           },
           scenario.signal,
         );
+        this.cachedPostState = undefined;
         if (phaseTimings.firstObserveMs === undefined) {
           phaseTimings.firstObserveMs = Date.now() - observeStartedAt;
           this.onPhaseTiming?.('observe', phaseTimings.firstObserveMs);
@@ -1164,6 +1168,7 @@ export class AgentRunner {
 
         const domainBoundaryViolation = await this.enforceAllowedDomainBoundary(state, scenario);
         if (domainBoundaryViolation) {
+          this.cachedPostState = undefined; // boundary navigated back — invalidate cache
           this.brain.injectFeedback(domainBoundaryViolation);
           turn.error = domainBoundaryViolation;
           turn.durationMs = Date.now() - turnStart;
@@ -1320,10 +1325,7 @@ export class AgentRunner {
     expectedEffect: string,
     preActionState: PageState
   ): Promise<{ verified: boolean; reason?: string }> {
-    // Wait briefly for the effect to take hold
-    await new Promise(r => setTimeout(r, 200));
-
-    // URL-based verification — skip full AX tree rebuild
+    // URL-based verification — no sleep needed, URL commits synchronously with navigation
     if (/url\s+should/i.test(expectedEffect)) {
       const currentUrl = this.driver.getUrl?.() ?? (await this.driver.observe().catch(() => preActionState)).url;
 
@@ -1353,8 +1355,10 @@ export class AgentRunner {
       };
     }
 
-    // Non-URL effects need the full snapshot for content verification
+    // Non-URL effects: wait for DOM to settle, then observe
+    await new Promise(r => setTimeout(r, 200));
     const postState = await this.driver.observe().catch(() => preActionState);
+    this.cachedPostState = postState;
 
     const effect = expectedEffect.toLowerCase();
 

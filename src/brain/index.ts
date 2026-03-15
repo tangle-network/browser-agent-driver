@@ -494,56 +494,99 @@ export class Brain {
 
   /**
    * Compact conversation history: strip ELEMENTS blocks and screenshots
-   * from all but the most recent observation.
+   * from older observations, keeping the last 2 user messages intact.
    *
-   * Note: Aggressive one-line compression was tested (2026-03-08) and found
-   * counterproductive — the agent loses context about visited pages and
-   * wastes turns revisiting them. The current approach (strip snapshots,
-   * keep full text) is the empirically best balance.
+   * For older turns, replaces the full ELEMENTS block with a one-line
+   * summary showing element count and the selectors the agent actually
+   * used, extracted from the paired assistant response.
    */
   private compactHistory(): ModelMessage[] {
     if (this.history.length === 0) return [];
 
+    // Find indices of the last 2 user messages to keep intact
+    const userIndices: number[] = [];
+    for (let i = this.history.length - 1; i >= 0; i--) {
+      if (this.history[i].role === 'user') {
+        userIndices.push(i);
+        if (userIndices.length === 2) break;
+      }
+    }
+    const keepIntactFrom = userIndices.length > 0
+      ? userIndices[userIndices.length - 1]
+      : this.history.length;
+
     return this.history.map((msg, idx) => {
       if (msg.role !== 'user') return msg;
 
-      // Keep the last user message intact
-      if (idx >= this.history.length - 2) return msg;
+      // Keep the last 2 user messages intact (full snapshot)
+      if (idx >= keepIntactFrom) return msg;
+
+      // For older user messages, extract selectors from paired assistant response
+      const assistantMsg = idx + 1 < this.history.length ? this.history[idx + 1] : undefined;
+      const selectors = assistantMsg?.role === 'assistant'
+        ? this.extractSelectorsFromResponse(
+            typeof assistantMsg.content === 'string' ? assistantMsg.content : '',
+          )
+        : [];
 
       // Handle multimodal content (array of parts)
       if (Array.isArray(msg.content)) {
         const compacted = msg.content
-          // Keep only text parts (strip screenshots from old messages)
           .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
           .map((part) => ({
             ...part,
-            text: this.stripElements(part.text),
+            text: this.summarizeElements(part.text, selectors),
           }));
         return { ...msg, content: compacted } as ModelMessage;
       }
 
       // Handle string content
       if (typeof msg.content === 'string') {
-        return { ...msg, content: this.stripElements(msg.content) } as ModelMessage;
+        return { ...msg, content: this.summarizeElements(msg.content, selectors) } as ModelMessage;
       }
 
       return msg;
     });
   }
 
-  private stripElements(text: string): string {
+  /**
+   * Extract @ref selectors from an assistant JSON response.
+   */
+  private extractSelectorsFromResponse(raw: string): string[] {
+    const selectors: string[] = [];
+    try {
+      let text = raw.trim();
+      if (text.startsWith('```')) {
+        text = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+      }
+      const parsed = JSON.parse(text);
+      if (parsed.action?.selector) selectors.push(parsed.action.selector);
+      if (Array.isArray(parsed.nextActions)) {
+        for (const na of parsed.nextActions) {
+          if (na?.selector) selectors.push(na.selector);
+        }
+      }
+    } catch {
+      // Best effort
+    }
+    return selectors;
+  }
+
+  /**
+   * Replace the ELEMENTS block with a one-line action-only summary.
+   */
+  private summarizeElements(text: string, selectors: string[]): string {
     return text.replace(
       /ELEMENTS:\n[\s\S]*?(?=\n\n|What action should you take\?|$)/,
-      (_match) => {
-        // Extract the snapshot text from the ELEMENTS block
-        const snapshotStart = _match.indexOf('\n');
+      (match) => {
+        const snapshotStart = match.indexOf('\n');
         if (snapshotStart === -1) return 'ELEMENTS:\n[previous snapshot]';
-        const snapshotText = _match.slice(snapshotStart + 1);
-        const compact = AriaSnapshotHelper.formatCompact(snapshotText);
-        if (compact.length > 0) {
-          return `ELEMENTS (compact):\n${compact}`;
-        }
-        return 'ELEMENTS:\n[previous snapshot]';
+        const snapshotText = match.slice(snapshotStart + 1);
+        const elementCount = (snapshotText.match(/\[ref=\w+\]/g) || []).length;
+        const selectorList = selectors.length > 0
+          ? selectors.join(', ')
+          : 'none';
+        return `ELEMENTS:\n[Page snapshot: ${elementCount} elements | agent used: ${selectorList}]`;
       },
     );
   }

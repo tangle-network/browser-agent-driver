@@ -79,6 +79,7 @@ export async function buildCdpSnapshot(cdp: CDPSession): Promise<CdpSnapshotResu
   const SKIP_ROLES = new Set([
     'none', 'generic', 'InlineTextBox', 'LineBreak',
     'StaticText', 'RootWebArea', 'WebArea',
+    'paragraph', 'separator', 'presentation', 'figure', 'figcaption',
   ]);
 
   function walk(nodeId: string, depth: number): void {
@@ -112,7 +113,7 @@ export async function buildCdpSnapshot(cdp: CDPSession): Promise<CdpSnapshotResu
     const indent = '  '.repeat(depth);
 
     // Determine if this element gets a ref
-    const needsRef = INTERACTIVE_ROLES.has(role) || (name && role !== 'text');
+    const needsRef = INTERACTIVE_ROLES.has(role) || role === 'heading' || role === 'dialog' || role === 'alertdialog';
 
     let refStr = '';
     if (needsRef) {
