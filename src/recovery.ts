@@ -612,7 +612,7 @@ export function analyzeRecovery(ctx: RecoveryContext): RecoveryAction | null {
     return {
       strategy: 'loading-wait',
       feedback: 'The page appears to be loading. Waiting for it to finish before taking action.',
-      waitMs: 3000,
+      waitMs: 1000,
     };
   }
 

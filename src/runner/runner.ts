@@ -1145,7 +1145,7 @@ export class AgentRunner {
           try {
             const followResult = await withRetry(
               () => this.driver.execute(followUpAction),
-              retries,
+              1, // Follow-ups are speculative micro-actions — fail fast, don't retry 3x
               retryDelayMs,
               (attempt, err) => {
                 if (this.config.debug) {

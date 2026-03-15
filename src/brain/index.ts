@@ -13,7 +13,8 @@ import { resolveProviderApiKey, resolveProviderModelName } from '../provider-def
 import { buildFirstPartyBoundaryNote } from '../domain-policy.js';
 import { generateWithSandboxBackend } from '../providers/sandbox-backend.js';
 
-const SYSTEM_PROMPT = `You are a senior staff engineer operating a browser via Playwright automation.
+/** Core system prompt: preamble, actions, format, and rules 1-14 (always sent) */
+const CORE_RULES = `You are a senior staff engineer operating a browser via Playwright automation.
 
 You can SEE the page (via screenshot) and READ the page structure (via accessibility tree with @ref IDs).
 Use BOTH inputs together — the screenshot shows layout/design/visual state, the a11y tree shows interactive elements with refs.
@@ -63,17 +64,29 @@ RULES:
 11. After the app builds and a preview is visible, use "verifyPreview" to check for errors before completing
 12. BLOCKER-FIRST POLICY: if a modal, limit, quota, permission, or error dialog blocks progress, resolve THAT first before continuing the main goal
 13. For quota/limit blockers, use an unblock ladder: open manage path -> clean up old test resources if needed -> retry the original action
-14. If the same action triggers the same blocker twice, switch strategy immediately (different button/path), do not repeat blind retries
+14. If the same action triggers the same blocker twice, switch strategy immediately (different button/path), do not repeat blind retries`;
+
+/** Search-related rules (15-17): injected when page has search elements or /search URL */
+const SEARCH_RULES = `
 15. SEARCH FORMS: Always interact with the form (type in search box, then click Search or press Enter). Do NOT navigate to a URL with search query parameters — many sites require form submission to trigger filtering. If a search yields no results, try the page's own search box rather than the site-wide search
 16. CONTENT DISCOVERY: If the ELEMENTS list doesn't show the link/content you need (e.g., the page has many links but the a11y tree is truncated), use runScript to find it: document.querySelectorAll('a[href]') filtered by keyword. Navigate to the discovered URL directly instead of clicking blindly through menus
-17. EXTERNAL SEARCH REDIRECTS: If a site's search form redirects to an external search engine (e.g., search.usa.gov for .gov sites), the results still link back to the original site. Click a relevant search result link — it will take you to the target domain. Do NOT abandon search results to navigate the target site manually
+17. EXTERNAL SEARCH REDIRECTS: If a site's search form redirects to an external search engine (e.g., search.usa.gov for .gov sites), the results still link back to the original site. Click a relevant search result link — it will take you to the target domain. Do NOT abandon search results to navigate the target site manually`;
+
+/** Data extraction rules (18, 21-23): injected when goal involves extracting data */
+const DATA_EXTRACTION_RULES = `
 18. DATA EXTRACTION: When the goal asks for specific data (prices, ratings, counts, names) from a list or search results page, use runScript to extract all needed data at once: e.g., document.querySelectorAll('.product-card').forEach(...). Do NOT click into each individual item when the data is visible on the list page. Extract first, then complete with the extracted data
-19. FORM FIELD TARGETING: Before typing, verify you are targeting the correct input field using its @ref from the ELEMENTS list. If multiple inputs are visible (e.g., search box + price filter), ensure you select the right one by checking its label or placeholder text in the a11y tree. Never assume focus — always specify the exact @ref
-20. SECTION NAVIGATION: When you need to find a specific section (e.g., rugby, sports, travel) and the nav links aren't in the truncated a11y tree, use runScript to discover navigation: JSON.stringify(Array.from(document.querySelectorAll('nav a, header a, [role="navigation"] a, .nav a')).slice(0, 30).map(a => ({text: a.textContent.trim(), href: a.href}))). Then navigate directly to the matching section URL
 21. EFFICIENT COMPLETION: When you have enough data to answer the goal, complete immediately. Do not navigate to additional pages for "confirmation" if the data was already extracted via runScript or is visible in the current a11y tree. Include all extracted data in the completion result
 22. EXTRACT BEFORE NAVIGATING: On search results, directory listings, or any page showing multiple items, ALWAYS extract ALL needed data via runScript BEFORE clicking into individual items. This includes names, phone numbers, addresses, ratings, prices — anything visible on list cards. Use: document.querySelectorAll('.result-card, .listing, [class*="card"]') to grab everything at once. Many sites use anti-bot protection on detail pages but leave listing pages accessible. If you can answer the goal from list-level data, do so without navigating deeper. NEVER click into 3+ individual items when the data is on the list page
-23. FILTER vs SEARCH: When a goal asks to filter results (e.g., "under $50", "4+ stars"), look for filter controls (sliders, dropdowns, checkboxes in a sidebar or toolbar) rather than typing filter values into the search box. Search boxes are for keyword queries, not numeric filters. After applying a filter: (1) wait 2-3 seconds for results to update, (2) verify the filter took effect by checking the updated results, (3) extract the filtered data via runScript. Do NOT keep searching for more filter controls after one is applied — extract and complete
-24. HEAVY PAGE RECOVERY: If a page takes very long to load or seems stuck, do NOT wait — use runScript to check document.readyState and extract whatever content is already in the DOM. Partial data is better than a timeout. If the page is completely blank, try navigating to a simpler version (mobile site, search page) instead of waiting
+23. FILTER vs SEARCH: When a goal asks to filter results (e.g., "under $50", "4+ stars"), look for filter controls (sliders, dropdowns, checkboxes in a sidebar or toolbar) rather than typing filter values into the search box. Search boxes are for keyword queries, not numeric filters. After applying a filter: (1) wait 2-3 seconds for results to update, (2) verify the filter took effect by checking the updated results, (3) extract the filtered data via runScript. Do NOT keep searching for more filter controls after one is applied — extract and complete`;
+
+/** Heavy page rules (19-20, 24): injected when snapshot is large or turn count is high */
+const HEAVY_PAGE_RULES = `
+19. FORM FIELD TARGETING: Before typing, verify you are targeting the correct input field using its @ref from the ELEMENTS list. If multiple inputs are visible (e.g., search box + price filter), ensure you select the right one by checking its label or placeholder text in the a11y tree. Never assume focus — always specify the exact @ref
+20. SECTION NAVIGATION: When you need to find a specific section (e.g., rugby, sports, travel) and the nav links aren't in the truncated a11y tree, use runScript to discover navigation: JSON.stringify(Array.from(document.querySelectorAll('nav a, header a, [role="navigation"] a, .nav a')).slice(0, 30).map(a => ({text: a.textContent.trim(), href: a.href}))). Then navigate directly to the matching section URL
+24. HEAVY PAGE RECOVERY: If a page takes very long to load or seems stuck, do NOT wait — use runScript to check document.readyState and extract whatever content is already in the DOM. Partial data is better than a timeout. If the page is completely blank, try navigating to a simpler version (mobile site, search page) instead of waiting`;
+
+/** Reasoning framework and examples (always appended after rules) */
+const REASONING_SUFFIX = `
 
 REASONING FRAMEWORK — before choosing an action:
 1. What is the current state vs. the goal state? What is missing?
@@ -87,6 +100,15 @@ EXAMPLE 1 — Multi-step form fill (use actual refs from ELEMENTS, not these pla
 
 EXAMPLE 2 — Recovery after failure:
 {"plan":["Click the send button","Wait for response"],"currentStep":0,"action":{"action":"scroll","direction":"down","amount":300},"reasoning":"My last click failed because the element was not visible in the viewport. I can see from the screenshot that the send button is below the fold. Scrolling down to bring it into view before retrying.","expectedEffect":"The send button should become visible in the viewport"}`;
+
+/** Full static prompt (all rules) — used as default when config.systemPrompt is not set */
+const SYSTEM_PROMPT = CORE_RULES + SEARCH_RULES + DATA_EXTRACTION_RULES + HEAVY_PAGE_RULES + REASONING_SUFFIX;
+
+/** Pattern for detecting data-extraction keywords in goal text */
+const DATA_EXTRACTION_PATTERN = /\b(extract|list|find|data|price|pric|names?|rating|cost|count)\b/i;
+
+/** Pattern for detecting search-related roles in snapshot text */
+const SEARCH_SNAPSHOT_PATTERN = /^\s*-\s+(?:searchbox|combobox)\s/m;
 
 const FIRST_TURN_COMPACT_PROMPT = `You are a browser agent choosing the fastest safe next action.
 
@@ -454,6 +476,37 @@ export class Brain {
     return false;
   }
 
+  /**
+   * Build the system prompt dynamically, injecting conditional rule groups
+   * based on goal text, page snapshot content, and turn number.
+   * Saves ~800 tokens per turn on simple navigation tasks.
+   */
+  private buildSystemPrompt(goal: string, state: PageState, turn: number): string {
+    // If a custom systemPrompt was set via config, use it verbatim
+    if (this.systemPrompt !== SYSTEM_PROMPT) return this.systemPrompt
+
+    let prompt = CORE_RULES
+
+    // Search rules: page has searchbox/combobox roles or URL contains /search
+    const snapshotSample = state.snapshot.length > 4000 ? state.snapshot.slice(0, 4000) : state.snapshot
+    if (SEARCH_SNAPSHOT_PATTERN.test(snapshotSample) || /\/search\b/i.test(state.url)) {
+      prompt += SEARCH_RULES
+    }
+
+    // Data extraction rules: goal mentions extraction-related keywords
+    if (DATA_EXTRACTION_PATTERN.test(goal)) {
+      prompt += DATA_EXTRACTION_RULES
+    }
+
+    // Heavy page rules: large snapshot or late in the run
+    if (state.snapshot.length > 10_000 || turn > 10) {
+      prompt += HEAVY_PAGE_RULES
+    }
+
+    prompt += REASONING_SUFFIX
+    return prompt
+  }
+
   /** Reset conversation history (call between scenarios) */
   reset(): void {
     this.history = [];
@@ -577,7 +630,7 @@ export class Brain {
    */
   private summarizeElements(text: string, selectors: string[]): string {
     return text.replace(
-      /ELEMENTS:\n[\s\S]*?(?=\n\n|What action should you take\?|$)/,
+      /ELEMENTS[^:\n]*:\n[\s\S]*?(?=\n\n|What action should you take\?|$)/,
       (match) => {
         const snapshotStart = match.indexOf('\n');
         if (snapshotStart === -1) return 'ELEMENTS:\n[previous snapshot]';
@@ -600,11 +653,40 @@ export class Brain {
   ): Promise<BrainDecision> {
     const useCompactFirstTurn = this.compactFirstTurn && turnInfo?.current === 1;
     const samePageAsPrevious = this.lastDecisionUrl === state.url;
+    const isFirstTurn = !turnInfo || turnInfo.current <= 1;
+
+    // Diff-only mode: on same-page turns with small diffs, send only changed
+    // elements instead of the full snapshot. Saves 40-80% of input tokens on
+    // form-fill / interaction-heavy pages where the page structure is stable.
+    const rawDiff = state.snapshotDiffRaw;
+    const diffChanges = rawDiff ? rawDiff.added.length + rawDiff.removed.length + rawDiff.changed.length : 0;
+    const diffTotal = rawDiff ? diffChanges + rawDiff.unchangedCount : 0;
+    const useDiffOnly = samePageAsPrevious
+      && !isFirstTurn
+      && rawDiff !== undefined
+      && diffChanges > 0
+      && diffTotal > 0
+      && diffChanges / diffTotal < 0.3;
+
     // Tighter snapshot budget on same-page turns — agent already saw the full page
     const snapshotBudget = samePageAsPrevious ? 8_000 : 16_000;
-    const visibleSnapshot = useCompactFirstTurn
-      ? compactFirstTurnSnapshot(state.snapshot)
-      : budgetSnapshot(state.snapshot, snapshotBudget);
+    let visibleSnapshot: string;
+    let elementsHeader: string;
+    if (useDiffOnly) {
+      // Build compact diff-only view: changed/added elements with refs
+      const lines: string[] = [];
+      if (rawDiff!.added.length) lines.push('ADDED:', ...rawDiff!.added);
+      if (rawDiff!.changed.length) lines.push('CHANGED:', ...rawDiff!.changed);
+      if (rawDiff!.removed.length) lines.push('REMOVED:', ...rawDiff!.removed);
+      lines.push(`(${rawDiff!.unchangedCount} elements unchanged — refs from previous turn still valid)`);
+      visibleSnapshot = lines.join('\n');
+      elementsHeader = 'ELEMENTS (diff-only, previous refs still valid)';
+    } else {
+      visibleSnapshot = useCompactFirstTurn
+        ? compactFirstTurnSnapshot(state.snapshot)
+        : budgetSnapshot(state.snapshot, snapshotBudget);
+      elementsHeader = 'ELEMENTS';
+    }
     this.lastDecisionUrl = state.url;
 
     // Build user message with stable prefix (GOAL) for prompt caching,
@@ -615,7 +697,7 @@ CURRENT PAGE:
 URL: ${state.url}
 Title: ${state.title}
 
-ELEMENTS:
+${elementsHeader}:
 ${visibleSnapshot}`;
 
     if (turnInfo) {
@@ -631,8 +713,8 @@ ${visibleSnapshot}`;
       }
     }
 
-    // Append snapshot diff when available and compact (< 30% of full snapshot)
-    if (state.snapshotDiff && state.snapshotDiff.length < state.snapshot.length * 0.3) {
+    // Append snapshot diff only when NOT using diff-only mode (avoid redundant info)
+    if (!useDiffOnly && state.snapshotDiff && state.snapshotDiff.length < state.snapshot.length * 0.3) {
       textContent += `\n\nSNAPSHOT CHANGES (since last turn):\n${state.snapshotDiff}`;
     }
 
@@ -664,11 +746,15 @@ ${visibleSnapshot}`;
       { role: 'user', content: userContent },
     ];
 
+    const dynamicSystemPrompt = useCompactFirstTurn
+      ? FIRST_TURN_COMPACT_PROMPT
+      : this.buildSystemPrompt(goal, state, turnInfo?.current ?? 1)
+
     const result = await this.generate(
-      useCompactFirstTurn ? FIRST_TURN_COMPACT_PROMPT : this.systemPrompt,
+      dynamicSystemPrompt,
       messages,
       { provider: effectiveProvider, model: effectiveModel },
-      useCompactFirstTurn ? 500 : 1000,
+      useCompactFirstTurn ? 500 : 600,
     );
 
     const raw = result.text;

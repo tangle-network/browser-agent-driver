@@ -2,6 +2,8 @@
  * Core types for browser agent
  */
 
+import type { SnapshotDiff } from './drivers/snapshot.js';
+
 // ============================================================================
 // Actions - What the agent can do
 // ============================================================================
@@ -108,6 +110,8 @@ export interface PageState {
   screenshot?: string;
   /** Diff from previous snapshot (undefined on first observe) */
   snapshotDiff?: string;
+  /** Structured diff for programmatic use (undefined on first observe) */
+  snapshotDiffRaw?: SnapshotDiff;
 }
 
 // ============================================================================

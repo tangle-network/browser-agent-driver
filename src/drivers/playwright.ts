@@ -252,6 +252,7 @@ export class PlaywrightDriver implements Driver {
     const screenshotMs = performance.now() - ssStart;
 
     const snapshotDiff = this.snapshot.getDiff();
+    const snapshotDiffRaw = this.snapshot.getRawDiff();
 
     this.lastTiming = {
       totalMs: 0, // filled by observe()
@@ -270,6 +271,7 @@ export class PlaywrightDriver implements Driver {
       snapshot: snapshotText,
       screenshot,
       snapshotDiff,
+      snapshotDiffRaw,
     };
   }
 
@@ -299,6 +301,7 @@ export class PlaywrightDriver implements Driver {
     const screenshotMs = performance.now() - ssStart;
 
     const snapshotDiff = this.snapshot.getDiff();
+    const snapshotDiffRaw = this.snapshot.getRawDiff();
     const refMatches = snapshotText.match(/\[ref=\w+\]/g);
 
     this.lastTiming = {
@@ -312,7 +315,7 @@ export class PlaywrightDriver implements Driver {
       refCount: refMatches?.length ?? 0,
     };
 
-    return { url, title, snapshot: snapshotText, screenshot, snapshotDiff };
+    return { url, title, snapshot: snapshotText, screenshot, snapshotDiff, snapshotDiffRaw };
   }
 
   async screenshot(): Promise<Buffer> {
@@ -347,9 +350,10 @@ export class PlaywrightDriver implements Driver {
       switch (action.action) {
         case 'click': {
           const locator = this.snapshot.resolveLocator(this.page, action.selector);
-          const popupPromise = this.page.context()
-            .waitForEvent('page', { timeout: Math.min(timeout, 2_000) })
-            .catch(() => null);
+          // Listen for popups but don't block: collect any that fire during the click
+          let popupPage: import('playwright').Page | null = null;
+          const onPopup = (page: import('playwright').Page) => { popupPage = page; };
+          this.page.context().on('page', onPopup);
           try {
             await this.withOverlayRecovery(async () => {
               await locator.click({ timeout });
@@ -357,10 +361,16 @@ export class PlaywrightDriver implements Driver {
           } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             if (!isPointerInterceptError(message)) throw err;
-            // Fallback for sticky overlays/sidebars that still intercept pointer events.
             await locator.click({ timeout, force: true });
           }
-          const popupPage = await popupPromise;
+          this.page.context().off('page', onPopup);
+          // If a popup opened during the click, adopt it immediately (no waiting)
+          if (!popupPage) {
+            // Brief grace period for popups that fire after click resolves
+            popupPage = await this.page.context()
+              .waitForEvent('page', { timeout: 200 })
+              .catch(() => null);
+          }
           if (popupPage && !popupPage.isClosed()) {
             await popupPage.waitForLoadState('domcontentloaded').catch(() => {});
             await this.adoptPage(popupPage);
