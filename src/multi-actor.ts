@@ -30,8 +30,8 @@
 import type { Browser, BrowserContext, BrowserContextOptions, Page } from 'playwright';
 import { PlaywrightDriver } from './drivers/playwright.js';
 import type { PlaywrightDriverOptions } from './drivers/playwright.js';
-import { AgentRunner } from './runner.js';
-import type { RunnerOptions } from './runner.js';
+import { BrowserAgent } from './runner.js';
+import type { BrowserAgentOptions } from './runner.js';
 import type { Scenario, AgentConfig, AgentResult, Turn } from './types.js';
 import type { ProjectStore } from './memory/project-store.js';
 
@@ -71,7 +71,7 @@ export class Actor {
     private _context: BrowserContext,
     private _page: Page,
     private _driver: PlaywrightDriver,
-    private _runner: AgentRunner,
+    private _runner: BrowserAgent,
   ) {}
 
   /** Run a scenario with this actor's agent. Results accumulate across calls. */
@@ -120,7 +120,7 @@ export class MultiActorSession {
   /**
    * Create a session with isolated browser contexts per actor.
    *
-   * 1. Creates BrowserContext + Page + PlaywrightDriver + AgentRunner per actor
+   * 1. Creates BrowserContext + Page + PlaywrightDriver + BrowserAgent per actor
    * 2. Calls setup() hooks if provided
    * 3. Returns session ready for orchestration
    */
@@ -157,14 +157,14 @@ export class MultiActorSession {
           ? (turn: Turn) => config.onTurn!(name, turn)
           : undefined;
 
-        const runnerOpts: RunnerOptions = {
+        const runnerOpts: BrowserAgentOptions = {
           driver,
           config: mergedAgentConfig,
           onTurn,
           projectStore: config.projectStore,
         };
 
-        const runner = new AgentRunner(runnerOpts);
+        const runner = new BrowserAgent(runnerOpts);
 
         // Run actor setup hook (e.g., manual login flow)
         if (actorCfg.setup) {

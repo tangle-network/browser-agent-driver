@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AgentRunner } from '../src/runner.js';
+import { BrowserAgent } from '../src/runner.js';
 import type { Action } from '../src/types.js';
 import type { Driver } from '../src/drivers/types.js';
 
@@ -15,9 +15,9 @@ const noopDriver: Driver = {
   },
 };
 
-describe('AgentRunner micro-plan selection', () => {
+describe('BrowserAgent micro-plan selection', () => {
   it('filters follow-up actions to safe set and respects maxActionsPerTurn', () => {
-    const runner = new AgentRunner({
+    const runner = new BrowserAgent({
       driver: noopDriver,
       config: { microPlan: { enabled: true, maxActionsPerTurn: 3 } },
     });
@@ -40,7 +40,7 @@ describe('AgentRunner micro-plan selection', () => {
   });
 
   it('returns no follow-up actions when micro-plan is disabled', () => {
-    const runner = new AgentRunner({
+    const runner = new BrowserAgent({
       driver: noopDriver,
       config: { microPlan: { enabled: false } },
     });

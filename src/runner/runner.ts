@@ -38,6 +38,7 @@ import type { BranchPreview } from './scout.js';
 import { buildOverrideProducers, buildScoutLinkRecommendationText, buildBranchLinkRecommendationText } from './overrides.js';
 
 import type { Session } from '../memory/knowledge.js';
+import { RunRegistry } from '../memory/run-registry.js';
 
 /** Build a structured session record from a completed run */
 function buildSession(scenario: Scenario, result: AgentResult): Session {
@@ -79,7 +80,7 @@ const DEFI_BRAIN_CONTEXT =
   '- NETWORK SELECTOR: Do NOT change the network/chain. If a network dropdown opens accidentally, close it immediately.\n' +
   '- COOKIE BANNERS: Dismiss immediately via Escape or Reject button — don\'t spend multiple turns on consent dialogs.\n'
 
-export interface RunnerOptions {
+export interface BrowserAgentOptions {
   driver: Driver;
   config?: AgentConfig;
   /** Called after each turn */
@@ -90,9 +91,11 @@ export interface RunnerOptions {
   referenceTrajectory?: string;
   /** Project memory store — enables knowledge + selector persistence */
   projectStore?: ProjectStore;
+  /** Run registry for orchestration-facing manifests */
+  runRegistry?: RunRegistry;
 }
 
-export class AgentRunner {
+export class BrowserAgent {
   private driver: Driver;
   private brain: Brain;
   private config: AgentConfig;
@@ -100,11 +103,12 @@ export class AgentRunner {
   private onPhaseTiming?: (phase: 'navigate' | 'observe' | 'decide' | 'execute', durationMs: number) => void;
   private referenceTrajectory?: string;
   private projectStore?: ProjectStore;
+  private runRegistry?: RunRegistry;
   private knowledge?: AppKnowledge;
   private selectorCache?: SelectorCache;
   private cachedPostState: PageState | undefined;
 
-  constructor(options: RunnerOptions) {
+  constructor(options: BrowserAgentOptions) {
     this.driver = options.driver;
     this.config = options.config || {};
     this.brain = new Brain(this.config);
@@ -112,6 +116,7 @@ export class AgentRunner {
     this.onPhaseTiming = options.onPhaseTiming;
     this.referenceTrajectory = options.referenceTrajectory;
     this.projectStore = options.projectStore;
+    this.runRegistry = options.runRegistry;
   }
 
   async run(scenario: Scenario): Promise<AgentResult> {
@@ -123,6 +128,11 @@ export class AgentRunner {
     const phaseTimings: import('../types.js').RunPhaseTimings = {};
     const runState = new RunState(maxTurns);
 
+    const runId = scenario.sessionId
+      ? `${scenario.sessionId}_${Date.now()}`
+      : RunRegistry.generateRunId()
+    const domain = safeHostname(scenario.startUrl || '') || 'unknown'
+
     const buildResult = (result: Omit<AgentResult, 'phaseTimings' | 'wasteMetrics'>): AgentResult => {
       const agentResult: AgentResult = {
         ...result,
@@ -130,6 +140,16 @@ export class AgentRunner {
         wasteMetrics: deriveWasteMetrics(turns, runState.verificationRejectionCount, runState.firstSufficientEvidenceTurn),
       }
       this.saveMemory(scenario, agentResult)
+      // Complete run manifest
+      const lastTurn = agentResult.turns[agentResult.turns.length - 1]
+      this.runRegistry?.completeRun(runId, {
+        success: agentResult.success,
+        finalUrl: lastTurn?.state?.url,
+        summary: agentResult.result || agentResult.reason,
+        result: agentResult.result,
+        reason: agentResult.reason,
+        turnCount: agentResult.turns.length,
+      })
       return agentResult
     };
 
@@ -165,6 +185,15 @@ export class AgentRunner {
       phaseTimings.initialNavigateMs = Date.now() - navigateStartedAt;
       this.onPhaseTiming?.('navigate', phaseTimings.initialNavigateMs);
     }
+
+    // Write run manifest at start
+    this.runRegistry?.startRun({
+      runId,
+      sessionId: scenario.sessionId,
+      goal: scenario.goal,
+      domain,
+      startUrl: scenario.startUrl,
+    });
 
     const supervisorConfig = {
       enabled: this.config.supervisor?.enabled ?? DEFAULT_SUPERVISOR.enabled,
@@ -411,8 +440,8 @@ export class AgentRunner {
           turns[turns.length - 1]!.state.url === turns[turns.length - 2]!.state.url;
         const shouldScout = i >= 5 || stuckOnSameUrl;
 
-        let scoutLinkRecommendation: Awaited<ReturnType<AgentRunner['buildVisibleLinkScoutRecommendation']>>;
-        let branchLinkRecommendation: Awaited<ReturnType<AgentRunner['buildBranchLinkRecommendation']>>;
+        let scoutLinkRecommendation: Awaited<ReturnType<BrowserAgent['buildVisibleLinkScoutRecommendation']>>;
+        let branchLinkRecommendation: Awaited<ReturnType<BrowserAgent['buildBranchLinkRecommendation']>>;
         let searchScoutFeedback: string;
 
         if (shouldScout) {
@@ -1640,11 +1669,11 @@ export class AgentRunner {
 }
 
 /** Convenience function */
-export async function runAgent(
+export async function runBrowserAgent(
   driver: Driver,
   scenario: Scenario,
-  options?: Omit<RunnerOptions, 'driver'>
+  options?: Omit<BrowserAgentOptions, 'driver'>
 ): Promise<AgentResult> {
-  const runner = new AgentRunner({ driver, ...options });
+  const runner = new BrowserAgent({ driver, ...options });
   return runner.run(scenario);
 }

@@ -3,8 +3,8 @@
  */
 
 // Core runner
-export { AgentRunner, runAgent } from './runner.js';
-export type { RunnerOptions } from './runner.js';
+export { BrowserAgent, runBrowserAgent } from './runner.js';
+export type { BrowserAgentOptions } from './runner.js';
 
 // Utilities
 export { withRetry } from './utils.js';

@@ -11,11 +11,11 @@ const mockRunFn = vi.fn<(scenario: Scenario) => Promise<AgentResult>>();
 let latestOnTurn: ((turn: Turn) => void) | undefined;
 
 vi.mock('../src/runner.js', () => {
-  const AgentRunner = vi.fn(function (this: { run: typeof mockRunFn }, opts: { onTurn?: (turn: Turn) => void }) {
+  const BrowserAgent = vi.fn(function (this: { run: typeof mockRunFn }, opts: { onTurn?: (turn: Turn) => void }) {
     latestOnTurn = opts.onTurn;
     this.run = mockRunFn;
   });
-  return { AgentRunner };
+  return { BrowserAgent };
 });
 
 function makeDriver(videoPath: string): Driver {

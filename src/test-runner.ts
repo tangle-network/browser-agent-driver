@@ -21,12 +21,13 @@ import type {
 } from './types.js';
 import type { Driver } from './drivers/types.js';
 import type { ArtifactSink, ProgressEvent } from './artifacts/types.js';
-import { AgentRunner } from './runner.js';
+import { BrowserAgent } from './runner.js';
 import { Brain } from './brain/index.js';
 import { TrajectoryStore } from './memory/store.js';
 import { TrajectoryAnalyzer, type RunAnalysis } from './memory/analyzer.js';
 import type { ProjectStore } from './memory/project-store.js';
 import { AppKnowledge } from './memory/knowledge.js';
+import { RunRegistry } from './memory/run-registry.js';
 import { generateReport } from './test-report.js';
 
 const DEFAULT_MAX_TURNS = 30;
@@ -132,6 +133,7 @@ export class TestRunner {
   private stopOnFailure: boolean;
   private store: TrajectoryStore | null;
   private projectStore?: ProjectStore;
+  private runRegistry?: RunRegistry;
   private feedbackHints: string | undefined;
   private screenshotInterval: number;
   private analyzer: TrajectoryAnalyzer;
@@ -154,6 +156,7 @@ export class TestRunner {
     this.concurrency = options.concurrency ?? 1;
     this.stopOnFailure = options.stopOnFailure ?? false;
     this.projectStore = options.projectStore;
+    this.runRegistry = options.projectStore ? new RunRegistry(options.projectStore.getRoot()) : undefined;
     this.store = options.enableMemory
       ? new TrajectoryStore(options.trajectoryStorePath, {
         enableScoring: this.config.traceScoring === true,
@@ -219,11 +222,12 @@ export class TestRunner {
           : this.feedbackHints;
       }
 
-      const runner = new AgentRunner({
+      const runner = new BrowserAgent({
         driver: activeDriver,
         config: this.config,
         referenceTrajectory: combinedReference,
         projectStore: this.projectStore,
+        runRegistry: this.runRegistry,
         onTurn: (turn) => {
           if (timeToFirstTurnMs === undefined) {
             timeToFirstTurnMs = Math.max(0, Date.now() - runStartedAtMs);

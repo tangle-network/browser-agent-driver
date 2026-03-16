@@ -7,7 +7,7 @@ let runnerOnTurn: ((turn: any) => void) | undefined;
 let runnerOnPhaseTiming: ((phase: 'navigate' | 'observe' | 'decide' | 'execute', durationMs: number) => void) | undefined;
 
 vi.mock('../src/runner.js', () => {
-  const AgentRunner = vi.fn(function (
+  const BrowserAgent = vi.fn(function (
     this: { run: typeof mockRun },
     options: { onTurn?: (turn: any) => void; onPhaseTiming?: (phase: 'navigate' | 'observe' | 'decide' | 'execute', durationMs: number) => void },
   ) {
@@ -15,7 +15,7 @@ vi.mock('../src/runner.js', () => {
     runnerOnPhaseTiming = options?.onPhaseTiming;
     this.run = mockRun;
   });
-  return { AgentRunner };
+  return { BrowserAgent };
 });
 
 import { TestRunner } from '../src/test-runner.js';

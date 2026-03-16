@@ -8,7 +8,7 @@
 
 import type { Driver } from './drivers/types.js';
 import { Brain } from './brain/index.js';
-import { AgentRunner } from './runner.js';
+import { BrowserAgent } from './runner.js';
 import type {
   AgentConfig,
   AuditFlow,
@@ -50,7 +50,7 @@ export class DesignAuditor {
     const allFindings: DesignFinding[] = [];
 
     // Use the runner to navigate the flow
-    const runner = new AgentRunner({
+    const runner = new BrowserAgent({
       driver: this.driver,
       config: this.config,
       onTurn: (turn) => {

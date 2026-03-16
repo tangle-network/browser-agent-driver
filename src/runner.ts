@@ -5,8 +5,8 @@
  */
 export {
   // Core
-  AgentRunner,
-  runAgent,
+  BrowserAgent,
+  runBrowserAgent,
 
   // Utilities
   withRetry,
@@ -47,4 +47,4 @@ export {
   chooseExpandableListCompletionOverride,
 } from './runner/index.js';
 
-export type { RunnerOptions } from './runner/index.js';
+export type { BrowserAgentOptions } from './runner/index.js';

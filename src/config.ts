@@ -271,7 +271,7 @@ export function mergeConfig(...configs: Partial<DriverConfig>[]): DriverConfig {
   return result as DriverConfig;
 }
 
-/** Convert DriverConfig to the AgentConfig used by AgentRunner/TestRunner */
+/** Convert DriverConfig to the AgentConfig used by BrowserAgent / TestRunner */
 export function toAgentConfig(config: DriverConfig): AgentConfig {
   return {
     provider: config.provider,

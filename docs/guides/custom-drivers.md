@@ -15,4 +15,4 @@ class MyDriver implements Driver {
 }
 ```
 
-Pass your driver to `AgentRunner` or `TestRunner` the same way as `PlaywrightDriver`.
+Pass your driver to `BrowserAgent` or `TestRunner` the same way as `PlaywrightDriver`.

@@ -78,8 +78,8 @@ export { Brain } from './brain/index.js';
 export type { BrainDecision, QualityEvaluation } from './brain/index.js';
 
 // Agent runner (core observe -> decide -> execute loop)
-export { AgentRunner, runAgent } from './runner.js';
-export type { RunnerOptions } from './runner.js';
+export { BrowserAgent, runBrowserAgent } from './runner.js';
+export type { BrowserAgentOptions } from './runner.js';
 
 // Test runner (suite orchestration, verification, parallelism)
 export { TestRunner } from './test-runner.js';
@@ -129,6 +129,8 @@ export { TrajectoryStore } from './memory/store.js';
 export type { TrajectoryStoreOptions } from './memory/store.js';
 export { TrajectoryAnalyzer } from './memory/analyzer.js';
 export type { RunAnalysis, ActionPattern, GoalPattern, TurnWaste } from './memory/analyzer.js';
+export { RunRegistry } from './memory/run-registry.js';
+export type { RunManifest, RunStatus, RunFilters } from './memory/run-registry.js';
 
 // Configuration
 export { defineConfig, defineTests, loadConfig, mergeConfig, toAgentConfig } from './config.js';

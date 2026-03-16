@@ -34,13 +34,13 @@ pnpm add -D playwright
 
 ```typescript
 import { chromium } from 'playwright'
-import { PlaywrightDriver, AgentRunner } from '@tangle-network/browser-agent-driver'
+import { PlaywrightDriver, BrowserAgent } from '@tangle-network/browser-agent-driver'
 
 const browser = await chromium.launch()
 const page = await browser.newPage()
 const driver = new PlaywrightDriver(page)
 
-const runner = new AgentRunner({
+const runner = new BrowserAgent({
   driver,
   config: { model: 'gpt-5.4' },
 })

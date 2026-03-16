@@ -60,16 +60,16 @@ function successResult(overrides?: Partial<AgentResult>): AgentResult {
   };
 }
 
-// We need to mock AgentRunner since it requires real LLM calls.
+// We need to mock BrowserAgent since it requires real LLM calls.
 // Mock the module so create() builds runners that return controlled results.
 const mockRunFn = vi.fn<(scenario: Scenario) => Promise<AgentResult>>();
 
 vi.mock('../src/runner.js', () => {
   // Vitest v4 requires `function` keyword for mock constructors
-  const AgentRunner = vi.fn(function (this: { run: typeof mockRunFn }) {
+  const BrowserAgent = vi.fn(function (this: { run: typeof mockRunFn }) {
     this.run = mockRunFn;
   });
-  return { AgentRunner };
+  return { BrowserAgent };
 });
 
 // Mock PlaywrightDriver since it requires a real Page
@@ -161,8 +161,8 @@ describe('MultiActorSession', () => {
     });
 
     it('merges shared agentConfig with per-actor overrides', async () => {
-      const { AgentRunner } = await import('../src/runner.js');
-      vi.mocked(AgentRunner).mockClear();
+      const { BrowserAgent } = await import('../src/runner.js');
+      vi.mocked(BrowserAgent).mockClear();
 
       const config: MultiActorSessionConfig = {
         agentConfig: { model: 'gpt-4o', vision: true, debug: false },
@@ -174,8 +174,8 @@ describe('MultiActorSession', () => {
 
       await MultiActorSession.create(browser as never, config);
 
-      // AgentRunner is called twice (once per actor)
-      const calls = vi.mocked(AgentRunner).mock.calls;
+      // BrowserAgent is called twice (once per actor)
+      const calls = vi.mocked(BrowserAgent).mock.calls;
       expect(calls).toHaveLength(2);
 
       // admin: per-actor model + debug override shared config
@@ -209,9 +209,9 @@ describe('MultiActorSession', () => {
       );
     });
 
-    it('passes projectStore to all AgentRunners', async () => {
-      const { AgentRunner } = await import('../src/runner.js');
-      vi.mocked(AgentRunner).mockClear();
+    it('passes projectStore to all BrowserAgents', async () => {
+      const { BrowserAgent } = await import('../src/runner.js');
+      vi.mocked(BrowserAgent).mockClear();
 
       const fakeStore = { getKnowledgePath: vi.fn(), getSelectorCachePath: vi.fn() };
 
@@ -220,7 +220,7 @@ describe('MultiActorSession', () => {
         projectStore: fakeStore as never,
       });
 
-      const calls = vi.mocked(AgentRunner).mock.calls;
+      const calls = vi.mocked(BrowserAgent).mock.calls;
       expect(calls).toHaveLength(2);
       expect(calls[0][0].projectStore).toBe(fakeStore);
       expect(calls[1][0].projectStore).toBe(fakeStore);
@@ -272,7 +272,7 @@ describe('MultiActorSession', () => {
   });
 
   describe('Actor.run()', () => {
-    it('delegates to AgentRunner and accumulates results', async () => {
+    it('delegates to BrowserAgent and accumulates results', async () => {
       const result1 = successResult({ result: 'first' });
       const result2 = successResult({ result: 'second' });
       mockRunFn.mockResolvedValueOnce(result1).mockResolvedValueOnce(result2);
@@ -363,12 +363,12 @@ describe('MultiActorSession', () => {
     it('receives actor name and turn data', async () => {
       const turnCallback = vi.fn();
 
-      // We need to capture the onTurn that was passed to AgentRunner
+      // We need to capture the onTurn that was passed to BrowserAgent
       // and invoke it to verify the wrapping behavior
-      const { AgentRunner } = await import('../src/runner.js');
+      const { BrowserAgent } = await import('../src/runner.js');
       let capturedOnTurn: ((turn: Turn) => void) | undefined;
 
-      vi.mocked(AgentRunner).mockImplementation(function (this: { run: typeof mockRunFn }, opts: { onTurn?: (turn: Turn) => void }) {
+      vi.mocked(BrowserAgent).mockImplementation(function (this: { run: typeof mockRunFn }, opts: { onTurn?: (turn: Turn) => void }) {
         capturedOnTurn = opts.onTurn;
         this.run = mockRunFn;
       } as never);

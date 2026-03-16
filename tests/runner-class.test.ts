@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { RunState } from '../src/run-state.js';
 
 /**
- * Tests for AgentRunner-supporting classes and runner state management.
+ * Tests for BrowserAgent-supporting classes and runner state management.
  *
  * We test RunState (extracted from runner.ts) and the exported runner
  * constants/defaults behavior without needing a real browser.
@@ -121,7 +121,7 @@ describe('Runner defaults', () => {
   it('DEFAULT_MAX_TURNS is 20', async () => {
     // We can verify this by checking the runner module's behavior.
     // The default comes from the runner file but is not exported.
-    // The AgentRunner uses scenario.maxTurns || DEFAULT_MAX_TURNS.
+    // The BrowserAgent uses scenario.maxTurns || DEFAULT_MAX_TURNS.
     // For external config, the DriverConfig default is 30 (from config.ts).
     // Here we just verify RunState works with various maxTurns values.
     const state1 = new RunState(20);
