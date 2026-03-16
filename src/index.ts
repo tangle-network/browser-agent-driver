@@ -122,7 +122,7 @@ export { requestSupervisorDirective } from './supervisor/critic.js';
 // Memory system
 export { ProjectStore } from './memory/project-store.js';
 export { AppKnowledge } from './memory/knowledge.js';
-export type { Fact, KnowledgeData } from './memory/knowledge.js';
+export type { Fact, Session, KnowledgeData } from './memory/knowledge.js';
 export { SelectorCache } from './memory/selectors.js';
 export type { SelectorEntry } from './memory/selectors.js';
 export { TrajectoryStore } from './memory/store.js';

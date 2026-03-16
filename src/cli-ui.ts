@@ -377,6 +377,9 @@ ${H('OPTIONS')}
       ${C('--wallet-chain-id')} <n>  Target chain ID for preflight
       ${C('--wallet-chain-rpc-url')} <u>  RPC URL for preflight
 
+  ${D('Session continuity')}
+      ${C('--session-id')} <id>        Session ID for cross-run continuity ${D('(chains runs together)')}
+
   ${D('Memory & scoring')}
       ${C('--memory')}               Enable trajectory memory ${D('(default: on)')}
       ${C('--no-memory')}            Disable trajectory memory

@@ -1,15 +1,12 @@
 /**
- * App Knowledge — domain-scoped fact accumulation with confidence scoring.
+ * App Knowledge — domain-scoped fact accumulation with confidence scoring,
+ * plus rolling session history for cross-run continuity.
  *
- * Stores structured facts the agent discovers about a specific application,
- * persisted across runs. Facts have confidence scores that increase with
- * repeated confirmation and decay when contradicted.
+ * Facts: structured observations (timing, selector, pattern, quirk) that
+ * gain confidence with repeated confirmation and decay when contradicted.
  *
- * Fact types:
- * - timing: wait durations, animation timings, load times
- * - selector: reliable selectors for specific elements
- * - pattern: multi-step interaction patterns (auth flows, navigation)
- * - quirk: app-specific behaviors (shadow DOM, lazy loading, etc.)
+ * Sessions: ordered log of what the agent accomplished on this site.
+ * Enables continuation — "now add feature X" knows what was already built.
  */
 
 import { existsSync, readFileSync, writeFileSync } from 'fs';
@@ -23,9 +20,27 @@ export interface Fact {
   lastSeen: string;
 }
 
+export interface Session {
+  /** Orchestrator-provided or auto-generated ID */
+  id: string;
+  /** The goal that was given */
+  goal: string;
+  /** Agent's own natural language result or failure reason */
+  outcome: string;
+  success: boolean;
+  /** Where the browser ended up */
+  finalUrl: string;
+  timestamp: string;
+  turnsUsed: number;
+  durationMs: number;
+}
+
+const MAX_SESSIONS = 5;
+
 export interface KnowledgeData {
   domain: string;
   facts: Fact[];
+  sessions: Session[];
   updatedAt: string;
 }
 
@@ -37,6 +52,8 @@ export class AppKnowledge {
     this.path = path;
     this.data = this.load(domain);
   }
+
+  // ── Facts ──
 
   /** Get all facts with confidence above threshold */
   getFacts(minConfidence = 0.3): Fact[] {
@@ -64,12 +81,10 @@ export class AppKnowledge {
 
     if (existing) {
       if (existing.value === value) {
-        // Confirm — boost confidence (asymptotic toward 1.0)
         existing.confidence = Math.min(1.0, existing.confidence + (1 - existing.confidence) * 0.2);
         existing.sources++;
         existing.lastSeen = now;
       } else {
-        // Contradict — decay old, add new
         existing.confidence *= 0.5;
         this.data.facts.push({
           type, key, value,
@@ -87,7 +102,6 @@ export class AppKnowledge {
       });
     }
 
-    // Prune low-confidence facts
     this.data.facts = this.data.facts.filter(f => f.confidence >= 0.1);
     this.data.updatedAt = now;
   }
@@ -99,28 +113,76 @@ export class AppKnowledge {
     }
   }
 
+  // ── Sessions ──
+
+  /** Get all sessions, newest first */
+  getSessions(): Session[] {
+    return [...this.data.sessions].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  }
+
+  /** Append a session to the rolling log. Keeps the last MAX_SESSIONS entries. */
+  recordSession(session: Session): void {
+    this.data.sessions.push(session);
+    // Keep only the most recent sessions
+    if (this.data.sessions.length > MAX_SESSIONS) {
+      this.data.sessions = this.data.sessions
+        .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+        .slice(0, MAX_SESSIONS)
+    }
+    this.data.updatedAt = new Date().toISOString();
+  }
+
+  // ── Brain injection ──
+
   /** Format knowledge for injection into brain context */
   formatForBrain(): string {
-    const facts = this.getFacts(0.5); // Only high-confidence facts
-    if (facts.length === 0) return '';
+    const lines: string[] = [];
 
-    const grouped = new Map<string, Fact[]>();
-    for (const f of facts) {
-      const group = grouped.get(f.type) || [];
-      group.push(f);
-      grouped.set(f.type, group);
-    }
-
-    const lines: string[] = ['APP KNOWLEDGE (learned from previous runs):'];
-
-    for (const [type, typeFacts] of grouped) {
-      lines.push(`  ${type.toUpperCase()}:`);
-      for (const f of typeFacts.sort((a, b) => b.confidence - a.confidence)) {
-        const conf = (f.confidence * 100).toFixed(0);
-        lines.push(`    - ${f.key}: ${f.value} (${conf}% confidence, ${f.sources} observations)`);
+    // Sessions first — most valuable for continuations
+    const sessions = this.getSessions();
+    if (sessions.length > 0) {
+      const count = sessions.length;
+      lines.push(`SESSION HISTORY (${count} previous run${count !== 1 ? 's' : ''} on this site):`)
+      for (let i = 0; i < sessions.length; i++) {
+        const s = sessions[i];
+        const icon = s.success ? '✓' : '✗';
+        const ts = s.timestamp.slice(0, 16).replace('T', ' ');
+        const stats = `${s.turnsUsed} turns, ${Math.round(s.durationMs / 1000)}s`;
+        if (i < 2) {
+          // Recent sessions: full detail
+          lines.push(`[${ts}] ${icon} "${s.goal}" → ${s.outcome} (${stats})`);
+          if (s.finalUrl) lines.push(`  Final URL: ${s.finalUrl}`);
+        } else {
+          // Older sessions: one line
+          lines.push(`[${ts}] ${icon} "${s.goal}" → ${s.outcome.slice(0, 80)}${s.outcome.length > 80 ? '…' : ''} (${stats})`);
+        }
       }
     }
 
+    // Facts
+    const facts = this.getFacts(0.5);
+    const nonSessionFacts = facts;
+    if (nonSessionFacts.length > 0) {
+      if (lines.length > 0) lines.push('');
+      lines.push('APP KNOWLEDGE (learned from previous runs):');
+
+      const grouped = new Map<string, Fact[]>();
+      for (const f of nonSessionFacts) {
+        const group = grouped.get(f.type) || [];
+        group.push(f);
+        grouped.set(f.type, group);
+      }
+
+      for (const [type, typeFacts] of grouped) {
+        lines.push(`  ${type.toUpperCase()}:`);
+        for (const f of typeFacts.sort((a, b) => b.confidence - a.confidence)) {
+          const conf = (f.confidence * 100).toFixed(0);
+          lines.push(`    - ${f.key}: ${f.value} (${conf}% confidence, ${f.sources} observations)`);
+        }
+      }
+    }
+
+    if (lines.length === 0) return '';
     return lines.join('\n');
   }
 
@@ -132,11 +194,35 @@ export class AppKnowledge {
   private load(domain: string): KnowledgeData {
     if (existsSync(this.path)) {
       try {
-        return JSON.parse(readFileSync(this.path, 'utf-8'));
+        const raw = JSON.parse(readFileSync(this.path, 'utf-8'));
+        // Migrate: old format may not have sessions array, or may have
+        // session-type facts from the previous implementation
+        if (!raw.sessions) raw.sessions = [];
+        // Migrate session-type facts from previous implementation to sessions array
+        if (raw.facts) {
+          type RawFact = { type: string; key: string; value: string; lastSeen: string }
+          const sessionFacts = (raw.facts as RawFact[]).filter(f => f.type === 'session');
+          if (sessionFacts.length > 0) {
+            for (const sf of sessionFacts) {
+              raw.sessions.push({
+                id: `migrated_${Date.now()}`,
+                goal: sf.key === 'latest' ? '(previous run)' : sf.key,
+                outcome: sf.value,
+                success: true,
+                finalUrl: '',
+                timestamp: sf.lastSeen,
+                turnsUsed: 0,
+                durationMs: 0,
+              });
+            }
+            raw.facts = (raw.facts as RawFact[]).filter(f => f.type !== 'session');
+          }
+        }
+        return raw as KnowledgeData;
       } catch {
         // Corrupted file — start fresh
       }
     }
-    return { domain, facts: [], updatedAt: new Date().toISOString() };
+    return { domain, facts: [], sessions: [], updatedAt: new Date().toISOString() };
   }
 }

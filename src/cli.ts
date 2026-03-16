@@ -124,6 +124,7 @@ async function main(): Promise<void> {
       'storage-state': { type: 'string' },
       concurrency: { type: 'string' },
       'max-turns': { type: 'string' },
+      'session-id': { type: 'string' },
       pages: { type: 'string' },
       'extract-tokens': { type: 'boolean' },
       'llm-timeout': { type: 'string' },
@@ -547,7 +548,14 @@ async function main(): Promise<void> {
       maxTurns,
       timeoutMs,
       priority: 0,
+      sessionId: values['session-id'],
     }];
+  }
+
+  // Apply --session-id to all cases from file too
+  if (values['session-id'] && cases.length > 0 && cases[0].id !== 'cli-task') {
+    const sid = values['session-id']
+    cases = cases.map(c => ({ ...c, sessionId: c.sessionId || sid }))
   }
 
   const persona = values.persona;

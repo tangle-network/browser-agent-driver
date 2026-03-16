@@ -37,6 +37,23 @@ import { shouldUseVisibleLinkScout, shouldUseVisibleLinkScoutPage, shouldUseBoun
 import type { BranchPreview } from './scout.js';
 import { buildOverrideProducers, buildScoutLinkRecommendationText, buildBranchLinkRecommendationText } from './overrides.js';
 
+import type { Session } from '../memory/knowledge.js';
+
+/** Build a structured session record from a completed run */
+function buildSession(scenario: Scenario, result: AgentResult): Session {
+  const lastTurn = result.turns[result.turns.length - 1]
+  return {
+    id: scenario.sessionId || `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    goal: scenario.goal,
+    outcome: result.result || result.reason || (result.success ? 'Goal achieved' : 'Failed'),
+    success: result.success,
+    finalUrl: lastTurn?.state?.url || scenario.startUrl || '',
+    timestamp: new Date().toISOString(),
+    turnsUsed: result.turns.length,
+    durationMs: result.totalMs,
+  }
+}
+
 const DEFAULT_MAX_TURNS = 20;
 const DEFAULT_RETRIES = 3;
 const DEFAULT_RETRY_DELAY_MS = 1000;
@@ -106,11 +123,15 @@ export class AgentRunner {
     const phaseTimings: import('../types.js').RunPhaseTimings = {};
     const runState = new RunState(maxTurns);
 
-    const buildResult = (result: Omit<AgentResult, 'phaseTimings' | 'wasteMetrics'>): AgentResult => ({
-      ...result,
-      phaseTimings,
-      wasteMetrics: deriveWasteMetrics(turns, runState.verificationRejectionCount, runState.firstSufficientEvidenceTurn),
-    });
+    const buildResult = (result: Omit<AgentResult, 'phaseTimings' | 'wasteMetrics'>): AgentResult => {
+      const agentResult: AgentResult = {
+        ...result,
+        phaseTimings,
+        wasteMetrics: deriveWasteMetrics(turns, runState.verificationRejectionCount, runState.firstSufficientEvidenceTurn),
+      }
+      this.saveMemory(scenario, agentResult)
+      return agentResult
+    };
 
     // Reset brain history for fresh scenario
     this.brain.reset();
@@ -305,7 +326,6 @@ export class AgentRunner {
           };
           turns.push(blockerTurn);
           this.onTurn?.(blockerTurn);
-          this.saveMemory();
           return buildResult({
             success: false,
             reason,
@@ -325,7 +345,6 @@ export class AgentRunner {
           };
           turns.push(blockerTurn);
           this.onTurn?.(blockerTurn);
-          this.saveMemory();
           return buildResult({
             success: false,
             reason,
@@ -485,7 +504,6 @@ export class AgentRunner {
               };
               turns.push(supervisorTurn);
               this.onTurn?.(supervisorTurn);
-              this.saveMemory();
               return buildResult({
                 success: false,
                 reason,
@@ -534,7 +552,6 @@ export class AgentRunner {
               this.onTurn?.(supervisorTurn);
 
               if (runState.hasConsecutiveErrorThreshold) {
-                this.saveMemory();
                 return buildResult({
                   success: false,
                   reason: `${runState.consecutiveErrors} consecutive errors after supervisor action: ${actionError}`,
@@ -543,7 +560,6 @@ export class AgentRunner {
                 });
               }
               if (runState.isErrorBudgetExhausted) {
-                this.saveMemory();
                 return buildResult({
                   success: false,
                   reason: `Error budget exhausted (${runState.totalErrors}/${runState.maxTotalErrors}) after supervisor action`,
@@ -980,7 +996,6 @@ export class AgentRunner {
             // Both gates passed
             turns.push(turn);
             this.onTurn?.(turn);
-            this.saveMemory();
             runState.firstSufficientEvidenceTurn ??= i;
             return buildResult({
               success: true,
@@ -1001,7 +1016,6 @@ export class AgentRunner {
           // Goal verified (or skipped), no quality gate
           turns.push(turn);
           this.onTurn?.(turn);
-          this.saveMemory();
           runState.firstSufficientEvidenceTurn ??= i;
           return buildResult({
             success: true,
@@ -1015,7 +1029,6 @@ export class AgentRunner {
         if (action.action === 'abort') {
           turns.push(turn);
           this.onTurn?.(turn);
-          this.saveMemory();
           return buildResult({
             success: false,
             reason: action.reason,
@@ -1222,7 +1235,6 @@ export class AgentRunner {
         this.onTurn?.(turn);
 
         if (runState.hasConsecutiveErrorThreshold) {
-          this.saveMemory();
           return buildResult({
             success: false,
             reason: `${runState.consecutiveErrors} consecutive errors: ${error}`,
@@ -1232,7 +1244,6 @@ export class AgentRunner {
         }
 
         if (runState.isErrorBudgetExhausted) {
-          this.saveMemory();
           return buildResult({
             success: false,
             reason: `Error budget exhausted (${runState.totalErrors}/${runState.maxTotalErrors} total errors): ${error}`,
@@ -1246,9 +1257,6 @@ export class AgentRunner {
         }
       }
     }
-
-    // Persist memory before returning
-    this.saveMemory();
 
     // Max turns reached
     return buildResult({
@@ -1286,9 +1294,12 @@ export class AgentRunner {
     return selected;
   }
 
-  /** Persist knowledge and selector cache to disk */
-  private saveMemory(): void {
+  /** Persist knowledge, selector cache, and session history to disk */
+  private saveMemory(scenario?: Scenario, result?: AgentResult): void {
     try {
+      if (this.knowledge && scenario && result) {
+        this.knowledge.recordSession(buildSession(scenario, result))
+      }
       this.knowledge?.save();
       this.selectorCache?.save();
     } catch (err) {

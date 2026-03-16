@@ -287,6 +287,7 @@ export class TestRunner {
         allowedDomains: testCase.allowedDomains,
         maxTurns: testCase.maxTurns ?? DEFAULT_MAX_TURNS,
         signal: combinedSignal,
+        sessionId: testCase.sessionId,
       });
 
       let agentResult: AgentResult;
