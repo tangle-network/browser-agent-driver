@@ -81,7 +81,5 @@ jobs:
 
           echo "version=${PKG_VERSION}" >> "${GITHUB_OUTPUT}"
 
-      - name: Publish to npm
+      - name: Publish to npm (trusted publishing via OIDC)
         run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
