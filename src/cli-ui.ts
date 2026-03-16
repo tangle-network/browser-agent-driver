@@ -289,12 +289,19 @@ ${chalk.bold('bad')} ${D('— LLM-driven browser automation CLI')}
 
 ${H('USAGE')}
   bad run [options]
+  bad runs [--session-id <id>] [--json]
   bad design-audit --url <url>
 
 ${H('SINGLE TASK')}
   ${D('$')} bad run ${C('--goal')} "Sign up for account" ${C('--url')} http://localhost:3000
   ${D('$')} bad run ${C('-g')} "Build a todo app" ${C('-u')} http://localhost:5173 ${C('-m')} claude-sonnet-4-20250514
   ${D('$')} bad run ${C('--goal')} "Explore key routes" ${C('--url')} https://example.com ${C('--mode')} fast-explore
+
+${H('RESUME / FORK')}
+  ${D('$')} bad run ${C('--resume-run')} run_1710543210_abc ${C('--goal')} "Now add dark mode"
+  ${D('$')} bad run ${C('--fork-run')} run_1710543210_abc ${C('--goal')} "Build auth instead"
+  ${D('$')} bad runs ${D('# list recent runs')}
+  ${D('$')} bad runs ${C('--session-id')} proj_123 ${C('--json')}
 
 ${H('TEST SUITE')}
   ${D('$')} bad run ${C('--cases')} ./cases.json ${C('--concurrency')} 4
@@ -379,6 +386,8 @@ ${H('OPTIONS')}
 
   ${D('Session continuity')}
       ${C('--session-id')} <id>        Session ID for cross-run continuity ${D('(chains runs together)')}
+      ${C('--resume-run')} <runId>     Resume from a previous run ${D('(navigates to finalUrl)')}
+      ${C('--fork-run')} <runId>       Fork a new session from a previous run ${D('(requires --goal)')}
 
   ${D('Memory & scoring')}
       ${C('--memory')}               Enable trajectory memory ${D('(default: on)')}

@@ -25,6 +25,8 @@ import { isPersonaId, listPersonaIds, withPersonaDirective } from './personas.js
 import { resolveProviderApiKey, resolveProviderModelName } from './provider-defaults.js';
 import { loadLocalEnvFiles } from './env-loader.js';
 import { CliRenderer, cliError, cliWarn, cliLog, printStyledHelp } from './cli-ui.js';
+import { ProjectStore } from './memory/project-store.js';
+import { RunRegistry } from './memory/run-registry.js';
 
 type RunMode = 'fast-explore' | 'full-evidence';
 const RUN_MODES: RunMode[] = ['fast-explore', 'full-evidence'];
@@ -125,6 +127,8 @@ async function main(): Promise<void> {
       concurrency: { type: 'string' },
       'max-turns': { type: 'string' },
       'session-id': { type: 'string' },
+      'resume-run': { type: 'string' },
+      'fork-run': { type: 'string' },
       pages: { type: 'string' },
       'extract-tokens': { type: 'boolean' },
       'llm-timeout': { type: 'string' },
@@ -211,14 +215,43 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
+  if (command === 'runs') {
+    const store = new ProjectStore(values['memory-dir'])
+    const registry = new RunRegistry(store.getRoot())
+    const runs = registry.listRuns({
+      domain: values.url ? new URL(values.url).hostname : undefined,
+      sessionId: values['session-id'],
+      limit: 20,
+    })
+    if (runs.length === 0) {
+      console.log('  No runs found.')
+    } else if (values.json) {
+      console.log(JSON.stringify(runs, null, 2))
+    } else {
+      for (const r of runs) {
+        const icon = r.status === 'completed' ? (r.success ? '\u2713' : '\u2717') : '\u25cb'
+        const ts = r.startedAt.slice(0, 16).replace('T', ' ')
+        const dur = r.completedAt
+          ? `${Math.round((new Date(r.completedAt).getTime() - new Date(r.startedAt).getTime()) / 1000)}s`
+          : 'running'
+        const session = r.sessionId ? ` [${r.sessionId}]` : ''
+        const parent = r.parentRunId ? ` \u2190 ${r.parentRunId.slice(0, 20)}` : ''
+        console.log(`  ${icon} ${r.runId.slice(0, 30)}  ${ts}  ${dur}  ${r.goal.slice(0, 50)}${session}${parent}`)
+        if (r.summary) console.log(`    ${r.summary.slice(0, 80)}`)
+        if (r.finalUrl) console.log(`    ${r.finalUrl}`)
+      }
+    }
+    process.exit(0)
+  }
+
   if (command !== 'run') {
-    cliError(`Unknown command: ${command}. Use "run" or "design-audit".`);
+    cliError(`Unknown command: ${command}. Use "run", "runs", or "design-audit".`);
     process.exit(1);
   }
 
   // Validate inputs
-  if (!values.goal && !values.cases) {
-    cliError('provide --goal "..." --url "..." for a single task, or --cases ./cases.json for a suite.');
+  if (!values.goal && !values.cases && !values['resume-run'] && !values['fork-run']) {
+    cliError('provide --goal "..." --url "..." for a single task, --cases ./cases.json for a suite, or --resume-run / --fork-run <runId>.');
     process.exit(1);
   }
 
@@ -518,10 +551,52 @@ async function main(): Promise<void> {
     walletAddress: driverConfig.wallet?.address,
   };
 
+  // Create project store for memory + run registry
+  const memoryEnabled = driverConfig.memory?.enabled === true
+  const projectStore = memoryEnabled
+    ? new ProjectStore(driverConfig.memory?.dir)
+    : undefined
+  const runRegistry = projectStore
+    ? new RunRegistry(projectStore.getRoot())
+    : undefined
+
   // Build test cases
   let cases: import('./types.js').TestCase[];
 
-  if (values.cases) {
+  if (values['resume-run'] || values['fork-run']) {
+    // Resume or fork from a previous run
+    if (!runRegistry) {
+      cliError('--resume-run and --fork-run require memory to be enabled')
+      process.exit(1)
+    }
+    const isResume = Boolean(values['resume-run'])
+    const sourceRunId = (values['resume-run'] || values['fork-run'])!
+    const scenario = isResume
+      ? runRegistry.buildResumeScenario(sourceRunId, values.goal)
+      : runRegistry.buildForkScenario(sourceRunId, values.goal || '')
+
+    if (!scenario) {
+      cliError(`run "${sourceRunId}" not found in registry`)
+      process.exit(1)
+    }
+    if (!isResume && !values.goal) {
+      cliError('--fork-run requires --goal')
+      process.exit(1)
+    }
+
+    cases = [{
+      id: `${isResume ? 'resume' : 'fork'}-${sourceRunId.slice(0, 20)}`,
+      name: scenario.goal.slice(0, 60),
+      startUrl: values.url || scenario.startUrl,
+      goal: scenario.goal,
+      allowedDomains: parseAllowedDomains(values['allowed-domains']),
+      maxTurns,
+      timeoutMs,
+      priority: 0,
+      sessionId: scenario.sessionId,
+      parentRunId: scenario.parentRunId,
+    }]
+  } else if (values.cases) {
     const raw = fs.readFileSync(path.resolve(values.cases), 'utf-8');
     const parsed = JSON.parse(raw);
     const rawCases: Record<string, unknown>[] = Array.isArray(parsed) ? parsed : [parsed];
@@ -914,8 +989,9 @@ async function main(): Promise<void> {
     defaultTimeoutMs: timeoutMs,
     driver: singleDriver,
     driverFactory: concurrency > 1 ? driverFactory : undefined,
-    enableMemory: driverConfig.memory?.enabled === true,
+    enableMemory: memoryEnabled,
     trajectoryStorePath: driverConfig.memory?.dir,
+    projectStore,
     concurrency,
     screenshotInterval,
     artifactSink: sink,
@@ -995,9 +1071,10 @@ async function main(): Promise<void> {
     throw runError;
   }
 
-  await syncLocalBenchmarkRun(path.resolve(sinkDir), values.cases
+  const runLabel = values.cases
     ? `${path.basename(values.cases)} · cli run`
-    : `${values.goal!.slice(0, 80)} · cli run`);
+    : `${(values.goal || values['resume-run'] || values['fork-run'] || 'run').slice(0, 80)} · cli run`
+  await syncLocalBenchmarkRun(path.resolve(sinkDir), runLabel);
 
   process.exit((result?.summary.failed ?? 1) > 0 ? 1 : 0);
 }

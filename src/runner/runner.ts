@@ -153,6 +153,20 @@ export class BrowserAgent {
       return agentResult
     };
 
+    // Wrap onTurn to include mid-run manifest updates (every 3 turns)
+    const originalOnTurn = this.onTurn
+    this.onTurn = (turn: Turn) => {
+      originalOnTurn?.(turn)
+      if (this.runRegistry && turns.length % 3 === 0) {
+        try {
+          this.runRegistry.updateRun(runId, {
+            turnCount: turns.length,
+            currentUrl: turn.state?.url,
+          })
+        } catch { /* best-effort */ }
+      }
+    }
+
     // Reset brain history for fresh scenario
     this.brain.reset();
     this.cachedPostState = undefined;
@@ -190,6 +204,7 @@ export class BrowserAgent {
     this.runRegistry?.startRun({
       runId,
       sessionId: scenario.sessionId,
+      parentRunId: scenario.parentRunId,
       goal: scenario.goal,
       domain,
       startUrl: scenario.startUrl,

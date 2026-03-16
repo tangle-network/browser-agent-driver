@@ -132,6 +132,8 @@ export interface Scenario {
   /** Session ID for cross-run continuity. Runs with the same ID share session
    *  history regardless of domain. When omitted, sessions are scoped to domain. */
   sessionId?: string;
+  /** Parent run ID — set when this run is a resume or fork of a previous run. */
+  parentRunId?: string;
 }
 
 // ============================================================================
@@ -410,6 +412,8 @@ export interface TestCase {
   /** Session ID for cross-run continuity. Runs with the same ID share session
    *  history regardless of domain. When omitted, sessions are scoped to domain. */
   sessionId?: string;
+  /** Parent run ID — set when this run is a resume or fork of a previous run. */
+  parentRunId?: string;
 
   // Lifecycle hooks
   /** Run before the agent starts (e.g., seed data, reset state) */

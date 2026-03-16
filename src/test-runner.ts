@@ -292,6 +292,7 @@ export class TestRunner {
         maxTurns: testCase.maxTurns ?? DEFAULT_MAX_TURNS,
         signal: combinedSignal,
         sessionId: testCase.sessionId,
+        parentRunId: testCase.parentRunId,
       });
 
       let agentResult: AgentResult;
@@ -414,6 +415,25 @@ export class TestRunner {
           }
         } catch {
           // Video capture is best-effort
+        }
+      }
+
+      // Update run manifest with artifact paths from the sink
+      if (this.runRegistry && this.artifactSink) {
+        const manifest = this.artifactSink.getManifest()
+        const testArtifacts = manifest
+          .filter(e => e.testId === testCase.id)
+          .map(e => e.uri)
+        if (testArtifacts.length > 0) {
+          // Find the matching run manifest by sessionId or recent domain runs
+          const runs = this.runRegistry.listRuns({
+            sessionId: testCase.sessionId,
+            status: 'completed',
+            limit: 1,
+          })
+          if (runs.length > 0) {
+            this.runRegistry.updateRun(runs[0].runId, { artifactPaths: testArtifacts })
+          }
         }
       }
 
