@@ -318,9 +318,28 @@ ${H('DESIGN TOKEN EXTRACTION')}
   ${D('$')} bad design-audit ${C('--url')} https://stripe.com ${C('--extract-tokens')}
   ${D('$')} bad design-audit ${C('--url')} https://app.example.com ${C('--extract-tokens')} ${C('--json')}
 
-  Extracts colors, typography, spacing, components, logos, icons,
+  Extracts colors, typography, spacing, components, logos, icons, videos,
   CSS custom properties, and brand assets at mobile/tablet/desktop viewports.
+  Detects inline libraries (GSAP, Three.js, p5.js, Lottie, etc.).
   Outputs tokens.json — no LLM calls, pure DOM extraction.
+
+${H('SITE RIP')}
+  ${D('$')} bad design-audit ${C('--url')} https://example.com ${C('--rip')}
+  ${D('$')} bad design-audit ${C('--url')} https://example.com ${C('--rip')} ${C('--pages')} 10
+
+  Downloads a full working local copy of a website. Captures every
+  network request via Playwright interception, rewrites HTML/CSS
+  references to local paths. Reveals hidden content (accordions,
+  tabs, carousels) and auto-scrolls for lazy-loaded assets.
+
+${H('DESIGN COMPARE')}
+  ${D('$')} bad design-audit ${C('--url')} https://site-a.com ${C('--design-compare')} ${C('--compare-url')} https://site-b.com
+
+  Side-by-side comparison of two URLs. Extracts tokens from both,
+  takes screenshots at mobile/tablet/desktop, generates pixel diff
+  and structural token diff. Interacts with accordions, tabs, carousels,
+  and mobile menus to reveal hidden content before capture.
+  Outputs HTML report + JSON data.
 
 ${H('DOCKER')}
   ${D('$')} docker run -v ./cases.json:/data/cases.json -v ./out:/output \\
