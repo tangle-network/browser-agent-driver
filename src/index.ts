@@ -60,6 +60,7 @@ export type {
   AnimationToken,
   FontFile,
   ImageAsset,
+  VideoAsset,
 } from './types.js';
 
 // Driver interface + implementations
@@ -101,6 +102,19 @@ export { DesignAuditor, generateDesignAuditReport } from './design-audit.js';
 // Design token extraction
 export { extractDesignTokens } from './cli-design-audit.js';
 export type { ExtractDesignTokensOptions, ExtractionResult } from './cli-design-audit.js';
+
+// Design rip + compare
+export { ripSite, runDesignCompare, revealHiddenContent } from './design/index.js';
+export type {
+  RipOptions,
+  RipResult,
+  CapturedAsset,
+  CompareOptions,
+  CompareResult,
+  ViewportDiff,
+  TokenDiff,
+  RevealStats,
+} from './design/index.js';
 
 // Recovery
 export {

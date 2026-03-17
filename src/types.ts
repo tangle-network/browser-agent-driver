@@ -631,8 +631,19 @@ export interface DesignTokens {
   icons: SvgIcon[]
   fontFiles: FontFile[]
   images: ImageAsset[]
+  videos: VideoAsset[]
   stylesheets: Array<{ url: string; localPath?: string }>
   responsive: Record<string, ViewportTokens>
+  detectedLibraries: string[]
+}
+
+export interface VideoAsset {
+  url: string
+  type: 'video' | 'video-source'
+  poster?: string
+  localPath?: string
+  mimeType?: string
+  sizeBytes?: number
 }
 
 export interface ColorToken {
@@ -741,7 +752,7 @@ export interface FontFile {
 
 export interface ImageAsset {
   url: string
-  type: 'img' | 'background' | 'favicon' | 'og-image' | 'icon' | 'video-poster'
+  type: 'img' | 'background' | 'favicon' | 'og-image' | 'icon' | 'video-poster' | 'lazy-load'
   localPath?: string
   mimeType?: string
   sizeBytes?: number

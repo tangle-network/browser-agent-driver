@@ -131,6 +131,9 @@ async function main(): Promise<void> {
       'fork-run': { type: 'string' },
       pages: { type: 'string' },
       'extract-tokens': { type: 'boolean' },
+      rip: { type: 'boolean' },
+      'design-compare': { type: 'boolean' },
+      'compare-url': { type: 'string' },
       'llm-timeout': { type: 'string' },
       retries: { type: 'string' },
       'retry-delay-ms': { type: 'string' },
@@ -200,6 +203,35 @@ async function main(): Promise<void> {
       cliError('--url is required for design-audit.');
       process.exit(1);
     }
+
+    // --design-compare mode
+    if (values['design-compare']) {
+      if (!values['compare-url']) {
+        cliError('--compare-url is required with --design-compare.');
+        process.exit(1);
+      }
+      const { runDesignCompare } = await import('./design/compare.js');
+      await runDesignCompare({
+        urlA: values.url,
+        urlB: values['compare-url'],
+        headless: values.headless,
+        outputDir: values.sink,
+      });
+      process.exit(0);
+    }
+
+    // --rip mode
+    if (values.rip) {
+      const { ripSite } = await import('./design/rip.js');
+      await ripSite({
+        url: values.url,
+        pages: values.pages ? parseInt(values.pages) : undefined,
+        headless: values.headless,
+        outputDir: values.sink,
+      });
+      process.exit(0);
+    }
+
     const { runDesignAudit } = await import('./cli-design-audit.js');
     await runDesignAudit({
       url: values.url,

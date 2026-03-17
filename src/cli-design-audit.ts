@@ -500,13 +500,15 @@ interface RawExtractionResult {
   fontFiles: Array<{ family: string; weight: string; style: string; src: string; format: string }>
   imageUrls: string[]
   backgroundImageUrls: string[]
+  videoUrls: string[]
   externalStylesheetUrls: string[]
   linkAssetUrls: Array<{ url: string; rel: string }>
+  detectedLibraries: string[]
 }
 
 // The in-page extraction function — runs inside page.evaluate()
 function extractTokensFromDOM(): RawExtractionResult {
-  const MAX_ELEMENTS = 5000
+  const MAX_ELEMENTS = 50_000
 
   // --- CSS Custom Properties & Font Files ---
   const customProperties: Record<string, string> = {}
@@ -957,6 +959,47 @@ function extractTokensFromDOM(): RawExtractionResult {
     }
   }
 
+  // --- Video URLs ---
+  const videoUrls = new Set<string>()
+  for (const video of document.querySelectorAll('video')) {
+    const src = (video as HTMLVideoElement).src
+    if (src && !src.startsWith('data:') && !src.startsWith('blob:')) videoUrls.add(src)
+    const poster = (video as HTMLVideoElement).poster
+    if (poster && !poster.startsWith('data:') && !poster.startsWith('blob:')) imageUrls.add(poster)
+    for (const source of video.querySelectorAll('source')) {
+      const ssrc = (source as HTMLSourceElement).src
+      if (ssrc && !ssrc.startsWith('data:') && !ssrc.startsWith('blob:')) videoUrls.add(ssrc)
+    }
+  }
+  // Orphan <source> elements (audio, picture)
+  for (const source of document.querySelectorAll('source[src]')) {
+    const ssrc = (source as HTMLSourceElement).src
+    if (ssrc && /\.(mp4|webm|mov|ogg|avi|m3u8)/i.test(ssrc)) videoUrls.add(ssrc)
+  }
+  // <picture> <source> with srcset
+  for (const source of document.querySelectorAll('picture source[srcset]')) {
+    const srcset = (source as HTMLSourceElement).srcset
+    if (srcset) {
+      for (const part of srcset.split(',')) {
+        const url = part.trim().split(/\s+/)[0]
+        if (url && !url.startsWith('data:') && !url.startsWith('blob:')) imageUrls.add(url)
+      }
+    }
+  }
+
+  // --- Lazy-load data attributes ---
+  for (const el of document.querySelectorAll('[data-src], [data-bg], [data-background-image], [data-poster]')) {
+    for (const attr of ['data-src', 'data-bg', 'data-background-image', 'data-poster']) {
+      const val = el.getAttribute(attr)
+      if (!val || val.startsWith('data:') || val.startsWith('blob:')) continue
+      try {
+        const resolved = new URL(val, document.location.href).href
+        if (/\.(mp4|webm|mov|ogg|avi|m3u8)/i.test(val)) videoUrls.add(resolved)
+        else imageUrls.add(resolved)
+      } catch { /* bad URL */ }
+    }
+  }
+
   // --- Link Assets (favicons, icons, manifests) ---
   const linkAssetUrls: Array<{ url: string; rel: string }> = []
   for (const link of document.querySelectorAll('link[href]')) {
@@ -965,6 +1008,34 @@ function extractTokensFromDOM(): RawExtractionResult {
     if (href && !href.startsWith('data:') && !href.startsWith('blob:') &&
         /^(icon|shortcut icon|apple-touch-icon|manifest|preload)$/i.test(rel)) {
       linkAssetUrls.push({ url: href, rel })
+    }
+  }
+
+  // --- Inline script library detection ---
+  const detectedLibraries: string[] = []
+  const seenLibs = new Set<string>()
+  for (const script of document.querySelectorAll('script')) {
+    const src = (script as HTMLScriptElement).src || ''
+    const text = script.textContent || ''
+    const content = src + ' ' + text.slice(0, 10_000)
+    const checks: [RegExp, string][] = [
+      [/gsap|ScrollTrigger|ScrollSmoother/i, 'gsap'],
+      [/new\s+p5\b|p5\.setup|p5\.draw|p5\.js/i, 'p5.js'],
+      [/THREE\.|new\s+THREE\.|from\s+['"]three/i, 'three.js'],
+      [/lottie|bodymovin/i, 'lottie'],
+      [/anime\s*\(|animejs/i, 'anime.js'],
+      [/framer-motion|motion\.div/i, 'framer-motion'],
+      [/webflow/i, 'webflow'],
+      [/swiper/i, 'swiper'],
+      [/locomotive.?scroll/i, 'locomotive-scroll'],
+      [/rive\.?app|@rive-app/i, 'rive'],
+      [/spline/i, 'spline'],
+    ]
+    for (const [regex, name] of checks) {
+      if (!seenLibs.has(name) && regex.test(content)) {
+        seenLibs.add(name)
+        detectedLibraries.push(name)
+      }
     }
   }
 
@@ -1005,8 +1076,10 @@ function extractTokensFromDOM(): RawExtractionResult {
     fontFiles,
     imageUrls: Array.from(imageUrls),
     backgroundImageUrls: Array.from(backgroundImageUrls),
+    videoUrls: Array.from(videoUrls),
     externalStylesheetUrls,
     linkAssetUrls,
+    detectedLibraries,
   }
 }
 
@@ -1181,8 +1254,10 @@ export async function extractDesignTokens(opts: ExtractDesignTokensOptions): Pro
   const allFontFiles = new Map<string, { family: string; weight: string; style: string; src: string; format: string }>()
   const allImageUrls = new Set<string>()
   const allBackgroundImageUrls = new Set<string>()
+  const allVideoUrls = new Set<string>()
   const allExternalStylesheetUrls = new Set<string>()
   const allLinkAssetUrls = new Map<string, string>() // url -> rel
+  const allDetectedLibraries = new Set<string>()
   const responsiveTokens: Record<string, ViewportTokens> = {}
   const screenshotPaths: Record<string, string> = {}
 
@@ -1251,8 +1326,10 @@ export async function extractDesignTokens(opts: ExtractDesignTokensOptions): Pro
       }
       for (const u of raw.imageUrls) allImageUrls.add(u)
       for (const u of raw.backgroundImageUrls) allBackgroundImageUrls.add(u)
+      for (const u of raw.videoUrls) allVideoUrls.add(u)
       for (const u of raw.externalStylesheetUrls) allExternalStylesheetUrls.add(u)
       for (const la of raw.linkAssetUrls) allLinkAssetUrls.set(la.url, la.rel)
+      for (const lib of raw.detectedLibraries) allDetectedLibraries.add(lib)
 
       responsiveTokens[vp.name] = {
         width: vp.width,
@@ -1321,7 +1398,7 @@ export async function extractDesignTokens(opts: ExtractDesignTokensOptions): Pro
         const res = await fetch(ff.src)
         if (!res.ok) continue
         const buffer = Buffer.from(await res.arrayBuffer())
-        const urlPath = new URL(ff.src).pathname
+        const urlPath = decodeURIComponent(new URL(ff.src).pathname)
         const filename = path.basename(urlPath) || `${ff.family.replace(/\s+/g, '-')}-${ff.weight}-${ff.style}.${ff.format === 'unknown' ? 'bin' : ff.format}`
         const localPath = path.join(fontDir, filename)
         fs.writeFileSync(localPath, buffer)
@@ -1353,7 +1430,7 @@ export async function extractDesignTokens(opts: ExtractDesignTokensOptions): Pro
         const res = await fetch(url)
         if (!res.ok) { downloadedImages.push({ url, type }); continue }
         const buffer = Buffer.from(await res.arrayBuffer())
-        const urlPath = new URL(url).pathname
+        const urlPath = decodeURIComponent(new URL(url).pathname)
         const filename = path.basename(urlPath) || `asset-${downloadedImages.length}.bin`
         const localPath = path.join(imageDir, filename)
         fs.writeFileSync(localPath, buffer)
@@ -1378,13 +1455,38 @@ export async function extractDesignTokens(opts: ExtractDesignTokensOptions): Pro
         const res = await fetch(url)
         if (!res.ok) { downloadedStylesheets.push({ url }); continue }
         const text = await res.text()
-        const urlPath = new URL(url).pathname
+        const urlPath = decodeURIComponent(new URL(url).pathname)
         const filename = path.basename(urlPath) || `style-${downloadedStylesheets.length}.css`
         const localPath = path.join(cssDir, filename)
         fs.writeFileSync(localPath, text)
         downloadedStylesheets.push({ url, localPath })
       } catch {
         downloadedStylesheets.push({ url })
+      }
+    }
+  }
+
+  // Download videos
+  const downloadedVideos: Array<{ url: string; type: 'video' | 'video-source'; poster?: string; localPath?: string; mimeType?: string; sizeBytes?: number }> = []
+  if (allVideoUrls.size > 0) {
+    const videoDir = path.join(outputDir, 'videos')
+    fs.mkdirSync(videoDir, { recursive: true })
+    for (const url of allVideoUrls) {
+      try {
+        const res = await fetch(url)
+        if (!res.ok) { downloadedVideos.push({ url, type: 'video' }); continue }
+        const buffer = Buffer.from(await res.arrayBuffer())
+        const urlPath = decodeURIComponent(new URL(url).pathname)
+        const filename = path.basename(urlPath) || `video-${downloadedVideos.length}.mp4`
+        const localPath = path.join(videoDir, filename)
+        fs.writeFileSync(localPath, buffer)
+        downloadedVideos.push({
+          url, type: 'video', localPath,
+          mimeType: res.headers.get('content-type') || undefined,
+          sizeBytes: buffer.length,
+        })
+      } catch {
+        downloadedVideos.push({ url, type: 'video' })
       }
     }
   }
@@ -1401,8 +1503,10 @@ export async function extractDesignTokens(opts: ExtractDesignTokensOptions): Pro
     icons: allIcons.slice(0, 50),
     fontFiles: downloadedFontFiles,
     images: downloadedImages,
+    videos: downloadedVideos,
     stylesheets: downloadedStylesheets,
     responsive: responsiveTokens,
+    detectedLibraries: Array.from(allDetectedLibraries),
   }
 
   const tokenPath = path.join(outputDir, 'tokens.json')
@@ -1477,8 +1581,15 @@ async function runTokenExtraction(opts: DesignAuditOptions): Promise<void> {
   }
   const downloadedImageCount = tokens.images.filter(i => i.localPath).length
   console.log(`  ${label('Images')}${tokens.images.length} found, ${downloadedImageCount} downloaded`)
+  const downloadedVideoCount = tokens.videos.filter(v => v.localPath).length
+  if (tokens.videos.length > 0) {
+    console.log(`  ${label('Videos')}${tokens.videos.length} found, ${downloadedVideoCount} downloaded`)
+  }
   const downloadedCssCount = tokens.stylesheets.filter(s => s.localPath).length
   console.log(`  ${label('Stylesheets')}${tokens.stylesheets.length} found, ${downloadedCssCount} downloaded`)
+  if (tokens.detectedLibraries.length > 0) {
+    console.log(`  ${label('Libraries')}${tokens.detectedLibraries.join(', ')}`)
+  }
   if (tokens.brand.title || tokens.brand.themeColor || tokens.brand.favicon) {
     console.log(`  ${label('Brand')}`)
     if (tokens.brand.title) console.log(`  ${sub('Title')}${tokens.brand.title}`)

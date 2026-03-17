@@ -98,6 +98,57 @@ bad run --goal "..." --url https://... --persona auto
 bad run --goal "..." --url https://... --persona alice-blueprint-builder
 ```
 
+## Design Audit
+
+LLM-powered design quality audit with domain-specific rubrics:
+
+```bash
+bad design-audit --url https://stripe.com
+bad design-audit --url https://app.uniswap.org --profile defi
+bad design-audit --url http://localhost:3000 --profile saas --pages 10
+```
+
+Profiles: `general`, `saas`, `defi`, `marketing`.
+
+### Token Extraction
+
+Pure DOM extraction — no LLM calls. Captures colors, typography, spacing, components, logos, icons, videos, CSS variables, and brand assets at mobile/tablet/desktop viewports. Detects inline libraries (GSAP, Three.js, p5.js, Lottie, Swiper, etc.).
+
+```bash
+bad design-audit --url https://stripe.com --extract-tokens
+bad design-audit --url https://app.example.com --extract-tokens --json
+```
+
+Output: `tokens.json` + downloaded fonts, images, videos, stylesheets, screenshots.
+
+### Site Rip
+
+Download a full working local copy of a website. Uses Playwright network interception to capture every request/response, rewrites HTML/CSS references to local paths.
+
+```bash
+bad design-audit --url https://example.com --rip
+bad design-audit --url https://example.com --rip --pages 10
+```
+
+Reveals hidden content (accordions, tabs, carousels), auto-scrolls for lazy-loaded assets, extracts video URLs from rendered DOM. Output is a self-contained directory that opens in a browser.
+
+### Design Compare
+
+Side-by-side comparison of two URLs with pixel diff and structural token diff.
+
+```bash
+bad design-audit --url https://site-a.com --design-compare --compare-url https://site-b.com
+```
+
+Captures screenshots at mobile/tablet/desktop viewports. Interacts with the page before capture:
+- Expands accordions and `<details>` elements
+- Clicks all tabs in tab lists
+- Scrolls carousels
+- Opens mobile hamburger menus
+- Dismisses cookie banners and modals
+
+Output: HTML report with side-by-side screenshots + diff overlay, JSON report with structural token differences (colors, fonts, CSS variables, spacing, brand, components).
+
 ## CI Checks
 
 ```bash
