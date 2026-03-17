@@ -199,3 +199,7 @@ export type { WebhookSinkOptions, WebhookPayload } from './artifacts/webhook-sin
 
 // Payload formatters (for WebhookSink.formatPayload)
 export { slackFormatter } from './formatters/slack.js';
+
+// Showcase
+export { runShowcase, quickCapture } from "./showcase/index.js";
+export type { ShowcaseConfig, ShowcaseStep, ShowcaseResult, QuickCaptureConfig } from "./showcase/types.js";
