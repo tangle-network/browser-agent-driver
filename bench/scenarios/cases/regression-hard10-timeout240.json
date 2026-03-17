@@ -1,0 +1,97 @@
+[
+  {
+    "id": "stealth-crunchyroll",
+    "name": "Stealth: Crunchyroll anime browse",
+    "startUrl": "https://www.crunchyroll.com",
+    "goal": "Navigate to the anime browsing section and list 5 popular or featured anime titles currently shown on the homepage or browse page.\nOnly use https://www.crunchyroll.com to achieve the task.",
+    "allowedDomains": ["www.crunchyroll.com"],
+    "maxTurns": 20,
+    "tags": ["stealth-reach", "anti-bot"],
+    "timeoutMs": 240000
+  },
+  {
+    "id": "stealth-bestbuy",
+    "name": "Stealth: Best Buy deals page",
+    "startUrl": "https://www.bestbuy.com",
+    "goal": "Navigate to the deals or top deals page and extract the name and discounted price of the first 3 deals listed.\nOnly use https://www.bestbuy.com to achieve the task.",
+    "allowedDomains": ["www.bestbuy.com"],
+    "maxTurns": 20,
+    "tags": ["stealth-reach", "commerce"],
+    "timeoutMs": 240000
+  },
+  {
+    "id": "stealth-target",
+    "name": "Stealth: Target product browse",
+    "startUrl": "https://www.target.com",
+    "goal": "Navigate to the Electronics section and list 3 featured or promoted products currently shown.\nOnly use https://www.target.com to achieve the task.",
+    "allowedDomains": ["www.target.com"],
+    "maxTurns": 20,
+    "tags": ["stealth-reach", "commerce"],
+    "timeoutMs": 240000
+  },
+  {
+    "id": "stealth-johnlewis",
+    "name": "Stealth: John Lewis commerce search",
+    "startUrl": "https://www.johnlewis.com",
+    "goal": "Use the product search function to look up \"organic cotton towels\" and extract the name and price of the top search result.\nOnly use https://www.johnlewis.com to achieve the task.",
+    "allowedDomains": ["www.johnlewis.com"],
+    "maxTurns": 20,
+    "tags": ["stealth-reach", "commerce", "cookie-consent"],
+    "timeoutMs": 240000
+  },
+  {
+    "id": "stealth-apkpure",
+    "name": "Stealth: APKPure app search",
+    "startUrl": "https://apkpure.com",
+    "goal": "Use the site search to find \"WhatsApp\" and extract the latest version number and download count shown for the top result.\nOnly use https://apkpure.com to achieve the task.",
+    "allowedDomains": ["apkpure.com", "m.apkpure.com"],
+    "maxTurns": 20,
+    "tags": ["stealth-reach", "anti-bot"],
+    "timeoutMs": 240000
+  },
+  {
+    "id": "webbench-bbc",
+    "name": "BBC Live news navigation",
+    "startUrl": "https://www.bbc.com",
+    "goal": "Navigate to the Live section and give me the first topic that has \"Trump\" in it.\nOnly use https://www.bbc.com/ to achieve the task.",
+    "maxTurns": 20,
+    "tags": ["webbench", "news"],
+    "timeoutMs": 240000
+  },
+  {
+    "id": "webbench-scribd",
+    "name": "Scribd ebook search",
+    "startUrl": "https://www.scribd.com",
+    "goal": "Search for a free ebook on \"Healthy Cooking\" and list the title and author of the first result including its URL on the site.\nOnly use https://www.scribd.com/ to achieve the task.",
+    "maxTurns": 20,
+    "tags": ["webbench", "search"],
+    "timeoutMs": 240000
+  },
+  {
+    "id": "webbench-nih",
+    "name": "NIH medical search",
+    "startUrl": "https://www.nih.gov",
+    "goal": "Use the site's search feature to find information on \"Alzheimer's disease\" and extract the title and publication date of the first related press release.\nOnly use https://www.nih.gov/ to achieve the task.",
+    "maxTurns": 20,
+    "tags": ["webbench", "gov", "search"],
+    "timeoutMs": 240000
+  },
+  {
+    "id": "webbench-yale",
+    "name": "Yale university navigation",
+    "startUrl": "https://www.yale.edu",
+    "goal": "Navigate to the \"About Yale\" section and summarize Yale University's mission statement in your own words.\nOnly use https://www.yale.edu/ to achieve the task.",
+    "maxTurns": 20,
+    "tags": ["webbench", "edu", "navigation"],
+    "timeoutMs": 240000
+  },
+  {
+    "id": "webbench-goal",
+    "name": "Goal.com Champions League analysis",
+    "startUrl": "https://www.goal.com/en-us",
+    "goal": "Find the match analysis of the last Champions League game and write down the main conclusions.\nOnly use https://www.goal.com/en-us/ to achieve the task.",
+    "maxTurns": 20,
+    "tags": ["webbench", "sports", "content-heavy"],
+    "timeoutMs": 240000
+  }
+]

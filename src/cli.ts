@@ -146,6 +146,8 @@ async function main(): Promise<void> {
       timeout: { type: 'string' },
       extension: { type: 'string', multiple: true },
       'user-data-dir': { type: 'string' },
+      'profile-dir': { type: 'string' },
+      'cdp-url': { type: 'string' },
       wallet: { type: 'boolean' },
       'wallet-auto-approve': { type: 'boolean' },
       'wallet-password': { type: 'string' },
@@ -388,6 +390,9 @@ async function main(): Promise<void> {
       }
     }
   }
+  if (values['profile-dir']) cliOverrides.profileDir = values['profile-dir']
+  if (values['cdp-url']) cliOverrides.cdpUrl = values['cdp-url']
+
   if (values.memory !== undefined || values['memory-dir']) {
     cliOverrides.memory = {
       ...(cliOverrides.memory ?? {}),
@@ -682,9 +687,9 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  if (launchPlan.walletMode && browserName !== 'chromium') {
-    cliError('wallet mode currently supports Chromium only. Set --browser chromium.');
-    process.exit(1);
+  if (launchPlan.persistentContext && !launchPlan.cdpUrl && browserName !== 'chromium') {
+    const feature = launchPlan.walletMode ? 'Wallet mode' : '--profile-dir'
+    throw new Error(`${feature} requires Chromium. Set --browser chromium.`)
   }
 
   // Ensure clean exit on interrupt
@@ -699,14 +704,42 @@ async function main(): Promise<void> {
   let stopWalletAutoApprover: (() => void) | undefined;
   const launchDiagnostics: Record<string, number | string | boolean> = {};
 
-  if (launchPlan.walletMode) {
+  // CDP connection — attach to an existing browser (Atlas, Chrome, Brave, etc.)
+  let cdpUrl = launchPlan.cdpUrl || process.env.BROWSER_ENDPOINT
+  let cdpConnected = false
+  if (cdpUrl) {
+    // Auto-discover WebSocket URL from HTTP endpoint
+    if (cdpUrl.startsWith('http://') || cdpUrl.startsWith('https://')) {
+      try {
+        const versionUrl = cdpUrl.replace(/\/$/, '') + '/json/version'
+        const res = await fetch(versionUrl)
+        const info = await res.json() as { webSocketDebuggerUrl?: string; Browser?: string }
+        if (info.webSocketDebuggerUrl) {
+          if (info.Browser && !quiet) cliLog('cdp', `connected to ${info.Browser}`)
+          cdpUrl = info.webSocketDebuggerUrl
+        }
+      } catch {
+        // Fall through — try the URL as-is
+      }
+    }
+    const cdpStartedAt = Date.now()
+    if (cdpUrl.includes('/devtools/') || browserName === 'chromium') {
+      browser = await chromium.connectOverCDP(cdpUrl)
+    } else {
+      const browserType = browserName === 'firefox' ? firefox : browserName === 'webkit' ? webkit : chromium
+      browser = await browserType.connect(cdpUrl)
+    }
+    launchDiagnostics.browserLaunchMs = Date.now() - cdpStartedAt
+    launchDiagnostics.cdpUrl = cdpUrl
+    cdpConnected = true
+  } else if (launchPlan.persistentContext) {
     for (const extensionPath of launchPlan.extensionPaths) {
       if (!fs.existsSync(extensionPath)) {
         throw new Error(`Wallet extension path does not exist: ${extensionPath}`);
       }
     }
 
-    const userDataDir = launchPlan.userDataDir ?? path.resolve('.agent-wallet-profile');
+    const userDataDir = launchPlan.userDataDir ?? path.resolve(launchPlan.walletMode ? '.agent-wallet-profile' : '.agent-profile');
     fs.mkdirSync(userDataDir, { recursive: true });
 
     const persistentLaunchStartedAt = Date.now();
@@ -720,114 +753,116 @@ async function main(): Promise<void> {
     launchDiagnostics.browserLaunchMs = Date.now() - persistentLaunchStartedAt;
     await applyStorageStateToPersistentContext(persistentContext, storageStatePath);
 
-    const walletConfig = driverConfig.wallet ?? {};
+    if (launchPlan.walletMode) {
+      const walletConfig = driverConfig.wallet ?? {};
 
-    // Intercept page-level JSON-RPC so dApps see wallet balances from the
-    // local Anvil fork. Only forward user-specific calls (eth_getBalance
-    // for the wallet, eth_call with wallet address in calldata). Pool data
-    // and protocol calls go to real endpoints for reliability.
-    const walletRpcUrl = walletConfig.preflight?.chain?.rpcUrl;
-    if (walletRpcUrl) {
-      // Default to Anvil's first derived address if no wallet address configured
-      const walletAddrFull = (walletConfig.address ?? '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266').toLowerCase()
-      const walletAddrHex = walletAddrFull.replace('0x', '')
-      await persistentContext.route('**/*', async (route: Route) => {
-        try {
-          const frame = route.request().frame()
-          if (frame && frame.url().startsWith('chrome-extension://')) { await route.continue(); return }
-        } catch {
-          await route.continue()
-          return
+      // Intercept page-level JSON-RPC so dApps see wallet balances from the
+      // local Anvil fork. Only forward user-specific calls (eth_getBalance
+      // for the wallet, eth_call with wallet address in calldata). Pool data
+      // and protocol calls go to real endpoints for reliability.
+      const walletRpcUrl = walletConfig.preflight?.chain?.rpcUrl;
+      if (walletRpcUrl) {
+        // Default to Anvil's first derived address if no wallet address configured
+        const walletAddrFull = (walletConfig.address ?? '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266').toLowerCase()
+        const walletAddrHex = walletAddrFull.replace('0x', '')
+        await persistentContext.route('**/*', async (route: Route) => {
+          try {
+            const frame = route.request().frame()
+            if (frame && frame.url().startsWith('chrome-extension://')) { await route.continue(); return }
+          } catch {
+            await route.continue()
+            return
+          }
+          if (route.request().method() !== 'POST') { await route.continue(); return }
+          const ct = route.request().headers()['content-type'] ?? ''
+          if (!ct.includes('json')) { await route.continue(); return }
+          const postData = route.request().postData()
+          if (!postData) { await route.continue(); return }
+          try {
+            const body = JSON.parse(postData)
+            const items: Record<string, unknown>[] = Array.isArray(body) ? body : [body]
+            // Check if any item involves the wallet (balance, contract call, simulation)
+            const isUserQuery = items.some((item) => {
+              const method = item.method as string | undefined
+              if (!method) return false
+              if (method === 'eth_getBalance') {
+                const params = item.params as string[] | undefined
+                return params?.[0]?.toLowerCase() === walletAddrFull
+              }
+              if (method === 'eth_call' || method === 'eth_estimateGas') {
+                const params = item.params as Record<string, string>[] | undefined
+                const txObj = params?.[0]
+                if (!txObj) return false
+                const from = txObj.from?.toLowerCase() ?? ''
+                const data = txObj.data?.toLowerCase() ?? ''
+                return from === walletAddrFull || data.includes(walletAddrHex)
+              }
+              if (method === 'eth_getTransactionCount') {
+                const params = item.params as string[] | undefined
+                return params?.[0]?.toLowerCase() === walletAddrFull
+              }
+              return false
+            })
+            if (!isUserQuery) { await route.continue(); return }
+            // Normalize: some dApps (Aave) omit jsonrpc/id — Anvil requires them
+            let nextId = 1
+            const normalized = items.map((item) => {
+              const out: Record<string, unknown> = { ...item, jsonrpc: '2.0', id: item.id ?? nextId++ }
+              delete out.chainId
+              return out
+            })
+            const payload = Array.isArray(body) ? normalized : normalized[0]
+            const res = await fetch(walletRpcUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            })
+            await route.fulfill({
+              status: res.status,
+              contentType: 'application/json',
+              body: await res.text(),
+            })
+          } catch { await route.continue() }
+        })
+      }
+
+      const shouldAutoApprove = walletConfig.autoApprove ?? true;
+      if (shouldAutoApprove) {
+        stopWalletAutoApprover = await startWalletAutoApprover(persistentContext, {
+          password: walletConfig.password,
+          tickMs: walletConfig.tickMs,
+          actionSelectors: walletConfig.actionSelectors,
+        });
+      }
+
+      const preflightEnabled = walletConfig.preflight?.enabled ?? true;
+      const preflightSeedUrls =
+        walletConfig.preflight?.seedUrls && walletConfig.preflight.seedUrls.length > 0
+          ? walletConfig.preflight.seedUrls
+          : [...new Set(cases.map((testCase) => testCase.startUrl).filter(Boolean))];
+
+      if (preflightEnabled && preflightSeedUrls.length > 0) {
+        const preflight = await runWalletPreflight(persistentContext, {
+          seedUrls: preflightSeedUrls,
+          password: walletConfig.password,
+          actionSelectors: walletConfig.actionSelectors,
+          promptPaths: walletConfig.promptPaths,
+          connectSelectors: walletConfig.connectSelectors,
+          connectorSelectors: walletConfig.connectorSelectors,
+          requestAccounts: walletConfig.preflight?.requestAccounts,
+          accountsTimeoutMs: walletConfig.preflight?.accountsTimeoutMs,
+          maxChainSwitchAttempts: walletConfig.preflight?.maxChainSwitchAttempts,
+          chain: walletConfig.preflight?.chain,
+          log: quiet ? undefined : (message) => cliLog('wallet', message),
+        });
+
+        if (!preflight.ok) {
+          const failed = preflight.results.find((resultEntry) => !resultEntry.ready);
+          const details = failed?.details ?? 'unknown reason';
+          throw new Error(
+            `Wallet preflight failed for ${preflight.failedUrl ?? 'unknown origin'} (${details})`,
+          );
         }
-        if (route.request().method() !== 'POST') { await route.continue(); return }
-        const ct = route.request().headers()['content-type'] ?? ''
-        if (!ct.includes('json')) { await route.continue(); return }
-        const postData = route.request().postData()
-        if (!postData) { await route.continue(); return }
-        try {
-          const body = JSON.parse(postData)
-          const items: Record<string, unknown>[] = Array.isArray(body) ? body : [body]
-          // Check if any item involves the wallet (balance, contract call, simulation)
-          const isUserQuery = items.some((item) => {
-            const method = item.method as string | undefined
-            if (!method) return false
-            if (method === 'eth_getBalance') {
-              const params = item.params as string[] | undefined
-              return params?.[0]?.toLowerCase() === walletAddrFull
-            }
-            if (method === 'eth_call' || method === 'eth_estimateGas') {
-              const params = item.params as Record<string, string>[] | undefined
-              const txObj = params?.[0]
-              if (!txObj) return false
-              const from = txObj.from?.toLowerCase() ?? ''
-              const data = txObj.data?.toLowerCase() ?? ''
-              return from === walletAddrFull || data.includes(walletAddrHex)
-            }
-            if (method === 'eth_getTransactionCount') {
-              const params = item.params as string[] | undefined
-              return params?.[0]?.toLowerCase() === walletAddrFull
-            }
-            return false
-          })
-          if (!isUserQuery) { await route.continue(); return }
-          // Normalize: some dApps (Aave) omit jsonrpc/id — Anvil requires them
-          let nextId = 1
-          const normalized = items.map((item) => {
-            const out: Record<string, unknown> = { ...item, jsonrpc: '2.0', id: item.id ?? nextId++ }
-            delete out.chainId
-            return out
-          })
-          const payload = Array.isArray(body) ? normalized : normalized[0]
-          const res = await fetch(walletRpcUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-          })
-          await route.fulfill({
-            status: res.status,
-            contentType: 'application/json',
-            body: await res.text(),
-          })
-        } catch { await route.continue() }
-      })
-    }
-
-    const shouldAutoApprove = walletConfig.autoApprove ?? true;
-    if (shouldAutoApprove) {
-      stopWalletAutoApprover = await startWalletAutoApprover(persistentContext, {
-        password: walletConfig.password,
-        tickMs: walletConfig.tickMs,
-        actionSelectors: walletConfig.actionSelectors,
-      });
-    }
-
-    const preflightEnabled = walletConfig.preflight?.enabled ?? true;
-    const preflightSeedUrls =
-      walletConfig.preflight?.seedUrls && walletConfig.preflight.seedUrls.length > 0
-        ? walletConfig.preflight.seedUrls
-        : [...new Set(cases.map((testCase) => testCase.startUrl).filter(Boolean))];
-
-    if (preflightEnabled && preflightSeedUrls.length > 0) {
-      const preflight = await runWalletPreflight(persistentContext, {
-        seedUrls: preflightSeedUrls,
-        password: walletConfig.password,
-        actionSelectors: walletConfig.actionSelectors,
-        promptPaths: walletConfig.promptPaths,
-        connectSelectors: walletConfig.connectSelectors,
-        connectorSelectors: walletConfig.connectorSelectors,
-        requestAccounts: walletConfig.preflight?.requestAccounts,
-        accountsTimeoutMs: walletConfig.preflight?.accountsTimeoutMs,
-        maxChainSwitchAttempts: walletConfig.preflight?.maxChainSwitchAttempts,
-        chain: walletConfig.preflight?.chain,
-        log: quiet ? undefined : (message) => cliLog('wallet', message),
-      });
-
-      if (!preflight.ok) {
-        const failed = preflight.results.find((resultEntry) => !resultEntry.ready);
-        const details = failed?.details ?? 'unknown reason';
-        throw new Error(
-          `Wallet preflight failed for ${preflight.failedUrl ?? 'unknown origin'} (${details})`,
-        );
       }
     }
   } else {
@@ -837,93 +872,96 @@ async function main(): Promise<void> {
         ? webkit
         : chromium
 
-    if (process.env.BROWSER_ENDPOINT) {
-      const endpoint = process.env.BROWSER_ENDPOINT
-      const browserLaunchStartedAt = Date.now()
-      // CDP endpoint (chrome, android-chrome) vs Playwright endpoint (firefox, webkit)
-      if (browserName === 'chromium' || endpoint.includes('/devtools/')) {
-        browser = await chromium.connectOverCDP(endpoint)
-      } else {
-        browser = await browserType.connect(endpoint)
-      }
-      launchDiagnostics.browserLaunchMs = Date.now() - browserLaunchStartedAt
-    } else {
-      const browserLaunchStartedAt = Date.now()
-      browser = await browserType.launch({
-        headless: launchPlan.headless,
-        ...(browserName === 'chromium' ? { args: launchPlan.browserArgs } : {}),
-        // Use system Chrome for stealth profiles — real TLS/JA3 fingerprint vs bundled Chromium
-        ...(isStealthProfile && browserName === 'chromium' ? { channel: 'chrome' } : {}),
-      })
-      launchDiagnostics.browserLaunchMs = Date.now() - browserLaunchStartedAt
-    }
+    const browserLaunchStartedAt = Date.now()
+    browser = await browserType.launch({
+      headless: launchPlan.headless,
+      ...(browserName === 'chromium' ? { args: launchPlan.browserArgs } : {}),
+      // Use system Chrome for stealth profiles — real TLS/JA3 fingerprint vs bundled Chromium
+      ...(isStealthProfile && browserName === 'chromium' ? { channel: 'chrome' } : {}),
+    })
+    launchDiagnostics.browserLaunchMs = Date.now() - browserLaunchStartedAt
   }
 
   const driverFactory = async () => {
     const contextStartedAt = Date.now();
-    const context = persistentContext ?? await browser!.newContext({
-      viewport,
-      recordVideo: { dir: videoDir, size: viewport },
-      storageState: storageStatePath,
-      locale: 'en-US',
-      timezoneId: 'America/New_York',
-      extraHTTPHeaders: {
-        'Accept-Language': 'en-US,en;q=0.9',
-      },
-    });
-    // Stealth: patch navigator/browser properties to reduce automation fingerprint.
-    // This runs in the browser context (not Node), so we use a string to avoid TS issues.
-    await context.addInitScript(`
-      // navigator.webdriver — explicit override (backup for --disable-blink-features)
-      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-      // navigator.plugins — empty in headless, non-empty in real browsers
-      Object.defineProperty(navigator, 'plugins', {
-        get: () => [
-          { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
-          { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: '' },
-          { name: 'Native Client', filename: 'internal-nacl-plugin', description: '' },
-        ],
-      });
-      // navigator.languages — must match Accept-Language header
-      Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
-      // hardware signals — realistic desktop values
-      Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
-      Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
-      // window.chrome — full stub matching real Chrome
-      if (!window.chrome) window.chrome = {};
-      if (!window.chrome.runtime) window.chrome.runtime = { id: undefined };
-      if (!window.chrome.app) window.chrome.app = { isInstalled: false, InstallState: { DISABLED: 'disabled', INSTALLED: 'installed', NOT_INSTALLED: 'not_installed' }, RunningState: { CANNOT_RUN: 'cannot_run', READY_TO_RUN: 'ready_to_run', RUNNING: 'running' } };
-      if (!window.chrome.csi) window.chrome.csi = function() { return { onloadT: Date.now(), startE: Date.now(), pageT: Date.now() - performance.timing.navigationStart }; };
-      if (!window.chrome.loadTimes) window.chrome.loadTimes = function() { return { commitLoadTime: Date.now() / 1000, connectionInfo: 'h2', finishDocumentLoadTime: Date.now() / 1000, finishLoadTime: Date.now() / 1000, firstPaintAfterLoadTime: 0, firstPaintTime: Date.now() / 1000, navigationType: 'Other', npnNegotiatedProtocol: 'h2', requestTime: Date.now() / 1000 - 0.16, startLoadTime: Date.now() / 1000 - 0.16, wasAlternateProtocolAvailable: false, wasFetchedViaSpdy: true, wasNpnNegotiated: true }; };
-      // WebGL vendor/renderer — match real GPU values
-      try {
-        const getParameter = WebGLRenderingContext.prototype.getParameter;
-        WebGLRenderingContext.prototype.getParameter = function(parameter) {
-          if (parameter === 37445) return 'Intel Inc.';
-          if (parameter === 37446) return 'Intel Iris OpenGL Engine';
-          return getParameter.call(this, parameter);
-        };
-      } catch (_) {}
-      try {
-        const getParameter2 = WebGL2RenderingContext.prototype.getParameter;
-        WebGL2RenderingContext.prototype.getParameter = function(parameter) {
-          if (parameter === 37445) return 'Intel Inc.';
-          if (parameter === 37446) return 'Intel Iris OpenGL Engine';
-          return getParameter2.call(this, parameter);
-        };
-      } catch (_) {}
-      // window.outerWidth/outerHeight — 0 in headless, match viewport in real browsers
-      if (window.outerWidth === 0) Object.defineProperty(window, 'outerWidth', { get: () => window.innerWidth });
-      if (window.outerHeight === 0) Object.defineProperty(window, 'outerHeight', { get: () => window.innerHeight + 85 });
-      // Patch permissions API for notification checks
-      try {
-        const origQuery = navigator.permissions.query.bind(navigator.permissions);
-        navigator.permissions.query = (params) =>
-          params.name === 'notifications'
-            ? Promise.resolve({ state: 'denied', onchange: null })
-            : origQuery(params);
-      } catch (_) {}
-    `);
+
+    // CDP: reuse the browser's default context (preserves user cookies/sessions).
+    // Persistent context: use the already-opened persistent context.
+    // Default: create a fresh isolated context.
+    let context: BrowserContext
+    if (cdpConnected) {
+      // Reuse the user's existing browser context — cookies, localStorage, extensions intact
+      const contexts = browser!.contexts()
+      context = contexts[0] ?? await browser!.newContext({ viewport })
+    } else if (persistentContext) {
+      context = persistentContext
+    } else {
+      context = await browser!.newContext({
+        viewport,
+        recordVideo: { dir: videoDir, size: viewport },
+        storageState: storageStatePath,
+        locale: 'en-US',
+        timezoneId: 'America/New_York',
+        extraHTTPHeaders: {
+          'Accept-Language': 'en-US,en;q=0.9',
+        },
+      })
+    }
+
+    // Stealth patches: only for Playwright-controlled contexts (not real user browsers)
+    if (!cdpConnected) {
+      await context.addInitScript(`
+        // navigator.webdriver — explicit override (backup for --disable-blink-features)
+        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+        // navigator.plugins — empty in headless, non-empty in real browsers
+        Object.defineProperty(navigator, 'plugins', {
+          get: () => [
+            { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+            { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: '' },
+            { name: 'Native Client', filename: 'internal-nacl-plugin', description: '' },
+          ],
+        });
+        // navigator.languages — must match Accept-Language header
+        Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+        // hardware signals — realistic desktop values
+        Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
+        Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
+        // window.chrome — full stub matching real Chrome
+        if (!window.chrome) window.chrome = {};
+        if (!window.chrome.runtime) window.chrome.runtime = { id: undefined };
+        if (!window.chrome.app) window.chrome.app = { isInstalled: false, InstallState: { DISABLED: 'disabled', INSTALLED: 'installed', NOT_INSTALLED: 'not_installed' }, RunningState: { CANNOT_RUN: 'cannot_run', READY_TO_RUN: 'ready_to_run', RUNNING: 'running' } };
+        if (!window.chrome.csi) window.chrome.csi = function() { return { onloadT: Date.now(), startE: Date.now(), pageT: Date.now() - performance.timing.navigationStart }; };
+        if (!window.chrome.loadTimes) window.chrome.loadTimes = function() { return { commitLoadTime: Date.now() / 1000, connectionInfo: 'h2', finishDocumentLoadTime: Date.now() / 1000, finishLoadTime: Date.now() / 1000, firstPaintAfterLoadTime: 0, firstPaintTime: Date.now() / 1000, navigationType: 'Other', npnNegotiatedProtocol: 'h2', requestTime: Date.now() / 1000 - 0.16, startLoadTime: Date.now() / 1000 - 0.16, wasAlternateProtocolAvailable: false, wasFetchedViaSpdy: true, wasNpnNegotiated: true }; };
+        // WebGL vendor/renderer — match real GPU values
+        try {
+          const getParameter = WebGLRenderingContext.prototype.getParameter;
+          WebGLRenderingContext.prototype.getParameter = function(parameter) {
+            if (parameter === 37445) return 'Intel Inc.';
+            if (parameter === 37446) return 'Intel Iris OpenGL Engine';
+            return getParameter.call(this, parameter);
+          };
+        } catch (_) {}
+        try {
+          const getParameter2 = WebGL2RenderingContext.prototype.getParameter;
+          WebGL2RenderingContext.prototype.getParameter = function(parameter) {
+            if (parameter === 37445) return 'Intel Inc.';
+            if (parameter === 37446) return 'Intel Iris OpenGL Engine';
+            return getParameter2.call(this, parameter);
+          };
+        } catch (_) {}
+        // window.outerWidth/outerHeight — 0 in headless, match viewport in real browsers
+        if (window.outerWidth === 0) Object.defineProperty(window, 'outerWidth', { get: () => window.innerWidth });
+        if (window.outerHeight === 0) Object.defineProperty(window, 'outerHeight', { get: () => window.innerHeight + 85 });
+        // Patch permissions API for notification checks
+        try {
+          const origQuery = navigator.permissions.query.bind(navigator.permissions);
+          navigator.permissions.query = (params) =>
+            params.name === 'notifications'
+              ? Promise.resolve({ state: 'denied', onchange: null })
+              : origQuery(params);
+        } catch (_) {}
+      `);
+    }
     const contextCreateMs = Date.now() - contextStartedAt;
     const pageStartedAt = Date.now();
     const page = await context.newPage();
@@ -955,8 +993,9 @@ async function main(): Promise<void> {
       contextCreateMs,
       pageCreateMs,
       resourceBlockingSetupMs,
-      storageStateApplied: Boolean(storageStatePath),
+      storageStateApplied: Boolean(storageStatePath) && !cdpConnected,
       persistentContext: Boolean(persistentContext),
+      cdpConnected,
     };
     // Wrap in a Driver that properly tears down context on close
     const wrappedDriver: import('./drivers/types.js').Driver = {
@@ -968,7 +1007,7 @@ async function main(): Promise<void> {
       async close() {
         await driver.close().catch(() => {});
         await page.close().catch(() => {});
-        if (!persistentContext) {
+        if (!persistentContext && !cdpConnected) {
           await context.close().catch(() => {});
         }
       },

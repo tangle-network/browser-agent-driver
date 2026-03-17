@@ -376,7 +376,9 @@ ${H('OPTIONS')}
   ${D('Wallet mode')}
       ${C('--wallet')}               Enable wallet mode ${D('(persistent Chromium profile)')}
       ${C('--extension')} <path>     Load unpacked wallet/browser extension ${D('(repeatable)')}
-      ${C('--user-data-dir')} <dir>  Persistent profile directory
+      ${C('--cdp-url')} <ws://...>   Connect to existing browser via CDP ${D('(Atlas, Chrome, Brave)')}
+      ${C('--profile-dir')} <dir>    Persistent Chromium profile ${D('(no wallet semantics)')}
+      ${C('--user-data-dir')} <dir>  Persistent profile directory ${D('(wallet mode)')}
       ${C('--wallet-auto-approve')}  Extension prompt auto-approval ${D('(default: true)')}
       ${C('--wallet-password')} <v>  Wallet unlock password
       ${C('--wallet-preflight')}     Run wallet origin preflight ${D('(default: true)')}

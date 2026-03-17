@@ -140,6 +140,44 @@ describe('buildBrowserLaunchPlan', () => {
     ]);
   });
 
+  it('profileDir without wallet: persistentContext true, walletMode false', () => {
+    const plan = buildBrowserLaunchPlan({ profileDir: '/tmp/my-profile' })
+    expect(plan.persistentContext).toBe(true)
+    expect(plan.walletMode).toBe(false)
+    expect(plan.userDataDir).toBe('/tmp/my-profile')
+  })
+
+  it('profileDir with wallet.enabled: wallet takes precedence', () => {
+    const plan = buildBrowserLaunchPlan({
+      profileDir: '/tmp/my-profile',
+      wallet: { enabled: true, userDataDir: '/tmp/wallet-profile' },
+    })
+    expect(plan.persistentContext).toBe(true)
+    expect(plan.walletMode).toBe(true)
+    expect(plan.userDataDir).toBe('/tmp/wallet-profile')
+  })
+
+  it('profileDir alone: no wallet warning', () => {
+    const plan = buildBrowserLaunchPlan({ profileDir: '/tmp/my-profile' })
+    expect(plan.warnings).not.toContainEqual(expect.stringContaining('wallet.userDataDir'))
+  })
+
+  it('cdpUrl is passed through to plan', () => {
+    const plan = buildBrowserLaunchPlan({ cdpUrl: 'ws://127.0.0.1:9222/devtools/browser/abc' })
+    expect(plan.cdpUrl).toBe('ws://127.0.0.1:9222/devtools/browser/abc')
+    expect(plan.persistentContext).toBe(false)
+    expect(plan.walletMode).toBe(false)
+  })
+
+  it('cdpUrl with profileDir warns about ignored options', () => {
+    const plan = buildBrowserLaunchPlan({
+      cdpUrl: 'ws://127.0.0.1:9222',
+      profileDir: '/tmp/my-profile',
+    })
+    expect(plan.cdpUrl).toBe('ws://127.0.0.1:9222')
+    expect(plan.warnings).toContainEqual(expect.stringContaining('--cdp-url'))
+  })
+
   it('applies stealth-ish launch args for benchmark-webbench-stealth', () => {
     const plan = buildBrowserLaunchPlan({
       profile: 'benchmark-webbench-stealth',

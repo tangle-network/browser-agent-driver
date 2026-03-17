@@ -10,7 +10,7 @@ import * as path from 'node:path'
 import chalk from 'chalk'
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright'
 import { Brain } from './brain/index.js'
-import type { DesignFinding, PageState, DesignTokens, ColorToken, FontFamily, TypeScaleEntry, LogoAsset, SvgIcon, ViewportTokens, SpacingToken, BorderToken, ShadowToken, ComponentFingerprint, NavPattern, AnimationToken, FontFile } from './types.js'
+import type { DesignFinding, PageState, DesignTokens, ColorToken, FontFamily, TypeScaleEntry, LogoAsset, SvgIcon, ViewportTokens, SpacingToken, BorderToken, ShadowToken, ComponentFingerprint, NavPattern, AnimationToken, FontFile, ImageAsset } from './types.js'
 import { PlaywrightDriver } from './drivers/playwright.js'
 import { resolveProviderApiKey, resolveProviderModelName, type SupportedProvider } from './provider-defaults.js'
 import { loadLocalEnvFiles } from './env-loader.js'
@@ -498,6 +498,10 @@ interface RawExtractionResult {
   }
   animations: Array<{ property: string; value: string; count: number }>
   fontFiles: Array<{ family: string; weight: string; style: string; src: string; format: string }>
+  imageUrls: string[]
+  backgroundImageUrls: string[]
+  externalStylesheetUrls: string[]
+  linkAssetUrls: Array<{ url: string; rel: string }>
 }
 
 // The in-page extraction function — runs inside page.evaluate()
@@ -507,7 +511,11 @@ function extractTokensFromDOM(): RawExtractionResult {
   // --- CSS Custom Properties & Font Files ---
   const customProperties: Record<string, string> = {}
   const fontFiles: Array<{ family: string; weight: string; style: string; src: string; format: string }> = []
+  const externalStylesheetUrls: string[] = []
   for (const sheet of document.styleSheets) {
+    if (sheet.href && (sheet.href.startsWith('http://') || sheet.href.startsWith('https://'))) {
+      externalStylesheetUrls.push(sheet.href)
+    }
     try {
       for (const rule of sheet.cssRules) {
         if (rule instanceof CSSStyleRule &&
@@ -584,6 +592,7 @@ function extractTokensFromDOM(): RawExtractionResult {
   const fontFamilyMap = new Map<string, { weights: Set<number>; headingUse: boolean; monoUse: boolean }>()
   const typeScaleMap = new Map<string, { fontSize: string; fontWeight: string; lineHeight: string; letterSpacing: string; fontFamily: string; tag: string; count: number }>()
   const animationMap = new Map<string, { property: string; value: string; count: number }>()
+  const backgroundImageUrls = new Set<string>()
 
   function addColor(value: string, property: string) {
     if (!value || value === 'transparent' || value === 'rgba(0, 0, 0, 0)' || value === 'inherit' || value === 'initial') return
@@ -646,6 +655,13 @@ function extractTokensFromDOM(): RawExtractionResult {
     addColor(cs.borderLeftColor, 'borderColor')
     addColor(cs.outlineColor, 'outlineColor')
     if (cs.backgroundImage.includes('gradient')) parseGradientColors(cs.backgroundImage)
+    if (cs.backgroundImage.includes('url(')) {
+      const urlMatches = cs.backgroundImage.matchAll(/url\(["']?([^"')]+)["']?\)/g)
+      for (const m of urlMatches) {
+        const u = m[1]
+        if (u && !u.startsWith('data:') && !u.startsWith('blob:')) backgroundImageUrls.add(u)
+      }
+    }
     if (cs.boxShadow !== 'none') parseShadowColors(cs.boxShadow)
 
     // Spacing
@@ -927,6 +943,31 @@ function extractTokensFromDOM(): RawExtractionResult {
     manifestUrl: getLink('link[rel="manifest"]'),
   }
 
+  // --- All Image URLs ---
+  const imageUrls = new Set<string>()
+  for (const img of document.querySelectorAll('img')) {
+    const src = (img as HTMLImageElement).src
+    if (src && !src.startsWith('data:') && !src.startsWith('blob:')) imageUrls.add(src)
+    const srcset = (img as HTMLImageElement).srcset
+    if (srcset) {
+      for (const part of srcset.split(',')) {
+        const url = part.trim().split(/\s+/)[0]
+        if (url && !url.startsWith('data:') && !url.startsWith('blob:')) imageUrls.add(url)
+      }
+    }
+  }
+
+  // --- Link Assets (favicons, icons, manifests) ---
+  const linkAssetUrls: Array<{ url: string; rel: string }> = []
+  for (const link of document.querySelectorAll('link[href]')) {
+    const href = (link as HTMLLinkElement).href
+    const rel = (link as HTMLLinkElement).rel || ''
+    if (href && !href.startsWith('data:') && !href.startsWith('blob:') &&
+        /^(icon|shortcut icon|apple-touch-icon|manifest|preload)$/i.test(rel)) {
+      linkAssetUrls.push({ url: href, rel })
+    }
+  }
+
   // --- Assemble result ---
   return {
     customProperties,
@@ -962,6 +1003,10 @@ function extractTokensFromDOM(): RawExtractionResult {
     },
     animations: Array.from(animationMap.values()).sort((a, b) => b.count - a.count),
     fontFiles,
+    imageUrls: Array.from(imageUrls),
+    backgroundImageUrls: Array.from(backgroundImageUrls),
+    externalStylesheetUrls,
+    linkAssetUrls,
   }
 }
 
@@ -1134,6 +1179,10 @@ export async function extractDesignTokens(opts: ExtractDesignTokensOptions): Pro
   const allLogos: LogoAsset[] = []
   const allIcons: SvgIcon[] = []
   const allFontFiles = new Map<string, { family: string; weight: string; style: string; src: string; format: string }>()
+  const allImageUrls = new Set<string>()
+  const allBackgroundImageUrls = new Set<string>()
+  const allExternalStylesheetUrls = new Set<string>()
+  const allLinkAssetUrls = new Map<string, string>() // url -> rel
   const responsiveTokens: Record<string, ViewportTokens> = {}
   const screenshotPaths: Record<string, string> = {}
 
@@ -1200,6 +1249,10 @@ export async function extractDesignTokens(opts: ExtractDesignTokensOptions): Pro
           allFontFiles.set(ff.src, ff)
         }
       }
+      for (const u of raw.imageUrls) allImageUrls.add(u)
+      for (const u of raw.backgroundImageUrls) allBackgroundImageUrls.add(u)
+      for (const u of raw.externalStylesheetUrls) allExternalStylesheetUrls.add(u)
+      for (const la of raw.linkAssetUrls) allLinkAssetUrls.set(la.url, la.rel)
 
       responsiveTokens[vp.name] = {
         width: vp.width,
@@ -1279,6 +1332,63 @@ export async function extractDesignTokens(opts: ExtractDesignTokensOptions): Pro
     }
   }
 
+  // Download images
+  const downloadedImages: ImageAsset[] = []
+  const allAssetUrls = new Map<string, ImageAsset['type']>()
+  for (const u of allImageUrls) allAssetUrls.set(u, 'img')
+  for (const u of allBackgroundImageUrls) allAssetUrls.set(u, 'background')
+  // Brand assets
+  if (brand.favicon) allAssetUrls.set(brand.favicon, 'favicon')
+  if (brand.ogImage) allAssetUrls.set(brand.ogImage, 'og-image')
+  if (brand.appleTouchIcon) allAssetUrls.set(brand.appleTouchIcon, 'icon')
+  for (const [url, rel] of allLinkAssetUrls) {
+    if (/icon/i.test(rel)) allAssetUrls.set(url, 'favicon')
+  }
+
+  if (allAssetUrls.size > 0) {
+    const imageDir = path.join(outputDir, 'images')
+    fs.mkdirSync(imageDir, { recursive: true })
+    for (const [url, type] of allAssetUrls) {
+      try {
+        const res = await fetch(url)
+        if (!res.ok) { downloadedImages.push({ url, type }); continue }
+        const buffer = Buffer.from(await res.arrayBuffer())
+        const urlPath = new URL(url).pathname
+        const filename = path.basename(urlPath) || `asset-${downloadedImages.length}.bin`
+        const localPath = path.join(imageDir, filename)
+        fs.writeFileSync(localPath, buffer)
+        downloadedImages.push({
+          url, type, localPath,
+          mimeType: res.headers.get('content-type') || undefined,
+          sizeBytes: buffer.length,
+        })
+      } catch {
+        downloadedImages.push({ url, type })
+      }
+    }
+  }
+
+  // Download external stylesheets
+  const downloadedStylesheets: Array<{ url: string; localPath?: string }> = []
+  if (allExternalStylesheetUrls.size > 0) {
+    const cssDir = path.join(outputDir, 'stylesheets')
+    fs.mkdirSync(cssDir, { recursive: true })
+    for (const url of allExternalStylesheetUrls) {
+      try {
+        const res = await fetch(url)
+        if (!res.ok) { downloadedStylesheets.push({ url }); continue }
+        const text = await res.text()
+        const urlPath = new URL(url).pathname
+        const filename = path.basename(urlPath) || `style-${downloadedStylesheets.length}.css`
+        const localPath = path.join(cssDir, filename)
+        fs.writeFileSync(localPath, text)
+        downloadedStylesheets.push({ url, localPath })
+      } catch {
+        downloadedStylesheets.push({ url })
+      }
+    }
+  }
+
   const tokens: DesignTokens = {
     url: opts.url,
     extractedAt: new Date().toISOString(),
@@ -1290,6 +1400,8 @@ export async function extractDesignTokens(opts: ExtractDesignTokensOptions): Pro
     logos: allLogos,
     icons: allIcons.slice(0, 50),
     fontFiles: downloadedFontFiles,
+    images: downloadedImages,
+    stylesheets: downloadedStylesheets,
     responsive: responsiveTokens,
   }
 
@@ -1363,6 +1475,10 @@ async function runTokenExtraction(opts: DesignAuditOptions): Promise<void> {
     const status = ff.localPath ? chalk.dim(path.basename(ff.localPath)) : chalk.dim('(not downloaded)')
     console.log(`  ${sub(`${ff.family} ${ff.weight}`)}${ff.style} ${chalk.dim(`[${ff.format}]`)} ${status}`)
   }
+  const downloadedImageCount = tokens.images.filter(i => i.localPath).length
+  console.log(`  ${label('Images')}${tokens.images.length} found, ${downloadedImageCount} downloaded`)
+  const downloadedCssCount = tokens.stylesheets.filter(s => s.localPath).length
+  console.log(`  ${label('Stylesheets')}${tokens.stylesheets.length} found, ${downloadedCssCount} downloaded`)
   if (tokens.brand.title || tokens.brand.themeColor || tokens.brand.favicon) {
     console.log(`  ${label('Brand')}`)
     if (tokens.brand.title) console.log(`  ${sub('Title')}${tokens.brand.title}`)

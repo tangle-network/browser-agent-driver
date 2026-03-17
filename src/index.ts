@@ -59,6 +59,7 @@ export type {
   NavPattern,
   AnimationToken,
   FontFile,
+  ImageAsset,
 } from './types.js';
 
 // Driver interface + implementations

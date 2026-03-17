@@ -30,6 +30,10 @@ export interface DriverConfig {
   systemPrompt?: string;
 
   // Browser
+  /** Connect to an existing browser via CDP WebSocket URL instead of launching one */
+  cdpUrl?: string
+  /** Persistent Chromium profile directory (no wallet semantics) */
+  profileDir?: string
   headless?: boolean;
   viewport?: { width: number; height: number };
   browserArgs?: string[];
