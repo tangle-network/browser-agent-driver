@@ -3,6 +3,9 @@ import type { DriverConfig } from './config.js';
 
 export interface BrowserLaunchPlan {
   profile: NonNullable<DriverConfig['profile']>;
+  /** Connect to an existing browser via CDP instead of launching */
+  cdpUrl?: string;
+  persistentContext: boolean;
   walletMode: boolean;
   headless: boolean;
   concurrency: number;
@@ -53,8 +56,15 @@ export function buildBrowserLaunchPlan(
     ? resolveMaybeRelativePath(walletConfig.userDataDir, cwd)
     : undefined;
 
+  const profileDir = config.profileDir
+    ? resolveMaybeRelativePath(config.profileDir, cwd)
+    : undefined
+
+  const cdpUrl = config.cdpUrl || undefined
   const walletMode = Boolean(walletConfig?.enabled) || extensionPaths.length > 0;
-  if (!walletMode && userDataDir) {
+  const persistentContext = walletMode || Boolean(profileDir)
+
+  if (!walletMode && !profileDir && userDataDir) {
     warnings.push('wallet.userDataDir is set but wallet mode is disabled; this directory is ignored unless --wallet or --extension is provided.');
   }
 
@@ -104,15 +114,21 @@ export function buildBrowserLaunchPlan(
     browserArgs.push(`--load-extension=${extensionsCsv}`);
   }
 
+  if (cdpUrl && persistentContext) {
+    warnings.push('--cdp-url connects to an existing browser; --profile-dir and wallet options are ignored.')
+  }
+
   return {
     profile,
+    cdpUrl,
+    persistentContext,
     walletMode,
     headless,
     concurrency,
     viewport,
     browserArgs,
     extensionPaths,
-    userDataDir,
+    userDataDir: userDataDir ?? (walletMode ? undefined : profileDir),
     warnings,
     errors,
   };

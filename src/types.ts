@@ -630,6 +630,8 @@ export interface DesignTokens {
   logos: LogoAsset[]
   icons: SvgIcon[]
   fontFiles: FontFile[]
+  images: ImageAsset[]
+  stylesheets: Array<{ url: string; localPath?: string }>
   responsive: Record<string, ViewportTokens>
 }
 
@@ -735,6 +737,14 @@ export interface FontFile {
   src: string
   format: string
   localPath?: string
+}
+
+export interface ImageAsset {
+  url: string
+  type: 'img' | 'background' | 'favicon' | 'og-image' | 'icon' | 'video-poster'
+  localPath?: string
+  mimeType?: string
+  sizeBytes?: number
 }
 
 // ============================================================================
