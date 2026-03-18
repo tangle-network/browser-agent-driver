@@ -63,6 +63,12 @@
     "wallet:validate": "node ./bench/wallet/run-wallet-validation.mjs",
     "wallet:validate:tangle": "node ./bench/wallet/run-wallet-validation.mjs --suite tangle",
     "wallet:validate:defi": "node ./bench/wallet/run-wallet-validation.mjs --suite defi",
+    "bench:webvoyager": "node ./bench/external/webvoyager/run.mjs",
+    "bench:webvoyager:estimate": "node ./bench/external/webvoyager/run.mjs --estimate",
+    "bench:webvoyager:eval": "node ./bench/external/webvoyager/evaluate.mjs",
+    "bench:webarena:setup": "node ./bench/external/webarena/setup.mjs",
+    "bench:webarena:convert": "node ./bench/external/webarena/convert-tasks.mjs",
+    "bench:webarena:eval": "node ./bench/external/webarena/evaluate.mjs",
     "bench:observe": "tsx bench/observe-bench.ts",
     "bench:agent": "tsx bench/agent-bench.ts",
     "bench:captcha": "tsx bench/captcha-bench.ts"
