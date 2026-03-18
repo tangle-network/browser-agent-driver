@@ -53,6 +53,7 @@ const memoryScopeId = getArg('memory-scope-id');
 const promptFile = getArg('prompt-file');
 const traceScoring = hasFlag('trace-scoring');
 const traceTtlDays = getArg('trace-ttl-days');
+const headless = hasFlag('headless');
 const allowedMemoryIsolation = new Set(['none', 'shared', 'per-run']);
 const allowedModes = new Set(['full-evidence', 'fast-explore']);
 const modes = parseModes(getArg('modes', 'full-evidence,fast-explore'));
@@ -136,6 +137,7 @@ function runMode(mode) {
   if (memoryConfig.dir) args.push('--memory-dir', memoryConfig.dir);
   if (traceScoring) args.push('--trace-scoring');
   if (traceTtlDays) args.push('--trace-ttl-days', traceTtlDays);
+  if (headless) args.push('--headless');
   if (debug) args.push('--debug');
 
   const startedAt = new Date().toISOString();
