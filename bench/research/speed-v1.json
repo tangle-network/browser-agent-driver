@@ -1,0 +1,140 @@
+{
+  "name": "Speed Optimization V1",
+  "description": "Reduce turns, tokens, and wall-clock time without regressing pass rate. Each hypothesis tests a single config delta against current defaults.",
+  "defaults": {
+    "casesPath": "./bench/scenarios/cases/webbench-reachable4-max20-timeout120.json",
+    "model": "gpt-5.4",
+    "benchmarkProfile": "webbench-stealth",
+    "repetitions": 3,
+    "concurrency": 1,
+    "scenarioConcurrency": 2,
+    "seed": "2026",
+    "memoryIsolation": "per-run",
+    "modes": "fast-explore"
+  },
+  "control": {},
+  "hypotheses": [
+    {
+      "id": "llm-timeout-30s",
+      "name": "Reduce LLM timeout from 60s to 30s",
+      "rationale": "Most completions finish in <10s. A 60s timeout wastes wall-clock on hung calls. 30s is still generous.",
+      "priority": 99,
+      "result": "neutral — 4s faster wall-clock but +5% tokens. No meaningful improvement.",
+      "treatment": {
+        "llmTimeoutMs": 30000
+      }
+    },
+    {
+      "id": "compact-first-turn",
+      "name": "Enable compact first turn",
+      "rationale": "First turn snapshot is largest. Compact mode reduces token count on the most expensive call.",
+      "priority": 99,
+      "result": "rejected — +35% turns, +66% tokens. Agent compensates for missing context with extra exploration.",
+      "treatment": {
+        "compactFirstTurn": true
+      }
+    },
+    {
+      "id": "retry-1",
+      "name": "Reduce retries from 3 to 1",
+      "rationale": "3 retries × 60s timeout = 3min wasted on a dead API call. 1 retry is enough for transient errors.",
+      "priority": 99,
+      "result": "promoted — -16% turns, -23% tokens, same pass rate. Benchmark profiles already set retries=1; global default stays at 3 for resilience.",
+      "treatment": {
+        "retries": 1,
+        "retryDelayMs": 250
+      }
+    },
+    {
+      "id": "micro-plan-2",
+      "name": "Enable micro-planning (2 actions/turn)",
+      "rationale": "Batching 2 actions per turn halves round-trips for sequential navigate-then-extract patterns.",
+      "priority": 99,
+      "result": "promoted — +8pp pass rate, -10% turns, -19% tokens, -16% duration. Default enabled in config.ts.",
+      "treatment": {
+        "microPlan": { "enabled": true, "maxActionsPerTurn": 2 }
+      }
+    },
+    {
+      "id": "micro-plan-3",
+      "name": "Enable micro-planning (3 actions/turn)",
+      "rationale": "More aggressive batching. Risk: stale snapshots between actions.",
+      "priority": 99,
+      "result": "candidate — +8pp pass rate (CI spans zero: -17pp to +33pp), -14% turns, -20% tokens. Positive signal but insufficient power to promote. Needs larger case set.",
+      "treatment": {
+        "microPlan": { "enabled": true, "maxActionsPerTurn": 3 }
+      }
+    },
+    {
+      "id": "supervisor-early",
+      "name": "Earlier supervisor intervention (3 turns instead of 5)",
+      "rationale": "Detect stalls 2 turns earlier. Risk: false positives on slow-loading pages.",
+      "priority": 99,
+      "result": "neutral — +14% turns, +37% tokens. Early intervention causes false positives.",
+      "treatment": {
+        "supervisor": {
+          "enabled": true,
+          "minTurnsBeforeInvoke": 3,
+          "cooldownTurns": 2,
+          "maxInterventions": 3,
+          "hardStallWindow": 3
+        }
+      }
+    },
+    {
+      "id": "scout-enabled",
+      "name": "Enable link scouting",
+      "rationale": "Scout pre-ranks links before navigation, potentially avoiding dead-end clicks.",
+      "priority": 99,
+      "result": "rejected — +17% turns, +30% tokens. Scout overhead exceeds navigation savings.",
+      "treatment": {
+        "scout": {
+          "enabled": true,
+          "useVision": false,
+          "maxCandidates": 3,
+          "minTopScore": 12,
+          "maxScoreGap": 4
+        }
+      }
+    },
+    {
+      "id": "block-images-media",
+      "name": "Block images and media resources",
+      "rationale": "Image/media loading adds network latency. Blocking may speed up page loads without affecting text extraction.",
+      "priority": 99,
+      "result": "promoted — -12% turns, -20% tokens, -21% duration. Applied to benchmark profiles (webbench, webbench-stealth); global default keeps images enabled for visual tasks.",
+      "treatment": {
+        "resourceBlocking": {
+          "blockAnalytics": true,
+          "blockImages": true,
+          "blockMedia": true
+        }
+      }
+    },
+    {
+      "id": "vision-auto-escalation",
+      "name": "Auto-escalate vision only on verification failures",
+      "rationale": "Vision adds ~14% cost. Auto-escalation uses screenshots only when text-only verification fails.",
+      "priority": 99,
+      "result": "rejected — same 100% pass rate but +7% turns, +48% tokens. Auto-escalation adds retry overhead that exceeds vision savings.",
+      "treatment": {
+        "vision": false,
+        "screenshotInterval": 0,
+        "visionStrategy": "auto"
+      }
+    },
+    {
+      "id": "combo-speed",
+      "name": "Combined: micro-plan-3 + vision-auto-escalation",
+      "rationale": "Stack remaining untested optimizations. Tests if aggressive batching + conditional vision work together.",
+      "priority": 99,
+      "result": "rejected — incomplete (5/6 runs). Both components individually negative on tokens (+48% vision-auto, +15% combo partial). No reason to expect combined win.",
+      "treatment": {
+        "microPlan": { "enabled": true, "maxActionsPerTurn": 3 },
+        "vision": false,
+        "screenshotInterval": 0,
+        "visionStrategy": "auto"
+      }
+    }
+  ]
+}

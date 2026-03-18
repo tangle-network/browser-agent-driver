@@ -39,9 +39,9 @@ const outRoot = path.resolve(getArg('out', `./agent-results/ab-exp-${Date.now()}
 const benchmarkProfileId = spec?.benchmarkProfile ?? getArg('benchmark-profile', 'default');
 const benchmarkProfile = resolveBenchmarkProfile(benchmarkProfileId);
 const seed = String(spec?.seed ?? getArg('seed', '1337'));
-const globalModes = getArg(
+const globalModes = spec?.modes ?? getArg(
   'modes',
-  benchmarkProfile.id === 'webbench' ? 'fast-explore' : 'full-evidence,fast-explore',
+  benchmarkProfile.id.startsWith('webbench') ? 'fast-explore' : 'full-evidence,fast-explore',
 );
 const fixtureBaseUrl = spec?.fixtureBaseUrl ?? getArg('fixture-base-url');
 const globalPromptFile = getArg('prompt-file');
@@ -393,20 +393,30 @@ function summarizeByArm(runs) {
 }
 
 function buildDelta(armIds, byArm, runs) {
-  if (!byArm.off || !byArm.on) return null;
-  const onOutcomes = runs.filter((run) => run.arm === 'on').flatMap((run) => run.testOutcomes);
-  const offOutcomes = runs.filter((run) => run.arm === 'off').flatMap((run) => run.testOutcomes);
-  const onCleanOutcomes = runs.filter((run) => run.arm === 'on').flatMap((run) => run.cleanOutcomes);
-  const offCleanOutcomes = runs.filter((run) => run.arm === 'off').flatMap((run) => run.cleanOutcomes);
+  // Support both off/on and first/second arm naming
+  let controlId = 'off'
+  let treatmentId = 'on'
+  if (!byArm.off || !byArm.on) {
+    if (armIds.length === 2) {
+      controlId = armIds[0]
+      treatmentId = armIds[1]
+    } else {
+      return null
+    }
+  }
+  const onOutcomes = runs.filter((run) => run.arm === treatmentId).flatMap((run) => run.testOutcomes);
+  const offOutcomes = runs.filter((run) => run.arm === controlId).flatMap((run) => run.testOutcomes);
+  const onCleanOutcomes = runs.filter((run) => run.arm === treatmentId).flatMap((run) => run.cleanOutcomes);
+  const offCleanOutcomes = runs.filter((run) => run.arm === controlId).flatMap((run) => run.cleanOutcomes);
   return {
-    control: 'off',
-    treatment: 'on',
+    control: controlId,
+    treatment: treatmentId,
     raw: {
-      onMinusOff: byArm.on.rawPassRate.mean - byArm.off.rawPassRate.mean,
+      onMinusOff: byArm[treatmentId].rawPassRate.mean - byArm[controlId].rawPassRate.mean,
       bootstrap95: bootstrapDiff95(onOutcomes, offOutcomes, 2000, 11),
     },
     clean: {
-      onMinusOff: byArm.on.cleanPassRate.mean - byArm.off.cleanPassRate.mean,
+      onMinusOff: byArm[treatmentId].cleanPassRate.mean - byArm[controlId].cleanPassRate.mean,
       bootstrap95: bootstrapDiff95(onCleanOutcomes, offCleanOutcomes, 2000, 17),
     },
   };

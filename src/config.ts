@@ -167,7 +167,7 @@ const DEFAULTS: DriverConfig = {
   vision: true,
   goalVerification: true,
   qualityThreshold: 0,
-  microPlan: { enabled: false, maxActionsPerTurn: 2 },
+  microPlan: { enabled: true, maxActionsPerTurn: 2 },
   scout: {
     enabled: false,
     useVision: false,
@@ -184,6 +184,7 @@ const DEFAULTS: DriverConfig = {
     maxConsoleEntries: 200,
     maxNetworkEntries: 200,
   },
+  resourceBlocking: { blockAnalytics: true, blockImages: false, blockMedia: false },
   outputDir: './agent-results',
   reporters: ['json'],
   memory: { enabled: true, dir: '.agent-memory', traceScoring: false, traceTtlDays: 30 },

@@ -472,12 +472,8 @@ async function main(): Promise<void> {
       cliOverrides.resourceBlocking = {
         ...(cliOverrides.resourceBlocking ?? {}),
         blockAnalytics: true,
-        ...(profile === 'benchmark-webbench'
-          ? {
-              blockImages: true,
-              blockMedia: true,
-            }
-          : {}),
+        blockImages: true,
+        blockMedia: true,
       };
     }
     cliOverrides.microPlan = {
