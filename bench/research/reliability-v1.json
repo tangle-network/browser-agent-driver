@@ -1,0 +1,54 @@
+{
+  "name": "Reliability V1",
+  "description": "Improve pass rate on hard/timeout cases. Each hypothesis targets a specific failure cluster from WEBBENCH-50 diagnosis.",
+  "defaults": {
+    "casesPath": "./bench/scenarios/cases/webbench-full50-max20-timeout240.json",
+    "model": "gpt-5.4",
+    "benchmarkProfile": "webbench-stealth",
+    "repetitions": 3,
+    "concurrency": 1,
+    "scenarioConcurrency": 2,
+    "seed": "2026",
+    "memoryIsolation": "per-run",
+    "modes": "fast-explore"
+  },
+  "control": {},
+  "hypotheses": [
+    {
+      "id": "execute-timeout-recovery",
+      "name": "Graceful execute timeout recovery",
+      "rationale": "3/5 WEBBENCH-50 failures (AllTrails, AliExpress, SportingNews) abort after 3 consecutive execute wall-clock timeouts. The agent never gets a chance to adapt. Recovery: catch timeouts, re-observe, inject feedback, let agent try a different approach. Cap at 2 recoveries to prevent infinite loops.",
+      "category": "bug-fix",
+      "expected_impact": "pass rate: +2-4pp (recover AllTrails + SportingNews)",
+      "risk": "Could waste 2 extra turns on truly broken pages. Mitigated by 2-recovery cap.",
+      "priority": 1,
+      "treatment": {
+        "_note": "Code change in src/runner/runner.ts — no config delta needed. The fix catches execute timeouts in the inner catch block and recovers instead of propagating to the crash handler."
+      }
+    },
+    {
+      "id": "adaptive-page-ready",
+      "name": "Adaptive page-ready detection for heavy SPAs",
+      "rationale": "AliExpress and AllTrails have infinite JS hydration loops. The 5s domcontentloaded cap helps but the Playwright action still waits for network idle. Adding a shorter action timeout for known-slow patterns (SPA frameworks, heavy CDN) could let the agent interact with partially loaded pages earlier.",
+      "category": "architectural",
+      "expected_impact": "pass rate: +1-2pp, duration: -10% on SPA-heavy sites",
+      "risk": "Interacting with partially loaded pages may cause stale selectors. Mitigated by existing stale-ref recovery.",
+      "priority": 2,
+      "treatment": {
+        "_note": "Code change: detect SPA patterns in observe, reduce Playwright action timeout for SPA pages"
+      }
+    },
+    {
+      "id": "content-temporal-filter",
+      "name": "Temporal article filtering for news/sports sites",
+      "rationale": "Goal.com failure (webbench-695): agent spent 19 turns and 495k tokens clicking preview articles instead of match analysis. Adding date-awareness to article selection would help distinguish pre-match from post-match content.",
+      "category": "architectural",
+      "expected_impact": "pass rate: +1pp (Goal.com), broader benefit on news sites",
+      "risk": "Date parsing heuristics may be fragile across different site formats.",
+      "priority": 3,
+      "treatment": {
+        "_note": "Code change: extract article dates from snapshot, prefer recent published articles over upcoming-event previews"
+      }
+    }
+  ]
+}
