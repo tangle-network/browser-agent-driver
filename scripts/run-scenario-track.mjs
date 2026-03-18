@@ -40,6 +40,7 @@ const promptFile = getArg('prompt-file');
 const traceScoring = argv.includes('--trace-scoring');
 const traceTtlDays = getArg('trace-ttl-days');
 const modes = getArg('modes');
+const headless = argv.includes('--headless');
 const allowedMemoryIsolation = new Set(['none', 'shared', 'per-run']);
 
 loadLocalEnvFiles(rootDir);
@@ -116,6 +117,7 @@ const results = await runPool(jobs, concurrency, async (job) => {
   }
   if (traceScoring) args.push('--trace-scoring');
   if (traceTtlDays) args.push('--trace-ttl-days', traceTtlDays);
+  if (headless) args.push('--headless');
   if (Array.isArray(scenario.allowedDomains) && scenario.allowedDomains.length > 0) {
     args.push('--allowed-domains', scenario.allowedDomains.join(','));
   }

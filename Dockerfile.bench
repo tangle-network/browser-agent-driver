@@ -1,0 +1,55 @@
+# bad bench — full benchmark runner in Docker (no GUI needed)
+#
+# Uses Xvfb (virtual display) so Chrome runs "headed" with full stealth
+# fingerprinting, without requiring an actual monitor or X server.
+#
+# Build:
+#   docker build --platform linux/amd64 -f Dockerfile.bench -t bad-bench .
+#
+# Run full WEBBENCH-50:
+#   docker run --platform linux/amd64 --env-file .env \
+#     -v $(pwd)/agent-results:/app/agent-results \
+#     bad-bench
+#
+# Run specific cases:
+#   docker run --platform linux/amd64 --env-file .env \
+#     -v $(pwd)/agent-results:/app/agent-results \
+#     bad-bench --cases bench/scenarios/cases/webbench-reachable4-max20-timeout120.json
+
+FROM mcr.microsoft.com/playwright:v1.58.2-noble
+
+# Install Xvfb for virtual display (Chrome needs a display for full stealth)
+RUN apt-get update && apt-get install -y xvfb && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install deps (skip postinstall patches — only needed for claude-code/codex providers)
+COPY package.json package-lock.json ./
+RUN npm ci --ignore-scripts
+
+# Install Chrome via patchright (real TLS fingerprint for stealth/anti-bot bypass)
+RUN npx patchright install chrome
+
+COPY tsconfig.json ./
+COPY src/ ./src/
+RUN npm run build
+
+# Copy benchmark infrastructure
+COPY scripts/ ./scripts/
+COPY bench/ ./bench/
+
+# Default output directory
+RUN mkdir -p /app/agent-results
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+
+# Use xvfb-run so Chrome gets a virtual display — full stealth fingerprinting
+# without --headless flag (headed mode with Xvfb = real GPU/plugin signals)
+ENTRYPOINT ["xvfb-run", "--auto-servernum", "--server-args=-screen 0 1920x1080x24", \
+  "node", "scripts/run-scenario-track.mjs"]
+CMD [ \
+  "--cases", "bench/scenarios/cases/webbench-full50-max20-timeout240.json", \
+  "--benchmark-profile", "webbench-stealth", \
+  "--model", "gpt-5.4", \
+  "--modes", "fast-explore", \
+  "--concurrency", "3" \
+]
