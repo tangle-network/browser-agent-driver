@@ -58,7 +58,7 @@ export interface ShowcaseConfig {
   output?: {
     dir?: string
     /** Which formats to generate. Default: ['png']. */
-    formats?: Array<'png' | 'webp' | 'gif' | 'webm'>
+    formats?: Array<'png' | 'webp' | 'gif' | 'webm' | 'demo'>
     /** Image quality 1-100. Default: 90. */
     quality?: number
     /** Device scale factor. Default: 2 (retina). */
@@ -114,5 +114,6 @@ export interface ShowcaseResult {
   }>
   gif?: string
   video?: string
+  demo?: string
   durationMs: number
 }

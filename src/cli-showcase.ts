@@ -38,7 +38,7 @@ export async function handleShowcase(args: ShowcaseCliArgs): Promise<void> {
     process.exit(1)
   }
 
-  const formats = (args.format?.split(',') ?? ['png']) as Array<'png' | 'webp' | 'gif' | 'webm'>
+  const formats = (args.format?.split(',') ?? ['png']) as Array<'png' | 'webp' | 'gif' | 'webm' | 'demo'>
   const viewport = parseViewport(args.viewport)
   const outputDir = args.output ?? './showcase'
 
@@ -135,6 +135,7 @@ function printResult(result: import('./showcase/types.js').ShowcaseResult): void
   for (const f of result.frames) {
     console.log(`    ${f.name}.png (${f.width}×${f.height})`)
   }
+  if (result.demo) console.log(`  ✓ Demo: ${result.demo}`)
   if (result.gif) console.log(`  ✓ GIF: ${result.gif}`)
   if (result.video) console.log(`  ✓ Video: ${result.video}`)
   console.log(`  Duration: ${(result.durationMs / 1000).toFixed(1)}s`)

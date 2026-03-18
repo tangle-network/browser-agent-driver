@@ -75,6 +75,31 @@ export async function runShowcase(config: ShowcaseConfig): Promise<ShowcaseResul
     }
   }
 
+  // Generate interactive demo HTML if requested
+  let demoPath: string | undefined
+  if (formats.includes('demo')) {
+    const { buildDemoSteps, generateDemoHtml } = await import('./demo-player.js')
+
+    // Build demo steps — hotspot calculation is best-effort
+    // Try to navigate back for element positions, but don't fail if it errors
+    let demoPage: import('playwright').Page | undefined
+    try {
+      await page.goto(config.url, { waitUntil: 'domcontentloaded', timeout: 10_000 })
+      await page.waitForTimeout(1000)
+      demoPage = page
+    } catch {
+      // Can't navigate back — build demo without hotspots
+    }
+
+    const demoSteps = await buildDemoSteps(outputDir, config.steps, demoPage)
+    const demoHtml = generateDemoHtml({
+      title: config.name.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+      steps: demoSteps,
+    })
+    demoPath = path.join(outputDir, `${config.name}-demo.html`)
+    fs.writeFileSync(demoPath, demoHtml)
+  }
+
   // Assemble GIF if requested
   let gifPath: string | undefined
   if (formats.includes('gif') && frames.length > 1) {
@@ -127,6 +152,7 @@ export async function runShowcase(config: ShowcaseConfig): Promise<ShowcaseResul
     })),
     gif: gifPath,
     video: videoPath,
+    demo: demoPath,
     durationMs: Date.now() - startTime,
   }
 }
