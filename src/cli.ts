@@ -134,6 +134,15 @@ async function main(): Promise<void> {
       rip: { type: 'boolean' },
       'design-compare': { type: 'boolean' },
       'compare-url': { type: 'string' },
+      // showcase
+      script: { type: 'string' },
+      capture: { type: 'string' },
+      crop: { type: 'string' },
+      highlight: { type: 'string' },
+      format: { type: 'string' },
+      viewport: { type: 'string' },
+      scale: { type: 'string' },
+      'color-scheme': { type: 'string' },
       'llm-timeout': { type: 'string' },
       retries: { type: 'string' },
       'retry-delay-ms': { type: 'string' },
@@ -278,8 +287,28 @@ async function main(): Promise<void> {
     process.exit(0)
   }
 
+  if (command === 'showcase') {
+    const { handleShowcase } = await import('./cli-showcase.js');
+    await handleShowcase({
+      url: values.url,
+      script: values.script,
+      capture: values.capture,
+      crop: values.crop,
+      highlight: values.highlight,
+      format: values.format,
+      viewport: values.viewport,
+      output: values.sink,
+      headless: values.headless ?? true,
+      colorScheme: values['color-scheme'] as 'dark' | 'light' | undefined,
+      scale: values.scale ? parseFloat(values.scale) : undefined,
+      storageState: values['storage-state'],
+      quality: values['quality-threshold'] ? parseInt(values['quality-threshold']) : undefined,
+    });
+    process.exit(0);
+  }
+
   if (command !== 'run') {
-    cliError(`Unknown command: ${command}. Use "run", "runs", or "design-audit".`);
+    cliError(`Unknown command: ${command}. Use "run", "runs", "design-audit", or "showcase".`);
     process.exit(1);
   }
 
