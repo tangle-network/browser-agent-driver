@@ -1,0 +1,67 @@
+[
+  {
+    "id": "webbench-32",
+    "name": "WebBench read #32",
+    "startUrl": "https://www.alberta.ca",
+    "goal": "Visit the Open Government portal on Alberta.ca and list the different categories of public datasets available for download.\nOnly use http://alberta.ca to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.alberta.ca for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.alberta.ca"
+    ],
+    "timeoutMs": 240000
+  },
+  {
+    "id": "webbench-45",
+    "name": "WebBench read #45",
+    "startUrl": "https://aliexpress.com",
+    "goal": "Find a smart watch with more than 20 reviews. Filter the reviews to the most recent and summarize the most common positive and negative points mentioned by customers.\nOnly use http://aliexpress.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use aliexpress.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "aliexpress.com"
+    ],
+    "timeoutMs": 240000
+  },
+  {
+    "id": "webbench-2001",
+    "name": "WebBench read #2001",
+    "startUrl": "https://www.usmagazine.com",
+    "goal": "Use the website\u2019s search function to find articles about \u201cMet Gala\u201d and extract the titles and publication dates of the first 3 results.\nOnly use http://usmagazine.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.usmagazine.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.usmagazine.com"
+    ],
+    "timeoutMs": 240000
+  },
+  {
+    "id": "webbench-1607",
+    "name": "WebBench read #1607",
+    "startUrl": "https://open.spotify.com",
+    "goal": "Look up the \"Spotify AI DJ\" feature, read about its functionality, and provide a brief summary of the main steps described.\nOnly use http://spotify.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use open.spotify.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "open.spotify.com"
+    ],
+    "timeoutMs": 240000
+  },
+  {
+    "id": "webbench-1570",
+    "name": "WebBench read #1570",
+    "startUrl": "https://www.sportingnews.com/us",
+    "goal": "Go to the NCAA Basketball section and summarize the key takeaways from the most recently published article.\nOnly use http://sportingnews.com to achieve the task. Don't go to any other site. The task is achievable with just navigation from this site.\nOnly use www.sportingnews.com for this task.",
+    "maxTurns": 20,
+    "tags": [
+      "webbench",
+      "read",
+      "www.sportingnews.com"
+    ],
+    "timeoutMs": 240000
+  }
+]

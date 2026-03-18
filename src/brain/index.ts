@@ -547,13 +547,31 @@ export class Brain {
       ? userIndices[userIndices.length - 1]
       : this.history.length;
 
-    return this.history.map((msg, idx) => {
-      if (msg.role !== 'user') return msg;
+    // Three-tier compression:
+    //   Zone 1 (intact):         last 2 turns — full content
+    //   Zone 2 (standard):       turns 3-5 back — ELEMENTS stripped from user msgs
+    //   Zone 3 (deep compact):   turns 6+ back — both user and assistant ultra-compacted
+    const deepCompactBefore = Math.max(0, this.history.length - 10);
 
-      // Keep the last 2 user messages intact (full snapshot)
+    return this.history.map((msg, idx) => {
+      // Zone 1: keep recent turns intact
       if (idx >= keepIntactFrom) return msg;
 
-      // For older user messages, extract selectors from paired assistant response
+      // Zone 3: ultra-compact for very old messages (user + assistant)
+      if (idx < deepCompactBefore) {
+        if (msg.role === 'assistant') {
+          const raw = typeof msg.content === 'string' ? msg.content : '';
+          return { ...msg, content: this.deepCompactAssistant(raw) } as ModelMessage;
+        }
+        if (msg.role === 'user') {
+          return { ...msg, content: this.deepCompactUser(msg) } as ModelMessage;
+        }
+        return msg;
+      }
+
+      // Zone 2: standard compact — strip ELEMENTS from user messages only
+      if (msg.role !== 'user') return msg;
+
       const assistantMsg = idx + 1 < this.history.length ? this.history[idx + 1] : undefined;
       const selectors = assistantMsg?.role === 'assistant'
         ? this.extractSelectorsFromResponse(
@@ -579,6 +597,40 @@ export class Brain {
 
       return msg;
     });
+  }
+
+  private deepCompactUser(msg: ModelMessage): string {
+    const text = typeof msg.content === 'string'
+      ? msg.content
+      : Array.isArray(msg.content)
+        ? msg.content
+            .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+            .map((p) => p.text)
+            .join('\n')
+        : '';
+    const urlMatch = text.match(/URL:\s*(\S+)/);
+    const titleMatch = text.match(/Title:\s*(.+?)(?:\n|$)/);
+    const url = urlMatch?.[1] ?? 'unknown';
+    const title = titleMatch?.[1]?.slice(0, 80) ?? '';
+    return `[Prior turn — URL: ${url}${title ? ` | ${title}` : ''}]`;
+  }
+
+  private deepCompactAssistant(raw: string): string {
+    try {
+      let text = raw.trim();
+      if (text.startsWith('```')) {
+        text = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+      }
+      const parsed = JSON.parse(text);
+      const action = parsed.action?.action ?? 'unknown';
+      const selector = parsed.action?.selector ?? '';
+      const parts = [action];
+      if (selector) parts.push(selector);
+      if (parsed.action?.url) parts.push(parsed.action.url.slice(0, 120));
+      return `[${parts.join(' → ')}]`;
+    } catch {
+      return raw.slice(0, 100) + (raw.length > 100 ? '…' : '');
+    }
   }
 
   /**
