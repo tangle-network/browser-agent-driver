@@ -1,0 +1,8 @@
+# Downloaded benchmark data (re-downloadable)
+*.jsonl
+patches.json
+test.raw.json
+.env
+
+# Generated case files
+cases.json

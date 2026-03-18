@@ -170,6 +170,7 @@ export class BrowserAgent {
     // Reset brain history for fresh scenario
     this.brain.reset();
     this.cachedPostState = undefined;
+    let executeTimeoutRecoveries = 0;
 
     // Start navigation and load memory in parallel. Navigation is async (network
     // I/O) while memory init is sync (readFileSync), so memory completes while
@@ -1141,6 +1142,34 @@ export class BrowserAgent {
             this.onTurn?.(turn);
             continue;
           }
+
+          // Execute wall-clock timeout: recover gracefully instead of aborting.
+          // Heavy SPAs (AliExpress, AllTrails, SportingNews) can stall every action
+          // for 45s+. Instead of counting these as consecutive errors (which aborts
+          // after 3), re-observe and let the agent try a different approach.
+          // Cap at 2 recoveries to prevent infinite timeout loops.
+          if (
+            err instanceof Error &&
+            err.message.includes('Execute wall-clock timeout') &&
+            executeTimeoutRecoveries < 2
+          ) {
+            executeTimeoutRecoveries++;
+            if (this.config.debug) {
+              console.log(`[Runner] Execute timeout recovery ${executeTimeoutRecoveries}/2 — re-observing`);
+            }
+            this.cachedPostState = await this.driver.observe().catch(() => undefined);
+            this.brain.injectFeedback(
+              'Your action timed out — the page is loading slowly or has heavy JavaScript. ' +
+              'Try interacting with elements already visible in the snapshot, use runScript ' +
+              'to extract data directly, or navigate to a different page.'
+            );
+            turn.error = `Execute timeout (recovered ${executeTimeoutRecoveries}/2)`;
+            turn.durationMs = Date.now() - turnStart;
+            turns.push(turn);
+            this.onTurn?.(turn);
+            continue;
+          }
+
           throw err;
         }
 
@@ -1154,6 +1183,7 @@ export class BrowserAgent {
           runState.recordError();
         } else {
           runState.clearConsecutiveErrors();
+          executeTimeoutRecoveries = 0; // Reset on successful action
 
           // Update selector cache on successful action
           if (this.selectorCache && 'selector' in action && action.selector) {
