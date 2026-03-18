@@ -49,6 +49,17 @@ Promotion: no pass-rate regression + meaningful latency/token improvement.
 7. Parallelize repetitions within one experiment. One clean experiment at a time for promotion.
 8. Keep pushing autonomously until baseline improves, challenger is rejected, or user input is needed.
 
+## Research Pipeline
+
+Automated hypothesis testing: `pnpm research:pipeline --queue bench/research/<queue>.json`
+
+- **Two-stage** (recommended): `--two-stage` screens all hypotheses (1 rep), validates candidates (5 reps). ~40% cheaper than flat runs with better statistical power for winners.
+- **Cost estimation**: `--estimate` shows expected cost before running.
+- **Parallel hypotheses**: `--hypothesis-concurrency N` runs N hypotheses simultaneously.
+- **Filtering**: `--max-priority N`, `--hypothesis <id>`, `--resume` to skip completed.
+- **Decision logic**: `promote` (CI lower > 0, or neutral + efficiency gain), `reject` (CI upper < 0), `inconclusive`.
+- Completed hypotheses get `priority: 99` + `result:` annotation in the queue file.
+
 ## Reliability Patterns (Learned)
 
 **Fail fast on terminal blockers:**
