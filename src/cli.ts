@@ -307,8 +307,30 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
+  if (command === 'auth') {
+    const sub = positionals[1];
+    if (sub === 'save') {
+      const { handleAuthSave } = await import('./cli-auth.js');
+      await handleAuthSave({
+        url: values.url || positionals[2],
+        output: values['storage-state'] || positionals[3],
+      });
+      process.exit(0);
+    }
+    if (sub === 'check') {
+      const { handleAuthCheck } = await import('./cli-auth.js');
+      await handleAuthCheck({
+        path: values['storage-state'] || positionals[2],
+        origin: positionals[3],
+      });
+      process.exit(0);
+    }
+    cliError(`Unknown auth subcommand: ${sub || '(none)'}. Use "auth save" or "auth check".`);
+    process.exit(1);
+  }
+
   if (command !== 'run') {
-    cliError(`Unknown command: ${command}. Use "run", "runs", "design-audit", or "showcase".`);
+    cliError(`Unknown command: ${command}. Use "run", "runs", "design-audit", "showcase", or "auth".`);
     process.exit(1);
   }
 

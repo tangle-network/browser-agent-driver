@@ -291,6 +291,8 @@ ${H('USAGE')}
   bad run [options]
   bad runs [--session-id <id>] [--json]
   bad design-audit --url <url>
+  bad auth save [--url <url>] [--storage-state <path>]
+  bad auth check [--storage-state <path>] [origin]
 
 ${H('SINGLE TASK')}
   ${D('$')} bad run ${C('--goal')} "Sign up for account" ${C('--url')} http://localhost:3000
@@ -340,6 +342,15 @@ ${H('DESIGN COMPARE')}
   and structural token diff. Interacts with accordions, tabs, carousels,
   and mobile menus to reveal hidden content before capture.
   Outputs HTML report + JSON data.
+
+${H('AUTH')}
+  ${D('$')} bad auth save ${C('--url')} https://app.example.com ${D('# opens browser, log in, press Enter')}
+  ${D('$')} bad auth save ${C('--url')} https://app.example.com ${C('--storage-state')} .auth/example.json
+  ${D('$')} bad auth check ${C('--storage-state')} .auth/example.json ${D('# validate saved state')}
+  ${D('$')} bad auth check .auth/example.json example.com ${D('# validate + check origin')}
+
+  ${D('Then use with any command:')}
+  ${D('$')} bad run ${C('-g')} "Change settings" ${C('-u')} https://app.example.com ${C('--storage-state')} .auth/example.json
 
 ${H('DOCKER')}
   ${D('$')} docker run -v ./cases.json:/data/cases.json -v ./out:/output \\
