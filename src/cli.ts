@@ -802,7 +802,7 @@ async function main(): Promise<void> {
     const persistentLaunchStartedAt = Date.now();
     persistentContext = await chromium.launchPersistentContext(userDataDir, {
       channel: isStealthProfile ? 'chrome' : 'chromium',
-      headless: false,
+      headless: launchPlan.headless,
       args: launchPlan.browserArgs,
       viewport,
       recordVideo: { dir: videoDir, size: viewport },
@@ -1026,13 +1026,45 @@ async function main(): Promise<void> {
         // window.outerWidth/outerHeight — 0 in headless, match viewport in real browsers
         if (window.outerWidth === 0) Object.defineProperty(window, 'outerWidth', { get: () => window.innerWidth });
         if (window.outerHeight === 0) Object.defineProperty(window, 'outerHeight', { get: () => window.innerHeight + 85 });
-        // Patch permissions API for notification checks
+        // Patch permissions API — cover all permission types bots commonly mis-handle
         try {
           const origQuery = navigator.permissions.query.bind(navigator.permissions);
-          navigator.permissions.query = (params) =>
-            params.name === 'notifications'
-              ? Promise.resolve({ state: 'denied', onchange: null })
-              : origQuery(params);
+          navigator.permissions.query = (params) => {
+            const deny = ['notifications', 'geolocation', 'camera', 'microphone', 'payment-handler'];
+            if (deny.includes(params.name))
+              return Promise.resolve({ state: 'denied', onchange: null });
+            return origQuery(params);
+          };
+        } catch (_) {}
+        // Canvas fingerprint noise — add imperceptible per-session noise to canvas readback
+        // so each session produces a unique fingerprint (defeats static fingerprint matching)
+        try {
+          const seed = Math.random() * 0xffff | 0;
+          const noisify = (canvas) => {
+            try {
+              const ctx = canvas.getContext('2d');
+              if (!ctx) return;
+              const { width: w, height: h } = canvas;
+              if (w === 0 || h === 0) return;
+              const img = ctx.getImageData(0, 0, w, h);
+              const d = img.data;
+              for (let i = 0; i < d.length; i += 4) {
+                // deterministic per-pixel noise from seed + position
+                d[i] = d[i] ^ ((seed + i) & 1);
+              }
+              ctx.putImageData(img, 0, 0);
+            } catch (_) {}
+          };
+          const origToDataURL = HTMLCanvasElement.prototype.toDataURL;
+          HTMLCanvasElement.prototype.toDataURL = function(...args) {
+            noisify(this);
+            return origToDataURL.apply(this, args);
+          };
+          const origToBlob = HTMLCanvasElement.prototype.toBlob;
+          HTMLCanvasElement.prototype.toBlob = function(...args) {
+            noisify(this);
+            return origToBlob.apply(this, args);
+          };
         } catch (_) {}
       `);
     }
