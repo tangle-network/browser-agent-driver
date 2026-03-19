@@ -1066,6 +1066,23 @@ async function main(): Promise<void> {
             return origToBlob.apply(this, args);
           };
         } catch (_) {}
+        // Fix CDP screenX/screenY bug — CDP Input.dispatchMouseEvent sets
+        // screenX=clientX, screenY=clientY which never happens in real browsers.
+        // Cloudflare Turnstile actively checks this. Add a per-session window
+        // offset so screenX/screenY are realistic and internally consistent.
+        try {
+          const winX = Math.floor(Math.random() * 200) + 50;
+          const winY = Math.floor(Math.random() * 100) + 50;
+          const chrome = 85;
+          Object.defineProperty(MouseEvent.prototype, 'screenX', {
+            get() { return this.clientX + winX; },
+            configurable: true,
+          });
+          Object.defineProperty(MouseEvent.prototype, 'screenY', {
+            get() { return this.clientY + winY + chrome; },
+            configurable: true,
+          });
+        } catch (_) {}
       `);
     }
     const contextCreateMs = Date.now() - contextStartedAt;
