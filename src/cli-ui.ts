@@ -292,6 +292,7 @@ ${H('USAGE')}
   bad runs [--session-id <id>] [--json]
   bad design-audit --url <url>
   bad auth save [--url <url>] [--storage-state <path>]
+  bad auth login --url <url> --fill "field=value" [--wait-for <signal>]
   bad auth check [--storage-state <path>] [origin]
 
 ${H('SINGLE TASK')}
@@ -344,13 +345,19 @@ ${H('DESIGN COMPARE')}
   Outputs HTML report + JSON data.
 
 ${H('AUTH')}
-  ${D('$')} bad auth save ${C('--url')} https://app.example.com ${D('# opens browser, log in, press Enter')}
-  ${D('$')} bad auth save ${C('--url')} https://app.example.com ${C('--storage-state')} .auth/example.json
-  ${D('$')} bad auth check ${C('--storage-state')} .auth/example.json ${D('# validate saved state')}
-  ${D('$')} bad auth check .auth/example.json example.com ${D('# validate + check origin')}
+  ${D('Interactive (local):')}
+  ${D('$')} bad auth save ${C('--url')} https://app.example.com
+  ${D('$')} bad auth check .auth/storage-state.json
+
+  ${D('Headless (CI/CD):')}
+  ${D('$')} bad auth login ${C('--url')} https://app.example.com/login \\
+      ${C('--fill')} "email=ci@test.com" ${C('--fill')} "password=\$SECRET" \\
+      ${C('--wait-for')} "url:*/dashboard*" ${C('--storage-state')} .auth/session.json
+  ${D('$')} bad auth login ${C('--url')} https://app.example.com \\
+      ${C('--cookie')} "session=\$TOKEN" ${C('--storage-state')} .auth/session.json
 
   ${D('Then use with any command:')}
-  ${D('$')} bad run ${C('-g')} "Change settings" ${C('-u')} https://app.example.com ${C('--storage-state')} .auth/example.json
+  ${D('$')} bad run ${C('-g')} "Change settings" ${C('-u')} https://app.example.com ${C('--storage-state')} .auth/session.json
 
 ${H('DOCKER')}
   ${D('$')} docker run -v ./cases.json:/data/cases.json -v ./out:/output \\

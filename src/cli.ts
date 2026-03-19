@@ -189,6 +189,12 @@ async function main(): Promise<void> {
       'block-images': { type: 'boolean', default: false },
       'block-media': { type: 'boolean', default: false },
 
+      // Auth
+      fill: { type: 'string', multiple: true },
+      cookie: { type: 'string', multiple: true },
+      'wait-for': { type: 'string' },
+      'wait-timeout': { type: 'string' },
+
       help: { type: 'boolean', short: 'h', default: false },
       version: { type: 'boolean', short: 'v', default: false },
     },
@@ -317,6 +323,19 @@ async function main(): Promise<void> {
       });
       process.exit(0);
     }
+    if (sub === 'login') {
+      const { handleAuthLogin } = await import('./cli-auth.js');
+      await handleAuthLogin({
+        url: values.url || positionals[2],
+        output: values['storage-state'],
+        fill: values.fill,
+        cookie: values.cookie,
+        waitFor: values['wait-for'],
+        waitTimeout: values['wait-timeout'] ? parseInt(values['wait-timeout'], 10) : undefined,
+        headless: values.headless,
+      });
+      process.exit(0);
+    }
     if (sub === 'check') {
       const { handleAuthCheck } = await import('./cli-auth.js');
       await handleAuthCheck({
@@ -325,7 +344,7 @@ async function main(): Promise<void> {
       });
       process.exit(0);
     }
-    cliError(`Unknown auth subcommand: ${sub || '(none)'}. Use "auth save" or "auth check".`);
+    cliError(`Unknown auth subcommand: ${sub || '(none)'}. Use "auth save", "auth login", or "auth check".`);
     process.exit(1);
   }
 
