@@ -35,6 +35,9 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
+      - name: Install system Chrome for stealth
+        run: npx patchright install chrome
+
       - name: Tier1 deterministic gate
         id: tier1
         continue-on-error: true
@@ -49,17 +52,18 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
-      - name: WebBench nightly sample
+      - name: WebBench nightly sample (Xvfb headed stealth)
         id: webbench
         continue-on-error: true
         run: |
-          node scripts/run-scenario-track.mjs \
-            --cases ./bench/scenarios/cases/webbench-read-sanity6-max35.json \
-            --config ./bench/scenarios/configs/supervisor-on.mjs \
-            --model gpt-5.2 \
-            --benchmark-profile webbench \
-            --concurrency 1 \
-            --out ./agent-results/nightly/webbench
+          xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
+            node scripts/run-scenario-track.mjs \
+              --cases ./bench/scenarios/cases/webbench-read-sanity6-max35.json \
+              --config ./bench/scenarios/configs/supervisor-on.mjs \
+              --model gpt-5.4 \
+              --benchmark-profile webbench-stealth \
+              --concurrency 1 \
+              --out ./agent-results/nightly/webbench
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
