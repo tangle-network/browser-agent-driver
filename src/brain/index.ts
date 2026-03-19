@@ -782,7 +782,9 @@ ${visibleSnapshot}`;
       : this.buildSystemPrompt(goal, state, turnInfo?.current ?? 1)
 
     const modelOpts = { provider: effectiveProvider, model: effectiveModel };
-    const maxTokens = useCompactFirstTurn ? 500 : 600;
+    // Bump output budget near max turns so data-heavy completions don't truncate
+    const nearingEnd = turnInfo && turnInfo.current >= turnInfo.max - 3;
+    const maxTokens = useCompactFirstTurn ? 500 : nearingEnd ? 1200 : 600;
     const result = await this.generate(dynamicSystemPrompt, messages, modelOpts, maxTokens);
 
     let raw = result.text;
