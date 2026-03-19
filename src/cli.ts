@@ -939,6 +939,22 @@ async function main(): Promise<void> {
     launchDiagnostics.browserLaunchMs = Date.now() - browserLaunchStartedAt
   }
 
+  // Headless Chromium sends "HeadlessChrome/..." in the default User-Agent.
+  // CDNs like Akamai reject this with ERR_HTTP2_PROTOCOL_ERROR before any JS
+  // stealth patches can run. Build a clean UA from the browser version.
+  const headlessUserAgent = launchPlan.headless && browser
+    ? (() => {
+        const ver = browser.version()
+        const plat = process.platform
+        const platformToken = plat === 'win32'
+          ? 'Windows NT 10.0; Win64; x64'
+          : plat === 'linux'
+            ? 'X11; Linux x86_64'
+            : 'Macintosh; Intel Mac OS X 10_15_7'
+        return `Mozilla/5.0 (${platformToken}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${ver} Safari/537.36`
+      })()
+    : undefined
+
   const driverFactory = async () => {
     const contextStartedAt = Date.now();
 
@@ -959,6 +975,7 @@ async function main(): Promise<void> {
         storageState: storageStatePath,
         locale: 'en-US',
         timezoneId: 'America/New_York',
+        ...(headlessUserAgent ? { userAgent: headlessUserAgent } : {}),
         extraHTTPHeaders: {
           'Accept-Language': 'en-US,en;q=0.9',
         },
