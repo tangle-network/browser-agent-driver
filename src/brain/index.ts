@@ -781,15 +781,14 @@ ${visibleSnapshot}`;
       ? FIRST_TURN_COMPACT_PROMPT
       : this.buildSystemPrompt(goal, state, turnInfo?.current ?? 1)
 
-    const result = await this.generate(
-      dynamicSystemPrompt,
-      messages,
-      { provider: effectiveProvider, model: effectiveModel },
-      useCompactFirstTurn ? 500 : 600,
-    );
+    const modelOpts = { provider: effectiveProvider, model: effectiveModel };
+    const maxTokens = useCompactFirstTurn ? 500 : 600;
+    const result = await this.generate(dynamicSystemPrompt, messages, modelOpts, maxTokens);
 
-    const raw = result.text;
-    const tokensUsed = result.tokensUsed;
+    let raw = result.text;
+    let tokensUsed = result.tokensUsed;
+    let inputTokens = result.inputTokens;
+    let outputTokens = result.outputTokens;
 
     if (!raw) {
       throw new Error('Brain.decide: LLM returned empty response — possible rate limit or model error');
@@ -797,6 +796,37 @@ ${visibleSnapshot}`;
 
     if (this.debug) {
       console.log('[Brain] Response:', raw.slice(0, 300));
+    }
+
+    let parsed = this.parse(raw);
+
+    // On malformed JSON, retry with minimal context (current page + correction
+    // hint) instead of burning a full turn. Costs ~7K tokens vs ~25K for a
+    // full-history retry on the next turn.
+    if (parsed.reasoning?.startsWith('Malformed LLM JSON response') && !useCompactFirstTurn) {
+      if (this.debug) {
+        console.log('[Brain] Malformed JSON — retrying with format hint');
+      }
+      const retryMessages: ModelMessage[] = [
+        { role: 'user', content: userContent },
+        { role: 'assistant', content: raw },
+        { role: 'user', content: 'Your previous response was not valid JSON. Respond with ONLY a valid JSON object matching the required schema.' },
+      ];
+      try {
+        const retryResult = await this.generate(dynamicSystemPrompt, retryMessages, modelOpts, maxTokens);
+        if (retryResult.text) {
+          const retryParsed = this.parse(retryResult.text);
+          if (!retryParsed.reasoning?.startsWith('Malformed LLM JSON response')) {
+            raw = retryResult.text;
+            parsed = retryParsed;
+          }
+          tokensUsed = (tokensUsed ?? 0) + (retryResult.tokensUsed ?? 0);
+          inputTokens = (inputTokens ?? 0) + (retryResult.inputTokens ?? 0);
+          outputTokens = (outputTokens ?? 0) + (retryResult.outputTokens ?? 0);
+        }
+      } catch {
+        // Retry failed — fall through with original wait(1000) fallback
+      }
     }
 
     // Store in history
@@ -809,13 +839,12 @@ ${visibleSnapshot}`;
       this.history = this.history.slice(-maxMessages);
     }
 
-    const parsed = this.parse(raw);
     return {
       ...parsed,
       raw,
       tokensUsed,
-      inputTokens: result.inputTokens,
-      outputTokens: result.outputTokens,
+      inputTokens,
+      outputTokens,
       modelUsed: effectiveModel,
     };
   }
