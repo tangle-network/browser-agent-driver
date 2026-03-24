@@ -1185,6 +1185,11 @@ export class BrowserAgent {
           runState.clearConsecutiveErrors();
           executeTimeoutRecoveries = 0; // Reset on successful action
 
+          // Capture element bounding box for replay overlays
+          if (execResult.bounds) {
+            turn.actionBounds = execResult.bounds;
+          }
+
           // Update selector cache on successful action
           if (this.selectorCache && 'selector' in action && action.selector) {
             const element = findElementForRef(state.snapshot, action.selector);

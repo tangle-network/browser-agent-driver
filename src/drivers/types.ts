@@ -4,11 +4,20 @@
 
 import type { Action, PageState } from '../types.js';
 
+export interface ActionBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface ActionResult {
   success: boolean;
   error?: string;
   /** Data returned by the action (e.g., runScript result) */
   data?: string;
+  /** Bounding box of the target element at action time (for replay overlays) */
+  bounds?: ActionBounds;
 }
 
 export interface ResourceBlockingOptions {
