@@ -344,6 +344,16 @@ export class PlaywrightDriver implements Driver {
     }
   }
 
+  private async captureBounds(locator: import('playwright').Locator): Promise<ActionResult['bounds']> {
+    try {
+      const box = await locator.boundingBox({ timeout: 2000 });
+      if (box) return { x: Math.round(box.x), y: Math.round(box.y), width: Math.round(box.width), height: Math.round(box.height) };
+    } catch {
+      // Element may be gone after navigation — non-critical
+    }
+    return undefined;
+  }
+
   async execute(action: Action): Promise<ActionResult> {
     const timeout = this.options.timeout ?? 30000;
 
@@ -351,6 +361,7 @@ export class PlaywrightDriver implements Driver {
       switch (action.action) {
         case 'click': {
           const locator = this.snapshot.resolveLocator(this.page, action.selector);
+          const bounds = await this.captureBounds(locator);
           // Listen for popups but don't block: collect any that fire during the click
           let popupPage: import('playwright').Page | null = null;
           const onPopup = (page: import('playwright').Page) => { popupPage = page; };
@@ -376,11 +387,12 @@ export class PlaywrightDriver implements Driver {
             await popupPage.waitForLoadState('domcontentloaded').catch(() => {});
             await this.adoptPage(popupPage);
           }
-          return { success: true };
+          return { success: true, bounds };
         }
 
         case 'type': {
           const locator = this.snapshot.resolveLocator(this.page, action.selector);
+          const bounds = await this.captureBounds(locator);
           try {
             await this.withOverlayRecovery(async () => {
               await locator.click({ timeout });
@@ -400,27 +412,30 @@ export class PlaywrightDriver implements Driver {
               el.dispatchEvent(new Event('change', { bubbles: true }));
             });
           }
-          return { success: true };
+          return { success: true, bounds };
         }
 
         case 'press': {
           const locator = this.snapshot.resolveLocator(this.page, action.selector);
+          const bounds = await this.captureBounds(locator);
           await this.withOverlayRecovery(async () => {
             await locator.press(action.key, { timeout });
           });
-          return { success: true };
+          return { success: true, bounds };
         }
 
         case 'hover': {
           const locator = this.snapshot.resolveLocator(this.page, action.selector);
+          const bounds = await this.captureBounds(locator);
           await locator.hover({ timeout });
-          return { success: true };
+          return { success: true, bounds };
         }
 
         case 'select': {
           const locator = this.snapshot.resolveLocator(this.page, action.selector);
+          const bounds = await this.captureBounds(locator);
           await locator.selectOption(action.value, { timeout });
-          return { success: true };
+          return { success: true, bounds };
         }
 
         case 'scroll': {

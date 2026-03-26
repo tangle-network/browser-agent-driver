@@ -321,6 +321,8 @@ export interface Turn {
   durationMs: number;
   /** Error message if turn failed */
   error?: string;
+  /** Bounding box of the target element at action time (for replay overlays) */
+  actionBounds?: { x: number; y: number; width: number; height: number };
 }
 
 // ============================================================================
