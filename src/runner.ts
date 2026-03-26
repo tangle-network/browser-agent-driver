@@ -25,6 +25,9 @@ export {
   shouldAcceptScriptBackedCompletion,
   detectCompletionContentTypeMismatch,
 
+  // Effect verification
+  verifyExpectedEffect,
+
   // Page analysis
   detectAiTangleVerifiedOutputState,
   detectAiTanglePartnerTemplateVisibleState,

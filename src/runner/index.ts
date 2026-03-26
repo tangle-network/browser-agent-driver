@@ -27,6 +27,9 @@ export {
   detectCompletionContentTypeMismatch,
 } from './goal-verification.js';
 
+// Effect verification
+export { verifyExpectedEffect } from './effect-verification.js';
+
 // Page analysis
 export {
   detectAiTangleVerifiedOutputState,

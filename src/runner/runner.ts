@@ -32,6 +32,7 @@ import type { OverrideContext } from '../override-pipeline.js';
 import { withRetry, findElementForRef, safeHostname, pushGoalVerificationEvidence } from './utils.js';
 import { buildSearchResultsGuidance, buildVisibleLinkRecommendation, getVisibleLinkRecommendation, getRankedVisibleLinkCandidates, rankSearchCandidates } from './search-guidance.js';
 import { buildGoalVerificationClaim, collectSearchWorkflowEvidence, shouldAcceptSearchWorkflowCompletion, shouldAcceptScriptBackedCompletion, detectCompletionContentTypeMismatch } from './goal-verification.js';
+import { verifyExpectedEffect } from './effect-verification.js';
 import { detectAiTanglePartnerTemplateVisibleState, detectAiTangleVerifiedOutputState, shouldEscalateVision } from './page-analysis.js';
 import { shouldUseVisibleLinkScout, shouldUseVisibleLinkScoutPage, shouldUseBoundedBranchExplorer, inspectBranchPreview, scoreBranchPreview } from './scout.js';
 import type { BranchPreview } from './scout.js';
@@ -1405,75 +1406,14 @@ export class BrowserAgent {
     expectedEffect: string,
     preActionState: PageState
   ): Promise<{ verified: boolean; reason?: string }> {
-    // URL-based verification — no sleep needed, URL commits synchronously with navigation
-    if (/url\s+should/i.test(expectedEffect)) {
-      const currentUrl = this.driver.getUrl?.() ?? (await this.driver.observe().catch(() => preActionState)).url;
-
-      // Extract target: prefer quoted value (handles complex phrases like
-      // "URL should change to include '/chat/'"), fall back to word after verb
-      const quotedVal = expectedEffect.match(/['"]([^'"]+)['"]/);
-      const verbVal = expectedEffect.match(/url\s+should\s+(?:contain|include|have)\s+(\S+)/i);
-      const expected = quotedVal?.[1] ?? verbVal?.[1];
-
-      if (expected) {
-        if (currentUrl.includes(expected)) {
-          return { verified: true };
-        }
-        return {
-          verified: false,
-          reason: `Expected URL to contain "${expected}" but got "${currentUrl}"`,
-        };
-      }
-
-      // "URL should change" without a specific target — just check if URL changed
-      if (currentUrl !== preActionState.url) {
-        return { verified: true };
-      }
-      return {
-        verified: false,
-        reason: `Expected URL to change but it stayed at "${currentUrl}"`,
-      };
-    }
-
-    // Non-URL effects: brief wait for DOM to settle, then observe
     await new Promise(r => setTimeout(r, 100));
     const postState = await this.driver.observe().catch(() => preActionState);
     this.cachedPostState = postState;
-
-    const effect = expectedEffect.toLowerCase();
-
-    // Snapshot content verification (look for mentioned text/elements)
-    // Extract quoted text from the expected effect
-    const quotedMatch = effect.match(/["']([^"']+)["']/);
-    if (quotedMatch) {
-      const searchText = quotedMatch[1].toLowerCase();
-      if (postState.snapshot.toLowerCase().includes(searchText)) {
-        return { verified: true };
-      }
-      // Check if page changed at all
-      if (postState.snapshot !== preActionState.snapshot || postState.url !== preActionState.url) {
-        return { verified: true }; // Page changed, give benefit of the doubt
-      }
-      return {
-        verified: false,
-        reason: `Expected "${quotedMatch[1]}" to appear but page did not change`,
-      };
-    }
-
-    // Generic: check if page changed at all
-    if (postState.snapshot !== preActionState.snapshot || postState.url !== preActionState.url) {
-      return { verified: true };
-    }
-
-    // If we can't determine, give benefit of the doubt for non-URL effects
-    if (!effect.includes('url')) {
-      return { verified: true };
-    }
-
-    return {
-      verified: false,
-      reason: `Expected effect "${expectedEffect}" — page did not change`,
-    };
+    return verifyExpectedEffect({
+      expectedEffect,
+      preActionState,
+      postActionState: postState,
+    });
   }
 
   private async buildSearchResultsScoutFeedback(
