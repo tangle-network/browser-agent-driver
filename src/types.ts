@@ -574,6 +574,40 @@ export interface DesignFinding {
   description: string;
   location: string;
   suggestion: string;
+  /** CSS selector targeting the element to fix */
+  cssSelector?: string;
+  /** Concrete CSS property:value fix */
+  cssFix?: string;
+}
+
+export interface DesignSystemScore {
+  layout: number;
+  typography: number;
+  color: number;
+  spacing: number;
+  components: number;
+  interactions: number;
+  accessibility: number;
+  polish: number;
+}
+
+export interface DesignEvolveResult {
+  /** Initial audit score */
+  beforeScore: number;
+  /** Score after applying fixes */
+  afterScore: number;
+  /** Score delta (positive = improvement) */
+  delta: number;
+  /** Rounds of fix-reaudit cycles completed */
+  rounds: number;
+  /** Fixes that were applied */
+  appliedFixes: Array<{ cssSelector: string; cssFix: string; finding: string }>;
+  /** Fixes that were generated but not applied */
+  skippedFixes: Array<{ cssSelector: string; cssFix: string; reason: string }>;
+  /** Per-round scores for convergence tracking */
+  scoreHistory: number[];
+  /** Generated CSS override stylesheet */
+  cssOverride: string;
 }
 
 export interface FlowAuditResult {

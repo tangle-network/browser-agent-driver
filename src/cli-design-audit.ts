@@ -7,6 +7,7 @@
 
 import * as fs from 'node:fs'
 import * as path from 'node:path'
+import { execSync, type SpawnSyncReturns } from 'node:child_process'
 import chalk from 'chalk'
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright'
 import { Brain } from './brain/index.js'
@@ -74,6 +75,52 @@ MARKETING/LANDING PAGE AUDIT — evaluate as a potential customer deciding in 10
 - Footer: is navigation complete? Legal links present?
 
 CALIBRATION: Stripe, Linear, Vercel = 9. Average startup landing page = 5. Template sites = 3.`,
+
+  vibecoded: `
+VIBECODED / AI-GENERATED APP AUDIT — evaluate as a design-literate user who can smell defaults:
+
+TEMPLATE DETECTION (the #1 sin of vibecoded apps):
+- Is this clearly an unmodified shadcn/ui, MUI, Ant Design, or Chakra template? Score ceiling: 4 if yes.
+- Default border-radius (6-8px shadcn, 4px MUI), default color palette (zinc/slate grays, blue-600 primary)?
+- Default component spacing with no customization? Standard card shadows? Stock empty states?
+- "Looks like every other AI-generated app" = automatic 3-4 score.
+
+HIERARCHY & INFORMATION ARCHITECTURE:
+- Is everything the same visual weight? (Common AI pattern: all cards same size, no primary/secondary distinction)
+- Is there clear information hierarchy? Primary action vs secondary vs tertiary?
+- Does the layout have purpose or is it "centered column of cards" (the AI default)?
+- Navigation: is it a dumped list of features or thoughtfully organized?
+
+DESIGN SYSTEM COHERENCE:
+- Are there more than 3 distinct border-radius values? (Incoherent)
+- Color palette: intentional and limited (4-6 colors) or random accumulation?
+- Spacing: consistent rhythm on an 8px grid, or arbitrary per-component?
+- Typography: deliberate scale with 3-4 sizes, or every component picking its own?
+- Are interactive states (hover, focus, active, disabled) designed or browser-default?
+
+CRAFT SIGNALS (what separates 7 from 9):
+- Custom icons or generic Lucide/Heroicons dump?
+- Micro-interactions: button press feedback, page transitions, loading skeletons?
+- Empty states: designed illustrations or "No data found" text?
+- Error states: helpful messages with recovery actions or raw error strings?
+- Dark mode (if present): properly designed or just "invert colors"?
+- Content-first: does real content drive the layout, or is it a container waiting for content?
+
+AGENTIC APP SPECIFICS:
+- Agent status indicators: is it clear what the agent is doing? Progress feedback?
+- Streaming/loading: smooth token streaming or janky text replacement?
+- Conversation UI: proper message bubbles with timestamps, or plain text dump?
+- Tool call visualization: can the user see what tools the agent used?
+- Error recovery: when the agent fails, is there a clear retry/edit path?
+
+CALIBRATION:
+- 9-10: Custom design system, thoughtful hierarchy, polished interactions (Linear, Cursor, v0.dev)
+- 7-8: Modified template with intentional design decisions, consistent system
+- 5-6: Lightly customized template, functional but generic (most AI-generated apps)
+- 3-4: Unmodified component library, no design investment, "it works" energy
+- 1-2: Broken layout, clashing styles, unusable
+
+Most vibecoded apps score 3-5. The ceiling for unmodified templates is 4 regardless of functionality.`,
 }
 
 // ---------------------------------------------------------------------------
@@ -82,49 +129,118 @@ CALIBRATION: Stripe, Linear, Vercel = 9. Average startup landing page = 5. Templ
 
 function buildAuditPrompt(profile: string): string {
   const rubric = PROFILE_RUBRICS[profile] || PROFILE_RUBRICS.general
-  return `You are a brutal, honest design critic with 15 years of experience at top design studios.
-You have zero tolerance for mediocrity. You call out every flaw you see.
+  return `You are a principal design engineer who has shipped design systems at Linear, Stripe, and Vercel. You review with the precision of a typographer and the ruthlessness of a design director. You have built and maintained production design systems used by millions.
 
-Your job: audit this page's visual design, UX, and polish. Be specific — reference exact elements, colors, spacing values, and positions.
+Your job: perform an exhaustive visual design audit of this page. You must be specific enough that a developer could fix every issue from your report alone — reference exact elements, computed values, pixel measurements, and CSS properties.
 
-EVALUATION CRITERIA:
-1. LAYOUT — Grid consistency, alignment, responsive behavior, content hierarchy
-2. TYPOGRAPHY — Font pairing, size scale, line height, letter spacing, readability
-3. COLOR — Palette coherence, contrast ratios (WCAG AA: 4.5:1 text, 3:1 large text), semantic usage
-4. SPACING — Consistent rhythm (4/8px grid), padding/margin consistency, breathing room
-5. COMPONENTS — Button styles, input fields, cards, modals — are they consistent?
-6. INTERACTIONS — Hover states, focus indicators, transitions, loading states
-7. ACCESSIBILITY — Alt text, labels, keyboard navigation, screen reader compatibility
-8. VISUAL POLISH — Border radius consistency, shadow depth, icon style, micro-details
+EVALUATION FRAMEWORK (score each area 1-10, then weight into overall):
+
+1. LAYOUT & GRID (weight: 15%)
+   - Is there a consistent grid system? What grid unit? (4px, 8px, etc.)
+   - Column alignment: do content blocks align to the same left/right edges?
+   - Content width: is max-width appropriate? (prose: 65-75ch, app: fluid with sidebar)
+   - Responsive: does the layout reflow intentionally or just shrink?
+   - Z-index layering: any stacking context issues? Overlapping elements?
+   - Check for: orphaned elements floating outside the grid, inconsistent container padding
+
+2. TYPOGRAPHY SYSTEM (weight: 15%)
+   - Type scale: is there a clear hierarchy? Count distinct font-size values — more than 5-6 suggests no scale.
+   - Line height: body text should be 1.4-1.6, headings 1.1-1.3. Flag violations.
+   - Letter spacing: headings often need negative (-0.01 to -0.03em). Is it tuned?
+   - Font pairing: max 2 families (heading + body). Flag 3+.
+   - Text rendering: are long paragraphs wider than 75ch? That harms readability.
+   - Orphans/widows: any single-word last lines in headings?
+   - Font loading: is there FOUT/FOIT? Font-display strategy?
+
+3. COLOR & CONTRAST (weight: 15%)
+   - WCAG AA compliance: normal text needs 4.5:1, large text (18px+/14px+ bold) needs 3:1. ESTIMATE ratios.
+   - Palette size: count distinct hues. More than 5-6 non-neutral hues = incoherent.
+   - Semantic color usage: is the primary color used consistently for primary actions?
+   - Background layering: do nested surfaces have clear elevation (bg-0, bg-1, bg-2)?
+   - Gray scale: are grays consistent? All blue-gray, or mixed warm/cool? Mixed = incoherent.
+   - Accent usage: are accent colors used sparingly or splashed everywhere?
+
+4. SPACING & RHYTHM (weight: 15%)
+   - Grid adherence: what % of spacing values are multiples of the base unit?
+   - Vertical rhythm: are section gaps consistent? Measure gap between each major section.
+   - Component internal spacing: is padding consistent within similar components (all cards, all inputs)?
+   - Whitespace ratio: is there enough breathing room, or is everything cramped?
+   - Margin collapse issues: any unintended spacing from margin collapse?
+
+5. COMPONENT CONSISTENCY (weight: 15%)
+   - Button variants: how many distinct button styles? Are they intentional variants or accidents?
+   - Input styling: are all form inputs styled consistently? Border, focus ring, label position?
+   - Card patterns: same border-radius, shadow, padding across all cards?
+   - Icon system: consistent size (16/20/24px), stroke width, and style?
+   - Border radius: count distinct values. More than 3 (e.g., 4px, 8px, full) = incoherent.
+   - Shadow system: consistent elevation scale or random drop shadows?
+
+6. INTERACTION DESIGN (weight: 10%)
+   - Hover states: do interactive elements have visible hover feedback?
+   - Focus indicators: are there visible focus rings for keyboard navigation?
+   - Active/pressed states: button feedback on click?
+   - Transitions: are they present? Consistent duration (150-300ms)? Appropriate easing?
+   - Loading states: skeleton screens, spinners, or no loading feedback at all?
+   - Cursor changes: does cursor change to pointer on clickable elements?
+
+7. ACCESSIBILITY (weight: 10%)
+   - Semantic HTML: are headings in order (h1 → h2 → h3)? Are buttons actually <button>?
+   - ARIA labels: do icon-only buttons have labels? Do images have alt text?
+   - Keyboard navigation: can you tell what's focused? Is tab order logical?
+   - Touch targets: are mobile tap targets at least 44x44px?
+   - Screen reader: is content structured so screen reader users get meaningful navigation?
+
+8. VISUAL POLISH (weight: 5%)
+   - Pixel precision: any elements off by 1px? Misaligned text baselines?
+   - Image quality: are images sharp on retina displays (2x resolution)?
+   - Icon consistency: all from the same set, or a mix of styles/weights?
+   - Empty states: designed or raw "no data" text?
+   - Error states: styled or browser-default?
+   - Favicon and meta: present and professional?
 
 ${rubric}
 
-IMPORTANT RULES:
-- Be SPECIFIC. "Spacing is inconsistent" is useless. "The gap between the header and hero section is 48px but between hero and features is 24px — inconsistent vertical rhythm" is useful.
-- Reference element positions: "top-left navigation", "hero CTA button", "footer column 3".
-- Call out GOOD design too — note what works well alongside what doesn't.
-- If the page looks like it uses a default component library (shadcn, MUI, Ant) with no customization, say so.
-- Compare to best-in-class: "The token selector dropdown lacks the polish of Uniswap's — no token icons, no search, no recent tokens."
+SPECIFICITY REQUIREMENTS — your findings must be THIS specific:
+- BAD: "Spacing is inconsistent" (vague, useless)
+- GOOD: "Section gap between hero and features is 48px, but features-to-pricing is 24px and pricing-to-footer is 64px. Use consistent 48px or 64px vertical rhythm throughout."
+- BAD: "Colors don't look right" (vague)
+- GOOD: "Body text (#6b7280) on white background has ~4.6:1 contrast ratio (barely passes AA). The same gray on the light-gray card background (#f9fafb) drops to ~3.8:1 — fails AA for normal text. Darken body text to #4b5563 (7:1+)."
+- BAD: "Typography needs work" (vague)
+- GOOD: "6 distinct font sizes detected (12, 13, 14, 16, 20, 32px) with no clear scale. Consolidate to a 4-step scale: 14px body, 16px large, 24px h2, 36px h1. Current h2 at 20px lacks sufficient contrast with 16px body text."
+
+For EACH finding, you MUST include a concrete CSS fix in the suggestion field. Not "improve spacing" but "gap: 48px" or "font-size: 14px; line-height: 1.5".
 
 RESPOND WITH ONLY a JSON object:
 {
   "score": 6,
-  "summary": "One-sentence overall assessment",
-  "strengths": ["Specific thing done well", "Another strength"],
+  "summary": "One-sentence overall assessment with the key design system failure mode",
+  "strengths": ["Specific thing done well with evidence", "Another measured strength"],
   "findings": [
     {
       "category": "spacing",
       "severity": "major",
-      "description": "Hero section has 64px top padding but only 16px bottom padding before the feature grid, creating visual imbalance",
-      "location": "Hero section → feature grid transition",
-      "suggestion": "Use consistent 48px vertical sections throughout"
+      "description": "Hero section has 64px top padding but only 16px bottom padding before the feature grid, creating visual imbalance. The 4:1 ratio breaks vertical rhythm.",
+      "location": "Hero section → feature grid transition (main > section:nth-child(2))",
+      "suggestion": "padding-bottom: 48px on hero section. Standardize all section gaps to 48px or 64px.",
+      "cssSelector": "main > section:first-child",
+      "cssFix": "padding-bottom: 48px"
     }
-  ]
+  ],
+  "designSystemScore": {
+    "layout": 7,
+    "typography": 5,
+    "color": 6,
+    "spacing": 4,
+    "components": 6,
+    "interactions": 3,
+    "accessibility": 5,
+    "polish": 4
+  }
 }
 
 Categories: visual-bug, layout, contrast, alignment, spacing, typography, accessibility, ux
-Severities: critical (blocks usage), major (looks unprofessional), minor (polish issue)
-Score: 1-10 per calibration above. Most sites are 5-7. Be honest.`
+Severities: critical (blocks usage or fails WCAG), major (looks unprofessional), minor (polish detail)
+Score: 1-10 per calibration above. Most production apps score 5-7. Template apps score 3-5. Only world-class ships get 8+. Be honest — inflated scores help nobody.`
 }
 
 // ---------------------------------------------------------------------------
@@ -189,6 +305,7 @@ interface PageAuditResult {
   screenshotPath?: string
   tokensUsed?: number
   error?: string
+  designSystemScore?: Record<string, number>
 }
 
 // ---------------------------------------------------------------------------
@@ -237,15 +354,30 @@ function generateReport(results: PageAuditResult[], profile: string): string {
       lines.push('')
     }
 
+    if (result.designSystemScore) {
+      lines.push('**Design System Breakdown:**')
+      lines.push('')
+      const ds = result.designSystemScore
+      const dsKeys = ['layout', 'typography', 'color', 'spacing', 'components', 'interactions', 'accessibility', 'polish']
+      for (const key of dsKeys) {
+        if (ds[key] !== undefined) {
+          const bar = '█'.repeat(Math.round(ds[key])) + '░'.repeat(10 - Math.round(ds[key]))
+          lines.push(`- ${key}: \`${bar}\` ${ds[key]}/10`)
+        }
+      }
+      lines.push('')
+    }
+
     if (result.findings.length > 0) {
       lines.push('**Findings:**')
       lines.push('')
-      lines.push('| Sev | Category | Description | Location | Fix |')
-      lines.push('|-----|----------|-------------|----------|-----|')
+      lines.push('| Sev | Category | Description | Location | Fix | CSS |')
+      lines.push('|-----|----------|-------------|----------|-----|-----|')
       for (const f of result.findings) {
         const esc = (s: string) => s.replace(/\|/g, '\\|').replace(/\n/g, ' ').slice(0, 120)
         const icon = f.severity === 'critical' ? '🔴' : f.severity === 'major' ? '🟡' : '⚪'
-        lines.push(`| ${icon} ${f.severity} | ${f.category} | ${esc(f.description)} | ${esc(f.location)} | ${esc(f.suggestion)} |`)
+        const cssFix = f.cssFix ? `\`${esc(f.cssFix)}\`` : ''
+        lines.push(`| ${icon} ${f.severity} | ${f.category} | ${esc(f.description)} | ${esc(f.location)} | ${esc(f.suggestion)} | ${cssFix} |`)
       }
       lines.push('')
     } else if (!result.error) {
@@ -274,6 +406,14 @@ export interface DesignAuditOptions {
   debug?: boolean
   viewport?: string
   extractTokens?: boolean
+  /** Evolve mode: true/css for CSS injection, or agent name (claude-code, codex, opencode) for agent dispatch */
+  evolve?: string | boolean
+  /** Max fix-reaudit cycles (default: 3) */
+  evolveRounds?: number
+  /** Run 3x and report score variance for reproducibility testing */
+  reproducibility?: boolean
+  /** Project directory the agent should edit (defaults to cwd) */
+  projectDir?: string
 }
 
 export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
@@ -328,6 +468,7 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
     provider: opts.provider as 'openai' | 'anthropic' | undefined,
     vision: true,
     debug: opts.debug,
+    llmTimeoutMs: 120_000, // design audits generate ~8k tokens of structured JSON — need 2min
   })
 
   const driver = new PlaywrightDriver(page)
@@ -383,7 +524,546 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
   if (screenshotDir) console.log(`  ${chalk.dim('Screenshots →')} ${screenshotDir}`)
   console.log('')
 
+  // ── Reproducibility mode: run 3x and report variance ──
+  if (opts.reproducibility) {
+    console.log(`  ${chalk.bold('Reproducibility test')} — running 2 additional audits…`)
+    const scores: number[] = [avgScore]
+    for (let rep = 0; rep < 2; rep++) {
+      const repResults: PageAuditResult[] = []
+      for (const url of pages) {
+        const r = await auditSinglePage(brain, driver, page, url, profile)
+        repResults.push(r)
+      }
+      const repAvg = repResults.reduce((s, r) => s + r.score, 0) / repResults.length
+      scores.push(repAvg)
+      console.log(`  ${chalk.dim(`  Rep ${rep + 2}:`)} ${repAvg.toFixed(1)}/10`)
+    }
+    const mean = scores.reduce((a, b) => a + b, 0) / scores.length
+    const variance = Math.sqrt(scores.reduce((sum, s) => sum + (s - mean) ** 2, 0) / scores.length)
+    const pass = variance <= 0.5
+    const varColor = pass ? chalk.green : chalk.red
+    console.log(`  ${chalk.dim('Scores:')} ${scores.map(s => s.toFixed(1)).join(', ')}`)
+    console.log(`  ${chalk.dim('Mean:')} ${mean.toFixed(2)} ${chalk.dim('±')} ${varColor(variance.toFixed(2))} ${pass ? chalk.green('PASS (±0.5)') : chalk.red('FAIL (>±0.5)')}`)
+    console.log('')
+
+    if (opts.json) {
+      const repPath = path.join(outputDir, 'reproducibility.json')
+      fs.writeFileSync(repPath, JSON.stringify({ scores, mean, stddev: variance, pass }, null, 2))
+    }
+  }
+
+  // ── Evolve mode: closed-loop fix → re-audit ──
+  if (opts.evolve) {
+    // --evolve=css (or --evolve=true) → CSS injection
+    // --evolve=claude-code|codex|opencode|<custom> → agent dispatch
+    const evolveMode = opts.evolve === true || opts.evolve === 'true' || opts.evolve === 'css' ? 'css' : opts.evolve
+    let evolveResult: DesignEvolveResult
+
+    if (evolveMode !== 'css') {
+      // Agent-dispatched evolve — a coding agent edits the actual source code
+      const projectDir = opts.projectDir ?? process.cwd()
+      evolveResult = await runAgentEvolveLoop(
+        brain, driver, page, pages, profile, results, outputDir,
+        opts.evolveRounds ?? 3, evolveMode, projectDir, opts.debug,
+      )
+    } else {
+      // CSS-injection evolve — ephemeral fixes injected into the browser page
+      evolveResult = await runEvolveLoop(brain, driver, page, pages, profile, results, outputDir, opts.evolveRounds ?? 3)
+    }
+
+    // Write evolve report
+    const evolvePath = path.join(outputDir, 'evolve-report.md')
+    fs.writeFileSync(evolvePath, generateEvolveReport(evolveResult))
+    console.log(`  ${chalk.dim('Evolve report →')} ${evolvePath}`)
+
+    // Write CSS override file (CSS-injection mode only)
+    if (evolveResult.cssOverride) {
+      const cssPath = path.join(outputDir, 'design-fixes.css')
+      fs.writeFileSync(cssPath, evolveResult.cssOverride)
+      console.log(`  ${chalk.dim('CSS fixes →')} ${cssPath}`)
+    }
+
+    if (opts.json) {
+      const evJsonPath = path.join(outputDir, 'evolve.json')
+      fs.writeFileSync(evJsonPath, JSON.stringify(evolveResult, null, 2))
+    }
+    console.log('')
+  }
+
   await browser.close()
+}
+
+// ---------------------------------------------------------------------------
+// Evolve loop — audit → generate CSS fixes → inject → re-audit → compare
+// ---------------------------------------------------------------------------
+
+import type { DesignEvolveResult } from './types.js'
+
+async function runEvolveLoop(
+  brain: Brain,
+  driver: PlaywrightDriver,
+  page: Page,
+  pages: string[],
+  profile: string,
+  initialResults: PageAuditResult[],
+  outputDir: string,
+  maxRounds: number,
+): Promise<DesignEvolveResult> {
+  const initialAvg = initialResults.reduce((s, r) => s + r.score, 0) / initialResults.length
+  const scoreHistory: number[] = [initialAvg]
+  const appliedFixes: DesignEvolveResult['appliedFixes'] = []
+  const skippedFixes: DesignEvolveResult['skippedFixes'] = []
+  let cumulativeCSS = ''
+  let currentResults = initialResults
+  let currentAvg = initialAvg
+
+  console.log('')
+  console.log(`  ${chalk.bold('Design Evolve')} — ${maxRounds} rounds max`)
+  console.log(`  ${chalk.dim('Initial score:')} ${currentAvg.toFixed(1)}/10`)
+  console.log('')
+
+  for (let round = 1; round <= maxRounds; round++) {
+    console.log(`  ${chalk.dim(`Round ${round}/${maxRounds}`)}`)
+
+    // Collect all findings with CSS fixes across all pages
+    const fixableFixes = currentResults
+      .flatMap(r => r.findings)
+      .filter(f => f.cssSelector && f.cssFix)
+
+    if (fixableFixes.length === 0) {
+      console.log(`  ${chalk.dim('  No CSS-fixable findings — generating fixes via LLM…')}`)
+      // Ask the LLM to generate CSS fixes for the top findings
+      const topFindings = currentResults
+        .flatMap(r => r.findings)
+        .filter(f => f.severity === 'critical' || f.severity === 'major')
+        .slice(0, 10)
+
+      if (topFindings.length === 0) {
+        console.log(`  ${chalk.green('  No major/critical findings remaining')}`)
+        break
+      }
+
+      const fixPrompt = buildFixGenerationPrompt(topFindings)
+      const fixResult = await brain.auditDesign(
+        await driver.observe(),
+        'Generate CSS fixes for the design issues listed below',
+        [],
+        fixPrompt,
+      )
+
+      // Parse generated fixes
+      try {
+        let text = fixResult.raw.trim()
+        if (text.startsWith('```')) text = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
+        const start = text.indexOf('{')
+        const end = text.lastIndexOf('}')
+        if (start >= 0 && end > start) text = text.slice(start, end + 1)
+        const parsed = JSON.parse(text)
+        if (Array.isArray(parsed.fixes)) {
+          for (const fix of parsed.fixes) {
+            if (fix.cssSelector && fix.cssFix) {
+              fixableFixes.push({
+                category: 'ux' as const,
+                severity: 'major' as const,
+                description: fix.description || '',
+                location: fix.location || '',
+                suggestion: fix.cssFix,
+                cssSelector: fix.cssSelector,
+                cssFix: fix.cssFix,
+              })
+            }
+          }
+        }
+      } catch { /* failed to parse fixes */ }
+    }
+
+    if (fixableFixes.length === 0) {
+      console.log(`  ${chalk.dim('  Could not generate fixable CSS — stopping')}`)
+      break
+    }
+
+    // Build CSS override from all fixable findings
+    const roundCSS = fixableFixes
+      .map(f => `/* ${f.severity}: ${f.description?.slice(0, 80)} */\n${f.cssSelector} { ${f.cssFix} }`)
+      .join('\n\n')
+
+    cumulativeCSS += '\n' + roundCSS
+
+    // Track applied fixes
+    for (const f of fixableFixes) {
+      appliedFixes.push({
+        cssSelector: f.cssSelector!,
+        cssFix: f.cssFix!,
+        finding: f.description,
+      })
+    }
+
+    console.log(`  ${chalk.dim(`  Applying ${fixableFixes.length} CSS fixes…`)}`)
+
+    // Re-audit each page with CSS injected
+    const roundResults: PageAuditResult[] = []
+    for (const url of pages) {
+      try {
+        await page.goto(url, { waitUntil: 'networkidle', timeout: 20_000 }).catch(() =>
+          page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15_000 })
+        )
+        await page.waitForTimeout(1500)
+
+        // Inject cumulative CSS fixes
+        await page.addStyleTag({ content: cumulativeCSS })
+        await page.waitForTimeout(500)
+
+        // Take screenshot of fixed state
+        const screenshotDir = path.join(outputDir, `screenshots-round-${round}`)
+        fs.mkdirSync(screenshotDir, { recursive: true })
+
+        const result = await auditSinglePage(brain, driver, page, url, profile, screenshotDir)
+        roundResults.push(result)
+      } catch {
+        roundResults.push({
+          url,
+          score: currentAvg,
+          summary: 'Re-audit failed',
+          strengths: [],
+          findings: [],
+          error: 'Re-audit with CSS injection failed',
+        })
+      }
+    }
+
+    const roundAvg = roundResults.reduce((s, r) => s + r.score, 0) / roundResults.length
+    scoreHistory.push(roundAvg)
+    const delta = roundAvg - currentAvg
+
+    const deltaStr = delta >= 0 ? chalk.green(`+${delta.toFixed(1)}`) : chalk.red(delta.toFixed(1))
+    console.log(`  ${chalk.dim('  Score:')} ${roundAvg.toFixed(1)}/10 (${deltaStr})`)
+
+    currentResults = roundResults
+    currentAvg = roundAvg
+
+    // Check convergence — if no improvement, stop
+    if (delta <= 0.1 && round > 1) {
+      console.log(`  ${chalk.dim('  Converged — no further improvement')}`)
+      break
+    }
+  }
+
+  const totalDelta = currentAvg - initialAvg
+  const deltaColor = totalDelta >= 2 ? chalk.green : totalDelta > 0 ? chalk.yellow : chalk.red
+  console.log('')
+  console.log(`  ${chalk.bold('Evolve complete')}`)
+  console.log(`  ${chalk.dim('Score:')} ${initialAvg.toFixed(1)} → ${currentAvg.toFixed(1)} (${deltaColor(`+${totalDelta.toFixed(1)}`)})`)
+  console.log(`  ${chalk.dim('Rounds:')} ${scoreHistory.length - 1}`)
+  console.log(`  ${chalk.dim('Fixes applied:')} ${appliedFixes.length}`)
+  console.log('')
+
+  return {
+    beforeScore: initialAvg,
+    afterScore: currentAvg,
+    delta: totalDelta,
+    rounds: scoreHistory.length - 1,
+    appliedFixes,
+    skippedFixes,
+    scoreHistory,
+    cssOverride: cumulativeCSS.trim(),
+  }
+}
+
+function buildFixGenerationPrompt(findings: DesignFinding[]): string {
+  const findingList = findings.map((f, i) =>
+    `${i + 1}. [${f.severity}/${f.category}] ${f.description}\n   Location: ${f.location}\n   Suggestion: ${f.suggestion}`
+  ).join('\n')
+
+  return `You are a CSS engineer fixing design issues. For each finding, generate a precise CSS fix.
+
+FINDINGS TO FIX:
+${findingList}
+
+RULES:
+- Use specific, targeted CSS selectors. Prefer class-based or semantic selectors.
+- Each fix should be a single CSS rule (selector + property:value pairs).
+- Fixes must not break other elements — be surgical.
+- For spacing: use consistent values (multiples of 4 or 8px).
+- For colors: ensure WCAG AA contrast (4.5:1 for text, 3:1 for large text).
+- For typography: use a limited scale (14px, 16px, 20px, 24px, 32px, 48px).
+
+RESPOND WITH ONLY a JSON object:
+{
+  "fixes": [
+    {
+      "cssSelector": "main > section:first-child",
+      "cssFix": "padding-bottom: 48px; margin-bottom: 0",
+      "description": "Standardize hero section bottom spacing",
+      "location": "Hero → features transition"
+    }
+  ]
+}`
+}
+
+function generateEvolveReport(result: DesignEvolveResult): string {
+  const lines: string[] = []
+  lines.push('# Design Evolve Report')
+  lines.push('')
+  lines.push(`**Score:** ${result.beforeScore.toFixed(1)} → ${result.afterScore.toFixed(1)} (+${result.delta.toFixed(1)})`)
+  lines.push(`**Rounds:** ${result.rounds}`)
+  lines.push(`**Score progression:** ${result.scoreHistory.map(s => s.toFixed(1)).join(' → ')}`)
+  lines.push('')
+
+  if (result.appliedFixes.length > 0) {
+    lines.push('## Applied Fixes')
+    lines.push('')
+    for (const fix of result.appliedFixes) {
+      lines.push(`- \`${fix.cssSelector}\`: \`${fix.cssFix}\``)
+      if (fix.finding) lines.push(`  - ${fix.finding}`)
+    }
+    lines.push('')
+  }
+
+  if (result.cssOverride) {
+    lines.push('## Generated CSS Override')
+    lines.push('')
+    lines.push('```css')
+    lines.push(result.cssOverride)
+    lines.push('```')
+    lines.push('')
+    lines.push('Apply this CSS to your app to fix the identified design issues:')
+    lines.push('```html')
+    lines.push('<link rel="stylesheet" href="design-fixes.css">')
+    lines.push('```')
+  }
+
+  return lines.join('\n')
+}
+
+// ---------------------------------------------------------------------------
+// Agent-dispatched evolve — sends findings to a coding agent that edits source
+// ---------------------------------------------------------------------------
+
+const AGENT_COMMANDS: Record<string, (prompt: string, projectDir: string) => string[]> = {
+  'claude-code': (prompt, dir) => ['claude', '-p', prompt, '--dangerously-skip-permissions', '--add-dir', dir],
+  'codex': (prompt, dir) => ['codex', 'exec', prompt, '-c', `cwd="${dir}"`],
+  'opencode': (prompt, dir) => ['opencode', 'run', prompt],
+}
+
+function resolveAgentCommand(agent: string, prompt: string, projectDir: string): { cmd: string; args: string[]; cwd: string } {
+  const builder = AGENT_COMMANDS[agent]
+  if (builder) {
+    const [cmd, ...args] = builder(prompt, projectDir)
+    return { cmd, args, cwd: projectDir }
+  }
+  // Custom command — treat the agent string as a command template
+  // e.g. "aider --message" becomes: aider --message "<prompt>"
+  const parts = agent.split(/\s+/)
+  return { cmd: parts[0], args: [...parts.slice(1), prompt], cwd: projectDir }
+}
+
+function buildAgentFixPrompt(results: PageAuditResult[], profile: string, round: number): string {
+  const allFindings = results.flatMap(r => r.findings)
+  const critical = allFindings.filter(f => f.severity === 'critical')
+  const major = allFindings.filter(f => f.severity === 'major')
+  const minor = allFindings.filter(f => f.severity === 'minor')
+
+  const findingsList = [...critical, ...major, ...minor.slice(0, 5)]
+    .map((f, i) => {
+      let entry = `${i + 1}. [${f.severity}/${f.category}] ${f.description}`
+      entry += `\n   Location: ${f.location}`
+      entry += `\n   Suggestion: ${f.suggestion}`
+      if (f.cssSelector) entry += `\n   CSS Selector: ${f.cssSelector}`
+      if (f.cssFix) entry += `\n   CSS Fix: ${f.cssFix}`
+      return entry
+    })
+    .join('\n\n')
+
+  const scoreBreakdowns = results
+    .filter(r => r.designSystemScore)
+    .map(r => {
+      const ds = r.designSystemScore!
+      return `  ${r.url}: ${Object.entries(ds).map(([k, v]) => `${k}=${v}`).join(', ')}`
+    })
+    .join('\n')
+
+  return `You are fixing design issues found by an automated design audit.
+
+AUDIT PROFILE: ${profile}
+ROUND: ${round} (${round === 1 ? 'initial fixes' : 'fixing remaining issues from previous round'})
+CURRENT SCORES:
+  Overall: ${(results.reduce((s, r) => s + r.score, 0) / results.length).toFixed(1)}/10
+${scoreBreakdowns}
+
+FINDINGS TO FIX (${critical.length} critical, ${major.length} major, ${minor.length} minor):
+
+${findingsList}
+
+INSTRUCTIONS:
+1. Read the project's source files to understand the styling approach (Tailwind, CSS modules, plain CSS, styled-components, etc.)
+2. Fix the findings by editing the ACTUAL SOURCE FILES — not by creating new CSS override files
+3. Match the project's existing styling conventions
+4. Fix the design SYSTEM (shared components, tokens, globals) not individual instances
+5. Prioritize critical and major findings
+6. Only change visual/styling properties — never change business logic, state, or event handlers
+7. After making changes, verify the dev server is still running (no build errors)
+
+Do NOT:
+- Create new standalone CSS override files — edit the existing styles
+- Add comments explaining what you changed — just change it
+- Refactor unrelated code
+- Change component structure or HTML semantics unless a finding specifically requires it`
+}
+
+async function runAgentEvolveLoop(
+  brain: Brain,
+  driver: PlaywrightDriver,
+  page: Page,
+  pages: string[],
+  profile: string,
+  initialResults: PageAuditResult[],
+  outputDir: string,
+  maxRounds: number,
+  agentName: string,
+  projectDir: string,
+  debug?: boolean,
+): Promise<DesignEvolveResult> {
+  const initialAvg = initialResults.reduce((s, r) => s + r.score, 0) / initialResults.length
+  const scoreHistory: number[] = [initialAvg]
+  const appliedFixes: DesignEvolveResult['appliedFixes'] = []
+  let currentResults = initialResults
+  let currentAvg = initialAvg
+
+  const resolvedProjectDir = path.resolve(projectDir)
+  if (!fs.existsSync(resolvedProjectDir)) {
+    cliError(`project directory not found: ${resolvedProjectDir}`)
+    process.exit(1)
+  }
+
+  console.log('')
+  console.log(`  ${chalk.bold('Design Evolve')} ${chalk.dim('via')} ${chalk.cyan(agentName)}`)
+  console.log(`  ${chalk.dim('Project:')} ${resolvedProjectDir}`)
+  console.log(`  ${chalk.dim('Initial score:')} ${currentAvg.toFixed(1)}/10`)
+  console.log(`  ${chalk.dim('Max rounds:')} ${maxRounds}`)
+  console.log('')
+
+  for (let round = 1; round <= maxRounds; round++) {
+    console.log(`  ${chalk.dim(`Round ${round}/${maxRounds}`)}`)
+
+    // Build the prompt for the agent
+    const prompt = buildAgentFixPrompt(currentResults, profile, round)
+
+    // Write the prompt to a file for debugging
+    const promptPath = path.join(outputDir, `agent-prompt-round-${round}.txt`)
+    fs.writeFileSync(promptPath, prompt)
+
+    // Also write the full report JSON so the agent could read it
+    const findingsPath = path.join(outputDir, `findings-round-${round}.json`)
+    fs.writeFileSync(findingsPath, JSON.stringify({
+      round,
+      score: currentAvg,
+      results: currentResults.map(r => ({
+        url: r.url,
+        score: r.score,
+        designSystemScore: r.designSystemScore,
+        findings: r.findings,
+      })),
+    }, null, 2))
+
+    // Dispatch to the coding agent
+    const { cmd, args, cwd } = resolveAgentCommand(agentName, prompt, resolvedProjectDir)
+
+    console.log(`  ${chalk.dim(`  Dispatching to ${agentName}…`)}`)
+    if (debug) {
+      console.log(`  ${chalk.dim(`  cmd: ${cmd} ${args.map(a => a.length > 80 ? a.slice(0, 80) + '…' : a).join(' ')}`)}`)
+    }
+
+    try {
+      const result = execSync(
+        `${cmd} ${args.map(a => JSON.stringify(a)).join(' ')}`,
+        {
+          cwd,
+          stdio: debug ? 'inherit' : 'pipe',
+          timeout: 300_000, // 5min max per agent round
+          env: { ...process.env },
+        },
+      )
+
+      if (!debug && result) {
+        const agentOutputPath = path.join(outputDir, `agent-output-round-${round}.txt`)
+        fs.writeFileSync(agentOutputPath, result.toString())
+      }
+
+      console.log(`  ${chalk.dim('  Agent completed')}`)
+    } catch (err) {
+      const exitCode = (err as { status?: number }).status ?? 'unknown'
+      console.log(`  ${chalk.yellow(`  Agent exited with code ${exitCode} — continuing with re-audit`)}`)
+
+      // Write stderr if available
+      const stderr = (err as { stderr?: Buffer }).stderr
+      if (stderr) {
+        const errPath = path.join(outputDir, `agent-error-round-${round}.txt`)
+        fs.writeFileSync(errPath, stderr.toString())
+      }
+    }
+
+    // Wait for hot reload to settle
+    console.log(`  ${chalk.dim('  Waiting for hot reload…')}`)
+    await new Promise(resolve => setTimeout(resolve, 5000))
+
+    // Re-audit
+    console.log(`  ${chalk.dim('  Re-auditing…')}`)
+    const roundResults: PageAuditResult[] = []
+    const roundScreenshotDir = path.join(outputDir, `screenshots-round-${round}`)
+    fs.mkdirSync(roundScreenshotDir, { recursive: true })
+
+    for (const url of pages) {
+      const result = await auditSinglePage(brain, driver, page, url, profile, roundScreenshotDir)
+      roundResults.push(result)
+    }
+
+    const roundAvg = roundResults.reduce((s, r) => s + r.score, 0) / roundResults.length
+    scoreHistory.push(roundAvg)
+    const delta = roundAvg - currentAvg
+
+    const deltaStr = delta >= 0 ? chalk.green(`+${delta.toFixed(1)}`) : chalk.red(delta.toFixed(1))
+    console.log(`  ${chalk.dim('  Score:')} ${roundAvg.toFixed(1)}/10 (${deltaStr})`)
+
+    // Track what changed
+    const prevFindingCount = currentResults.flatMap(r => r.findings).length
+    const newFindingCount = roundResults.flatMap(r => r.findings).length
+    const resolvedCount = Math.max(0, prevFindingCount - newFindingCount)
+    if (resolvedCount > 0) {
+      appliedFixes.push({
+        cssSelector: `round-${round}`,
+        cssFix: `${agentName} resolved ${resolvedCount} findings`,
+        finding: `Score: ${currentAvg.toFixed(1)} → ${roundAvg.toFixed(1)}`,
+      })
+    }
+
+    currentResults = roundResults
+    currentAvg = roundAvg
+
+    // Check convergence
+    if (delta <= 0.1 && round > 1) {
+      console.log(`  ${chalk.dim('  Converged — no further improvement')}`)
+      break
+    }
+  }
+
+  const totalDelta = currentAvg - initialAvg
+  const deltaColor = totalDelta >= 2 ? chalk.green : totalDelta > 0 ? chalk.yellow : chalk.red
+  console.log('')
+  console.log(`  ${chalk.bold('Evolve complete')} ${chalk.dim('via')} ${chalk.cyan(agentName)}`)
+  console.log(`  ${chalk.dim('Score:')} ${initialAvg.toFixed(1)} → ${currentAvg.toFixed(1)} (${deltaColor(totalDelta >= 0 ? `+${totalDelta.toFixed(1)}` : totalDelta.toFixed(1))})`)
+  console.log(`  ${chalk.dim('Rounds:')} ${scoreHistory.length - 1}`)
+  console.log('')
+
+  return {
+    beforeScore: initialAvg,
+    afterScore: currentAvg,
+    delta: totalDelta,
+    rounds: scoreHistory.length - 1,
+    appliedFixes,
+    skippedFixes: [],
+    scoreHistory,
+    cssOverride: '', // no CSS override in agent mode — agent edited source directly
+  }
 }
 
 // Direct page audit using brain.generate with custom prompt
@@ -430,12 +1110,19 @@ async function auditSinglePage(
 
     let summary = ''
     let strengths: string[] = []
+    let designSystemScore: Record<string, number> | undefined
     try {
       let text = result.raw.trim()
       if (text.startsWith('```')) text = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
       const parsed = JSON.parse(text)
       summary = parsed.summary || ''
       strengths = Array.isArray(parsed.strengths) ? parsed.strengths : []
+      if (parsed.designSystemScore && typeof parsed.designSystemScore === 'object') {
+        designSystemScore = {} as Record<string, number>
+        for (const [k, v] of Object.entries(parsed.designSystemScore)) {
+          if (typeof v === 'number') designSystemScore[k] = v
+        }
+      }
     } catch { /* use defaults */ }
 
     return {
@@ -446,6 +1133,7 @@ async function auditSinglePage(
       findings: result.findings,
       screenshotPath,
       tokensUsed: result.tokensUsed,
+      designSystemScore,
     }
   } catch (err) {
     return {

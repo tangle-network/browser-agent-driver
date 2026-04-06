@@ -134,6 +134,10 @@ async function main(): Promise<void> {
       rip: { type: 'boolean' },
       'design-compare': { type: 'boolean' },
       'compare-url': { type: 'string' },
+      evolve: { type: 'string' },
+      'evolve-rounds': { type: 'string' },
+      'project-dir': { type: 'string' },
+      reproducibility: { type: 'boolean' },
       // showcase
       script: { type: 'string' },
       capture: { type: 'string' },
@@ -260,6 +264,10 @@ async function main(): Promise<void> {
       headless: values.headless,
       debug: values.debug,
       extractTokens: values['extract-tokens'],
+      evolve: values.evolve,
+      evolveRounds: values['evolve-rounds'] ? parseInt(values['evolve-rounds']) : undefined,
+      projectDir: values['project-dir'],
+      reproducibility: values.reproducibility,
     });
     process.exit(0);
   }

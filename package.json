@@ -1,6 +1,6 @@
 {
   "name": "@tangle-network/browser-agent-driver",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "LLM-driven browser agent for UI automation, testing, and evaluation",
   "publishConfig": {
     "access": "public"
@@ -51,6 +51,8 @@
     "ab:experiment": "node ./scripts/run-ab-experiment.mjs",
     "research:cycle": "node ./scripts/run-research-cycle.mjs",
     "research:pipeline": "node ./scripts/run-research-pipeline.mjs",
+    "design:bench": "pnpm tsx bench/design/run-design-bench.ts",
+    "design:bench:calibrate": "pnpm tsx bench/design/run-design-bench.ts --tier world-class --reproducibility",
     "baseline:modes": "node ./scripts/run-mode-baseline.mjs",
     "baseline:track": "node ./scripts/run-scenario-track.mjs",
     "wallet:anvil": "node ./bench/wallet/setup-anvil.mjs",

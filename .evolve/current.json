@@ -1,0 +1,9 @@
+{
+  "mode": "evolve",
+  "goal": "Closed-loop design audit system: audit → fix → re-audit with ±0.5 reproducibility and 2+ point evolve improvement",
+  "status": "in_progress",
+  "round": 1,
+  "generation": null,
+  "activePursuit": null,
+  "updatedAt": "2026-04-04T00:00:00Z"
+}

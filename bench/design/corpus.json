@@ -1,0 +1,114 @@
+{
+  "$schema": "./corpus-schema.json",
+  "description": "Design audit benchmark corpus — reference sites for calibration and reproducibility testing",
+  "tiers": {
+    "world-class": {
+      "description": "Sites that should score 8-10. If they don't, the audit prompt is miscalibrated.",
+      "sites": [
+        {
+          "url": "https://linear.app",
+          "profile": "saas",
+          "expectedScore": { "min": 8, "max": 10 },
+          "notes": "Gold standard SaaS design. Clean typography, consistent spacing, excellent dark mode."
+        },
+        {
+          "url": "https://stripe.com",
+          "profile": "marketing",
+          "expectedScore": { "min": 8, "max": 10 },
+          "notes": "Best-in-class marketing site. Gradient mastery, micro-interactions, impeccable typography."
+        },
+        {
+          "url": "https://vercel.com",
+          "profile": "marketing",
+          "expectedScore": { "min": 8, "max": 10 },
+          "notes": "Minimal, precise. Great use of whitespace, consistent component system."
+        },
+        {
+          "url": "https://raycast.com",
+          "profile": "marketing",
+          "expectedScore": { "min": 8, "max": 10 },
+          "notes": "Polished landing page. Excellent visual hierarchy, smooth animations."
+        },
+        {
+          "url": "https://cursor.com",
+          "profile": "marketing",
+          "expectedScore": { "min": 7, "max": 9 },
+          "notes": "Clean dev tool marketing. Good typography, slightly less polished than Stripe."
+        }
+      ]
+    },
+    "good": {
+      "description": "Professional sites that should score 6-8. Solid but not exceptional.",
+      "sites": [
+        {
+          "url": "https://github.com",
+          "profile": "saas",
+          "expectedScore": { "min": 6, "max": 8 },
+          "notes": "Functional, consistent, but dense. Navigation complexity is intentional."
+        },
+        {
+          "url": "https://notion.so",
+          "profile": "marketing",
+          "expectedScore": { "min": 7, "max": 9 },
+          "notes": "Clean marketing with good illustrations. App itself is more complex."
+        },
+        {
+          "url": "https://tailwindcss.com",
+          "profile": "marketing",
+          "expectedScore": { "min": 7, "max": 9 },
+          "notes": "Developer docs done well. Good code examples, clean layout."
+        }
+      ]
+    },
+    "average": {
+      "description": "Functional but uninspired sites that should score 4-6.",
+      "sites": [
+        {
+          "url": "https://craigslist.org",
+          "profile": "general",
+          "expectedScore": { "min": 2, "max": 4 },
+          "notes": "Intentionally minimal. No design system, raw HTML. Should score very low."
+        },
+        {
+          "url": "https://news.ycombinator.com",
+          "profile": "general",
+          "expectedScore": { "min": 2, "max": 4 },
+          "notes": "Functional minimalism. No CSS framework, table layout. Score should reflect this."
+        }
+      ]
+    },
+    "vibecoded": {
+      "description": "AI-generated or template-default apps that should score 3-5 with the vibecoded profile.",
+      "sites": [
+        {
+          "url": "https://ui.shadcn.com",
+          "profile": "vibecoded",
+          "expectedScore": { "min": 6, "max": 8 },
+          "notes": "shadcn docs themselves are well-designed. But auditing with vibecoded profile tests template detection."
+        }
+      ]
+    },
+    "defi": {
+      "description": "DeFi/crypto sites for the defi profile.",
+      "sites": [
+        {
+          "url": "https://app.uniswap.org",
+          "profile": "defi",
+          "expectedScore": { "min": 7, "max": 9 },
+          "notes": "Best-in-class DEX UI. Clean swap interface, good mobile support."
+        },
+        {
+          "url": "https://app.aave.com",
+          "profile": "defi",
+          "expectedScore": { "min": 6, "max": 8 },
+          "notes": "Complex lending UI done well. Dense data presentation."
+        }
+      ]
+    }
+  },
+  "reproducibilityTarget": {
+    "maxStdDev": 0.5,
+    "minRuns": 3,
+    "description": "Scores should be within ±0.5 stddev across 3 runs of the same site."
+  }
+}

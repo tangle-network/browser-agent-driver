@@ -16,6 +16,11 @@
       "name": "stealth-tuning",
       "path": "skills/stealth-tuning",
       "description": "How to configure browser stealth profiles, anti-bot evasion, WebDriver suppression, JA3 fingerprinting, and CDP leak patches."
+    },
+    {
+      "name": "design-evolve",
+      "path": "skills/design-evolve",
+      "description": "Closed-loop design improvement: audit a running app with bad design-audit, apply fixes to source code, re-audit to verify improvement, iterate until converged."
     }
   ]
 }

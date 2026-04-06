@@ -1071,7 +1071,7 @@ SUPPLEMENTAL TOOL EVIDENCE / SCRIPT RESULT in claimed results = verified DOM dat
     goal: string,
     checkpoints: string[],
     systemPrompt?: string,
-  ): Promise<{ score: number; findings: DesignFinding[]; raw: string; tokensUsed?: number }> {
+  ): Promise<{ score: number; findings: DesignFinding[]; raw: string; tokensUsed?: number; designSystemScore?: Record<string, unknown> }> {
     const textContent = `GOAL: ${goal}
 
 CHECKPOINTS to verify:
@@ -1092,7 +1092,7 @@ Audit this page for design quality, UX issues, and visual bugs.`;
       systemPrompt ?? DESIGN_AUDIT_PROMPT,
       [{ role: 'user', content: userContent }],
       undefined,
-      4000,
+      8000,
     );
 
     const raw = result.text;
@@ -1131,8 +1131,14 @@ Audit this page for design quality, UX issues, and visual bugs.`;
             description: String(f.description ?? ''),
             location: String(f.location ?? ''),
             suggestion: String(f.suggestion ?? ''),
+            ...(f.cssSelector ? { cssSelector: String(f.cssSelector) } : {}),
+            ...(f.cssFix ? { cssFix: String(f.cssFix) } : {}),
           }))
         : [];
+
+      const designSystemScore = parsed.designSystemScore && typeof parsed.designSystemScore === 'object'
+        ? parsed.designSystemScore as Record<string, unknown>
+        : undefined;
 
       const rawScore = typeof parsed.score === 'number' ? parsed.score : 5;
       return {
@@ -1140,6 +1146,7 @@ Audit this page for design quality, UX issues, and visual bugs.`;
         findings,
         raw,
         tokensUsed,
+        designSystemScore,
       };
     } catch {
       return {
