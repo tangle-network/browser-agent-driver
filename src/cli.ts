@@ -138,6 +138,7 @@ async function main(): Promise<void> {
       'evolve-rounds': { type: 'string' },
       'project-dir': { type: 'string' },
       reproducibility: { type: 'boolean' },
+      'rubrics-dir': { type: 'string' },
       // showcase
       script: { type: 'string' },
       capture: { type: 'string' },
@@ -268,6 +269,7 @@ async function main(): Promise<void> {
       evolveRounds: values['evolve-rounds'] ? parseInt(values['evolve-rounds']) : undefined,
       projectDir: values['project-dir'],
       reproducibility: values.reproducibility,
+      rubricsDir: values['rubrics-dir'],
     });
     process.exit(0);
   }

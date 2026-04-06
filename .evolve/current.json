@@ -1,9 +1,10 @@
 {
-  "mode": "evolve",
-  "goal": "Closed-loop design audit system: audit → fix → re-audit with ±0.5 reproducibility and 2+ point evolve improvement",
-  "status": "in_progress",
-  "round": 1,
-  "generation": null,
-  "activePursuit": null,
-  "updatedAt": "2026-04-04T00:00:00Z"
+  "mode": "pursue",
+  "goal": "Actionable design audit output via ROI ranking (Gen 3)",
+  "status": "evaluated",
+  "round": null,
+  "generation": 3,
+  "activePursuit": ".evolve/pursuits/2026-04-06-design-audit-gen3.md",
+  "branch": "design-audit-gen2",
+  "updatedAt": "2026-04-06T00:00:00Z"
 }

@@ -1124,6 +1124,10 @@ Audit this page for design quality, UX issues, and visual bugs.`;
       const VALID_CATEGORIES = new Set(['visual-bug', 'layout', 'contrast', 'alignment', 'spacing', 'typography', 'accessibility', 'ux']);
       const VALID_SEVERITIES = new Set(['critical', 'major', 'minor']);
 
+      const VALID_BLAST = new Set(['page', 'section', 'component', 'system']);
+      const clampScore = (n: unknown): number | undefined =>
+        typeof n === 'number' ? Math.max(1, Math.min(10, n)) : undefined;
+
       const findings: DesignFinding[] = Array.isArray(parsed.findings)
         ? parsed.findings.map((f: Record<string, unknown>) => ({
             category: (VALID_CATEGORIES.has(f.category as string) ? f.category : 'ux') as DesignFinding['category'],
@@ -1133,6 +1137,12 @@ Audit this page for design quality, UX issues, and visual bugs.`;
             suggestion: String(f.suggestion ?? ''),
             ...(f.cssSelector ? { cssSelector: String(f.cssSelector) } : {}),
             ...(f.cssFix ? { cssFix: String(f.cssFix) } : {}),
+            // Gen 3 ROI fields
+            ...(clampScore(f.impact) !== undefined ? { impact: clampScore(f.impact) } : {}),
+            ...(clampScore(f.effort) !== undefined ? { effort: clampScore(f.effort) } : {}),
+            ...(VALID_BLAST.has(f.blast as string)
+              ? { blast: f.blast as DesignFinding['blast'] }
+              : {}),
           }))
         : [];
 

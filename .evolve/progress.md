@@ -1,27 +1,41 @@
-# Evolve Progress — Design Audit Closed-Loop System
+# Evolve Progress — Design Audit
 
-## Round 1 — 2026-04-04
+Branch: `design-audit-gen2` (carries both Gen 2 and Gen 3 changes)
 
-### Completed
-1. Added `vibecoded` audit profile targeting AI-generated/template apps
-2. Upgraded audit prompt from ~40 lines to ~120 lines with 8 weighted evaluation areas, pixel-level specificity requirements, CSS fix generation
-3. Extended DesignFinding type with `cssSelector` and `cssFix` fields
-4. Added `DesignSystemScore` type with 8-dimension breakdown
-5. Built `--evolve` flag: closed-loop audit → CSS fix generation → inject → re-audit → compare
-6. Built `--reproducibility` flag: runs 3x, reports stddev, pass/fail at ±0.5
-7. Created benchmark corpus in `bench/design/corpus.json` with 5 tiers (world-class, good, average, vibecoded, defi)
-8. Created benchmark runner `bench/design/run-design-bench.ts` with calibration validation
-9. All gates pass: build, boundaries, 635 tests
+## Generation 3 — 2026-04-06
 
-### Remaining
-- Run baseline calibration against corpus to verify scoring ranges
-- Test evolve loop end-to-end on a real site
-- Tune prompts based on calibration results
-- Add more vibecoded test sites once we have real examples
+Pursuit: `.evolve/pursuits/2026-04-06-design-audit-gen3.md`
 
-### Architecture
-- `src/cli-design-audit.ts` — main CLI handler, profiles, evolve loop, reproducibility
-- `src/brain/index.ts:auditDesign()` — LLM evaluation with CSS fix parsing
-- `src/types.ts` — DesignFinding, DesignSystemScore, DesignEvolveResult
-- `bench/design/corpus.json` — reference sites with expected score ranges
-- `bench/design/run-design-bench.ts` — benchmark runner
+### Shipped
+1. ROI scoring on findings — impact, effort, blast, computed roi
+2. Cross-page systemic detection — findings on 2+ pages collapse into 1 with blast=system
+3. CDP-based axe injection (3-tier fallback for CSP-strict pages)
+4. Dynamic per-fragment dimensions — fragments declare custom dimensions, LLM scores them
+5. Top Fixes report section — opens every report with ROI-sorted top 5
+6. JSON output exposes `topFixes`
+7. 28 new unit tests (24 ROI + 4 dimensions)
+
+### Calibration (3 generations)
+| Site | Gen 1 | Gen 2 | Gen 3 |
+|------|-------|-------|-------|
+| Stripe | 9 | 9 | 9 |
+| Apple | 9 | 9 | 9 |
+| Linear | 9 | 9 | 9 |
+| Anthropic | 8 | 8 | 8 |
+| Airbnb | 8 | 8 | 8 |
+
+5/5 preserved across all 3 generations. Gen 3 adds top-fixes ROI ranking,
+dynamic dimensions (Stripe gets `trust-signals`, Airbnb gets `conversion`),
+and live cross-page systemic detection (verified on 3-page Stripe audit).
+
+### Architecture additions (Gen 3)
+- `src/design/audit/roi.ts` — pure-function ROI scoring + cross-page detection (167 lines)
+- `tests/design-audit-roi.test.ts` — 24 unit tests
+- Extended `RubricFragment.dimension`, `ComposedRubric.dimensions`
+- Extended `DesignFinding` with impact/effort/blast/roi/pageCount
+- Extended `measure/a11y.ts` with CSP-bypass injection ladder
+
+### Next generation seeds (Gen 4)
+- 3-turn pipeline (separate ranking call)
+- Reference library with embedded fingerprints
+- Live evolve loop validation against a real vibecoded app
