@@ -55,8 +55,8 @@ bad design-audit [options]
 |------|---------|-------------|
 | `--profile <name>` | `general` | Audit profile: general, saas, marketing, defi, vibecoded |
 | `--pages <n>` | `5` | Max pages to discover and audit via link crawling |
-| `--model <model>` | `gpt-5.4` | LLM model for vision analysis |
-| `--provider <name>` | `openai` | LLM provider: openai, anthropic |
+| `--model <model>` | `sonnet` | LLM model for vision analysis |
+| `--provider <name>` | `claude-code` | LLM provider: claude-code, openai, anthropic |
 | `--json` | false | Also output machine-readable `report.json` |
 | `--headless` | true | Run browser headlessly |
 | `--viewport <WxH>` | `1440x900` | Viewport size |
@@ -322,7 +322,7 @@ Round 3: Converged (delta < 0.1)
 | Custom | Your command + prompt as last arg | Any CLI that takes a prompt |
 
 **Requirements:**
-- `--project-dir` is mandatory — the agent needs to know where source files are
+- `--project-dir` defaults to cwd — set it if running from a different directory
 - The dev server must be running with hot reload (Vite, Next.js dev, etc.)
 - The agent CLI must be installed and authenticated
 - 5-minute timeout per agent round
@@ -505,14 +505,15 @@ pnpm tsx bench/design/run-design-bench.ts --tier average --evolve
 
 ## Cost
 
-Each page audit costs one LLM vision call (~5-10k tokens). Typical costs:
+Default provider is `claude-code` — uses your Claude Code subscription (no per-call API cost).
+With `--provider openai` or `--provider anthropic`, each page audit costs one LLM vision call (~5-10k tokens).
 
-| Operation | Pages | LLM Calls | Approx Cost (gpt-5.4) |
-|-----------|-------|-----------|----------------------|
-| Single page audit | 1 | 1 | ~$0.15 |
-| 5-page crawl | 5 | 5 | ~$0.75 |
-| Evolve (3 rounds, 1 page) | 1 | 4-7 | ~$1.00 |
-| Reproducibility (3 runs, 1 page) | 1 | 3 | ~$0.45 |
-| Token extraction | 1 | 0 | $0.00 |
-| Design compare | 2 | 0 | $0.00 |
-| Site rip | N | 0 | $0.00 |
+| Operation | Pages | LLM Calls | Cost (claude-code) | Cost (openai gpt-5.4) |
+|-----------|-------|-----------|--------------------|-----------------------|
+| Single page audit | 1 | 1 | subscription | ~$0.15 |
+| 5-page crawl | 5 | 5 | subscription | ~$0.75 |
+| Evolve (3 rounds, 1 page) | 1 | 4-7 | subscription | ~$1.00 |
+| Reproducibility (3 runs, 1 page) | 1 | 3 | subscription | ~$0.45 |
+| Token extraction | 1 | 0 | free | free |
+| Design compare | 2 | 0 | free | free |
+| Site rip | N | 0 | free | free |

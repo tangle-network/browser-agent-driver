@@ -7,7 +7,7 @@
 
 import * as fs from 'node:fs'
 import * as path from 'node:path'
-import { execSync, type SpawnSyncReturns } from 'node:child_process'
+import { execSync } from 'node:child_process'
 import chalk from 'chalk'
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright'
 import { Brain } from './brain/index.js'
@@ -432,7 +432,7 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
   }
 
   const maxPages = opts.pages ?? 5
-  const provider = (opts.provider ?? 'openai') as SupportedProvider
+  const provider = (opts.provider ?? 'claude-code') as SupportedProvider
   const modelName = resolveProviderModelName(provider, opts.model)
   const apiKey = opts.apiKey ?? resolveProviderApiKey(provider)
 
