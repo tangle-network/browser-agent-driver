@@ -124,10 +124,38 @@ Each turn: observe page (a11y tree + optional screenshot) → LLM decides action
 
 Recovery is automatic: cookie consent, modal blockers, stuck loops (A-B-A-B oscillation), and selector failures are handled before the agent continues.
 
+## Design Audit
+
+`bad design-audit` is a vision-powered design quality analyzer with a closed-loop improvement mode. It auto-classifies the page, runs ground-truth measurements (axe-core + WCAG contrast math), then evaluates visual quality with a composable rubric — and ranks the top fixes by ROI.
+
+```bash
+# Audit any URL — auto-classifies, no profile needed
+bad design-audit --url https://your-app.com
+
+# Multi-page crawl with cross-page systemic detection
+bad design-audit --url https://your-app.com --pages 10
+
+# Closed-loop fix: dispatch findings to a coding agent that edits source files
+bad design-audit --url http://localhost:3000 \
+  --evolve claude-code \
+  --project-dir ~/my-app
+
+# Other evolve modes: codex, opencode, css (browser injection), or any custom CLI
+bad design-audit --url http://localhost:3000 --evolve "aider --message"
+
+# Pure DOM token extraction (no LLM)
+bad design-audit --url https://your-app.com --extract-tokens
+```
+
+Reports open with **Top Fixes (by ROI)** — the 5 highest-leverage fixes ranked by `(impact × blast / effort)`. Findings appearing on multiple pages collapse into systemic findings. Verified end-to-end: a deliberately-bad fixture went 3.0 → 5.0 (+2.0) over 2 evolve rounds with claude-code rewriting actual source files.
+
+See [Design Audit Guide](./docs/guides/design-audit.md) for the full pipeline, custom rubric fragments, and starter-foundry integration.
+
 ## Guides
 
 - [Configuration Reference](./docs/guides/configuration.md) — all config options
 - [CLI Reference](./docs/guides/cli.md) — commands, modes, profiles, auth
+- [Design Audit](./docs/guides/design-audit.md) — vision-powered design quality + ROI-ranked closed-loop improvement
 - [Memory System](./docs/guides/memory.md) — trajectory store, app knowledge, selector cache
 - [Benchmarks & Experiments](./docs/guides/benchmarks.md) — tiered gates, AB specs, research cycles
 - [Wallet & EVM Apps](./docs/guides/wallet.md) — MetaMask, DeFi testing, RPC interception, Anvil forks
