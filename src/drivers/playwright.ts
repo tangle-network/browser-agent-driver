@@ -16,6 +16,7 @@ import { AriaSnapshotHelper, dismissOverlays } from './snapshot.js';
 import { ANALYTICS_PATTERNS, IMAGE_PATTERNS, MEDIA_PATTERNS } from './block-patterns.js';
 import { buildCdpSnapshot } from './cdp-snapshot.js';
 import { getPageMetadata } from './cdp-page-state.js';
+import { CURSOR_OVERLAY_INIT_SCRIPT, CURSOR_ANIMATION_MS } from './cursor-overlay.js';
 
 function isPointerInterceptError(error: string): boolean {
   return /intercepts pointer events|subtree intercepts pointer events|not receiving pointer events/i.test(error);
@@ -54,6 +55,13 @@ export interface PlaywrightDriverOptions {
   visionStrategy?: 'always' | 'never' | 'auto';
   /** Capture a screenshot every N turns for artifact storage (0 = disabled) */
   screenshotInterval?: number;
+  /**
+   * Inject a cursor + element-highlight overlay so screenshots show what bad
+   * is doing. Adds an animated cursor sprite that travels to click targets,
+   * pulse rings on click, and highlight boxes around the target element.
+   * Default: false. Enable for demo recordings, debugging, and the session viewer.
+   */
+  showCursor?: boolean;
 }
 
 export class PlaywrightDriver implements Driver {
@@ -62,11 +70,111 @@ export class PlaywrightDriver implements Driver {
   private cdpFailed = false;
   private lastTiming: ObserveTiming | undefined;
   private observeCount = 0;
+  private cursorInstalled = false;
 
   constructor(
     private page: Page,
     private options: PlaywrightDriverOptions = {}
-  ) {}
+  ) {
+    if (this.options.showCursor) {
+      // Install for the current page AND any future pages this context creates.
+      // We can't await in a constructor, so we fire-and-forget — the script
+      // is idempotent (guarded by __bad_overlay_installed) and races are safe.
+      this.installCursorOverlay().catch(() => { /* swallow — overlay is non-critical */ });
+    }
+  }
+
+  /**
+   * Inject the cursor overlay init script into the current page and into the
+   * browser context, so it survives navigations and applies to popups.
+   */
+  private async installCursorOverlay(): Promise<void> {
+    if (this.cursorInstalled) return;
+    this.cursorInstalled = true;
+    try {
+      // Context-level: applies to all current and future pages
+      await this.page.context().addInitScript({ content: CURSOR_OVERLAY_INIT_SCRIPT });
+      // Page-level: ensure the current page has it now (addInitScript is for new docs)
+      await this.page.evaluate(CURSOR_OVERLAY_INIT_SCRIPT).catch(() => { /* may already exist */ });
+    } catch {
+      // Strict CSP can block evaluate; init script via context still works on next nav
+    }
+  }
+
+  /**
+   * Animate the cursor to the target element + draw a highlight box, then
+   * pulse a click ring. No-op if showCursor is disabled. Returns the rect
+   * the overlay highlighted (for diagnostics).
+   */
+  private async animateCursorToSelector(
+    selector: string,
+    actionLabel: string,
+  ): Promise<void> {
+    if (!this.options.showCursor) return;
+    try {
+      // Resolve the @ref selector to a real CSS selector via the snapshot helper
+      const cssSelector = await this.page.evaluate(() => {
+        // The overlay accepts a CSS selector — if our @ref is opaque, we
+        // still need a way to reach the element. Fall back to using the
+        // currently-focused/active element via Playwright below.
+        return null;
+      }).catch(() => null);
+      void cssSelector;
+
+      // Use Playwright to compute the bounding box of the target locator.
+      // This is the most reliable cross-engine way.
+      const locator = this.snapshot.resolveLocator(this.page, selector);
+      const box = await locator.boundingBox({ timeout: 1000 }).catch(() => null);
+      if (!box) return;
+
+      const cx = box.x + box.width / 2;
+      const cy = box.y + box.height / 2;
+
+      // Drive the overlay via window.__bad_overlay
+      await this.page.evaluate(
+        ({ x, y, w, h, label }: { x: number; y: number; w: number; h: number; label: string }) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const ov = (window as any).__bad_overlay
+          if (!ov) return
+          // Highlight box at the element rect
+          ov.highlight = ov.highlight || (() => null)
+          // Manually set box position since highlight() expects a CSS selector
+          // Use moveTo + a synthetic rect: we know the rect, draw the box ourselves
+          const root = document.getElementById('__bad_overlay_root')
+          if (root) {
+            const children = root.children
+            // children[0] is the highlight box (per overlay assembly order)
+            const boxEl = children[0] as HTMLElement | undefined
+            if (boxEl) {
+              boxEl.style.width = w + 'px'
+              boxEl.style.height = h + 'px'
+              boxEl.style.transform = `translate(${x}px, ${y}px)`
+              boxEl.style.opacity = '1'
+            }
+          }
+          ov.moveTo(x + w / 2, y + h / 2, label)
+        },
+        { x: box.x, y: box.y, w: box.width, h: box.height, label: actionLabel },
+      ).catch(() => { /* CSP or page closed */ });
+
+      // Wait for the cursor animation to finish
+      await this.page.waitForTimeout(CURSOR_ANIMATION_MS);
+
+      // Pulse on click for click-like actions
+      if (actionLabel === 'click' || actionLabel === 'type' || actionLabel === 'press') {
+        await this.page.evaluate(
+          ({ x, y }: { x: number; y: number }) => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const ov = (window as any).__bad_overlay
+            if (ov) ov.pulseClick(x, y)
+          },
+          { x: cx, y: cy },
+        ).catch(() => { /* CSP */ });
+      }
+    } catch {
+      // Overlay is purely cosmetic — never let it break the action
+    }
+  }
 
   /** Get phase-level timing from the last observe() call */
   getLastTiming(): ObserveTiming | undefined {
@@ -362,6 +470,7 @@ export class PlaywrightDriver implements Driver {
         case 'click': {
           const locator = this.snapshot.resolveLocator(this.page, action.selector);
           const bounds = await this.captureBounds(locator);
+          await this.animateCursorToSelector(action.selector, 'click');
           // Listen for popups but don't block: collect any that fire during the click
           let popupPage: import('playwright').Page | null = null;
           const onPopup = (page: import('playwright').Page) => { popupPage = page; };
@@ -393,6 +502,7 @@ export class PlaywrightDriver implements Driver {
         case 'type': {
           const locator = this.snapshot.resolveLocator(this.page, action.selector);
           const bounds = await this.captureBounds(locator);
+          await this.animateCursorToSelector(action.selector, 'type');
           try {
             await this.withOverlayRecovery(async () => {
               await locator.click({ timeout });
@@ -418,6 +528,7 @@ export class PlaywrightDriver implements Driver {
         case 'press': {
           const locator = this.snapshot.resolveLocator(this.page, action.selector);
           const bounds = await this.captureBounds(locator);
+          await this.animateCursorToSelector(action.selector, 'press');
           await this.withOverlayRecovery(async () => {
             await locator.press(action.key, { timeout });
           });
@@ -427,6 +538,7 @@ export class PlaywrightDriver implements Driver {
         case 'hover': {
           const locator = this.snapshot.resolveLocator(this.page, action.selector);
           const bounds = await this.captureBounds(locator);
+          await this.animateCursorToSelector(action.selector, 'hover');
           await locator.hover({ timeout });
           return { success: true, bounds };
         }
@@ -434,6 +546,7 @@ export class PlaywrightDriver implements Driver {
         case 'select': {
           const locator = this.snapshot.resolveLocator(this.page, action.selector);
           const bounds = await this.captureBounds(locator);
+          await this.animateCursorToSelector(action.selector, 'select');
           await locator.selectOption(action.value, { timeout });
           return { success: true, bounds };
         }

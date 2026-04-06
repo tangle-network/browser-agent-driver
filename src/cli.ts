@@ -139,6 +139,11 @@ async function main(): Promise<void> {
       'project-dir': { type: 'string' },
       reproducibility: { type: 'boolean' },
       'rubrics-dir': { type: 'string' },
+      // bad view
+      port: { type: 'string' },
+      'no-open': { type: 'boolean' },
+      // bad run --show-cursor (overlay)
+      'show-cursor': { type: 'boolean' },
       // showcase
       script: { type: 'string' },
       capture: { type: 'string' },
@@ -217,6 +222,21 @@ async function main(): Promise<void> {
   }
 
   const command = positionals[0];
+
+  if (command === 'view') {
+    const runDir = positionals[1];
+    if (!runDir) {
+      cliError('usage: bad view <run-directory>');
+      process.exit(1);
+    }
+    const { runView } = await import('./cli-view.js');
+    await runView({
+      runDir,
+      port: values.port ? parseInt(values.port) : undefined,
+      noOpen: values['no-open'],
+    });
+    return;
+  }
 
   if (command === 'design-audit') {
     if (!values.url) {
