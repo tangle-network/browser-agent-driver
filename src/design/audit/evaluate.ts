@@ -163,47 +163,119 @@ ${allDimensions.map(d => `- ${d}`).join('\n')}`
 }
 
 /**
- * Convert deterministic measurements into findings ready to merge with LLM output.
+ * Convert deterministic measurements into findings.
  *
- * Each measurement-derived finding gets sensible impact/effort/blast defaults
- * so it participates in ROI ranking alongside visual findings.
+ * Both contrast and a11y measurements are GROUPED before becoming findings:
+ *   - Contrast: grouped by (color, background) pair → one finding per token
+ *     mismatch, with affected element count. A site with 47 elements using
+ *     the same failing gray gets ONE finding ("change --color-text-muted"),
+ *     not 47 spammy entries.
+ *   - axe: grouped by rule id → one finding per rule, with N affected nodes.
+ *
+ * Grouping has two big effects:
+ *   1. Top Fixes by ROI surfaces real systemic issues, not 5 copies of the same one.
+ *   2. blast scales with how many elements are affected — a contrast pair on
+ *      47 elements is `system`; a one-off is `page`.
  */
 export function measurementsToFindings(measurements: MeasurementBundle): DesignFinding[] {
   const findings: DesignFinding[] = []
 
-  // Contrast — one finding per failing element, capped to top 10
-  for (const f of measurements.contrast.aaFailures.slice(0, 10)) {
-    const targetRatio = f.required.toFixed(1)
-    const isCritical = f.ratio < f.required - 1.5
+  // ── Contrast: group by (normalizedColor|normalizedBackground) ──
+  const contrastGroups = new Map<
+    string,
+    {
+      color: string
+      background: string
+      ratio: number
+      required: number
+      selectors: string[]
+      sampleText: string
+      isCritical: boolean
+    }
+  >()
+
+  for (const f of measurements.contrast.aaFailures) {
+    const key = `${f.color}|${f.background}`
+    const existing = contrastGroups.get(key)
+    if (existing) {
+      existing.selectors.push(f.selector)
+      // Track the worst (lowest) ratio in the group
+      if (f.ratio < existing.ratio) existing.ratio = f.ratio
+      if (f.ratio < f.required - 1.5) existing.isCritical = true
+    } else {
+      contrastGroups.set(key, {
+        color: f.color,
+        background: f.background,
+        ratio: f.ratio,
+        required: f.required,
+        selectors: [f.selector],
+        sampleText: f.text,
+        isCritical: f.ratio < f.required - 1.5,
+      })
+    }
+  }
+
+  // Convert each group to a single finding. Cap to top 10 groups by element count.
+  const sortedGroups = [...contrastGroups.values()].sort(
+    (a, b) => b.selectors.length - a.selectors.length,
+  )
+  for (const g of sortedGroups.slice(0, 10)) {
+    const count = g.selectors.length
+    const target = g.required.toFixed(1)
+    // Blast scales with how many elements use this color pair
+    const blast: DesignFinding['blast'] =
+      count >= 5 ? 'system' : count >= 2 ? 'component' : 'page'
     findings.push({
       category: 'contrast',
-      severity: isCritical ? 'critical' : 'major',
-      description: `Text color ${f.color} on background ${f.background} has contrast ratio ${f.ratio}:1, fails WCAG AA (required: ${targetRatio}:1)`,
-      location: `${f.selector} — "${f.text}"`,
-      suggestion: `Increase contrast to at least ${targetRatio}:1. Try darkening the text color or lightening the background.`,
-      cssSelector: f.selector,
-      cssFix: `/* WCAG AA failure: ${f.ratio}:1 → need ${targetRatio}:1 */`,
-      // Contrast fixes are usually a single token change with system-wide blast
-      impact: isCritical ? 9 : 7,
+      severity: g.isCritical ? 'critical' : 'major',
+      description:
+        count > 1
+          ? `Text color ${g.color} on background ${g.background} fails WCAG AA on ${count} elements (worst ratio ${g.ratio}:1, need ${target}:1)`
+          : `Text color ${g.color} on background ${g.background} has contrast ratio ${g.ratio}:1, fails WCAG AA (need ${target}:1)`,
+      location:
+        count > 1
+          ? `${count} elements (e.g. ${g.selectors[0]})`
+          : `${g.selectors[0]} — "${g.sampleText}"`,
+      suggestion:
+        count > 1
+          ? `Change the shared color token. ${count} elements use this pairing — fix once, all benefit. Increase contrast to at least ${target}:1.`
+          : `Increase contrast to at least ${target}:1. Darken the text color or lighten the background.`,
+      cssSelector: g.selectors[0],
+      cssFix: `/* ${count} element${count !== 1 ? 's' : ''} affected: ${g.ratio}:1 → need ${target}:1 */`,
+      impact: g.isCritical ? 9 : 7,
       effort: 1,
-      blast: 'system',
+      blast,
     })
   }
 
-  // Accessibility — one finding per axe violation, capped to top 15
+  // ── Accessibility: group by axe rule id ──
+  // axe already returns one violation per rule (with multiple nodes), so the
+  // grouping is mostly about reframing the description to surface the count.
   for (const v of measurements.a11y.violations.slice(0, 15)) {
+    const nodeCount = v.nodes.length
     const firstNode = v.nodes[0]
+    const blast: DesignFinding['blast'] =
+      nodeCount >= 5 ? 'system' : nodeCount >= 2 ? 'component' : 'page'
     findings.push({
       category: 'accessibility',
       severity: impactToSeverity(v.impact),
-      description: `[axe: ${v.id}] ${v.description}`,
-      location: firstNode ? firstNode.selector : 'page',
-      suggestion: firstNode?.failureSummary || `See ${v.helpUrl}`,
+      description:
+        nodeCount > 1
+          ? `[axe: ${v.id}] ${v.description} (${nodeCount} affected elements)`
+          : `[axe: ${v.id}] ${v.description}`,
+      location: firstNode
+        ? nodeCount > 1
+          ? `${nodeCount} elements (e.g. ${firstNode.selector})`
+          : firstNode.selector
+        : 'page',
+      suggestion:
+        nodeCount > 1
+          ? `${firstNode?.failureSummary ?? 'Fix all affected elements.'} ${nodeCount} elements affected — likely a shared component bug.`
+          : firstNode?.failureSummary || `See ${v.helpUrl}`,
       ...(firstNode ? { cssSelector: firstNode.selector } : {}),
-      // axe violations: high impact, moderate effort, component-level blast by default
       impact: v.impact === 'critical' ? 9 : v.impact === 'serious' ? 7 : v.impact === 'moderate' ? 5 : 3,
       effort: 3,
-      blast: 'component',
+      blast,
     })
   }
 

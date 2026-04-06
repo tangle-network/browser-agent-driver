@@ -73,6 +73,7 @@ bad design-audit [options]
 | `--evolve <mode>` | Closed-loop fix: `css` (inject into browser), `claude-code`, `codex`, `opencode`, or custom command. |
 | `--evolve-rounds <n>` | Max fix-reaudit cycles (default: 3). |
 | `--project-dir <path>` | Source directory for agent to edit (defaults to cwd). |
+| `--rubrics-dir <path>` | User-supplied rubric fragments directory (overlays builtins). |
 | `--reproducibility` | Run 3x, report score variance. Target: +/-0.5 stddev. |
 
 ## Output
@@ -90,19 +91,56 @@ audit-results/<hostname>-<timestamp>/
 
 ### Report Structure
 
-Each page gets:
+Reports open with the **Top Fixes** section — the 5 highest-ROI findings to fix first — then per-page detail.
 
-1. **Score** (1-10) with calibration bar
-2. **Summary** — one-sentence assessment
-3. **Strengths** — evidence-based positives
-4. **Design System Breakdown** — 8 dimensions scored individually:
-   - Layout, Typography, Color, Spacing, Components, Interactions, Accessibility, Polish
-5. **Findings table** — each with:
-   - Severity (critical/major/minor)
-   - Category (layout/typography/spacing/contrast/etc.)
-   - Description with measured values
-   - Location with CSS selector
-   - Suggestion with concrete CSS fix
+1. **Top Fixes (by ROI)** — 5 highest-impact fixes across all audited pages
+   - ROI score (impact × blast / effort)
+   - Severity, location, suggested fix, CSS
+   - Marked `[appears on N pages]` and `_(SYSTEMIC)_` when cross-page detection finds duplicates
+2. Per page:
+   - **Score** (1-10) with calibration bar
+   - **Auto-classification** — type, domain, maturity (the page wasn't told what it is — the audit figured it out)
+   - **Summary** — one-sentence assessment
+   - **Strengths** — evidence-based positives
+   - **Design System Breakdown** — 8 universal dimensions (layout, typography, color, spacing, components, interactions, accessibility, polish) plus any custom dimensions contributed by domain/type rubrics (e.g. `trust-signals` for fintech, `conversion` for ecommerce, `readability` for docs)
+   - **Findings table** — each with severity, category, description, location, CSS fix, ROI
+
+## How the audit works
+
+`bad design-audit` runs a 3-stage pipeline per page:
+
+1. **Classify** — single LLM call decides type / domain / framework / design system / maturity
+2. **Measure** — deterministic, in-page:
+   - WCAG 2.1 contrast ratios for every visible text element (pure JS, no LLM)
+   - axe-core a11y violations (industry-standard rule engine)
+3. **Evaluate** — LLM vision call sees the screenshot + a rubric composed from markdown fragments matching the classification, plus a summary of what the deterministic measurements already found. LLM produces visual findings only — it's forbidden from inventing contrast or a11y findings (those come from the measurements).
+
+The rubric system is composable: drop a markdown file in `~/.bad/rubrics/` (or pass `--rubrics-dir`) to add a domain-specific evaluation criteria without touching code.
+
+### Top Fixes & ROI ranking
+
+Every finding gets four scoring fields:
+- `impact` (1-10) — how much this hurts the user experience
+- `effort` (1-10) — how hard the fix is (1 = single CSS value, 10 = redesign)
+- `blast` — scope of the fix's effect (`page` / `section` / `component` / `system`)
+- `roi` — computed: `(impact × blastWeight) / effort`. Higher = fix this first.
+
+Blast weights: `page=1, section=1.25, component=1.75, system=2.5`. A token-level fix touching every page beats a one-off page tweak by ~2.5×.
+
+The Top Fixes section sorts by ROI so a developer knows exactly which 5 fixes to tackle first.
+
+### Cross-page systemic detection
+
+When auditing multiple pages, the audit looks for findings that appear on 2+ pages (matched by category + normalized description). Duplicates collapse into a single canonical finding marked `[appears on N pages]` with `blast: system`. ROI is recomputed with the boosted blast, so a one-line component fix that improves 5 pages floats to the top.
+
+### Measurement grouping
+
+Contrast and a11y measurements are grouped before becoming findings:
+
+- **Contrast** is grouped by `(color, background)` pair. A site with 47 elements using the same failing gray gets ONE finding ("change `--text-muted`, affects 47 elements") instead of 47 spammy entries. Blast scales with element count: ≥5 elements = system, 2-4 = component, 1 = page.
+- **axe** is grouped by rule id. A site with 8 buttons missing accessible names gets ONE `button-name` finding with a node count, not 8.
+
+This dramatically improves the signal-to-noise ratio in the report.
 
 ## Design Token Extraction
 

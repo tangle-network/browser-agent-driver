@@ -25,8 +25,9 @@ describe('measurementsToFindings', () => {
     expect(measurementsToFindings(emptyBundle())).toEqual([])
   })
 
-  it('produces a contrast finding for each AA failure (capped at 10)', () => {
+  it('groups contrast failures with the same color pair into one finding', () => {
     const bundle = emptyBundle()
+    // 15 elements with the SAME color pair → should collapse to 1 finding
     for (let i = 0; i < 15; i++) {
       bundle.contrast.aaFailures.push({
         selector: `.text-${i}`,
@@ -41,11 +42,48 @@ describe('measurementsToFindings', () => {
     }
     const findings = measurementsToFindings(bundle)
     const contrastFindings = findings.filter(f => f.category === 'contrast')
-    expect(contrastFindings).toHaveLength(10)
-    // First failure references the actual ratio
+    expect(contrastFindings).toHaveLength(1)
+    expect(contrastFindings[0].description).toContain('15 elements')
     expect(contrastFindings[0].description).toContain('2.5:1')
     expect(contrastFindings[0].description).toContain('4.5:1')
-    expect(contrastFindings[0].cssSelector).toBe('.text-0')
+    // 15 elements → blast=system
+    expect(contrastFindings[0].blast).toBe('system')
+  })
+
+  it('caps contrast groups to top 10 by element count', () => {
+    const bundle = emptyBundle()
+    // 12 distinct color pairs → 12 groups, capped to 10
+    for (let pair = 0; pair < 12; pair++) {
+      bundle.contrast.aaFailures.push({
+        selector: `.pair-${pair}`,
+        text: `text`,
+        color: `#11111${pair.toString(16)}`,
+        background: '#ffffff',
+        ratio: 2.5,
+        required: 4.5,
+        fontSize: 14,
+        isLargeText: false,
+      })
+    }
+    const findings = measurementsToFindings(bundle)
+    expect(findings.filter(f => f.category === 'contrast')).toHaveLength(10)
+  })
+
+  it('keeps single-element contrast failures as page-blast findings', () => {
+    const bundle = emptyBundle()
+    bundle.contrast.aaFailures.push({
+      selector: '.lonely',
+      text: 'only',
+      color: '#777777',
+      background: '#ffffff',
+      ratio: 3.5,
+      required: 4.5,
+      fontSize: 14,
+      isLargeText: false,
+    })
+    const findings = measurementsToFindings(bundle)
+    expect(findings).toHaveLength(1)
+    expect(findings[0].blast).toBe('page')
   })
 
   it('marks contrast failures as critical when ratio is more than 1.5 below required', () => {
@@ -104,7 +142,7 @@ describe('measurementsToFindings', () => {
     expect(a11yFindings[0].description).toContain('rule-0')
   })
 
-  it('preserves selector and points to first node', () => {
+  it('a11y findings reference the first node selector and surface the affected count', () => {
     const bundle = emptyBundle()
     bundle.a11y.violations.push({
       id: 'color-contrast',
@@ -119,7 +157,11 @@ describe('measurementsToFindings', () => {
     })
     const findings = measurementsToFindings(bundle)
     expect(findings[0].cssSelector).toBe('p.muted')
-    expect(findings[0].location).toBe('p.muted')
+    // 2 nodes → location surfaces the count
+    expect(findings[0].location).toContain('2 elements')
+    expect(findings[0].location).toContain('p.muted')
+    // 2 nodes → blast=component
+    expect(findings[0].blast).toBe('component')
   })
 
   it('merges contrast findings before a11y findings', () => {

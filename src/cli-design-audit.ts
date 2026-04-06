@@ -21,233 +21,6 @@ import type { PageAuditResult as Gen2PageAuditResult } from './design/audit/type
 import { detectSystemicFindings, topByRoi } from './design/audit/roi.js'
 
 // ---------------------------------------------------------------------------
-// Legacy Gen 1 profile rubrics — kept for `--gen 1` fallback only.
-// New rubrics live in src/design/audit/rubric/fragments/ as markdown.
-// ---------------------------------------------------------------------------
-
-const PROFILE_RUBRICS: Record<string, string> = {
-  general: `
-CALIBRATION — be ruthlessly honest:
-- 9-10: Only world-class design (Linear, Stripe, Vercel). Exceptional typography, spacing, micro-interactions.
-- 7-8: Professional and polished. Minor inconsistencies tolerated if the overall system is coherent.
-- 5-6: Functional but clearly lacks design investment. Default component libraries with no customization.
-- 3-4: Noticeably broken or amateurish. Inconsistent spacing, clashing colors, poor hierarchy.
-- 1-2: Unusable or visually broken. Overlapping elements, unreadable text, broken layouts.
-
-Most production apps score 5-7. Very few deserve 8+. Do NOT grade on a curve.`,
-
-  saas: `
-SaaS APPLICATION AUDIT — evaluate as a paying customer would:
-- Information density: is data presented efficiently without clutter?
-- Navigation: can I find features in <3 clicks? Is the sidebar/nav intuitive?
-- Empty states: what happens with no data? Are there helpful onboarding prompts?
-- Loading states: are there skeleton screens or spinners, or does content pop in?
-- Form design: inline validation? Clear labels? Logical tab order?
-- Dashboard layout: is the most important data prominent? Card hierarchy clear?
-- Error states: are errors actionable with clear recovery paths?
-- Consistency: do buttons, inputs, modals follow the same patterns throughout?
-
-CALIBRATION: Linear, Notion, Figma = 9. Generic admin templates = 5. Broken CRUD apps = 3.`,
-
-  defi: `
-DeFi/CRYPTO APPLICATION AUDIT — evaluate as a trader managing real money:
-- Trust signals: does the UI feel safe to connect a wallet to? Professional or sketchy?
-- Token displays: are balances formatted correctly? Right decimal places? USD equivalents?
-- Transaction clarity: is it clear what you're signing? Amount, fees, slippage shown?
-- Loading states: RPC calls are slow — are there proper loading indicators for balances, quotes, gas estimates?
-- Mobile responsiveness: most DeFi usage is mobile — does it work on small viewports?
-- Dark mode: most DeFi apps use dark mode — is contrast sufficient? Are borders visible?
-- Error handling: what happens when RPC fails? Wallet rejects? Insufficient balance?
-- Swap UX: is token selection intuitive? Can you paste addresses? Is the price impact shown?
-- Wallet connection: is the connect flow smooth? Are supported wallets clearly shown?
-- Gas/fee transparency: are gas estimates shown before confirmation?
-
-CALIBRATION: Uniswap v4, Aave v3 = 8. Average DEX = 5. Rug-pull-looking sites = 2.
-Uniswap is good but not perfect — dense token lists, some spacing issues, swap review could be clearer.`,
-
-  marketing: `
-MARKETING/LANDING PAGE AUDIT — evaluate as a potential customer deciding in 10 seconds:
-- Hero clarity: in 5 seconds, can I tell what this product does and who it's for?
-- Visual hierarchy: does the eye flow naturally from headline → subtext → CTA?
-- CTA prominence: is the primary call-to-action obvious and compelling?
-- Social proof: are testimonials, logos, or metrics shown convincingly?
-- Typography: is the headline typography impactful? Body text readable?
-- Imagery: are images/illustrations high quality and relevant, or stock photo generic?
-- Whitespace: does the page breathe, or is it cramped?
-- Mobile: does the hero and CTA work on mobile without scrolling?
-- Performance perception: does it feel fast? Are images optimized? No layout shift?
-- Footer: is navigation complete? Legal links present?
-
-CALIBRATION: Stripe, Linear, Vercel = 9. Average startup landing page = 5. Template sites = 3.`,
-
-  vibecoded: `
-VIBECODED / AI-GENERATED APP AUDIT — evaluate as a design-literate user who can smell defaults:
-
-TEMPLATE DETECTION (the #1 sin of vibecoded apps):
-- Is this clearly an unmodified shadcn/ui, MUI, Ant Design, or Chakra template? Score ceiling: 4 if yes.
-- Default border-radius (6-8px shadcn, 4px MUI), default color palette (zinc/slate grays, blue-600 primary)?
-- Default component spacing with no customization? Standard card shadows? Stock empty states?
-- "Looks like every other AI-generated app" = automatic 3-4 score.
-
-HIERARCHY & INFORMATION ARCHITECTURE:
-- Is everything the same visual weight? (Common AI pattern: all cards same size, no primary/secondary distinction)
-- Is there clear information hierarchy? Primary action vs secondary vs tertiary?
-- Does the layout have purpose or is it "centered column of cards" (the AI default)?
-- Navigation: is it a dumped list of features or thoughtfully organized?
-
-DESIGN SYSTEM COHERENCE:
-- Are there more than 3 distinct border-radius values? (Incoherent)
-- Color palette: intentional and limited (4-6 colors) or random accumulation?
-- Spacing: consistent rhythm on an 8px grid, or arbitrary per-component?
-- Typography: deliberate scale with 3-4 sizes, or every component picking its own?
-- Are interactive states (hover, focus, active, disabled) designed or browser-default?
-
-CRAFT SIGNALS (what separates 7 from 9):
-- Custom icons or generic Lucide/Heroicons dump?
-- Micro-interactions: button press feedback, page transitions, loading skeletons?
-- Empty states: designed illustrations or "No data found" text?
-- Error states: helpful messages with recovery actions or raw error strings?
-- Dark mode (if present): properly designed or just "invert colors"?
-- Content-first: does real content drive the layout, or is it a container waiting for content?
-
-AGENTIC APP SPECIFICS:
-- Agent status indicators: is it clear what the agent is doing? Progress feedback?
-- Streaming/loading: smooth token streaming or janky text replacement?
-- Conversation UI: proper message bubbles with timestamps, or plain text dump?
-- Tool call visualization: can the user see what tools the agent used?
-- Error recovery: when the agent fails, is there a clear retry/edit path?
-
-CALIBRATION:
-- 9-10: Custom design system, thoughtful hierarchy, polished interactions (Linear, Cursor, v0.dev)
-- 7-8: Modified template with intentional design decisions, consistent system
-- 5-6: Lightly customized template, functional but generic (most AI-generated apps)
-- 3-4: Unmodified component library, no design investment, "it works" energy
-- 1-2: Broken layout, clashing styles, unusable
-
-Most vibecoded apps score 3-5. The ceiling for unmodified templates is 4 regardless of functionality.`,
-}
-
-// ---------------------------------------------------------------------------
-// Upgraded system prompt — much more opinionated than the original
-// ---------------------------------------------------------------------------
-
-function buildAuditPrompt(profile: string): string {
-  const rubric = PROFILE_RUBRICS[profile] || PROFILE_RUBRICS.general
-  return `You are a principal design engineer who has shipped design systems at Linear, Stripe, and Vercel. You review with the precision of a typographer and the ruthlessness of a design director. You have built and maintained production design systems used by millions.
-
-Your job: perform an exhaustive visual design audit of this page. You must be specific enough that a developer could fix every issue from your report alone — reference exact elements, computed values, pixel measurements, and CSS properties.
-
-EVALUATION FRAMEWORK (score each area 1-10, then weight into overall):
-
-1. LAYOUT & GRID (weight: 15%)
-   - Is there a consistent grid system? What grid unit? (4px, 8px, etc.)
-   - Column alignment: do content blocks align to the same left/right edges?
-   - Content width: is max-width appropriate? (prose: 65-75ch, app: fluid with sidebar)
-   - Responsive: does the layout reflow intentionally or just shrink?
-   - Z-index layering: any stacking context issues? Overlapping elements?
-   - Check for: orphaned elements floating outside the grid, inconsistent container padding
-
-2. TYPOGRAPHY SYSTEM (weight: 15%)
-   - Type scale: is there a clear hierarchy? Count distinct font-size values — more than 5-6 suggests no scale.
-   - Line height: body text should be 1.4-1.6, headings 1.1-1.3. Flag violations.
-   - Letter spacing: headings often need negative (-0.01 to -0.03em). Is it tuned?
-   - Font pairing: max 2 families (heading + body). Flag 3+.
-   - Text rendering: are long paragraphs wider than 75ch? That harms readability.
-   - Orphans/widows: any single-word last lines in headings?
-   - Font loading: is there FOUT/FOIT? Font-display strategy?
-
-3. COLOR & CONTRAST (weight: 15%)
-   - WCAG AA compliance: normal text needs 4.5:1, large text (18px+/14px+ bold) needs 3:1. ESTIMATE ratios.
-   - Palette size: count distinct hues. More than 5-6 non-neutral hues = incoherent.
-   - Semantic color usage: is the primary color used consistently for primary actions?
-   - Background layering: do nested surfaces have clear elevation (bg-0, bg-1, bg-2)?
-   - Gray scale: are grays consistent? All blue-gray, or mixed warm/cool? Mixed = incoherent.
-   - Accent usage: are accent colors used sparingly or splashed everywhere?
-
-4. SPACING & RHYTHM (weight: 15%)
-   - Grid adherence: what % of spacing values are multiples of the base unit?
-   - Vertical rhythm: are section gaps consistent? Measure gap between each major section.
-   - Component internal spacing: is padding consistent within similar components (all cards, all inputs)?
-   - Whitespace ratio: is there enough breathing room, or is everything cramped?
-   - Margin collapse issues: any unintended spacing from margin collapse?
-
-5. COMPONENT CONSISTENCY (weight: 15%)
-   - Button variants: how many distinct button styles? Are they intentional variants or accidents?
-   - Input styling: are all form inputs styled consistently? Border, focus ring, label position?
-   - Card patterns: same border-radius, shadow, padding across all cards?
-   - Icon system: consistent size (16/20/24px), stroke width, and style?
-   - Border radius: count distinct values. More than 3 (e.g., 4px, 8px, full) = incoherent.
-   - Shadow system: consistent elevation scale or random drop shadows?
-
-6. INTERACTION DESIGN (weight: 10%)
-   - Hover states: do interactive elements have visible hover feedback?
-   - Focus indicators: are there visible focus rings for keyboard navigation?
-   - Active/pressed states: button feedback on click?
-   - Transitions: are they present? Consistent duration (150-300ms)? Appropriate easing?
-   - Loading states: skeleton screens, spinners, or no loading feedback at all?
-   - Cursor changes: does cursor change to pointer on clickable elements?
-
-7. ACCESSIBILITY (weight: 10%)
-   - Semantic HTML: are headings in order (h1 → h2 → h3)? Are buttons actually <button>?
-   - ARIA labels: do icon-only buttons have labels? Do images have alt text?
-   - Keyboard navigation: can you tell what's focused? Is tab order logical?
-   - Touch targets: are mobile tap targets at least 44x44px?
-   - Screen reader: is content structured so screen reader users get meaningful navigation?
-
-8. VISUAL POLISH (weight: 5%)
-   - Pixel precision: any elements off by 1px? Misaligned text baselines?
-   - Image quality: are images sharp on retina displays (2x resolution)?
-   - Icon consistency: all from the same set, or a mix of styles/weights?
-   - Empty states: designed or raw "no data" text?
-   - Error states: styled or browser-default?
-   - Favicon and meta: present and professional?
-
-${rubric}
-
-SPECIFICITY REQUIREMENTS — your findings must be THIS specific:
-- BAD: "Spacing is inconsistent" (vague, useless)
-- GOOD: "Section gap between hero and features is 48px, but features-to-pricing is 24px and pricing-to-footer is 64px. Use consistent 48px or 64px vertical rhythm throughout."
-- BAD: "Colors don't look right" (vague)
-- GOOD: "Body text (#6b7280) on white background has ~4.6:1 contrast ratio (barely passes AA). The same gray on the light-gray card background (#f9fafb) drops to ~3.8:1 — fails AA for normal text. Darken body text to #4b5563 (7:1+)."
-- BAD: "Typography needs work" (vague)
-- GOOD: "6 distinct font sizes detected (12, 13, 14, 16, 20, 32px) with no clear scale. Consolidate to a 4-step scale: 14px body, 16px large, 24px h2, 36px h1. Current h2 at 20px lacks sufficient contrast with 16px body text."
-
-For EACH finding, you MUST include a concrete CSS fix in the suggestion field. Not "improve spacing" but "gap: 48px" or "font-size: 14px; line-height: 1.5".
-
-RESPOND WITH ONLY a JSON object:
-{
-  "score": 6,
-  "summary": "One-sentence overall assessment with the key design system failure mode",
-  "strengths": ["Specific thing done well with evidence", "Another measured strength"],
-  "findings": [
-    {
-      "category": "spacing",
-      "severity": "major",
-      "description": "Hero section has 64px top padding but only 16px bottom padding before the feature grid, creating visual imbalance. The 4:1 ratio breaks vertical rhythm.",
-      "location": "Hero section → feature grid transition (main > section:nth-child(2))",
-      "suggestion": "padding-bottom: 48px on hero section. Standardize all section gaps to 48px or 64px.",
-      "cssSelector": "main > section:first-child",
-      "cssFix": "padding-bottom: 48px"
-    }
-  ],
-  "designSystemScore": {
-    "layout": 7,
-    "typography": 5,
-    "color": 6,
-    "spacing": 4,
-    "components": 6,
-    "interactions": 3,
-    "accessibility": 5,
-    "polish": 4
-  }
-}
-
-Categories: visual-bug, layout, contrast, alignment, spacing, typography, accessibility, ux
-Severities: critical (blocks usage or fails WCAG), major (looks unprofessional), minor (polish detail)
-Score: 1-10 per calibration above. Most production apps score 5-7. Template apps score 3-5. Only world-class ships get 8+. Be honest — inflated scores help nobody.`
-}
-
-// ---------------------------------------------------------------------------
 // Page discovery — find key pages by crawling links
 // ---------------------------------------------------------------------------
 
@@ -409,9 +182,11 @@ function generateReport(
       lines.push('**Design System Breakdown:**')
       lines.push('')
       const ds = result.designSystemScore
-      const dsKeys = ['layout', 'typography', 'color', 'spacing', 'components', 'interactions', 'accessibility', 'polish']
-      for (const key of dsKeys) {
-        if (ds[key] !== undefined) {
+      // Universal dimensions in fixed order, then any custom dimensions (alpha)
+      const universal = ['layout', 'typography', 'color', 'spacing', 'components', 'interactions', 'accessibility', 'polish']
+      const custom = Object.keys(ds).filter(k => !universal.includes(k)).sort()
+      for (const key of [...universal, ...custom]) {
+        if (typeof ds[key] === 'number') {
           const bar = '█'.repeat(Math.round(ds[key])) + '░'.repeat(10 - Math.round(ds[key]))
           lines.push(`- ${key}: \`${bar}\` ${ds[key]}/10`)
         }
@@ -465,9 +240,7 @@ export interface DesignAuditOptions {
   reproducibility?: boolean
   /** Project directory the agent should edit (defaults to cwd) */
   projectDir?: string
-  /** Audit pipeline generation: 1 (legacy hardcoded profiles) or 2 (classifier + measurements). Default: 2. */
-  gen?: 1 | 2
-  /** Optional path to user-supplied rubric fragments (Gen 2 only) */
+  /** Optional path to user-supplied rubric fragments */
   rubricsDir?: string
 }
 
@@ -480,15 +253,9 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
     return
   }
 
-  // Gen 2 default. Gen 1 stays available via --gen 1 for legacy/comparison.
-  const generation: 1 | 2 = opts.gen ?? 2
-
-  // Profile is optional in Gen 2 (auto-classified). Required in Gen 1.
-  const profile = opts.profile ?? (generation === 1 ? 'general' : undefined)
-  if (generation === 1 && profile && !PROFILE_RUBRICS[profile]) {
-    cliError(`unknown profile: ${profile}. Options: ${Object.keys(PROFILE_RUBRICS).join(', ')}`)
-    process.exit(1)
-  }
+  // Profile is optional — auto-classified by default. Override with --profile
+  // selects a single type fragment instead of letting the classifier decide.
+  const profile = opts.profile
 
   const maxPages = opts.pages ?? 5
   const provider = (opts.provider ?? 'claude-code') as SupportedProvider
@@ -498,7 +265,7 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
   const [vw, vh] = (opts.viewport ?? '1440x900').split('x').map(Number)
 
   console.log('')
-  console.log(`  ${chalk.bold('bad design-audit')} ${chalk.dim(`gen${generation}`)}`)
+  console.log(`  ${chalk.bold('bad design-audit')}`)
   const profileLabel = profile ?? chalk.dim('auto-classify')
   console.log(`  ${profileLabel} ${chalk.dim('·')} ${chalk.cyan(modelName)} ${chalk.dim('·')} ${vw}×${vh} ${chalk.dim('·')} up to ${maxPages} pages`)
   console.log(`  ${chalk.dim('→')} ${opts.url}`)
@@ -533,27 +300,22 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
 
   const driver = new PlaywrightDriver(page)
 
-  // Audit each page
+  // Audit each page through the classify → measure → evaluate pipeline
   const results: PageAuditResult[] = []
   for (let i = 0; i < pages.length; i++) {
     const url = pages[i]
     console.log(`  ${chalk.dim(`[${i + 1}/${pages.length}]`)} ${url}`)
 
-    let result: PageAuditResult
-    if (generation === 2) {
-      const gen2 = await auditOnePage({
-        brain,
-        driver,
-        page,
-        url,
-        profileOverride: profile,
-        screenshotDir,
-        userRubricsDir: opts.rubricsDir,
-      })
-      result = gen2 as PageAuditResult
-    } else {
-      result = await auditSinglePage(brain, driver, page, url, profile ?? 'general', screenshotDir)
-    }
+    const gen2 = await auditOnePage({
+      brain,
+      driver,
+      page,
+      url,
+      profileOverride: profile,
+      screenshotDir,
+      userRubricsDir: opts.rubricsDir,
+    })
+    const result = gen2 as PageAuditResult
     results.push(result)
 
     const icon = result.score >= 8 ? chalk.green('✓') : result.score >= 5 ? chalk.yellow('~') : chalk.red('✗')
@@ -565,12 +327,11 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
     console.log(`  ${icon} ${scoreColor(`${result.score}/10`)} ${chalk.dim('—')} ${findingCount} finding${findingCount !== 1 ? 's' : ''}${classLabel}`)
   }
 
-  // ── Gen 3: cross-page systemic detection + top-fixes ranking ──
-  // Findings appearing on 2+ pages are collapsed into a single canonical
-  // "systemic" finding with elevated blast radius. The deduped set drives
-  // the top-fixes ranking shown at the top of the report.
+  // Cross-page systemic detection + top-fixes ranking.
+  // Findings appearing on 2+ pages collapse into a single systemic finding.
+  // The deduped set drives the Top Fixes section at the top of the report.
   let topFixes: DesignFinding[] = []
-  if (generation === 2 && results.length > 0) {
+  if (results.length > 0) {
     const perPage = results.map(r => r.findings)
     const deduped = detectSystemicFindings(perPage)
     topFixes = topByRoi(deduped, 5)
@@ -620,21 +381,15 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
     for (let rep = 0; rep < 2; rep++) {
       const repResults: PageAuditResult[] = []
       for (const url of pages) {
-        let r: PageAuditResult
-        if (generation === 2) {
-          const gen2 = await auditOnePage({
-            brain,
-            driver,
-            page,
-            url,
-            profileOverride: profile,
-            userRubricsDir: opts.rubricsDir,
-          })
-          r = gen2 as PageAuditResult
-        } else {
-          r = await auditSinglePage(brain, driver, page, url, profile ?? 'general')
-        }
-        repResults.push(r)
+        const gen2 = await auditOnePage({
+          brain,
+          driver,
+          page,
+          url,
+          profileOverride: profile,
+          userRubricsDir: opts.rubricsDir,
+        })
+        repResults.push(gen2 as PageAuditResult)
       }
       const repAvg = repResults.reduce((s, r) => s + r.score, 0) / repResults.length
       scores.push(repAvg)
@@ -825,7 +580,14 @@ async function runEvolveLoop(
         const screenshotDir = path.join(outputDir, `screenshots-round-${round}`)
         fs.mkdirSync(screenshotDir, { recursive: true })
 
-        const result = await auditSinglePage(brain, driver, page, url, profile, screenshotDir)
+        const result = (await auditOnePage({
+          brain,
+          driver,
+          page,
+          url,
+          profileOverride: profile,
+          screenshotDir,
+        })) as PageAuditResult
         roundResults.push(result)
       } catch {
         roundResults.push({
@@ -1121,7 +883,14 @@ async function runAgentEvolveLoop(
     fs.mkdirSync(roundScreenshotDir, { recursive: true })
 
     for (const url of pages) {
-      const result = await auditSinglePage(brain, driver, page, url, profile, roundScreenshotDir)
+      const result = (await auditOnePage({
+        brain,
+        driver,
+        page,
+        url,
+        profileOverride: profile,
+        screenshotDir: roundScreenshotDir,
+      })) as PageAuditResult
       roundResults.push(result)
     }
 
@@ -1171,87 +940,6 @@ async function runAgentEvolveLoop(
     skippedFixes: [],
     scoreHistory,
     cssOverride: '', // no CSS override in agent mode — agent edited source directly
-  }
-}
-
-// Direct page audit using brain.generate with custom prompt
-async function auditSinglePage(
-  brain: Brain,
-  driver: PlaywrightDriver,
-  page: Page,
-  url: string,
-  profile: string,
-  screenshotDir?: string,
-): Promise<PageAuditResult> {
-  try {
-    await page.goto(url, { waitUntil: 'networkidle', timeout: 20_000 }).catch(() =>
-      page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15_000 })
-    )
-    await page.waitForTimeout(2000)
-
-    // Dismiss cookie banners
-    for (const sel of ['button:has-text("Accept all")', 'button:has-text("Accept")', 'button:has-text("Reject all")', 'button:has-text("Got it")', 'button:has-text("Close")']) {
-      const btn = page.locator(sel).first()
-      if (await btn.isVisible({ timeout: 500 }).catch(() => false)) {
-        await btn.click({ timeout: 2000 }).catch(() => null)
-        await page.waitForTimeout(500)
-        break
-      }
-    }
-
-    const state = await driver.observe()
-
-    // Save screenshot
-    let screenshotPath: string | undefined
-    if (screenshotDir) {
-      const slug = new URL(url).pathname.replace(/\//g, '_').replace(/^_/, '') || 'index'
-      screenshotPath = path.join(screenshotDir, `${slug}.png`)
-      await page.screenshot({ path: screenshotPath, fullPage: false })
-    }
-
-    const result = await brain.auditDesign(
-      state,
-      `Audit the design quality of this page: ${url}`,
-      [],
-      buildAuditPrompt(profile),
-    )
-
-    let summary = ''
-    let strengths: string[] = []
-    let designSystemScore: Record<string, number> | undefined
-    try {
-      let text = result.raw.trim()
-      if (text.startsWith('```')) text = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
-      const parsed = JSON.parse(text)
-      summary = parsed.summary || ''
-      strengths = Array.isArray(parsed.strengths) ? parsed.strengths : []
-      if (parsed.designSystemScore && typeof parsed.designSystemScore === 'object') {
-        designSystemScore = {} as Record<string, number>
-        for (const [k, v] of Object.entries(parsed.designSystemScore)) {
-          if (typeof v === 'number') designSystemScore[k] = v
-        }
-      }
-    } catch { /* use defaults */ }
-
-    return {
-      url,
-      score: result.score,
-      summary,
-      strengths,
-      findings: result.findings,
-      screenshotPath,
-      tokensUsed: result.tokensUsed,
-      designSystemScore,
-    }
-  } catch (err) {
-    return {
-      url,
-      score: 0,
-      summary: 'Failed to audit',
-      strengths: [],
-      findings: [],
-      error: err instanceof Error ? err.message : String(err),
-    }
   }
 }
 

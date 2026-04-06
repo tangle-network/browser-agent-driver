@@ -41,18 +41,27 @@ node dist/cli.js design-audit \
   --json --headless
 ```
 
-Profiles: `vibecoded` (AI-generated apps), `saas`, `marketing`, `defi`, `general`.
+Profile is optional — the audit auto-classifies the page (type, domain, framework, design system, maturity). Pass `--profile <name>` only to override.
 
-Read the `report.json`. Note the overall score, design system breakdown (8 dimensions), and every finding with its `cssSelector` and `cssFix`.
+Read the `report.json`. The audit pre-ranks the work — focus on these fields:
 
-## Phase 2: Triage Findings
+- **`topFixes`** — array of the 5 highest-ROI fixes across all audited pages, pre-sorted. Each has `roi`, `impact`, `effort`, `blast`, plus the usual `description` / `cssSelector` / `cssFix`. **Start here.**
+- **`pages[].score`** — overall visual quality score per page (1-10, LLM-judged)
+- **`pages[].designSystemScore`** — 8 universal dimensions plus any custom dimensions contributed by the rubric (e.g. `trust-signals` for fintech, `conversion` for ecommerce, `readability` for docs). Accessibility dimension reflects ground-truth measurements (axe + WCAG contrast math), not LLM vibes.
+- **`pages[].classification`** — what the audit thinks this page is. Useful context.
+- **`pages[].findings`** — full finding list with `roi` annotations. Anything beyond the top 5 is lower priority.
 
-Group by impact, fix in order:
-1. **Critical** — WCAG failures, broken layouts
-2. **Major** — unprofessional appearance
-3. **Minor** — polish details
+## Phase 2: Triage from Top Fixes
 
-Batch related findings: all spacing issues in one pass, all color fixes in another.
+The audit already ranked the work. Don't re-prioritize from scratch:
+
+1. Start with `topFixes[0]` and work down
+2. `blast: 'system'` = a single fix improves every page — highest leverage, do these first
+3. `pageCount >= 2` = the audit detected the same issue across multiple pages (`[appears on N pages]`) — fix once, all benefit
+4. Don't waste time on findings ranked below `topFixes[5]` unless you have time after the headline fixes
+5. Sanity-check ROI: high `impact × blast / effort` should genuinely match what would help most
+
+Batch related fixes: all spacing in one pass, all color in another.
 
 ## Phase 3: Apply Fixes to Source Code
 
