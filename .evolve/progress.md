@@ -1,27 +1,47 @@
-# Evolve Progress — Design Audit Closed-Loop System
+# Evolve Progress — Design Audit
 
-## Round 1 — 2026-04-04
+## Generation 2 — 2026-04-06 (branch: design-audit-gen2)
 
-### Completed
-1. Added `vibecoded` audit profile targeting AI-generated/template apps
-2. Upgraded audit prompt from ~40 lines to ~120 lines with 8 weighted evaluation areas, pixel-level specificity requirements, CSS fix generation
-3. Extended DesignFinding type with `cssSelector` and `cssFix` fields
-4. Added `DesignSystemScore` type with 8-dimension breakdown
-5. Built `--evolve` flag: closed-loop audit → CSS fix generation → inject → re-audit → compare
-6. Built `--reproducibility` flag: runs 3x, reports stddev, pass/fail at ±0.5
-7. Created benchmark corpus in `bench/design/corpus.json` with 5 tiers (world-class, good, average, vibecoded, defi)
-8. Created benchmark runner `bench/design/run-design-bench.ts` with calibration validation
-9. All gates pass: build, boundaries, 635 tests
+Pursuit: `.evolve/pursuits/2026-04-06-design-audit-gen2.md`
 
-### Remaining
-- Run baseline calibration against corpus to verify scoring ranges
-- Test evolve loop end-to-end on a real site
-- Tune prompts based on calibration results
-- Add more vibecoded test sites once we have real examples
+### Shipped
+1. Module split — 7 focused modules under `src/design/audit/`
+2. Page classifier — auto-detects type/domain/framework/designSystem/maturity/intent
+3. Composable rubric system — 12 markdown fragments, no hardcoded profiles
+4. Real WCAG contrast math — pure JS, in-page, deterministic (replaces LLM estimates)
+5. axe-core integration — ground-truth a11y violations
+6. Composing evaluator — measurements-first, LLM only for subjective visual layer
+7. CLI integration — Gen 2 default, Gen 1 fallback via `--gen 1`
+8. 27 new unit tests
+9. Build script copies markdown fragments to dist/
 
-### Architecture
-- `src/cli-design-audit.ts` — main CLI handler, profiles, evolve loop, reproducibility
-- `src/brain/index.ts:auditDesign()` — LLM evaluation with CSS fix parsing
-- `src/types.ts` — DesignFinding, DesignSystemScore, DesignEvolveResult
-- `bench/design/corpus.json` — reference sites with expected score ranges
-- `bench/design/run-design-bench.ts` — benchmark runner
+### Calibration
+| Site | Gen 1 | Gen 2 | A11y dim |
+|------|-------|-------|----------|
+| Stripe | 9 | 9 | 8 |
+| Apple | 9 | 9 | 4 |
+| Linear | 9 | 9 | 4 |
+| Anthropic | 8 | 8 | 7 |
+| Airbnb | 8 | 8 | 8 |
+
+5/5 preserved within ±0. A11y dimension exposes real measurement truth.
+
+### Architecture (Gen 2)
+- `src/design/audit/types.ts` — all audit types (203 lines)
+- `src/design/audit/classify.ts` — page classifier (165 lines)
+- `src/design/audit/rubric/loader.ts` — fragment loader + composer (240 lines)
+- `src/design/audit/rubric/fragments/*.md` — 12 markdown rubrics
+- `src/design/audit/measure/contrast.ts` — WCAG 2.1 contrast math (222 lines)
+- `src/design/audit/measure/a11y.ts` — axe-core wrapper (143 lines)
+- `src/design/audit/measure/index.ts` — gathers all measurements in parallel (46 lines)
+- `src/design/audit/evaluate.ts` — composes everything into findings (294 lines)
+- `src/design/audit/pipeline.ts` — orchestrator (137 lines)
+- `tests/design-audit-rubric.test.ts` — 18 unit tests
+- `tests/design-audit-measurements.test.ts` — 9 unit tests
+
+### Next generation seeds
+- Reference library with embedded comparison
+- 3-turn audit (classify → analyze → rank)
+- ROI-sorted findings
+- CDP-based axe injection (CSP-strict pages)
+- Per-fragment dimension scoring

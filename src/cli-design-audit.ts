@@ -16,9 +16,12 @@ import { PlaywrightDriver } from './drivers/playwright.js'
 import { resolveProviderApiKey, resolveProviderModelName, type SupportedProvider } from './provider-defaults.js'
 import { loadLocalEnvFiles } from './env-loader.js'
 import { cliError } from './cli-ui.js'
+import { auditOnePage } from './design/audit/pipeline.js'
+import type { PageAuditResult as Gen2PageAuditResult } from './design/audit/types.js'
 
 // ---------------------------------------------------------------------------
-// Audit profiles — domain-specific rubrics injected into the system prompt
+// Legacy Gen 1 profile rubrics — kept for `--gen 1` fallback only.
+// New rubrics live in src/design/audit/rubric/fragments/ as markdown.
 // ---------------------------------------------------------------------------
 
 const PROFILE_RUBRICS: Record<string, string> = {
@@ -306,13 +309,19 @@ interface PageAuditResult {
   tokensUsed?: number
   error?: string
   designSystemScore?: Record<string, number>
+  /** Gen 2: page classification (auto-detected) */
+  classification?: Gen2PageAuditResult['classification']
+  /** Gen 2: rubric fragments applied */
+  rubricFragments?: string[]
+  /** Gen 2: deterministic measurements */
+  measurements?: Gen2PageAuditResult['measurements']
 }
 
 // ---------------------------------------------------------------------------
 // Report generation
 // ---------------------------------------------------------------------------
 
-function generateReport(results: PageAuditResult[], profile: string): string {
+function generateReport(results: PageAuditResult[], profile: string | undefined): string {
   const lines: string[] = []
   const avgScore = results.length > 0
     ? results.reduce((sum, r) => sum + r.score, 0) / results.length
@@ -326,7 +335,17 @@ function generateReport(results: PageAuditResult[], profile: string): string {
 
   lines.push('# Design Audit Report')
   lines.push('')
-  lines.push(`**Profile:** ${profile}`)
+  if (profile) {
+    lines.push(`**Profile:** ${profile}`)
+  }
+  // Surface per-page classification when present (Gen 2)
+  const classifications = results
+    .filter(r => r.classification)
+    .map(r => `${r.url}: ${r.classification!.type}/${r.classification!.domain} (${r.classification!.maturity})`)
+  if (classifications.length > 0) {
+    lines.push(`**Auto-classified:**`)
+    for (const c of classifications) lines.push(`- ${c}`)
+  }
   lines.push(`**Pages audited:** ${results.length}`)
   lines.push(`**Overall score:** ${avgScore.toFixed(1)}/10`)
   lines.push(`**Findings:** ${allFindings.length} (${critical} critical, ${major} major, ${minor} minor)`)
@@ -414,6 +433,10 @@ export interface DesignAuditOptions {
   reproducibility?: boolean
   /** Project directory the agent should edit (defaults to cwd) */
   projectDir?: string
+  /** Audit pipeline generation: 1 (legacy hardcoded profiles) or 2 (classifier + measurements). Default: 2. */
+  gen?: 1 | 2
+  /** Optional path to user-supplied rubric fragments (Gen 2 only) */
+  rubricsDir?: string
 }
 
 export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
@@ -425,8 +448,12 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
     return
   }
 
-  const profile = opts.profile ?? 'general'
-  if (!PROFILE_RUBRICS[profile]) {
+  // Gen 2 default. Gen 1 stays available via --gen 1 for legacy/comparison.
+  const generation: 1 | 2 = opts.gen ?? 2
+
+  // Profile is optional in Gen 2 (auto-classified). Required in Gen 1.
+  const profile = opts.profile ?? (generation === 1 ? 'general' : undefined)
+  if (generation === 1 && profile && !PROFILE_RUBRICS[profile]) {
     cliError(`unknown profile: ${profile}. Options: ${Object.keys(PROFILE_RUBRICS).join(', ')}`)
     process.exit(1)
   }
@@ -439,8 +466,9 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
   const [vw, vh] = (opts.viewport ?? '1440x900').split('x').map(Number)
 
   console.log('')
-  console.log(`  ${chalk.bold('bad design-audit')}`)
-  console.log(`  ${profile} ${chalk.dim('·')} ${chalk.cyan(modelName)} ${chalk.dim('·')} ${vw}×${vh} ${chalk.dim('·')} up to ${maxPages} pages`)
+  console.log(`  ${chalk.bold('bad design-audit')} ${chalk.dim(`gen${generation}`)}`)
+  const profileLabel = profile ?? chalk.dim('auto-classify')
+  console.log(`  ${profileLabel} ${chalk.dim('·')} ${chalk.cyan(modelName)} ${chalk.dim('·')} ${vw}×${vh} ${chalk.dim('·')} up to ${maxPages} pages`)
   console.log(`  ${chalk.dim('→')} ${opts.url}`)
   console.log('')
 
@@ -479,13 +507,30 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
     const url = pages[i]
     console.log(`  ${chalk.dim(`[${i + 1}/${pages.length}]`)} ${url}`)
 
-    const result = await auditSinglePage(brain, driver, page, url, profile, screenshotDir)
+    let result: PageAuditResult
+    if (generation === 2) {
+      const gen2 = await auditOnePage({
+        brain,
+        driver,
+        page,
+        url,
+        profileOverride: profile,
+        screenshotDir,
+        userRubricsDir: opts.rubricsDir,
+      })
+      result = gen2 as PageAuditResult
+    } else {
+      result = await auditSinglePage(brain, driver, page, url, profile ?? 'general', screenshotDir)
+    }
     results.push(result)
 
     const icon = result.score >= 8 ? chalk.green('✓') : result.score >= 5 ? chalk.yellow('~') : chalk.red('✗')
     const scoreColor = result.score >= 8 ? chalk.green : result.score >= 5 ? chalk.yellow : chalk.red
     const findingCount = result.findings.length
-    console.log(`  ${icon} ${scoreColor(`${result.score}/10`)} ${chalk.dim('—')} ${findingCount} finding${findingCount !== 1 ? 's' : ''}`)
+    const classLabel = result.classification
+      ? chalk.dim(` (${result.classification.type}/${result.classification.domain})`)
+      : ''
+    console.log(`  ${icon} ${scoreColor(`${result.score}/10`)} ${chalk.dim('—')} ${findingCount} finding${findingCount !== 1 ? 's' : ''}${classLabel}`)
   }
 
   // Generate report
@@ -531,7 +576,20 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
     for (let rep = 0; rep < 2; rep++) {
       const repResults: PageAuditResult[] = []
       for (const url of pages) {
-        const r = await auditSinglePage(brain, driver, page, url, profile)
+        let r: PageAuditResult
+        if (generation === 2) {
+          const gen2 = await auditOnePage({
+            brain,
+            driver,
+            page,
+            url,
+            profileOverride: profile,
+            userRubricsDir: opts.rubricsDir,
+          })
+          r = gen2 as PageAuditResult
+        } else {
+          r = await auditSinglePage(brain, driver, page, url, profile ?? 'general')
+        }
         repResults.push(r)
       }
       const repAvg = repResults.reduce((s, r) => s + r.score, 0) / repResults.length
@@ -559,16 +617,22 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
     const evolveMode = opts.evolve === true || opts.evolve === 'true' || opts.evolve === 'css' ? 'css' : opts.evolve
     let evolveResult: DesignEvolveResult
 
+    // Evolve loops still use the legacy single-profile re-audit. When Gen 2 auto-classified,
+    // synthesize a profile name from the first page's classification (or fall back to 'general').
+    const evolveProfile = profile
+      ?? results[0]?.classification?.type
+      ?? 'general'
+
     if (evolveMode !== 'css') {
       // Agent-dispatched evolve — a coding agent edits the actual source code
       const projectDir = opts.projectDir ?? process.cwd()
       evolveResult = await runAgentEvolveLoop(
-        brain, driver, page, pages, profile, results, outputDir,
+        brain, driver, page, pages, evolveProfile, results, outputDir,
         opts.evolveRounds ?? 3, evolveMode, projectDir, opts.debug,
       )
     } else {
       // CSS-injection evolve — ephemeral fixes injected into the browser page
-      evolveResult = await runEvolveLoop(brain, driver, page, pages, profile, results, outputDir, opts.evolveRounds ?? 3)
+      evolveResult = await runEvolveLoop(brain, driver, page, pages, evolveProfile, results, outputDir, opts.evolveRounds ?? 3)
     }
 
     // Write evolve report
