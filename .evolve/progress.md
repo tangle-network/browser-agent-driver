@@ -1,47 +1,41 @@
 # Evolve Progress — Design Audit
 
-## Generation 2 — 2026-04-06 (branch: design-audit-gen2)
+Branch: `design-audit-gen2` (carries both Gen 2 and Gen 3 changes)
 
-Pursuit: `.evolve/pursuits/2026-04-06-design-audit-gen2.md`
+## Generation 3 — 2026-04-06
+
+Pursuit: `.evolve/pursuits/2026-04-06-design-audit-gen3.md`
 
 ### Shipped
-1. Module split — 7 focused modules under `src/design/audit/`
-2. Page classifier — auto-detects type/domain/framework/designSystem/maturity/intent
-3. Composable rubric system — 12 markdown fragments, no hardcoded profiles
-4. Real WCAG contrast math — pure JS, in-page, deterministic (replaces LLM estimates)
-5. axe-core integration — ground-truth a11y violations
-6. Composing evaluator — measurements-first, LLM only for subjective visual layer
-7. CLI integration — Gen 2 default, Gen 1 fallback via `--gen 1`
-8. 27 new unit tests
-9. Build script copies markdown fragments to dist/
+1. ROI scoring on findings — impact, effort, blast, computed roi
+2. Cross-page systemic detection — findings on 2+ pages collapse into 1 with blast=system
+3. CDP-based axe injection (3-tier fallback for CSP-strict pages)
+4. Dynamic per-fragment dimensions — fragments declare custom dimensions, LLM scores them
+5. Top Fixes report section — opens every report with ROI-sorted top 5
+6. JSON output exposes `topFixes`
+7. 28 new unit tests (24 ROI + 4 dimensions)
 
-### Calibration
-| Site | Gen 1 | Gen 2 | A11y dim |
-|------|-------|-------|----------|
-| Stripe | 9 | 9 | 8 |
-| Apple | 9 | 9 | 4 |
-| Linear | 9 | 9 | 4 |
-| Anthropic | 8 | 8 | 7 |
+### Calibration (3 generations)
+| Site | Gen 1 | Gen 2 | Gen 3 |
+|------|-------|-------|-------|
+| Stripe | 9 | 9 | 9 |
+| Apple | 9 | 9 | 9 |
+| Linear | 9 | 9 | 9 |
+| Anthropic | 8 | 8 | 8 |
 | Airbnb | 8 | 8 | 8 |
 
-5/5 preserved within ±0. A11y dimension exposes real measurement truth.
+5/5 preserved across all 3 generations. Gen 3 adds top-fixes ROI ranking,
+dynamic dimensions (Stripe gets `trust-signals`, Airbnb gets `conversion`),
+and live cross-page systemic detection (verified on 3-page Stripe audit).
 
-### Architecture (Gen 2)
-- `src/design/audit/types.ts` — all audit types (203 lines)
-- `src/design/audit/classify.ts` — page classifier (165 lines)
-- `src/design/audit/rubric/loader.ts` — fragment loader + composer (240 lines)
-- `src/design/audit/rubric/fragments/*.md` — 12 markdown rubrics
-- `src/design/audit/measure/contrast.ts` — WCAG 2.1 contrast math (222 lines)
-- `src/design/audit/measure/a11y.ts` — axe-core wrapper (143 lines)
-- `src/design/audit/measure/index.ts` — gathers all measurements in parallel (46 lines)
-- `src/design/audit/evaluate.ts` — composes everything into findings (294 lines)
-- `src/design/audit/pipeline.ts` — orchestrator (137 lines)
-- `tests/design-audit-rubric.test.ts` — 18 unit tests
-- `tests/design-audit-measurements.test.ts` — 9 unit tests
+### Architecture additions (Gen 3)
+- `src/design/audit/roi.ts` — pure-function ROI scoring + cross-page detection (167 lines)
+- `tests/design-audit-roi.test.ts` — 24 unit tests
+- Extended `RubricFragment.dimension`, `ComposedRubric.dimensions`
+- Extended `DesignFinding` with impact/effort/blast/roi/pageCount
+- Extended `measure/a11y.ts` with CSP-bypass injection ladder
 
-### Next generation seeds
-- Reference library with embedded comparison
-- 3-turn audit (classify → analyze → rank)
-- ROI-sorted findings
-- CDP-based axe injection (CSP-strict pages)
-- Per-fragment dimension scoring
+### Next generation seeds (Gen 4)
+- 3-turn pipeline (separate ranking call)
+- Reference library with embedded fingerprints
+- Live evolve loop validation against a real vibecoded app

@@ -54,6 +54,7 @@ export function parseFragment(filePath: string): RubricFragment {
     weight: (meta.weight as RubricFragment['weight']) ?? 'medium',
     appliesWhen: (meta['applies-when'] as AppliesWhen) ?? {},
     body: body.trim(),
+    ...(meta.dimension ? { dimension: String(meta.dimension) } : {}),
   }
 }
 
@@ -205,10 +206,16 @@ export function composeRubric(
     calFragment?.body ??
     'Score 1-10. Most production apps score 5-7. Only world-class deserves 8+. Be honest.'
 
+  // Custom dimensions contributed by fragments (deduped, preserves order)
+  const dimensions = Array.from(
+    new Set(matched.map(f => f.dimension).filter((d): d is string => Boolean(d))),
+  )
+
   return {
     fragments: matched,
     body,
     calibration,
+    dimensions,
   }
 }
 
@@ -236,5 +243,9 @@ export function composeRubricFromProfile(
     calFragment?.body ??
     'Score 1-10. Most production apps score 5-7. Only world-class deserves 8+. Be honest.'
 
-  return { fragments: matched, body, calibration }
+  const dimensions = Array.from(
+    new Set(matched.map(f => f.dimension).filter((d): d is string => Boolean(d))),
+  )
+
+  return { fragments: matched, body, calibration, dimensions }
 }

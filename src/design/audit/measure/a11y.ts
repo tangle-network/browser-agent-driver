@@ -79,18 +79,52 @@ export async function measureA11y(page: Page): Promise<A11yReport> {
   }
 
   try {
-    // Inject axe into the page. content over path so it works regardless of CSP/file paths.
-    await page.addScriptTag({ content: axeSource })
+    // Inject axe-core. CSP-strict pages (Stripe, GitHub, etc) block addScriptTag,
+    // so we fall back to direct evaluate() which CSP allows because it runs in
+    // the puppeteer/playwright extension world, not the page context.
+    let injected = false
+    try {
+      await page.addScriptTag({ content: axeSource })
+      injected = true
+    } catch {
+      // CSP blocked the script tag — try CDP-based bypass
+      try {
+        const session = await page.context().newCDPSession(page)
+        await session.send('Page.addScriptToEvaluateOnNewDocument', { source: axeSource })
+        // Reload to apply
+        await page.reload({ waitUntil: 'domcontentloaded', timeout: 15_000 })
+        injected = true
+      } catch {
+        // CDP failed too — last resort: inject via evaluate (works on most CSP configs)
+        await page.evaluate((src: string) => {
+          // eslint-disable-next-line @typescript-eslint/no-implied-eval
+          new Function(src)()
+        }, axeSource)
+        injected = true
+      }
+    }
+
+    if (!injected) {
+      return {
+        ran: false,
+        error: 'all injection methods failed (CSP)',
+        violations: [],
+        passes: 0,
+      }
+    }
 
     // Run with WCAG 2.1 AA tags. Limit nodes per violation to keep payload manageable.
     const raw = (await page.evaluate(async () => {
       const w = window as unknown as {
-        axe: {
+        axe?: {
           run: (
             ctx: Document,
             opts: { runOnly: { type: string; values: string[] }; resultTypes: string[] },
           ) => Promise<unknown>
         }
+      }
+      if (!w.axe) {
+        throw new Error('axe not loaded after injection')
       }
       return w.axe.run(document, {
         runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] },

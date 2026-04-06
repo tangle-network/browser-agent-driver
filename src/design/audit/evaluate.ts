@@ -23,6 +23,7 @@ import type {
   PageAuditResult,
 } from './types.js'
 import { impactToSeverity } from './measure/index.js'
+import { computeRoi, annotateRoi } from './roi.js'
 
 export interface EvaluateInput {
   url: string
@@ -40,6 +41,17 @@ export interface EvaluateInput {
  *     already been counted and doesn't double-count)
  *   - Strict instructions: no estimating contrast, no inventing a11y findings
  */
+const UNIVERSAL_DIMENSIONS = [
+  'layout',
+  'typography',
+  'color',
+  'spacing',
+  'components',
+  'interactions',
+  'accessibility',
+  'polish',
+] as const
+
 function buildEvalPrompt(input: EvaluateInput): string {
   const { classification, rubric, measurements } = input
 
@@ -68,6 +80,12 @@ function buildEvalPrompt(input: EvaluateInput): string {
     .filter(Boolean)
     .join('\n')
 
+  // Compose the full dimension list (universal + custom from rubric fragments)
+  const allDimensions = [...UNIVERSAL_DIMENSIONS, ...rubric.dimensions]
+  const dimensionExample = allDimensions
+    .map(d => `    "${d}": ${Math.floor(Math.random() * 4) + 5}`)
+    .join(',\n')
+
   return `You are a principal design engineer who has shipped design systems at Linear, Stripe, and Vercel. You review with the precision of a typographer and the ruthlessness of a design director.
 
 You are evaluating a page that has been pre-classified and pre-measured. Your job is the SUBJECTIVE layer only: visual quality, hierarchy, polish, design system coherence. You must NOT invent contrast or accessibility findings — those have already been measured deterministically and will be merged with your output.
@@ -95,6 +113,18 @@ YOUR JOB:
 4. Do NOT produce accessibility findings — axe has been run.
 5. Be specific. Reference exact elements, measured spacing, typography choices.
 6. For each finding include a concrete CSS fix in the cssFix field.
+7. For each finding ALSO include impact, effort, and blast — these drive the ROI ranking.
+
+ROI FIELDS — score each finding on:
+- impact (1-10): how much this hurts the user. 1 = nitpick, 10 = breaks the experience.
+- effort (1-10): how hard the fix is. 1 = single CSS line, 5 = a few component edits, 10 = redesign.
+- blast: scope of the fix's effect.
+    "page" = only this page benefits
+    "section" = a region of this page (hero, footer)
+    "component" = a shared component (Card, Button) — multiple pages benefit
+    "system" = a design token or global style — every page benefits
+
+A high-blast / low-effort fix has massive ROI. Use this scale honestly — the user will fix the top-ROI items first.
 
 RESPOND WITH ONLY a JSON object:
 {
@@ -112,29 +142,31 @@ RESPOND WITH ONLY a JSON object:
       "location": "Hero section → features grid transition",
       "suggestion": "Use 48px or 64px consistently for all major section transitions",
       "cssSelector": "main > section:first-child",
-      "cssFix": "padding-bottom: 48px"
+      "cssFix": "padding-bottom: 48px",
+      "impact": 6,
+      "effort": 1,
+      "blast": "page"
     }
   ],
   "designSystemScore": {
-    "layout": 7,
-    "typography": 5,
-    "color": 6,
-    "spacing": 4,
-    "components": 6,
-    "interactions": 3,
-    "accessibility": 5,
-    "polish": 4
+${dimensionExample}
   }
 }
 
 Categories: visual-bug, layout, alignment, spacing, typography, ux
 (Do NOT use 'contrast' or 'accessibility' — those come from measurements.)
 Severities: critical, major, minor
-Score: 1-10. Most production apps score 5-7.`
+Score: 1-10. Most production apps score 5-7.
+
+DIMENSIONS — score each of these on a 1-10 scale in designSystemScore:
+${allDimensions.map(d => `- ${d}`).join('\n')}`
 }
 
 /**
  * Convert deterministic measurements into findings ready to merge with LLM output.
+ *
+ * Each measurement-derived finding gets sensible impact/effort/blast defaults
+ * so it participates in ROI ranking alongside visual findings.
  */
 export function measurementsToFindings(measurements: MeasurementBundle): DesignFinding[] {
   const findings: DesignFinding[] = []
@@ -142,14 +174,19 @@ export function measurementsToFindings(measurements: MeasurementBundle): DesignF
   // Contrast — one finding per failing element, capped to top 10
   for (const f of measurements.contrast.aaFailures.slice(0, 10)) {
     const targetRatio = f.required.toFixed(1)
+    const isCritical = f.ratio < f.required - 1.5
     findings.push({
       category: 'contrast',
-      severity: f.ratio < (f.required - 1.5) ? 'critical' : 'major',
+      severity: isCritical ? 'critical' : 'major',
       description: `Text color ${f.color} on background ${f.background} has contrast ratio ${f.ratio}:1, fails WCAG AA (required: ${targetRatio}:1)`,
       location: `${f.selector} — "${f.text}"`,
       suggestion: `Increase contrast to at least ${targetRatio}:1. Try darkening the text color or lightening the background.`,
       cssSelector: f.selector,
       cssFix: `/* WCAG AA failure: ${f.ratio}:1 → need ${targetRatio}:1 */`,
+      // Contrast fixes are usually a single token change with system-wide blast
+      impact: isCritical ? 9 : 7,
+      effort: 1,
+      blast: 'system',
     })
   }
 
@@ -163,6 +200,10 @@ export function measurementsToFindings(measurements: MeasurementBundle): DesignF
       location: firstNode ? firstNode.selector : 'page',
       suggestion: firstNode?.failureSummary || `See ${v.helpUrl}`,
       ...(firstNode ? { cssSelector: firstNode.selector } : {}),
+      // axe violations: high impact, moderate effort, component-level blast by default
+      impact: v.impact === 'critical' ? 9 : v.impact === 'serious' ? 7 : v.impact === 'moderate' ? 5 : 3,
+      effort: 3,
+      blast: 'component',
     })
   }
 
@@ -227,6 +268,11 @@ export async function evaluatePage(
   // Merge: deterministic measurements first (they're ground truth), then visual
   const measurementFindings = measurementsToFindings(input.measurements)
   const mergedFindings = [...measurementFindings, ...visualFindings]
+
+  // Annotate every finding with its computed ROI score so downstream sorting works.
+  // Visual findings have impact/effort/blast from the LLM; measurement findings
+  // get derived defaults below.
+  annotateRoi(mergedFindings)
 
   // Override the accessibility dimension in the design system score with
   // measurement-driven truth. The overall score still reflects visual quality

@@ -2,6 +2,7 @@
 id: type-docs
 title: Technical Documentation
 weight: high
+dimension: readability
 applies-when:
   type: [docs]
 ---

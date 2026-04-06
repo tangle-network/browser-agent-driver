@@ -18,6 +18,7 @@ import { loadLocalEnvFiles } from './env-loader.js'
 import { cliError } from './cli-ui.js'
 import { auditOnePage } from './design/audit/pipeline.js'
 import type { PageAuditResult as Gen2PageAuditResult } from './design/audit/types.js'
+import { detectSystemicFindings, topByRoi } from './design/audit/roi.js'
 
 // ---------------------------------------------------------------------------
 // Legacy Gen 1 profile rubrics — kept for `--gen 1` fallback only.
@@ -321,7 +322,11 @@ interface PageAuditResult {
 // Report generation
 // ---------------------------------------------------------------------------
 
-function generateReport(results: PageAuditResult[], profile: string | undefined): string {
+function generateReport(
+  results: PageAuditResult[],
+  profile: string | undefined,
+  topFixes: DesignFinding[] = [],
+): string {
   const lines: string[] = []
   const avgScore = results.length > 0
     ? results.reduce((sum, r) => sum + r.score, 0) / results.length
@@ -356,6 +361,33 @@ function generateReport(results: PageAuditResult[], profile: string | undefined)
   const scoreBar = '█'.repeat(Math.round(avgScore)) + '░'.repeat(10 - Math.round(avgScore))
   lines.push(`\`${scoreBar}\` ${avgScore.toFixed(1)}/10`)
   lines.push('')
+
+  // ── Top Fixes (by ROI) — the headline section users actually read first ──
+  if (topFixes.length > 0) {
+    lines.push('## Top Fixes (by ROI)')
+    lines.push('')
+    lines.push('Fix these first — sorted by impact × blast / effort:')
+    lines.push('')
+    for (let i = 0; i < topFixes.length; i++) {
+      const f = topFixes[i]
+      const tags: string[] = []
+      if (f.pageCount && f.pageCount >= 2) tags.push(`appears on ${f.pageCount} pages`)
+      if (f.blast === 'system') tags.push('SYSTEMIC')
+      const tagStr = tags.length > 0 ? ` _(${tags.join(', ')})_` : ''
+      const roiStr = f.roi !== undefined ? f.roi.toFixed(1) : '—'
+      lines.push(`### ${i + 1}. [${f.severity}] ${f.description}${tagStr}`)
+      lines.push('')
+      lines.push(`- **ROI:** ${roiStr}  ·  Impact ${f.impact ?? '—'}  ·  Effort ${f.effort ?? '—'}  ·  Blast ${f.blast ?? '—'}`)
+      lines.push(`- **Location:** ${f.location}`)
+      lines.push(`- **Fix:** ${f.suggestion}`)
+      if (f.cssSelector && f.cssFix) {
+        lines.push(`- **CSS:** \`${f.cssSelector} { ${f.cssFix} }\``)
+      }
+      lines.push('')
+    }
+    lines.push('---')
+    lines.push('')
+  }
 
   // Per-page results
   for (const result of results) {
@@ -533,8 +565,19 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
     console.log(`  ${icon} ${scoreColor(`${result.score}/10`)} ${chalk.dim('—')} ${findingCount} finding${findingCount !== 1 ? 's' : ''}${classLabel}`)
   }
 
+  // ── Gen 3: cross-page systemic detection + top-fixes ranking ──
+  // Findings appearing on 2+ pages are collapsed into a single canonical
+  // "systemic" finding with elevated blast radius. The deduped set drives
+  // the top-fixes ranking shown at the top of the report.
+  let topFixes: DesignFinding[] = []
+  if (generation === 2 && results.length > 0) {
+    const perPage = results.map(r => r.findings)
+    const deduped = detectSystemicFindings(perPage)
+    topFixes = topByRoi(deduped, 5)
+  }
+
   // Generate report
-  const report = generateReport(results, profile)
+  const report = generateReport(results, profile, topFixes)
   const reportPath = path.join(outputDir, 'report.md')
   fs.writeFileSync(reportPath, report)
 
@@ -551,6 +594,7 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
       profile,
       url: opts.url,
       pages: results,
+      topFixes,
       summary: { avgScore, totalFindings: allFindings.length, critical, major, minor },
     }, null, 2))
     console.log(`  ${chalk.dim('JSON →')} ${jsonPath}`)

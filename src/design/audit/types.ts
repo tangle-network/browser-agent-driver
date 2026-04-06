@@ -79,6 +79,13 @@ export interface RubricFragment {
   title: string
   /** Markdown body — gets injected into the eval prompt */
   body: string
+  /**
+   * Optional dimension this fragment contributes to the design system score.
+   * When set, the LLM will be asked to score this dimension 1-10 in addition
+   * to the universal 8 dimensions. Example: a fintech fragment might
+   * contribute "trust-signals", a docs fragment might contribute "readability".
+   */
+  dimension?: string
 }
 
 export interface AppliesWhen {
@@ -104,6 +111,8 @@ export interface ComposedRubric {
   body: string
   /** Calibration anchor for this rubric */
   calibration: string
+  /** Custom dimensions contributed by fragments (in addition to universal 8) */
+  dimensions: string[]
 }
 
 // ── Measurements ───────────────────────────────────────────────────────────

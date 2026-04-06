@@ -229,4 +229,44 @@ Universal body`,
       expect(fragments).toEqual([])
     })
   })
+
+  describe('Gen 3 — dynamic dimensions', () => {
+    it('parses optional dimension field from frontmatter', () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rubric-'))
+      const file = path.join(dir, 'dim-fragment.md')
+      fs.writeFileSync(
+        file,
+        `---
+id: dim-fragment
+title: With Dimension
+weight: high
+dimension: trust-signals
+applies-when:
+  type: [marketing]
+---
+Body`,
+      )
+
+      const fragment = parseFragment(file)
+      expect(fragment.dimension).toBe('trust-signals')
+      fs.rmSync(dir, { recursive: true, force: true })
+    })
+
+    it('exposes deduped dimensions on the composed rubric', () => {
+      const rubric = composeRubric(makeClassification({ type: 'marketing', domain: 'fintech' }))
+      // The fintech fragment declares dimension: trust-signals
+      expect(rubric.dimensions).toContain('trust-signals')
+    })
+
+    it('produces empty dimensions array when no fragments declare one', () => {
+      const rubric = composeRubricFromProfile('marketing')
+      // Just universals + type-marketing (no dimension)
+      expect(rubric.dimensions).toEqual([])
+    })
+
+    it('docs domain gets readability dimension', () => {
+      const rubric = composeRubric(makeClassification({ type: 'docs', domain: 'devtools' }))
+      expect(rubric.dimensions).toContain('readability')
+    })
+  })
 })

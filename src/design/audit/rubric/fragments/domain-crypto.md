@@ -2,6 +2,7 @@
 id: domain-crypto
 title: Crypto / DeFi
 weight: high
+dimension: trust-signals
 applies-when:
   domain: [crypto, defi, web3]
   type: [marketing, saas-app, tool]

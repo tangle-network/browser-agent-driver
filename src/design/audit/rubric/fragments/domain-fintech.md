@@ -2,6 +2,7 @@
 id: domain-fintech
 title: Fintech / Financial Services
 weight: high
+dimension: trust-signals
 applies-when:
   domain: [fintech, finance, banking, payments]
 ---

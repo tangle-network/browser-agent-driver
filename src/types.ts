@@ -578,6 +578,17 @@ export interface DesignFinding {
   cssSelector?: string;
   /** Concrete CSS property:value fix */
   cssFix?: string;
+  // ── Gen 3 ROI fields ────────────────────────────────────────────────
+  /** 1-10: how much this hurts the user experience */
+  impact?: number;
+  /** 1-10: how hard the fix is (1 = trivial CSS change, 10 = architectural rework) */
+  effort?: number;
+  /** Scope of the fix's effect — page-specific, section-specific, component-level, or design-system-wide */
+  blast?: 'page' | 'section' | 'component' | 'system';
+  /** Computed: (impact * blastWeight) / effort. Higher = fix this first. */
+  roi?: number;
+  /** Number of audited pages where this finding (or its dedupe-equivalent) appears */
+  pageCount?: number;
 }
 
 export interface DesignSystemScore {

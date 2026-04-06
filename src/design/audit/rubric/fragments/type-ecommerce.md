@@ -2,6 +2,7 @@
 id: type-ecommerce
 title: E-commerce / Storefront
 weight: high
+dimension: conversion
 applies-when:
   type: [ecommerce]
 ---
