@@ -75,6 +75,7 @@ export const CURSOR_OVERLAY_INIT_SCRIPT = `
 
   // ── Highlight box (drawn around the target element) ────────────────────
   const box = document.createElement('div');
+  box.id = '__bad_overlay_box';
   Object.assign(box.style, {
     position: 'fixed',
     left: '0',
@@ -129,8 +130,8 @@ export const CURSOR_OVERLAY_INIT_SCRIPT = `
   // ── Public API ─────────────────────────────────────────────────────────
   window.__bad_overlay = {
     /**
-     * Highlight a target element by selector or coordinates.
-     * Returns the element's bounding rect (so the driver can use it).
+     * Highlight a target element by CSS selector. Returns the rect or null.
+     * Used when the caller has a stable CSS selector.
      */
     highlight(selector) {
       try {
@@ -148,6 +149,22 @@ export const CURSOR_OVERLAY_INIT_SCRIPT = `
         });
         return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, width: rect.width, height: rect.height };
       } catch { return null; }
+    },
+
+    /**
+     * Highlight an arbitrary rect at given page coordinates. Used when the
+     * caller already computed the rect via Playwright's boundingBox (i.e.,
+     * the @ref selector isn't a real CSS selector).
+     */
+    highlightRect(x, y, width, height) {
+      try {
+        Object.assign(box.style, {
+          width: width + 'px',
+          height: height + 'px',
+          transform: \`translate(\${x}px, \${y}px)\`,
+          opacity: '1',
+        });
+      } catch { /* never let cosmetic overlay break a run */ }
     },
 
     /**

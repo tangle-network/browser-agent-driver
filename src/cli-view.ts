@@ -98,13 +98,32 @@ export async function runView(opts: ViewOptions): Promise<void> {
   const reportRoot = path.dirname(reportPath)
   const viewerHtml = findViewerHtml()
   const viewerSource = fs.readFileSync(viewerHtml, 'utf-8')
-  const reportJson = fs.readFileSync(reportPath, 'utf-8')
+  const reportRaw = fs.readFileSync(reportPath, 'utf-8')
 
-  // Inline the report data into the HTML so the viewer doesn't need to
-  // fetch (avoids CORS in some environments).
+  // Inline the report data into the HTML. CRITICAL: report.json contains
+  // LLM-generated text from arbitrary audited pages, which may include
+  // `</script>` substrings, HTML comments, or other content that breaks
+  // out of a <script> block. We escape the standard JS-in-HTML hazards:
+  //   - </script  → <\/script  (closes the script tag mid-string)
+  //   - <!--      → <\!--      (HTML comment that toggles parser modes)
+  //   - U+2028 / U+2029 → \u2028 / \u2029 (legal in JSON, illegal in JS strings)
+  // Re-parse + re-stringify to normalize and validate the JSON.
+  let reportJson: string
+  try {
+    reportJson = JSON.stringify(JSON.parse(reportRaw))
+  } catch {
+    cliError(`report.json is not valid JSON: ${reportPath}`)
+    process.exit(1)
+  }
+  const safeJson = reportJson
+    .replace(/<\/(script)/gi, '<\\/$1')
+    .replace(/<!--/g, '<\\!--')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029')
+
   const inlinedHtml = viewerSource.replace(
     'const runData = window.__BAD_RUN_DATA || null;',
-    `const runData = ${reportJson};`,
+    `const runData = ${safeJson};`,
   )
 
   const port = opts.port ?? 7777
@@ -116,16 +135,36 @@ export async function runView(opts: ViewOptions): Promise<void> {
       return
     }
 
-    // Serve files from the report directory (screenshots, etc.)
+    // Serve files from the report directory (screenshots, etc.).
+    // Path-traversal protection: resolve, check it stays inside reportRoot
+    // (using path.relative — startsWith on the prefix is buggy because
+    // /tmp/runA-evil shares a prefix with /tmp/runA), and resolve symlinks
+    // so they can't escape the sandbox.
     const decoded = decodeURIComponent(urlPath)
-    // Prevent path traversal
-    const safePath = path.join(reportRoot, decoded.replace(/^\/+/, ''))
-    if (!safePath.startsWith(reportRoot)) {
+    const candidate = path.resolve(reportRoot, decoded.replace(/^\/+/, ''))
+    const rel = path.relative(reportRoot, candidate)
+    if (rel.startsWith('..') || path.isAbsolute(rel)) {
       res.writeHead(403)
       res.end('forbidden')
       return
     }
-    if (!fs.existsSync(safePath) || !fs.statSync(safePath).isFile()) {
+    let realPath: string
+    try {
+      realPath = fs.realpathSync(candidate)
+    } catch {
+      res.writeHead(404)
+      res.end('not found')
+      return
+    }
+    const realRel = path.relative(reportRoot, realPath)
+    if (realRel.startsWith('..') || path.isAbsolute(realRel)) {
+      // symlink that escapes the sandbox
+      res.writeHead(403)
+      res.end('forbidden')
+      return
+    }
+    const safePath = realPath
+    if (!fs.statSync(safePath).isFile()) {
       res.writeHead(404)
       res.end('not found')
       return
@@ -138,9 +177,11 @@ export async function runView(opts: ViewOptions): Promise<void> {
     fs.createReadStream(safePath).pipe(res)
   })
 
+  // Bind explicitly to loopback so we never expose run artifacts on a LAN.
+  // Older Node defaults to all interfaces; this is the safe choice everywhere.
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject)
-    server.listen(port, () => resolve())
+    server.listen(port, '127.0.0.1', () => resolve())
   })
 
   const url = `http://localhost:${port}`

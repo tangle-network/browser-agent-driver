@@ -72,7 +72,16 @@ runs:
 
     - name: Install bad CLI
       shell: bash
-      run: npm install -g @tangle-network/browser-agent-driver@${{ inputs.bad-version }}
+      env:
+        BAD_VERSION: ${{ inputs.bad-version }}
+      run: |
+        # Validate version string against a strict allowlist before passing to npm.
+        # Accepts: "latest", "next", semver tags, semver ranges, dist tags.
+        if [[ ! "$BAD_VERSION" =~ ^[a-zA-Z0-9._^~>=<+-]+$ ]]; then
+          echo "::error::invalid bad-version: $BAD_VERSION"
+          exit 1
+        fi
+        npm install -g "@tangle-network/browser-agent-driver@${BAD_VERSION}"
 
     - name: Install Playwright Chromium
       shell: bash
@@ -82,6 +91,13 @@ runs:
       id: audit
       shell: bash
       env:
+        # All user-controlled inputs come in via env vars, NEVER via ${{ }}
+        # template interpolation inside `run:` (which would expand before bash
+        # parses and allow command injection via $(...) or backticks).
+        URL: ${{ inputs.url }}
+        PROFILE: ${{ inputs.profile }}
+        PAGES: ${{ inputs.pages }}
+        EVOLVE: ${{ inputs.evolve }}
         OPENAI_API_KEY: ${{ inputs.openai-api-key }}
         ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
       run: |
@@ -89,19 +105,19 @@ runs:
 
         ARGS=(
           design-audit
-          --url "${{ inputs.url }}"
-          --pages "${{ inputs.pages }}"
+          --url "$URL"
+          --pages "$PAGES"
           --json
           --headless
           --sink "$RUNNER_TEMP/bad-audit"
         )
 
-        if [ -n "${{ inputs.profile }}" ]; then
-          ARGS+=(--profile "${{ inputs.profile }}")
+        if [ -n "$PROFILE" ]; then
+          ARGS+=(--profile "$PROFILE")
         fi
 
-        if [ -n "${{ inputs.evolve }}" ]; then
-          ARGS+=(--evolve "${{ inputs.evolve }}" --project-dir "$GITHUB_WORKSPACE")
+        if [ -n "$EVOLVE" ]; then
+          ARGS+=(--evolve "$EVOLVE" --project-dir "$GITHUB_WORKSPACE")
         fi
 
         bad "${ARGS[@]}"
@@ -112,9 +128,10 @@ runs:
           exit 1
         fi
 
-        SCORE=$(node -e "console.log(JSON.parse(require('fs').readFileSync('$REPORT','utf-8')).summary.avgScore.toFixed(1))")
-        FINDINGS=$(node -e "console.log(JSON.parse(require('fs').readFileSync('$REPORT','utf-8')).summary.totalFindings)")
-        CRITICAL=$(node -e "console.log(JSON.parse(require('fs').readFileSync('$REPORT','utf-8')).summary.critical)")
+        # Pass the path via REPORT env var so it's never spliced into a JS string.
+        SCORE=$(REPORT_PATH="$REPORT" node -e 'const fs=require("fs"); const d=JSON.parse(fs.readFileSync(process.env.REPORT_PATH,"utf-8")); console.log(d.summary.avgScore.toFixed(1));')
+        FINDINGS=$(REPORT_PATH="$REPORT" node -e 'const fs=require("fs"); const d=JSON.parse(fs.readFileSync(process.env.REPORT_PATH,"utf-8")); console.log(d.summary.totalFindings);')
+        CRITICAL=$(REPORT_PATH="$REPORT" node -e 'const fs=require("fs"); const d=JSON.parse(fs.readFileSync(process.env.REPORT_PATH,"utf-8")); console.log(d.summary.critical);')
 
         echo "score=$SCORE" >> "$GITHUB_OUTPUT"
         echo "findings=$FINDINGS" >> "$GITHUB_OUTPUT"
@@ -137,25 +154,31 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github-token }}
-        SCORE: ${{ steps.audit.outputs.score }}
-        FINDINGS: ${{ steps.audit.outputs.findings }}
-        CRITICAL: ${{ steps.audit.outputs.critical }}
         REPORT: ${{ steps.audit.outputs.report }}
         PR_URL: ${{ github.event.pull_request.html_url }}
         URL: ${{ inputs.url }}
+        BODY_FILE: ${{ runner.temp }}/bad-audit-comment.md
       run: |
         set -e
 
-        # Build a markdown comment with the top fixes
-        BODY=$(node -e "
+        # Build the markdown comment via a separate node script (no inline -e
+        # heredoc, no shell re-expansion). Write directly to a file and let
+        # `gh pr comment --body-file` upload it without any further shell
+        # interpretation of LLM-generated content.
+        node <<'EOF' > "$BODY_FILE"
           const fs = require('fs');
           const d = JSON.parse(fs.readFileSync(process.env.REPORT, 'utf-8'));
-          const score = d.summary.avgScore.toFixed(1);
+          const url = process.env.URL || '';
+          const score = (d.summary.avgScore || 0).toFixed(1);
           const top = (d.topFixes || []).slice(0, 5);
           const bar = (n) => '█'.repeat(Math.round(n)) + '░'.repeat(10 - Math.round(n));
+          // Strip backticks from any user-content fields to avoid breaking
+          // the markdown code blocks below. The body still goes via --body-file
+          // so this is defense in depth, not the primary safety boundary.
+          const safe = (s) => String(s ?? '').replace(/`/g, "'").replace(/\r?\n/g, ' ');
           let body = '## bad design audit\n\n';
-          body += '**URL:** ' + process.env.URL + '\n';
-          body += '**Score:** \`' + bar(score) + '\` ' + score + '/10\n';
+          body += '**URL:** ' + safe(url) + '\n';
+          body += '**Score:** `' + bar(score) + '` ' + score + '/10\n';
           body += '**Findings:** ' + d.summary.totalFindings + ' (' + d.summary.critical + ' critical, ' + d.summary.major + ' major, ' + d.summary.minor + ' minor)\n\n';
           if (top.length > 0) {
             body += '### Top Fixes (by ROI)\n\n';
@@ -164,20 +187,19 @@ runs:
               if (f.pageCount && f.pageCount >= 2) tags.push('appears on ' + f.pageCount + ' pages');
               if (f.blast === 'system') tags.push('SYSTEMIC');
               const tagStr = tags.length ? ' _(' + tags.join(', ') + ')_' : '';
-              body += (i+1) + '. **[' + f.severity + ']** ' + f.description + tagStr + '\n';
-              body += '   - ROI: ' + (f.roi || 0).toFixed(1) + ' · Impact ' + (f.impact || '—') + ' · Effort ' + (f.effort || '—') + ' · Blast ' + (f.blast || '—') + '\n';
+              body += (i + 1) + '. **[' + safe(f.severity) + ']** ' + safe(f.description) + tagStr + '\n';
+              body += '   - ROI: ' + (f.roi || 0).toFixed(1) + ' · Impact ' + (f.impact || '—') + ' · Effort ' + (f.effort || '—') + ' · Blast ' + safe(f.blast || '—') + '\n';
               if (f.cssSelector && f.cssFix) {
-                body += '   - \`' + f.cssSelector + ' { ' + f.cssFix + ' }\`\n';
+                body += '   - `' + safe(f.cssSelector) + ' { ' + safe(f.cssFix) + ' }`\n';
               }
               body += '\n';
             });
           }
           body += '---\n_Powered by [bad design-audit](https://github.com/tangle-network/browser-agent-driver)_';
           process.stdout.write(body);
-        ")
+        EOF
 
-        # Comment via gh CLI
-        echo "$BODY" | gh pr comment "$PR_URL" --body-file -
+        gh pr comment "$PR_URL" --body-file "$BODY_FILE"
 
     - name: Enforce thresholds
       if: always()
@@ -188,6 +210,21 @@ runs:
         FAIL_ON_SCORE_BELOW: ${{ inputs.fail-on-score-below }}
         FAIL_ON_CRITICAL: ${{ inputs.fail-on-critical }}
       run: |
+        # Strict numeric validation before passing to bc — defense in depth
+        # against any hypothetical injection through outputs.
+        if [[ -n "$SCORE" && ! "$SCORE" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+          echo "::error::invalid score from audit: $SCORE"
+          exit 1
+        fi
+        if [[ -n "$FAIL_ON_SCORE_BELOW" && ! "$FAIL_ON_SCORE_BELOW" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+          echo "::error::invalid fail-on-score-below: $FAIL_ON_SCORE_BELOW"
+          exit 1
+        fi
+        if [[ -n "$CRITICAL" && ! "$CRITICAL" =~ ^[0-9]+$ ]]; then
+          echo "::error::invalid critical count: $CRITICAL"
+          exit 1
+        fi
+
         if [ "$FAIL_ON_CRITICAL" = "true" ] && [ "${CRITICAL:-0}" -gt 0 ]; then
           echo "::error::audit found $CRITICAL critical findings"
           exit 1

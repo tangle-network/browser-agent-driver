@@ -163,7 +163,7 @@ bad view audit-results/stripe.com-1775502457141
 - Top Fixes section opens by default for design audits, ranked by ROI
 - Per-page screenshots, design system breakdown, findings table, classification
 - Per-turn action JSON, reasoning, expected effect, result for agent runs
-- Self-contained — no build pipeline, single static HTML, works offline
+- Self-contained — no build pipeline, single static HTML, no external dependencies (the viewer is served by a local loopback HTTP server on port 7777)
 
 Pair with `--show-cursor` to record runs with an animated cursor + element highlights overlaid on every screenshot.
 

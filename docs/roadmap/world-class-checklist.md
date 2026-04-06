@@ -6,6 +6,14 @@ This is the principal-eng strategic plan for taking bad and bad-app from "best a
 
 **Status:** active. Updated as items ship. Last revision: 2026-04-06.
 
+## Shipped to date
+
+- ✅ **Cursor + element highlight overlay** — `--show-cursor` flag, animated SVG cursor + highlight box + click-pulse ring captured in screenshots. Shipped in PR #34, hardened after critical audit (`world-class` branch).
+- ✅ **Local session viewer (vanilla HTML, single file)** — `bad view <run-dir>` opens a self-contained HTML UI with sidebar/main/aside layout, top-fixes ranking for design audits, per-page screenshots, design system breakdown. Shipped in PR #34. **Note: this is replay-only — no live SSE streaming.** That's the next iteration.
+- ✅ **SteelDriver adapter** — connect bad's agent loop to a Steel-managed remote browser via Playwright over CDP. Delegates the full PlaywrightDriver public surface. Shipped in PR #34, hardened after critical audit (named-export support, exhaustive delegation, about:blank guard).
+- ✅ **GitHub Action (composite, in-repo)** — `tangle-network/browser-agent-driver/.github/actions/design-audit@main`. Posts top fixes as PR comment, uploads full report as artifact, optional auto-fix via evolve. Shipped in PR #34, hardened after critical audit (env-var injection mitigation, regex-validated bad-version).
+- ✅ **Design audit Gen 2 + Gen 3** — auto-classification, composable rubric fragments, real WCAG measurement, ROI ranking, cross-page systemic detection, evolve loop with claude-code/codex/opencode dispatch. Shipped in PR #33.
+
 ---
 
 ## TL;DR — top 5 wedge moves
@@ -47,11 +55,23 @@ bad has the **best agent capabilities** in the space (design audit, evolve loops
 
 **Goal:** see bad doing things, both live and on replay, with the same fidelity Steel and Browserbase show.
 
-**MVP scope:**
-- Web app (Vite + React SPA), deployable as static asset OR served from bad-app
-- Local mode: read run artifacts from disk
-- Cloud mode: read from bad-app's session API
-- Three views per run: **Live**, **Replay**, **Inspect**
+**Current state (shipped):**
+- Single-file vanilla HTML viewer at `src/viewer/viewer.html` (~700 lines, no React, no build pipeline)
+- `bad view <run-dir>` starts a loopback-bound HTTP server on port 7777 and opens the user's browser
+- Three sections per run: **sidebar** (turns/pages), **main** (screenshot + scrubber), **aside** (action JSON, reasoning, design system breakdown, findings)
+- Top Fixes auto-selected for design audit runs
+- Replay-only — no live streaming yet
+
+**Next iterations (Gen 2 viewer):**
+- Cloud mode: serve from bad-app, read from session API
+- **Live mode** with SSE/WebSocket streaming (currently NOT built):
+  - Stream the current screenshot as bad runs
+  - Show LLM call status (token count streaming, latency)
+  - Recovery events flagged inline
+  - Cancel button (sends SIGTERM)
+- **Replay improvements**: scrubber across turns, diff toggle, speed control, bookmarks
+- **Inspect mode**: click any element in the screenshot → highlight + show its `@ref` and a11y tree entry
+- Promote to Vite + React when component complexity justifies it (vanilla is fine until ~1500 LOC)
 
 **Live mode:**
 - Stream the current screenshot via SSE/WebSocket as bad runs

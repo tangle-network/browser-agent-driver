@@ -36,9 +36,9 @@
  */
 
 import type { Page, Browser, BrowserContext } from 'playwright'
-import type { Driver, ActionResult } from './types.js'
+import type { Driver, ActionResult, ResourceBlockingOptions } from './types.js'
 import type { Action, PageState } from '../types.js'
-import { PlaywrightDriver, type PlaywrightDriverOptions } from './playwright.js'
+import { PlaywrightDriver, type PlaywrightDriverOptions, type ObserveTiming } from './playwright.js'
 
 export interface SteelDriverOptions extends PlaywrightDriverOptions {
   /** Steel API key. Defaults to STEEL_API_KEY env var. */
@@ -100,20 +100,33 @@ export class SteelDriver implements Driver {
       )
     }
 
-    // Dynamic import so users who don't use Steel don't need the SDK.
+    // Dynamic import so users who don't use Steel don't need the SDK installed.
     // Use a runtime variable to dodge TypeScript module resolution at compile time.
     const moduleName = 'steel-sdk'
-    let SteelSdk: { default: new (opts: { apiKey: string; baseUrl?: string }) => SteelClient }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let mod: any
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      SteelSdk = (await import(/* @vite-ignore */ moduleName)) as any
+      mod = await import(/* @vite-ignore */ moduleName)
     } catch {
       throw new Error(
         'SteelDriver: steel-sdk not installed. Run `pnpm add steel-sdk`.',
       )
     }
 
-    const Ctor = SteelSdk.default ?? (SteelSdk as unknown as new (opts: { apiKey: string; baseUrl?: string }) => SteelClient)
+    // The real steel-sdk exports `Steel` as a named class. Some forks/older
+    // versions used a default export. Try both, throw clearly if neither works.
+    type SteelCtor = new (opts: { apiKey: string; baseUrl?: string }) => SteelClient
+    const Ctor: SteelCtor | undefined =
+      (mod && (mod.Steel as SteelCtor)) ??
+      (mod && (mod.default as SteelCtor)) ??
+      (typeof mod === 'function' ? (mod as SteelCtor) : undefined)
+    if (!Ctor) {
+      throw new Error(
+        'SteelDriver: steel-sdk export shape not recognized. Expected a `Steel` named export or a default export. Got: ' +
+          Object.keys(mod ?? {}).join(', '),
+      )
+    }
     const steelClient = new Ctor({
       apiKey,
       ...(options.baseUrl ? { baseUrl: options.baseUrl } : {}),
@@ -140,14 +153,21 @@ export class SteelDriver implements Driver {
     const { chromium } = await import('playwright')
     const browser = await chromium.connectOverCDP(session.websocketUrl)
 
-    // Steel sessions usually have a default context with a default page
+    // Steel sessions usually have a default context with a default page.
+    // Prefer a non-blank page if multiple exist (Steel may leave an
+    // about:blank from session warmup alongside the real working page).
     const contexts = browser.contexts()
     let context: BrowserContext
     let page: Page
     if (contexts.length > 0) {
       context = contexts[0]
       const pages = context.pages()
-      page = pages.length > 0 ? pages[0] : await context.newPage()
+      if (pages.length === 0) {
+        page = await context.newPage()
+      } else {
+        const realPage = pages.find(p => p.url() && p.url() !== 'about:blank')
+        page = realPage ?? pages[0]
+      }
     } else {
       context = await browser.newContext()
       page = await context.newPage()
@@ -166,6 +186,12 @@ export class SteelDriver implements Driver {
   }
 
   // ── Driver interface — delegate everything to the inner PlaywrightDriver ──
+  //
+  // We delegate exhaustively (not just the bare Driver interface) so that
+  // benchmarks, recovery patterns, screenshot capture, resource blocking,
+  // and timing diagnostics all work transparently when callers swap in a
+  // SteelDriver. The class-level claim "all bad behavior works unchanged"
+  // is only true if we forward every public surface PlaywrightDriver exposes.
 
   observe(): Promise<PageState> {
     return this.inner.observe()
@@ -175,7 +201,7 @@ export class SteelDriver implements Driver {
     return this.inner.execute(action)
   }
 
-  getPage(): Page | undefined {
+  getPage(): Page {
     return this.inner.getPage()
   }
 
@@ -183,14 +209,38 @@ export class SteelDriver implements Driver {
     return this.inner.getUrl()
   }
 
+  /**
+   * Screenshot via the underlying driver so format/quality match
+   * PlaywrightDriver (JPEG at the configured quality, not PNG).
+   */
   async screenshot(): Promise<Buffer> {
-    const page = this.inner.getPage()
-    if (!page) throw new Error('SteelDriver: no page available for screenshot')
-    return page.screenshot({ fullPage: false })
+    const state = await this.inner.observe()
+    if (state.screenshot) {
+      // observe() returned a base64 screenshot — decode it
+      return Buffer.from(state.screenshot, 'base64')
+    }
+    // Fall back to a fresh capture via the page
+    return this.inner.getPage().screenshot({ fullPage: false, type: 'jpeg', quality: 50 })
   }
 
   inspectSelectorHref(selector: string): Promise<string | undefined> {
     return this.inner.inspectSelectorHref(selector)
+  }
+
+  /**
+   * Apply resource blocking to the remote Steel session — same API as the
+   * local driver. Required for benchmarks and any code path that calls it.
+   */
+  setupResourceBlocking(options: ResourceBlockingOptions): Promise<void> {
+    return this.inner.setupResourceBlocking(options)
+  }
+
+  /**
+   * Phase-level timing from the last observe() call. Required for the
+   * benchmark suites in bench/.
+   */
+  getLastTiming(): ObserveTiming | undefined {
+    return this.inner.getLastTiming()
   }
 
   getDiagnostics(): Record<string, unknown> {

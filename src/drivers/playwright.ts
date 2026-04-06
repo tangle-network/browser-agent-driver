@@ -70,7 +70,12 @@ export class PlaywrightDriver implements Driver {
   private cdpFailed = false;
   private lastTiming: ObserveTiming | undefined;
   private observeCount = 0;
-  private cursorInstalled = false;
+  /**
+   * Promise that resolves when the cursor overlay finishes installing.
+   * `animateCursorToSelector` awaits this so the first action doesn't race
+   * the init script. Undefined if showCursor is off.
+   */
+  private cursorInstallPromise?: Promise<void>;
 
   constructor(
     private page: Page,
@@ -78,9 +83,9 @@ export class PlaywrightDriver implements Driver {
   ) {
     if (this.options.showCursor) {
       // Install for the current page AND any future pages this context creates.
-      // We can't await in a constructor, so we fire-and-forget — the script
-      // is idempotent (guarded by __bad_overlay_installed) and races are safe.
-      this.installCursorOverlay().catch(() => { /* swallow — overlay is non-critical */ });
+      // We store the promise so callers (animateCursorToSelector) can await it
+      // before driving the overlay — otherwise the first action races the inject.
+      this.cursorInstallPromise = this.installCursorOverlay()
     }
   }
 
@@ -89,13 +94,11 @@ export class PlaywrightDriver implements Driver {
    * browser context, so it survives navigations and applies to popups.
    */
   private async installCursorOverlay(): Promise<void> {
-    if (this.cursorInstalled) return;
-    this.cursorInstalled = true;
     try {
       // Context-level: applies to all current and future pages
       await this.page.context().addInitScript({ content: CURSOR_OVERLAY_INIT_SCRIPT });
       // Page-level: ensure the current page has it now (addInitScript is for new docs)
-      await this.page.evaluate(CURSOR_OVERLAY_INIT_SCRIPT).catch(() => { /* may already exist */ });
+      await this.page.evaluate(CURSOR_OVERLAY_INIT_SCRIPT).catch(() => { /* may already exist or CSP-blocked */ });
     } catch {
       // Strict CSP can block evaluate; init script via context still works on next nav
     }
@@ -103,26 +106,24 @@ export class PlaywrightDriver implements Driver {
 
   /**
    * Animate the cursor to the target element + draw a highlight box, then
-   * pulse a click ring. No-op if showCursor is disabled. Returns the rect
-   * the overlay highlighted (for diagnostics).
+   * pulse a click ring. No-op if showCursor is disabled.
+   *
+   * Uses Playwright's boundingBox to compute the rect (works for any locator,
+   * including @ref selectors that don't map to plain CSS) and drives the
+   * overlay via its public `highlightRect` / `moveTo` / `pulseClick` API.
    */
   private async animateCursorToSelector(
     selector: string,
     actionLabel: string,
   ): Promise<void> {
     if (!this.options.showCursor) return;
+    // Make sure the install promise (fired in the constructor) has resolved
+    // before we try to drive the overlay. Otherwise the first action races
+    // the script injection and the cursor never appears.
+    if (this.cursorInstallPromise) {
+      await this.cursorInstallPromise.catch(() => undefined);
+    }
     try {
-      // Resolve the @ref selector to a real CSS selector via the snapshot helper
-      const cssSelector = await this.page.evaluate(() => {
-        // The overlay accepts a CSS selector — if our @ref is opaque, we
-        // still need a way to reach the element. Fall back to using the
-        // currently-focused/active element via Playwright below.
-        return null;
-      }).catch(() => null);
-      void cssSelector;
-
-      // Use Playwright to compute the bounding box of the target locator.
-      // This is the most reliable cross-engine way.
       const locator = this.snapshot.resolveLocator(this.page, selector);
       const box = await locator.boundingBox({ timeout: 1000 }).catch(() => null);
       if (!box) return;
@@ -130,43 +131,25 @@ export class PlaywrightDriver implements Driver {
       const cx = box.x + box.width / 2;
       const cy = box.y + box.height / 2;
 
-      // Drive the overlay via window.__bad_overlay
       await this.page.evaluate(
-        ({ x, y, w, h, label }: { x: number; y: number; w: number; h: number; label: string }) => {
+        ({ x, y, w, h, label, cx: cxArg, cy: cyArg }: { x: number; y: number; w: number; h: number; label: string; cx: number; cy: number }) => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const ov = (window as any).__bad_overlay
-          if (!ov) return
-          // Highlight box at the element rect
-          ov.highlight = ov.highlight || (() => null)
-          // Manually set box position since highlight() expects a CSS selector
-          // Use moveTo + a synthetic rect: we know the rect, draw the box ourselves
-          const root = document.getElementById('__bad_overlay_root')
-          if (root) {
-            const children = root.children
-            // children[0] is the highlight box (per overlay assembly order)
-            const boxEl = children[0] as HTMLElement | undefined
-            if (boxEl) {
-              boxEl.style.width = w + 'px'
-              boxEl.style.height = h + 'px'
-              boxEl.style.transform = `translate(${x}px, ${y}px)`
-              boxEl.style.opacity = '1'
-            }
-          }
-          ov.moveTo(x + w / 2, y + h / 2, label)
+          const ov = (window as any).__bad_overlay;
+          if (!ov) return;
+          ov.highlightRect(x, y, w, h);
+          ov.moveTo(cxArg, cyArg, label);
         },
-        { x: box.x, y: box.y, w: box.width, h: box.height, label: actionLabel },
+        { x: box.x, y: box.y, w: box.width, h: box.height, label: actionLabel, cx, cy },
       ).catch(() => { /* CSP or page closed */ });
 
-      // Wait for the cursor animation to finish
       await this.page.waitForTimeout(CURSOR_ANIMATION_MS);
 
-      // Pulse on click for click-like actions
       if (actionLabel === 'click' || actionLabel === 'type' || actionLabel === 'press') {
         await this.page.evaluate(
           ({ x, y }: { x: number; y: number }) => {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const ov = (window as any).__bad_overlay
-            if (ov) ov.pulseClick(x, y)
+            const ov = (window as any).__bad_overlay;
+            if (ov) ov.pulseClick(x, y);
           },
           { x: cx, y: cy },
         ).catch(() => { /* CSP */ });

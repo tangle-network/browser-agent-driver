@@ -379,7 +379,7 @@ async function main(): Promise<void> {
   }
 
   if (command !== 'run') {
-    cliError(`Unknown command: ${command}. Use "run", "runs", "design-audit", "showcase", or "auth".`);
+    cliError(`Unknown command: ${command}. Use "run", "runs", "design-audit", "view", "showcase", or "auth".`);
     process.exit(1);
   }
 
@@ -1170,6 +1170,7 @@ async function main(): Promise<void> {
       timeout: actionTimeout,
       visionStrategy: config.visionStrategy,
       screenshotInterval,
+      showCursor: values['show-cursor'],
     });
     // Apply resource blocking if configured
     const resourceBlockingStartedAt = Date.now();
