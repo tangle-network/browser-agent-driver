@@ -6,6 +6,7 @@ sandbox-results/
 test-artifact-output/
 .env
 agent-results/
+agent-results-*/
 .auth/
 audit-results/
 bench/results/

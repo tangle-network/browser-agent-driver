@@ -32,6 +32,9 @@
     "clean": "rm -rf dist",
     "test": "vitest run",
     "test:watch": "vitest",
+    "changeset": "changeset",
+    "version-packages": "changeset version && pnpm install --lockfile-only --no-frozen-lockfile",
+    "release-tag": "changeset tag && git push --follow-tags",
     "auth:save-state": "node ./scripts/save-storage-state.mjs",
     "auth:check-state": "node ./scripts/check-storage-state.mjs",
     "skills:install": "node ./scripts/install-skills.mjs",
@@ -115,6 +118,8 @@
   "devDependencies": {
     "@ai-sdk/anthropic": "^3.0.49",
     "@ai-sdk/google": "^3.0.33",
+    "@changesets/changelog-github": "^0.6.0",
+    "@changesets/cli": "^2.30.0",
     "@types/node": "^20.10.0",
     "@types/pngjs": "^6.0.5",
     "classic-level": "^3.0.0",

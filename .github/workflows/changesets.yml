@@ -1,0 +1,90 @@
+name: Changesets
+
+# Auto-versioning + auto-publish via Changesets.
+#
+# How it works:
+#   1. Every PR that changes runtime behavior adds a markdown changeset
+#      under `.changeset/` declaring the bump type (patch/minor/major).
+#   2. When the PR merges to main, this workflow runs.
+#   3. If unreleased changesets exist, `changesets/action@v1` opens (or
+#      updates) a "Release: version packages" PR that bumps `package.json`
+#      and updates `CHANGELOG.md`.
+#   4. When that Version Packages PR is merged, this workflow runs again,
+#      detects there are no leftover changesets, and runs the `publish`
+#      script. We tag-and-push, which fires the existing `release.yml` and
+#      `publish-npm.yml` workflows that create the GitHub release and
+#      publish to npm with provenance.
+#
+# Why two-stage (tag handoff instead of publishing directly):
+#   - The existing publish-npm.yml already does version validation,
+#     OIDC trusted publishing, and provenance attestation. No reason to
+#     duplicate it.
+#   - Tag-driven publishing is more familiar and easier to revert
+#     (delete tag → re-tag) than commit-driven publishing.
+#   - Concurrency control prevents two version PRs from racing.
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: changesets-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write       # bump package.json + CHANGELOG.md, push the tag
+  pull-requests: write  # open + update the Version Packages PR
+
+jobs:
+  release:
+    name: Version or Tag
+    if: github.repository == 'tangle-network/browser-agent-driver'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Full history so changesets can read all unreleased entries
+          # and so the tag push points at the right commit.
+          fetch-depth: 0
+          # Use a token that can push to main even if branch protection
+          # is enabled. GITHUB_TOKEN works when "Allow GitHub Actions to
+          # create and approve pull requests" is enabled in repo settings.
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Create Release Pull Request or Tag
+        id: changesets
+        uses: changesets/action@v1
+        with:
+          # The script that runs when consumed changesets are merged to
+          # main (i.e. the Version Packages PR was just merged). It tags
+          # the new version and pushes; the existing release.yml and
+          # publish-npm.yml workflows fire on that tag.
+          publish: pnpm release-tag
+          # The script that updates package.json + CHANGELOG.md and
+          # creates/updates the Version Packages PR. We also refresh the
+          # lockfile so the PR builds cleanly.
+          version: pnpm version-packages
+          title: 'Release: version packages'
+          commit: 'chore: version packages'
+          # Don't have changesets create its own GitHub releases — the
+          # existing release.yml workflow handles that with the standalone
+          # tarball.
+          createGithubReleases: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

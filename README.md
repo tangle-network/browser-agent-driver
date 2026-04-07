@@ -232,7 +232,13 @@ npm run skills:install
 
 ## Publishing
 
-Tag-triggered via `.github/workflows/publish-npm.yml`. Push `browser-agent-driver-vX.Y.Z` to publish.
+Versioning and releases are automated via [Changesets](https://github.com/changesets/changesets).
+
+**Contributors:** add a changeset to your PR with `pnpm changeset` — pick patch / minor / major and write a one-line summary. The CLI creates a markdown file under `.changeset/` to commit alongside your code.
+
+**Maintainers:** when PRs with changesets merge to `main`, the [changesets workflow](./.github/workflows/changesets.yml) automatically opens (or updates) a "Release: version packages" PR that bumps `package.json` and writes `CHANGELOG.md`. Merging that PR pushes a `browser-agent-driver-vX.Y.Z` git tag, which fires the existing [`release.yml`](./.github/workflows/release.yml) and [`publish-npm.yml`](./.github/workflows/publish-npm.yml) workflows that create the GitHub release tarball and publish to npm with provenance.
+
+You stay in control of *when* releases ship; the bump math, changelog, tagging, and publishing are all automated. See [`.changeset/README.md`](./.changeset/README.md) for the full contributor flow.
 
 ## Development
 
