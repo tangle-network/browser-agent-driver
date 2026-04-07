@@ -139,6 +139,11 @@ async function main(): Promise<void> {
       'project-dir': { type: 'string' },
       reproducibility: { type: 'boolean' },
       'rubrics-dir': { type: 'string' },
+      // bad view
+      port: { type: 'string' },
+      'no-open': { type: 'boolean' },
+      // bad run --show-cursor (overlay)
+      'show-cursor': { type: 'boolean' },
       // showcase
       script: { type: 'string' },
       capture: { type: 'string' },
@@ -217,6 +222,29 @@ async function main(): Promise<void> {
   }
 
   const command = positionals[0];
+
+  if (command === 'view') {
+    const runDir = positionals[1];
+    if (!runDir) {
+      cliError('usage: bad view <run-directory>');
+      process.exit(1);
+    }
+    const { runViewCli, ViewError } = await import('./cli-view.js');
+    try {
+      await runViewCli({
+        runDir,
+        port: values.port ? parseInt(values.port) : undefined,
+        noOpen: values['no-open'],
+      });
+    } catch (err) {
+      if (err instanceof ViewError) {
+        cliError(err.message);
+        process.exit(1);
+      }
+      throw err;
+    }
+    return;
+  }
 
   if (command === 'design-audit') {
     if (!values.url) {
@@ -359,7 +387,7 @@ async function main(): Promise<void> {
   }
 
   if (command !== 'run') {
-    cliError(`Unknown command: ${command}. Use "run", "runs", "design-audit", "showcase", or "auth".`);
+    cliError(`Unknown command: ${command}. Use "run", "runs", "design-audit", "view", "showcase", or "auth".`);
     process.exit(1);
   }
 
@@ -1150,6 +1178,7 @@ async function main(): Promise<void> {
       timeout: actionTimeout,
       visionStrategy: config.visionStrategy,
       screenshotInterval,
+      showCursor: values['show-cursor'],
     });
     // Apply resource blocking if configured
     const resourceBlockingStartedAt = Date.now();

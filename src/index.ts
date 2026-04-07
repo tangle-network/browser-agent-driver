@@ -67,6 +67,8 @@ export type {
 export type { Driver, ActionResult, ResourceBlockingOptions } from './drivers/types.js';
 export { PlaywrightDriver } from './drivers/playwright.js';
 export type { PlaywrightDriverOptions, ObserveTiming } from './drivers/playwright.js';
+export { SteelDriver } from './drivers/steel.js';
+export type { SteelDriverOptions, SteelOptions } from './drivers/steel.js';
 export { AriaSnapshotHelper, StaleRefError, dismissOverlays, stableHash, INTERACTIVE_ROLES } from './drivers/snapshot.js';
 export type { ParsedElement, SnapshotDiff } from './drivers/snapshot.js';
 export { ANALYTICS_PATTERNS, IMAGE_PATTERNS, MEDIA_PATTERNS } from './drivers/block-patterns.js';

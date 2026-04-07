@@ -1,0 +1,263 @@
+name: 'bad design audit'
+description: 'Run a vision-powered design audit on a URL and post results to the PR'
+author: 'Tangle Network'
+branding:
+  icon: 'eye'
+  color: 'purple'
+
+inputs:
+  url:
+    description: 'URL to audit (typically a Vercel/Netlify preview URL)'
+    required: true
+  profile:
+    description: 'Audit profile (general, saas, marketing, defi, vibecoded). Omit to auto-classify.'
+    required: false
+    default: ''
+  pages:
+    description: 'Maximum pages to crawl from the starting URL'
+    required: false
+    default: '3'
+  fail-on-score-below:
+    description: 'Fail the action if average score drops below this threshold (0-10)'
+    required: false
+    default: ''
+  fail-on-critical:
+    description: 'Fail the action if any critical findings are present'
+    required: false
+    default: 'false'
+  comment-on-pr:
+    description: 'Post audit results as a PR comment'
+    required: false
+    default: 'true'
+  evolve:
+    description: 'Run evolve loop to auto-fix findings (claude-code | codex | opencode | css)'
+    required: false
+    default: ''
+  github-token:
+    description: 'GitHub token for posting comments (defaults to github.token)'
+    required: false
+    default: ${{ github.token }}
+  bad-version:
+    description: 'Version of @tangle-network/browser-agent-driver to install'
+    required: false
+    default: 'latest'
+  openai-api-key:
+    description: 'OpenAI API key for the audit LLM (only needed if not using claude-code provider)'
+    required: false
+  anthropic-api-key:
+    description: 'Anthropic API key (only needed if using anthropic provider)'
+    required: false
+
+outputs:
+  score:
+    description: 'Average design audit score (0-10)'
+    value: ${{ steps.audit.outputs.score }}
+  findings:
+    description: 'Total number of findings'
+    value: ${{ steps.audit.outputs.findings }}
+  critical:
+    description: 'Number of critical findings'
+    value: ${{ steps.audit.outputs.critical }}
+  report-path:
+    description: 'Path to the generated report.json'
+    value: ${{ steps.audit.outputs.report }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Install bad CLI
+      shell: bash
+      env:
+        BAD_VERSION: ${{ inputs.bad-version }}
+      run: |
+        # Validate version string against a strict allowlist before passing to npm.
+        # Accepts: "latest", "next", semver tags, semver ranges, dist tags.
+        if [[ ! "$BAD_VERSION" =~ ^[a-zA-Z0-9._^~>=<+-]+$ ]]; then
+          echo "::error::invalid bad-version: $BAD_VERSION"
+          exit 1
+        fi
+        npm install -g "@tangle-network/browser-agent-driver@${BAD_VERSION}"
+
+    # Detect the Playwright version that bad pulled in so the cache key
+    # invalidates whenever bad upgrades to a newer Playwright.
+    - name: Resolve Playwright version
+      id: pw-version
+      shell: bash
+      run: |
+        VERSION=$(npm view @tangle-network/browser-agent-driver dependencies.patchright 2>/dev/null \
+          || npm view @tangle-network/browser-agent-driver dependencies.playwright 2>/dev/null \
+          || echo "unknown")
+        echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+    # Cache Chromium binaries between runs. The post-cache install step is a
+    # no-op when the cache hits, saving ~3 minutes per CI run.
+    - name: Cache Playwright browsers
+      id: pw-cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ms-playwright
+        key: ${{ runner.os }}-playwright-${{ steps.pw-version.outputs.version }}
+
+    - name: Install Playwright Chromium
+      shell: bash
+      run: |
+        if [ "${{ steps.pw-cache.outputs.cache-hit }}" = "true" ]; then
+          # Browsers cached; only install OS deps (apt-get on Linux runners).
+          npx playwright install-deps chromium 2>/dev/null || true
+        else
+          npx playwright install chromium --with-deps
+        fi
+
+    - name: Run design audit
+      id: audit
+      shell: bash
+      env:
+        # All user-controlled inputs come in via env vars, NEVER via ${{ }}
+        # template interpolation inside `run:` (which would expand before bash
+        # parses and allow command injection via $(...) or backticks).
+        URL: ${{ inputs.url }}
+        PROFILE: ${{ inputs.profile }}
+        PAGES: ${{ inputs.pages }}
+        EVOLVE: ${{ inputs.evolve }}
+        OPENAI_API_KEY: ${{ inputs.openai-api-key }}
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+      run: |
+        set -e
+
+        ARGS=(
+          design-audit
+          --url "$URL"
+          --pages "$PAGES"
+          --json
+          --headless
+          --sink "$RUNNER_TEMP/bad-audit"
+        )
+
+        if [ -n "$PROFILE" ]; then
+          ARGS+=(--profile "$PROFILE")
+        fi
+
+        if [ -n "$EVOLVE" ]; then
+          ARGS+=(--evolve "$EVOLVE" --project-dir "$GITHUB_WORKSPACE")
+        fi
+
+        bad "${ARGS[@]}"
+
+        REPORT="$RUNNER_TEMP/bad-audit/report.json"
+        if [ ! -f "$REPORT" ]; then
+          echo "::error::report.json not found at $REPORT"
+          exit 1
+        fi
+
+        # Pass the path via REPORT env var so it's never spliced into a JS string.
+        SCORE=$(REPORT_PATH="$REPORT" node -e 'const fs=require("fs"); const d=JSON.parse(fs.readFileSync(process.env.REPORT_PATH,"utf-8")); console.log(d.summary.avgScore.toFixed(1));')
+        FINDINGS=$(REPORT_PATH="$REPORT" node -e 'const fs=require("fs"); const d=JSON.parse(fs.readFileSync(process.env.REPORT_PATH,"utf-8")); console.log(d.summary.totalFindings);')
+        CRITICAL=$(REPORT_PATH="$REPORT" node -e 'const fs=require("fs"); const d=JSON.parse(fs.readFileSync(process.env.REPORT_PATH,"utf-8")); console.log(d.summary.critical);')
+
+        echo "score=$SCORE" >> "$GITHUB_OUTPUT"
+        echo "findings=$FINDINGS" >> "$GITHUB_OUTPUT"
+        echo "critical=$CRITICAL" >> "$GITHUB_OUTPUT"
+        echo "report=$REPORT" >> "$GITHUB_OUTPUT"
+
+        echo "Score: $SCORE / 10"
+        echo "Findings: $FINDINGS ($CRITICAL critical)"
+
+    - name: Upload audit artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: bad-design-audit
+        path: ${{ runner.temp }}/bad-audit
+        retention-days: 30
+
+    - name: Post PR comment
+      if: ${{ inputs.comment-on-pr == 'true' && github.event_name == 'pull_request' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        REPORT: ${{ steps.audit.outputs.report }}
+        PR_URL: ${{ github.event.pull_request.html_url }}
+        URL: ${{ inputs.url }}
+        BODY_FILE: ${{ runner.temp }}/bad-audit-comment.md
+      run: |
+        set -e
+
+        # Build the markdown comment via a separate node script (no inline -e
+        # heredoc, no shell re-expansion). Write directly to a file and let
+        # `gh pr comment --body-file` upload it without any further shell
+        # interpretation of LLM-generated content.
+        node <<'EOF' > "$BODY_FILE"
+          const fs = require('fs');
+          const d = JSON.parse(fs.readFileSync(process.env.REPORT, 'utf-8'));
+          const url = process.env.URL || '';
+          const score = (d.summary.avgScore || 0).toFixed(1);
+          const top = (d.topFixes || []).slice(0, 5);
+          const bar = (n) => '█'.repeat(Math.round(n)) + '░'.repeat(10 - Math.round(n));
+          // Strip backticks from any user-content fields to avoid breaking
+          // the markdown code blocks below. The body still goes via --body-file
+          // so this is defense in depth, not the primary safety boundary.
+          const safe = (s) => String(s ?? '').replace(/`/g, "'").replace(/\r?\n/g, ' ');
+          let body = '## bad design audit\n\n';
+          body += '**URL:** ' + safe(url) + '\n';
+          body += '**Score:** `' + bar(score) + '` ' + score + '/10\n';
+          body += '**Findings:** ' + d.summary.totalFindings + ' (' + d.summary.critical + ' critical, ' + d.summary.major + ' major, ' + d.summary.minor + ' minor)\n\n';
+          if (top.length > 0) {
+            body += '### Top Fixes (by ROI)\n\n';
+            top.forEach((f, i) => {
+              const tags = [];
+              if (f.pageCount && f.pageCount >= 2) tags.push('appears on ' + f.pageCount + ' pages');
+              if (f.blast === 'system') tags.push('SYSTEMIC');
+              const tagStr = tags.length ? ' _(' + tags.join(', ') + ')_' : '';
+              body += (i + 1) + '. **[' + safe(f.severity) + ']** ' + safe(f.description) + tagStr + '\n';
+              body += '   - ROI: ' + (f.roi || 0).toFixed(1) + ' · Impact ' + (f.impact || '—') + ' · Effort ' + (f.effort || '—') + ' · Blast ' + safe(f.blast || '—') + '\n';
+              if (f.cssSelector && f.cssFix) {
+                body += '   - `' + safe(f.cssSelector) + ' { ' + safe(f.cssFix) + ' }`\n';
+              }
+              body += '\n';
+            });
+          }
+          body += '---\n_Powered by [bad design-audit](https://github.com/tangle-network/browser-agent-driver)_';
+          process.stdout.write(body);
+        EOF
+
+        gh pr comment "$PR_URL" --body-file "$BODY_FILE"
+
+    - name: Enforce thresholds
+      if: always()
+      shell: bash
+      env:
+        SCORE: ${{ steps.audit.outputs.score }}
+        CRITICAL: ${{ steps.audit.outputs.critical }}
+        FAIL_ON_SCORE_BELOW: ${{ inputs.fail-on-score-below }}
+        FAIL_ON_CRITICAL: ${{ inputs.fail-on-critical }}
+      run: |
+        # Strict numeric validation before passing to bc — defense in depth
+        # against any hypothetical injection through outputs.
+        if [[ -n "$SCORE" && ! "$SCORE" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+          echo "::error::invalid score from audit: $SCORE"
+          exit 1
+        fi
+        if [[ -n "$FAIL_ON_SCORE_BELOW" && ! "$FAIL_ON_SCORE_BELOW" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+          echo "::error::invalid fail-on-score-below: $FAIL_ON_SCORE_BELOW"
+          exit 1
+        fi
+        if [[ -n "$CRITICAL" && ! "$CRITICAL" =~ ^[0-9]+$ ]]; then
+          echo "::error::invalid critical count: $CRITICAL"
+          exit 1
+        fi
+
+        if [ "$FAIL_ON_CRITICAL" = "true" ] && [ "${CRITICAL:-0}" -gt 0 ]; then
+          echo "::error::audit found $CRITICAL critical findings"
+          exit 1
+        fi
+        if [ -n "$FAIL_ON_SCORE_BELOW" ]; then
+          if (( $(echo "${SCORE:-0} < $FAIL_ON_SCORE_BELOW" | bc -l) )); then
+            echo "::error::audit score $SCORE is below threshold $FAIL_ON_SCORE_BELOW"
+            exit 1
+          fi
+        fi

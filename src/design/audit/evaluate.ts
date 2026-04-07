@@ -80,10 +80,12 @@ function buildEvalPrompt(input: EvaluateInput): string {
     .filter(Boolean)
     .join('\n')
 
-  // Compose the full dimension list (universal + custom from rubric fragments)
+  // Compose the full dimension list (universal + custom from rubric fragments).
+  // The example payload uses a fixed placeholder value (7) so the prompt is
+  // byte-for-byte deterministic across runs — required for `--reproducibility`.
   const allDimensions = [...UNIVERSAL_DIMENSIONS, ...rubric.dimensions]
   const dimensionExample = allDimensions
-    .map(d => `    "${d}": ${Math.floor(Math.random() * 4) + 5}`)
+    .map(d => `    "${d}": 7`)
     .join(',\n')
 
   return `You are a principal design engineer who has shipped design systems at Linear, Stripe, and Vercel. You review with the precision of a typographer and the ruthlessness of a design director.

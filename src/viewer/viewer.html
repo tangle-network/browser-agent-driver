@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>bad — session viewer</title>
+  <style>
+    :root {
+      --bg: #0b0d11;
+      --surface: #14171d;
+      --surface-2: #1c2028;
+      --border: #262b35;
+      --border-strong: #2f3543;
+      --text: #e6e8ec;
+      --text-muted: #9aa1ae;
+      --text-subtle: #6b7280;
+      --brand: #6366f1;
+      --brand-soft: rgba(99, 102, 241, 0.14);
+      --green: #22c55e;
+      --yellow: #eab308;
+      --red: #ef4444;
+      --orange: #f97316;
+      --radius: 8px;
+      --radius-lg: 12px;
+      --shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: var(--brand); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code, pre {
+      font-family: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+      font-size: 12px;
+    }
+    button {
+      font-family: inherit;
+      font-size: inherit;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--surface-2);
+      color: var(--text);
+      padding: 6px 12px;
+      border-radius: var(--radius);
+      transition: background 120ms ease, border-color 120ms ease;
+    }
+    button:hover { background: var(--surface); border-color: var(--border-strong); }
+    button:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+
+    .app {
+      display: grid;
+      grid-template-columns: 280px 1fr 360px;
+      grid-template-rows: 56px 1fr;
+      grid-template-areas:
+        "header header header"
+        "sidebar main aside";
+      height: 100vh;
+    }
+
+    /* ── Header ────────────────────────────────────────────────── */
+    header {
+      grid-area: header;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 0 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+    .logo {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+    .logo-mark {
+      width: 24px;
+      height: 24px;
+      background: linear-gradient(135deg, var(--brand) 0%, #06b6d4 100%);
+      border-radius: 6px;
+    }
+    .title {
+      font-size: 13px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+    .header-right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+
+    /* ── Sidebar ──────────────────────────────────────────────── */
+    .sidebar {
+      grid-area: sidebar;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 16px 12px;
+    }
+    .sidebar h3 {
+      margin: 0 8px 8px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-subtle);
+      font-weight: 600;
+    }
+    .turn-list {
+      list-style: none;
+      padding: 0;
+      margin: 0 0 24px;
+    }
+    .turn-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: var(--radius);
+      cursor: pointer;
+      font-size: 13px;
+      transition: background 120ms ease;
+      border: 1px solid transparent;
+    }
+    .turn-item:hover { background: var(--surface-2); }
+    .turn-item.active {
+      background: var(--brand-soft);
+      border-color: rgba(99, 102, 241, 0.3);
+      color: var(--text);
+    }
+    .turn-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      background: var(--surface-2);
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+    .turn-item.active .turn-num { background: var(--brand); color: #fff; }
+    .turn-action {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .turn-action .verb {
+      font-weight: 600;
+      color: var(--text);
+    }
+    .turn-status {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .turn-status.success { background: var(--green); }
+    .turn-status.error { background: var(--red); }
+    .turn-status.pending { background: var(--text-subtle); }
+
+    /* ── Main viewport (screenshot + scrubber) ────────────────── */
+    .main {
+      grid-area: main;
+      overflow: auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px;
+      background: var(--bg);
+    }
+    .screenshot-wrap {
+      max-width: 100%;
+      width: 100%;
+      max-height: calc(100vh - 200px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      box-shadow: var(--shadow);
+    }
+    .screenshot-wrap img {
+      max-width: 100%;
+      max-height: calc(100vh - 220px);
+      display: block;
+    }
+    .empty-screenshot {
+      padding: 80px 40px;
+      color: var(--text-muted);
+      text-align: center;
+    }
+    .scrubber {
+      width: 100%;
+      max-width: 900px;
+      margin-top: 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .scrubber input[type="range"] {
+      flex: 1;
+      height: 4px;
+      -webkit-appearance: none;
+      background: var(--surface-2);
+      border-radius: 9999px;
+      outline: none;
+    }
+    .scrubber input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      background: var(--brand);
+      border-radius: 50%;
+      cursor: pointer;
+    }
+    .scrubber-label {
+      font-size: 12px;
+      color: var(--text-muted);
+      min-width: 80px;
+    }
+
+    /* ── Aside (decision + reasoning + a11y tree) ─────────────── */
+    .aside {
+      grid-area: aside;
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 20px;
+    }
+    .panel {
+      margin-bottom: 24px;
+    }
+    .panel h3 {
+      margin: 0 0 8px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-subtle);
+      font-weight: 600;
+    }
+    .panel-body {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px;
+      font-size: 13px;
+      line-height: 1.5;
+      color: var(--text);
+    }
+    .panel-body pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 240px;
+      overflow-y: auto;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 9999px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .badge-success { background: rgba(34, 197, 94, 0.18); color: #4ade80; }
+    .badge-error { background: rgba(239, 68, 68, 0.18); color: #f87171; }
+    .badge-info { background: rgba(99, 102, 241, 0.18); color: #a5b4fc; }
+    .badge-warn { background: rgba(234, 179, 8, 0.18); color: #facc15; }
+
+    /* ── Top fixes mode (for design audits) ───────────────────── */
+    .top-fixes {
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+    .fix-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 18px 20px;
+      margin-bottom: 12px;
+    }
+    .fix-card-head {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+    .fix-rank {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      background: var(--brand);
+      color: #fff;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .fix-roi {
+      margin-left: auto;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+    .fix-roi b { color: var(--brand); font-size: 14px; }
+    .fix-desc {
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.45;
+    }
+    .fix-meta {
+      margin-top: 8px;
+      font-size: 12px;
+      color: var(--text-muted);
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .fix-meta span { white-space: nowrap; }
+    .fix-suggestion {
+      margin-top: 10px;
+      padding: 10px 12px;
+      background: var(--surface-2);
+      border-left: 3px solid var(--brand);
+      border-radius: 4px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    .fix-css {
+      margin-top: 8px;
+      padding: 10px;
+      background: #06080b;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 12px;
+      color: #c5cae0;
+      overflow-x: auto;
+    }
+
+    /* ── Score bars ────────────────────────────────────────── */
+    .score-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px 16px;
+      margin-bottom: 16px;
+    }
+    .score-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 12px;
+    }
+    .score-label {
+      color: var(--text-muted);
+      min-width: 96px;
+      text-transform: capitalize;
+    }
+    .score-bar {
+      flex: 1;
+      height: 6px;
+      background: var(--surface-2);
+      border-radius: 9999px;
+      overflow: hidden;
+    }
+    .score-bar-fill {
+      height: 100%;
+      background: var(--brand);
+      transition: width 200ms ease;
+    }
+    .score-bar-fill.good { background: var(--green); }
+    .score-bar-fill.ok { background: var(--yellow); }
+    .score-bar-fill.bad { background: var(--red); }
+    .score-num {
+      font-weight: 600;
+      color: var(--text);
+      min-width: 28px;
+      text-align: right;
+    }
+
+    .empty-state {
+      padding: 80px 40px;
+      text-align: center;
+      color: var(--text-muted);
+    }
+    .empty-state h2 { color: var(--text); margin: 0 0 8px; font-size: 16px; }
+    .empty-state p { margin: 0; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="logo">
+        <div class="logo-mark"></div>
+        bad <span class="title">session viewer</span>
+      </div>
+      <div class="header-right">
+        <span id="run-meta" class="title"></span>
+      </div>
+    </header>
+
+    <aside class="sidebar">
+      <h3>Run</h3>
+      <div id="run-summary" class="panel-body" style="margin-bottom: 16px;">
+        <div class="empty-state" style="padding: 16px 0;">
+          <p>Loading…</p>
+        </div>
+      </div>
+      <h3>Pages / Turns</h3>
+      <ul id="turn-list" class="turn-list"></ul>
+    </aside>
+
+    <section class="main">
+      <div id="main-content"></div>
+    </section>
+
+    <aside class="aside" id="aside-panel">
+      <div class="empty-state">
+        <h2>Select a turn</h2>
+        <p>Click any turn in the sidebar to inspect.</p>
+      </div>
+    </aside>
+  </div>
+
+  <script>
+    // The CLI injects window.__bad_runData before opening this file.
+    // Fall back to fetching ./report.json relative to the page if running in a webserver.
+    const runData = window.__bad_runData || null;
+
+    async function loadData() {
+      if (runData) return runData;
+      try {
+        const res = await fetch('./report.json');
+        if (res.ok) return await res.json();
+      } catch {}
+      return null;
+    }
+
+    function escapeHtml(s) {
+      if (s == null) return '';
+      return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    /** Coerce any score-shaped value to a finite number, defaulting to 0. */
+    function toScore(n) {
+      const v = typeof n === 'number' ? n : parseFloat(n);
+      return Number.isFinite(v) ? v : 0;
+    }
+
+    function classifyScore(n) {
+      const v = toScore(n);
+      if (v >= 8) return 'good';
+      if (v >= 5) return 'ok';
+      return 'bad';
+    }
+
+    /** Try to render a URL's pathname; fall back to the original string. */
+    function urlPathname(u) {
+      if (!u) return '/';
+      try {
+        const parsed = new URL(u, 'http://_local_');
+        return parsed.pathname || '/';
+      } catch {
+        return String(u);
+      }
+    }
+
+    /**
+     * Resolve a screenshot path stored in the report into something the
+     * loopback HTTP server can serve. Reports may store absolute paths
+     * (legacy) or relative paths (new). We strip everything up to and
+     * including the report root by looking for the segment matching the
+     * report directory name; otherwise return the basename in `screenshots/`.
+     */
+    function resolveScreenshotPath(p) {
+      if (!p) return null;
+      const s = String(p);
+      // Already a relative URL from the server root
+      if (!s.startsWith('/') && !s.includes('://')) return s;
+      // Find the last `/screenshots/` segment, anchor relative to it
+      const m = s.match(/(?:^|\/)(screenshots\/[^?#]+)$/);
+      if (m) return m[1];
+      // Fallback: use the basename
+      const base = s.split('/').pop();
+      return base ? `screenshots/${base}` : null;
+    }
+
+    /** Get an element by id or throw a visible error in the UI. */
+    function el(id) {
+      const node = document.getElementById(id);
+      if (!node) throw new Error(`viewer: missing element #${id}`);
+      return node;
+    }
+
+    function renderRunSummary(data) {
+      const summaryEl = el('run-summary');
+      const meta = el('run-meta');
+      if (!data) {
+        summaryEl.innerHTML = '<div class="empty-state" style="padding:16px 0;"><p>No data</p></div>';
+        return;
+      }
+      // Run type detection: design audit (top-level pages[]) vs agent run (top-level tests[])
+      const isAudit = !!data.pages;
+      const isAgentRun = Array.isArray(data.tests);
+      if (isAudit) {
+        const avg = toScore(data.summary?.avgScore).toFixed(1);
+        const total = data.summary?.totalFindings ?? 0;
+        meta.textContent = `design audit · ${escapeHtml(data.url ?? '')}`;
+        summaryEl.innerHTML = `
+          <div style="display:flex;align-items:center;gap:12px;">
+            <div style="font-size:32px;font-weight:700;">${avg}<span style="font-size:14px;color:var(--text-muted);">/10</span></div>
+            <div style="font-size:12px;color:var(--text-muted);">${total} findings<br>${data.pages.length} page${data.pages.length !== 1 ? 's' : ''}</div>
+          </div>
+        `;
+      } else if (isAgentRun) {
+        const tests = data.tests;
+        const passed = tests.filter(t => t.success).length;
+        meta.textContent = `agent run · ${tests.length} test${tests.length !== 1 ? 's' : ''}`;
+        summaryEl.innerHTML = `
+          <div>
+            <div style="font-weight:600;">${passed}/${tests.length} passed</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">
+              ${tests.reduce((s, t) => s + (t.turns?.length || 0), 0)} turns total
+            </div>
+          </div>
+        `;
+      } else {
+        meta.textContent = `agent run`;
+        const turns = (data.turns || data.steps || []).length;
+        summaryEl.innerHTML = `
+          <div>
+            <div style="font-weight:600;">${turns} turn${turns !== 1 ? 's' : ''}</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">${data.success === false ? 'failed' : 'completed'}</div>
+          </div>
+        `;
+      }
+    }
+
+    function renderTurnList(data) {
+      const list = el('turn-list');
+      const items = [];
+
+      if (data?.pages) {
+        // Design audit: list pages
+        data.pages.forEach((p, i) => {
+          const score = toScore(p.score);
+          items.push(`
+            <li class="turn-item" data-kind="page" data-index="${i}">
+              <span class="turn-num">${i + 1}</span>
+              <div class="turn-action"><span class="verb">${escapeHtml(urlPathname(p.url))}</span></div>
+              <span class="badge ${classifyScore(score) === 'good' ? 'badge-success' : classifyScore(score) === 'ok' ? 'badge-warn' : 'badge-error'}">${score}</span>
+            </li>
+          `);
+        });
+        // Add a "Top Fixes" entry at the top if present
+        if (data.topFixes?.length > 0) {
+          items.unshift(`
+            <li class="turn-item active" data-kind="topfixes">
+              <span class="turn-num">★</span>
+              <div class="turn-action"><span class="verb">Top Fixes</span></div>
+              <span class="badge badge-info">${data.topFixes.length}</span>
+            </li>
+          `);
+        }
+      } else if (Array.isArray(data?.tests)) {
+        // Agent run with one or more tests. List each test as a header,
+        // then a Recording entry (if present), then each turn beneath.
+        data.tests.forEach((test, ti) => {
+          const okBadge = test.success
+            ? '<span class="badge badge-success">pass</span>'
+            : '<span class="badge badge-error">fail</span>';
+          items.push(`
+            <li style="padding: 12px 10px 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-subtle); display: flex; align-items: center; justify-content: space-between;">
+              <span>${escapeHtml(test.name || test.id)}</span>
+              ${okBadge}
+            </li>
+          `);
+          if (test.recording) {
+            items.push(`
+              <li class="turn-item" data-kind="recording" data-test="${ti}">
+                <span class="turn-num">▶</span>
+                <div class="turn-action"><span class="verb">Recording</span></div>
+                <span class="badge badge-info">video</span>
+              </li>
+            `);
+          }
+          (test.turns || []).forEach((t, i) => {
+            const action = t.action?.action ?? 'unknown';
+            const status = t.result?.success === false || t.verificationFailure ? 'error' : 'success';
+            items.push(`
+              <li class="turn-item" data-kind="turn" data-test="${ti}" data-index="${i}">
+                <span class="turn-num">${i + 1}</span>
+                <div class="turn-action"><span class="verb">${escapeHtml(action)}</span></div>
+                <span class="turn-status ${status}"></span>
+              </li>
+            `);
+          });
+        });
+      } else if (data?.turns) {
+        // Legacy single agent run shape — turns directly at root
+        data.turns.forEach((t, i) => {
+          const action = t.action?.action ?? 'unknown';
+          const status = t.success === false ? 'error' : 'success';
+          items.push(`
+            <li class="turn-item" data-kind="turn" data-index="${i}">
+              <span class="turn-num">${i + 1}</span>
+              <div class="turn-action"><span class="verb">${escapeHtml(action)}</span></div>
+              <span class="turn-status ${status}"></span>
+            </li>
+          `);
+        });
+      }
+
+      list.innerHTML = items.join('') || '<li class="empty-state" style="padding:8px;font-size:12px;">No turns yet.</li>';
+
+      list.querySelectorAll('.turn-item').forEach(node => {
+        node.addEventListener('click', () => {
+          list.querySelectorAll('.turn-item').forEach(x => x.classList.remove('active'));
+          node.classList.add('active');
+          const kind = node.dataset.kind;
+          const idx = parseInt(node.dataset.index, 10);
+          const testIdx = parseInt(node.dataset.test, 10);
+          if (kind === 'page') {
+            showPage(data.pages[idx]);
+          } else if (kind === 'topfixes') {
+            showTopFixes(data.topFixes, data);
+          } else if (kind === 'recording') {
+            showRecording(data.tests[testIdx]);
+          } else if (kind === 'turn') {
+            // Agent run: data.tests[].turns[]; legacy: data.turns[]
+            if (Number.isFinite(testIdx) && data.tests) {
+              showAgentTurn(data.tests[testIdx], idx);
+            } else {
+              showTurn(data.turns[idx]);
+            }
+          }
+        });
+      });
+    }
+
+    /** Render the recording.webm video player for an agent test. */
+    function showRecording(test) {
+      const main = el('main-content');
+      if (!test?.recording) {
+        main.innerHTML = '<div class="empty-state"><h2>No recording</h2><p>This test did not produce a recording.webm.</p></div>';
+        return;
+      }
+      main.innerHTML = `
+        <div style="width: 100%; max-width: 1200px;">
+          <div style="margin-bottom: 16px;">
+            <h2 style="margin: 0; font-size: 18px;">${escapeHtml(test.name || test.id)} — Recording</h2>
+            <div style="color: var(--text-muted); font-size: 12px; margin-top: 4px;">
+              Frame-by-frame screencast of the agent session. Cursor + clicks are visible inline.
+            </div>
+          </div>
+          <div class="screenshot-wrap" style="background: #000;">
+            <video controls autoplay muted loop style="max-width: 100%; max-height: calc(100vh - 220px); display: block;" src="${escapeHtml(test.recording)}">
+              Your browser doesn't support inline video playback.
+            </video>
+          </div>
+          <div style="margin-top: 12px; font-size: 12px; color: var(--text-muted);">
+            Tip: scrub the video to see the agent's cursor move to each click target.
+            Each click pulses a ring at the contact point when the run was captured with <code>--show-cursor</code>.
+          </div>
+        </div>
+      `;
+      const aside = el('aside-panel');
+      aside.innerHTML = `
+        <div class="panel">
+          <h3>Test</h3>
+          <div class="panel-body">
+            <div style="font-weight:600;">${escapeHtml(test.name || test.id)}</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:6px;">
+              ${test.success ? '<span class="badge badge-success">pass</span>' : '<span class="badge badge-error">fail</span>'}
+              ${test.turns?.length ? ' · ' + test.turns.length + ' turns' : ''}
+              ${test.durationMs ? ' · ' + Math.round(test.durationMs / 1000) + 's' : ''}
+              ${test.estimatedCostUsd ? ' · $' + test.estimatedCostUsd.toFixed(3) : ''}
+            </div>
+          </div>
+        </div>
+        ${test.verdict ? `<div class="panel"><h3>Verdict</h3><div class="panel-body">${escapeHtml(test.verdict)}</div></div>` : ''}
+        <div class="panel">
+          <h3>About this view</h3>
+          <div class="panel-body" style="font-size: 12px;">
+            The recording is a Playwright screencast captured during the run. The cursor sprite, click pulses, and element highlights are baked into the video frames when <code>--show-cursor</code> was passed to <code>bad run</code>.
+          </div>
+        </div>
+      `;
+    }
+
+    /** Render a single turn from an agent test. */
+    function showAgentTurn(test, turnIndex) {
+      const turn = test?.turns?.[turnIndex];
+      if (!turn) {
+        el('main-content').innerHTML = '<div class="empty-state"><h2>Turn not found</h2></div>';
+        return;
+      }
+      const main = el('main-content');
+      const ssRaw = turn.state?.screenshot;
+      const screenshot = ssRaw
+        ? `<img src="${escapeHtml(ssRaw)}" alt="screenshot" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'empty-screenshot',textContent:'Screenshot not available'}))">`
+        : '<div class="empty-screenshot">No screenshot for this turn</div>';
+      main.innerHTML = `
+        <div style="width: 100%; max-width: 1200px;">
+          <div style="margin-bottom: 16px;">
+            <h2 style="margin: 0; font-size: 18px;">Turn ${turnIndex + 1} — ${escapeHtml(turn.action?.action ?? 'unknown')}</h2>
+            <div style="color: var(--text-muted); font-size: 12px; margin-top: 4px;">${escapeHtml(turn.state?.url ?? '')}</div>
+          </div>
+          <div class="screenshot-wrap">${screenshot}</div>
+        </div>
+      `;
+      const aside = el('aside-panel');
+      aside.innerHTML = `
+        ${turn.action ? `
+          <div class="panel">
+            <h3>Action</h3>
+            <div class="panel-body">
+              <div style="font-weight:600;margin-bottom:6px;">${escapeHtml(turn.action.action ?? '')}</div>
+              <pre>${escapeHtml(JSON.stringify(turn.action, null, 2))}</pre>
+            </div>
+          </div>
+        ` : ''}
+        ${turn.reasoning ? `<div class="panel"><h3>Reasoning</h3><div class="panel-body">${escapeHtml(turn.reasoning)}</div></div>` : ''}
+        ${turn.expectedEffect ? `<div class="panel"><h3>Expected Effect</h3><div class="panel-body">${escapeHtml(turn.expectedEffect)}</div></div>` : ''}
+        ${turn.plan ? `<div class="panel"><h3>Plan</h3><div class="panel-body"><pre>${escapeHtml(Array.isArray(turn.plan) ? turn.plan.join('\n') : String(turn.plan))}</pre></div></div>` : ''}
+        ${turn.tokensUsed ? `<div class="panel"><h3>Tokens</h3><div class="panel-body">${turn.tokensUsed} tokens · ${turn.durationMs}ms</div></div>` : ''}
+      `;
+    }
+
+    function showTopFixes(fixes, data) {
+      const main = el('main-content');
+      main.innerHTML = `
+        <div class="top-fixes">
+          <h2 style="margin: 8px 0 16px; font-size: 20px;">Top Fixes (by ROI)</h2>
+          <p style="color: var(--text-muted); margin: 0 0 24px; font-size: 13px;">
+            Sorted by impact × blast / effort. Fix these first.
+          </p>
+          ${fixes.map((f, i) => `
+            <div class="fix-card">
+              <div class="fix-card-head">
+                <div class="fix-rank">${i + 1}</div>
+                <span class="badge badge-${f.severity === 'critical' ? 'error' : f.severity === 'major' ? 'warn' : 'info'}">${f.severity}</span>
+                <span class="badge badge-info">${f.category}</span>
+                ${f.pageCount && f.pageCount >= 2 ? `<span class="badge badge-warn">${f.pageCount} pages</span>` : ''}
+                <div class="fix-roi">ROI <b>${(f.roi ?? 0).toFixed(1)}</b></div>
+              </div>
+              <div class="fix-desc">${escapeHtml(f.description)}</div>
+              <div class="fix-meta">
+                <span>Impact ${f.impact ?? '—'}</span>
+                <span>Effort ${f.effort ?? '—'}</span>
+                <span>Blast ${f.blast ?? '—'}</span>
+                <span>📍 ${escapeHtml(f.location)}</span>
+              </div>
+              ${f.suggestion ? `<div class="fix-suggestion">${escapeHtml(f.suggestion)}</div>` : ''}
+              ${f.cssSelector && f.cssFix ? `<div class="fix-css">${escapeHtml(f.cssSelector)} { ${escapeHtml(f.cssFix)} }</div>` : ''}
+            </div>
+          `).join('')}
+        </div>
+      `;
+      el('aside-panel').innerHTML = `
+        <div class="panel">
+          <h3>About Top Fixes</h3>
+          <div class="panel-body">
+            ROI = impact × blast / effort. Higher is better. blast=system means a single fix improves every page.
+          </div>
+        </div>
+      `;
+    }
+
+    function showPage(page) {
+      const main = el('main-content');
+      const ssPath = resolveScreenshotPath(page.screenshotPath);
+      const screenshot = ssPath
+        ? `<img src="${escapeHtml(ssPath)}" alt="screenshot" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'empty-screenshot',textContent:'Screenshot not available'}))">`
+        : '<div class="empty-screenshot">No screenshot</div>';
+      main.innerHTML = `
+        <div style="width: 100%; max-width: 1200px;">
+          <div style="margin-bottom: 16px;">
+            <h2 style="margin: 0; font-size: 18px;">${escapeHtml(page.url)}</h2>
+            ${page.classification ? `<div style="color: var(--text-muted); font-size: 12px; margin-top: 4px;">${escapeHtml(page.classification.type)} · ${escapeHtml(page.classification.domain)} · ${escapeHtml(page.classification.maturity)}</div>` : ''}
+          </div>
+          <div class="screenshot-wrap">${screenshot}</div>
+        </div>
+      `;
+      const aside = el('aside-panel');
+      const ds = page.designSystemScore || {};
+      const dsRows = Object.entries(ds).map(([k, v]) => `
+        <div class="score-row">
+          <div class="score-label">${escapeHtml(k)}</div>
+          <div class="score-bar"><div class="score-bar-fill ${classifyScore(v)}" style="width: ${v * 10}%;"></div></div>
+          <div class="score-num">${v}</div>
+        </div>
+      `).join('');
+
+      aside.innerHTML = `
+        <div class="panel">
+          <h3>Score</h3>
+          <div class="panel-body" style="display:flex;align-items:baseline;gap:8px;">
+            <span style="font-size:32px;font-weight:700;">${page.score}</span>
+            <span style="color:var(--text-muted);font-size:13px;">/10</span>
+          </div>
+        </div>
+        ${page.summary ? `<div class="panel"><h3>Summary</h3><div class="panel-body">${escapeHtml(page.summary)}</div></div>` : ''}
+        ${dsRows ? `<div class="panel"><h3>Design System</h3><div class="panel-body"><div class="score-grid">${dsRows}</div></div></div>` : ''}
+        ${page.findings?.length ? `
+          <div class="panel">
+            <h3>Findings (${page.findings.length})</h3>
+            <div class="panel-body" style="max-height: 300px; overflow-y: auto;">
+              ${page.findings.slice(0, 20).map(f => `
+                <div style="padding: 6px 0; border-bottom: 1px solid var(--border);">
+                  <div style="display:flex;gap:6px;align-items:center;margin-bottom:2px;">
+                    <span class="badge badge-${f.severity === 'critical' ? 'error' : f.severity === 'major' ? 'warn' : 'info'}">${f.severity}</span>
+                    <span style="font-size:11px;color:var(--text-muted);">${escapeHtml(f.category)}</span>
+                  </div>
+                  <div style="font-size:12px;line-height:1.4;">${escapeHtml(f.description)}</div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        ` : ''}
+      `;
+    }
+
+    function showTurn(turn) {
+      const main = el('main-content');
+      const ssPath = resolveScreenshotPath(turn.state?.screenshot);
+      const screenshot = ssPath
+        ? `<img src="${escapeHtml(ssPath)}" alt="screenshot" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'empty-screenshot',textContent:'Screenshot not available'}))">`
+        : '<div class="empty-screenshot">No screenshot</div>';
+      main.innerHTML = `
+        <div style="width: 100%; max-width: 1200px;">
+          <div style="margin-bottom: 16px;">
+            <h2 style="margin: 0; font-size: 18px;">Turn ${(turn.turnNumber ?? 0) + 1}</h2>
+            <div style="color: var(--text-muted); font-size: 12px; margin-top: 4px;">${escapeHtml(turn.state?.url ?? '')}</div>
+          </div>
+          <div class="screenshot-wrap">${screenshot}</div>
+        </div>
+      `;
+      const aside = el('aside-panel');
+      aside.innerHTML = `
+        ${turn.action ? `
+          <div class="panel">
+            <h3>Action</h3>
+            <div class="panel-body">
+              <div style="font-weight:600;margin-bottom:6px;">${escapeHtml(turn.action.action ?? '')}</div>
+              <pre>${escapeHtml(JSON.stringify(turn.action, null, 2))}</pre>
+            </div>
+          </div>
+        ` : ''}
+        ${turn.reasoning ? `<div class="panel"><h3>Reasoning</h3><div class="panel-body">${escapeHtml(turn.reasoning)}</div></div>` : ''}
+        ${turn.expectedEffect ? `<div class="panel"><h3>Expected Effect</h3><div class="panel-body">${escapeHtml(turn.expectedEffect)}</div></div>` : ''}
+        ${turn.result ? `
+          <div class="panel">
+            <h3>Result</h3>
+            <div class="panel-body">
+              <span class="badge badge-${turn.result.success ? 'success' : 'error'}">${turn.result.success ? 'success' : 'error'}</span>
+              ${turn.result.error ? `<pre style="margin-top:8px;">${escapeHtml(turn.result.error)}</pre>` : ''}
+            </div>
+          </div>
+        ` : ''}
+      `;
+    }
+
+    function showFatalError(err) {
+      console.error('viewer fatal error:', err);
+      const main = document.getElementById('main-content');
+      const msg = err && err.message ? err.message : String(err);
+      if (main) {
+        main.innerHTML = `
+          <div class="empty-state">
+            <h2 style="color: var(--red);">Viewer error</h2>
+            <p>${escapeHtml(msg)}</p>
+            <p style="margin-top: 16px; font-size: 11px;">Open the browser console for details.</p>
+          </div>
+        `;
+      }
+    }
+
+    window.addEventListener('error', (e) => showFatalError(e.error || e.message));
+    window.addEventListener('unhandledrejection', (e) => showFatalError(e.reason));
+
+    (async () => {
+      try {
+        const data = await loadData();
+        renderRunSummary(data);
+        renderTurnList(data);
+        // Auto-select the most useful default per run type:
+        //   - Design audit: Top Fixes section if present, else first page
+        //   - Agent run: first test's recording if present, else first turn
+        if (data?.topFixes?.length) {
+          showTopFixes(data.topFixes, data);
+        } else if (data?.pages?.length) {
+          showPage(data.pages[0]);
+          document.querySelector('.turn-item[data-kind="page"]')?.classList.add('active');
+        } else if (Array.isArray(data?.tests) && data.tests.length > 0) {
+          const firstTest = data.tests[0];
+          // Prefer recording when available — that's where the cursor + clicks
+          // are visible frame-by-frame. Fall back to per-turn screenshots.
+          if (firstTest.recording) {
+            showRecording(firstTest);
+            document.querySelector('.turn-item[data-kind="recording"]')?.classList.add('active');
+          } else if (firstTest.turns?.length) {
+            showAgentTurn(firstTest, 0);
+            document.querySelector('.turn-item[data-kind="turn"]')?.classList.add('active');
+          } else {
+            el('main-content').innerHTML = '<div class="empty-state"><h2>Empty test</h2><p>This test has no recording and no turn data.</p></div>';
+          }
+        } else if (data?.turns?.length) {
+          showTurn(data.turns[0]);
+          document.querySelector('.turn-item[data-kind="turn"]')?.classList.add('active');
+        } else {
+          el('main-content').innerHTML = '<div class="empty-state"><h2>No data</h2><p>Pass a run directory or place report.json next to this file.</p></div>';
+        }
+      } catch (err) {
+        showFatalError(err);
+      }
+    })();
+  </script>
+</body>
+</html>

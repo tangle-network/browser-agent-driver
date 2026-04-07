@@ -1,6 +1,6 @@
 {
   "name": "@tangle-network/browser-agent-driver",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "description": "LLM-driven browser agent for UI automation, testing, and evaluation",
   "publishConfig": {
     "access": "public"
@@ -25,7 +25,7 @@
   ],
   "scripts": {
     "postinstall": "node ./scripts/postinstall-provider-patches.mjs",
-    "build": "tsc && node ./scripts/copy-rubric-fragments.mjs",
+    "build": "tsc && node ./scripts/copy-static-assets.mjs",
     "lint": "tsc --noEmit",
     "check:boundaries": "node ./scripts/check-boundaries.mjs",
     "dev": "tsc --watch",

@@ -151,6 +151,59 @@ Reports open with **Top Fixes (by ROI)** — the 5 highest-leverage fixes ranked
 
 See [Design Audit Guide](./docs/guides/design-audit.md) for the full pipeline, custom rubric fragments, and starter-foundry integration.
 
+## Session Viewer
+
+`bad view` opens any run in a polished web UI:
+
+```bash
+bad view audit-results/stripe.com-1775502457141
+```
+
+- Sidebar lists every page (or turn) in the run
+- Top Fixes section opens by default for design audits, ranked by ROI
+- Per-page screenshots, design system breakdown, findings table, classification
+- Per-turn action JSON, reasoning, expected effect, result for agent runs
+- Self-contained — no build pipeline, single static HTML, no external dependencies (the viewer is served by a local loopback HTTP server on port 7777)
+
+Pair with `--show-cursor` to record runs with an animated cursor + element highlights overlaid on every screenshot.
+
+## Drivers — local, remote, and managed
+
+bad's agent loop is decoupled from the browser layer via the `Driver` interface. The default is local Playwright, but you can run the same agent against managed cloud infra without any code changes:
+
+```typescript
+import { BrowserAgent, SteelDriver } from '@tangle-network/browser-agent-driver'
+
+// Local Playwright (default) — see Quick Start above
+
+// Steel cloud browser with anti-bot, residential proxies, CAPTCHA solving
+const driver = await SteelDriver.create({
+  apiKey: process.env.STEEL_API_KEY,
+  sessionOptions: { useProxy: true, solveCaptcha: true },
+})
+const agent = new BrowserAgent({ driver, config: { model: 'sonnet' } })
+await agent.run({ goal: '...', startUrl: '...' })
+await driver.close()
+```
+
+The same agent — design audit, evolve loops, wallet automation, knowledge memory — runs against any driver. Steel handles infra you don't want to build; bad handles the agent layer Steel doesn't.
+
+## GitHub Action
+
+Drop bad design-audit into any PR pipeline:
+
+```yaml
+- uses: tangle-network/browser-agent-driver/.github/actions/design-audit@main
+  with:
+    url: ${{ steps.deploy.outputs.preview_url }}
+    pages: 5
+    fail-on-score-below: '6.5'
+    evolve: claude-code   # optional auto-fix
+    openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+```
+
+The action posts the **Top Fixes (by ROI)** as a PR comment, uploads the full report as a workflow artifact, and optionally fails the build on score regressions or critical findings. See [`.github/actions/design-audit`](./.github/actions/design-audit/).
+
 ## Guides
 
 - [Configuration Reference](./docs/guides/configuration.md) — all config options

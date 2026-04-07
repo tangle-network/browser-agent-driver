@@ -394,23 +394,58 @@ export class TestRunner {
         runtime: this.buildRuntimeConfig(),
       };
 
-      // Emit video artifact if available
+      // Emit video artifact if available.
+      //
+      // Playwright finalizes the recording on context close, NOT on
+      // `page.video().path()`. If we read the file before the caller closes
+      // the context, we get a 0-byte placeholder. The canonical fix is
+      // `video.saveAs(target)` which waits for the video to finalize.
+      //
+      // We DO close the page (not the whole context — the caller owns the
+      // context lifecycle) so that the video stream gets a chance to flush
+      // before saveAs is called. saveAs then awaits the actual finalization.
       if (this.artifactSink && page) {
         try {
-          const videoPath = await page.video?.()?.path?.();
-          if (videoPath) {
+          const video = page.video?.();
+          if (video) {
+            const os = await import('node:os');
             const fs = await import('node:fs');
-            if (fs.existsSync(videoPath)) {
-              const videoData = fs.readFileSync(videoPath);
-              const uri = await this.artifactSink.put({
-                type: 'video',
-                testId: testCase.id,
-                name: 'recording.webm',
-                data: videoData,
-                contentType: 'video/webm',
-                metadata: { durationMs: String(result.durationMs), turnsUsed: String(result.turnsUsed) },
-              });
-              this.onProgress?.({ type: 'test:artifact', testId: testCase.id, artifactType: 'video', uri });
+            const pathMod = await import('node:path');
+            const tmpFile = pathMod.join(os.tmpdir(), `bad-rec-${testCase.id}-${Date.now()}.webm`);
+
+            // Close the page first so Playwright flushes the video stream.
+            // We don't close the context — that's the caller's job.
+            try {
+              await page.close();
+            } catch {
+              /* page may be already closing */
+            }
+
+            // saveAs() resolves once the video file is written. This is the
+            // canonical Playwright API for waiting on a finalized recording.
+            let saved = false;
+            try {
+              await video.saveAs(tmpFile);
+              saved = true;
+            } catch {
+              /* video may not be available — fall through to existence check */
+            }
+
+            if (saved && fs.existsSync(tmpFile)) {
+              const stats = fs.statSync(tmpFile);
+              if (stats.size > 0) {
+                const videoData = fs.readFileSync(tmpFile);
+                const uri = await this.artifactSink.put({
+                  type: 'video',
+                  testId: testCase.id,
+                  name: 'recording.webm',
+                  data: videoData,
+                  contentType: 'video/webm',
+                  metadata: { durationMs: String(result.durationMs), turnsUsed: String(result.turnsUsed) },
+                });
+                this.onProgress?.({ type: 'test:artifact', testId: testCase.id, artifactType: 'video', uri });
+              }
+              try { fs.unlinkSync(tmpFile); } catch { /* best-effort cleanup */ }
             }
           }
         } catch {
