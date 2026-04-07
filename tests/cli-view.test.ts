@@ -13,7 +13,7 @@ import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import * as http from 'node:http'
-import { escapeJsonForScript, findReportJson } from '../src/cli-view.js'
+import { escapeJsonForScript, findReportJson, findRecordings, normalizeReport } from '../src/cli-view.js'
 
 // We test the SECURITY guarantees, not the implementation details.
 // Spin up a small fake using the same primitives as cli-view.ts and
@@ -192,6 +192,168 @@ describe('escapeJsonForScript (the actual exported helper)', () => {
         .replace(/\\u2029/g, '\u2029'),
     )
     expect(reparsed).toEqual(original)
+  })
+})
+
+describe('normalizeReport', () => {
+  it('passes design-audit reports through unchanged', () => {
+    const audit = {
+      pages: [{ url: 'https://stripe.com', score: 9, screenshotPath: '/some/path/screenshots/index.png' }],
+      summary: { avgScore: 9, totalFindings: 13, critical: 0, major: 3, minor: 10 },
+      topFixes: [],
+    }
+    const out = normalizeReport(audit, [])
+    expect(out.pages).toEqual(audit.pages)
+    expect(out.tests).toBeUndefined()
+  })
+
+  it('unwraps agent-suite results into tests[] with normalized turns', () => {
+    const suite = {
+      results: [
+        {
+          testCase: { id: 'login', name: 'login flow' },
+          agentResult: {
+            success: true,
+            turns: [
+              {
+                turn: 0,
+                action: { action: 'click', selector: '@a1' },
+                state: { url: 'https://app.example.com', screenshot: '/9j/SOME_RAW_BASE64' },
+              },
+            ],
+          },
+          verdict: 'verified',
+          turnsUsed: 1,
+        },
+      ],
+    }
+    const out = normalizeReport(suite, []) as Record<string, unknown>
+    const tests = out.tests as Array<{
+      id: string
+      success: boolean
+      turns: Array<{ state: { screenshot: string } }>
+    }>
+    expect(tests).toHaveLength(1)
+    expect(tests[0].id).toBe('login')
+    expect(tests[0].success).toBe(true)
+    // The raw base64 (which starts with /9j/) was wrapped in a data URL,
+    // not mistaken for a file path
+    expect(tests[0].turns[0].state.screenshot).toBe('data:image/jpeg;base64,/9j/SOME_RAW_BASE64')
+  })
+
+  it('preserves data: URL screenshots without double-wrapping', () => {
+    const suite = {
+      results: [
+        {
+          testCase: { id: 't' },
+          agentResult: {
+            turns: [{ state: { screenshot: 'data:image/png;base64,iVBORw0KGgo=' } }],
+          },
+        },
+      ],
+    }
+    const out = normalizeReport(suite, []) as Record<string, unknown>
+    const tests = out.tests as Array<{ turns: Array<{ state: { screenshot: string } }> }>
+    expect(tests[0].turns[0].state.screenshot).toBe('data:image/png;base64,iVBORw0KGgo=')
+  })
+
+  it('preserves on-disk screenshot paths without wrapping as base64', () => {
+    const suite = {
+      results: [
+        {
+          testCase: { id: 't' },
+          agentResult: {
+            turns: [{ state: { screenshot: '/abs/path/turn-1.png' } }],
+          },
+        },
+      ],
+    }
+    const out = normalizeReport(suite, []) as Record<string, unknown>
+    const tests = out.tests as Array<{ turns: Array<{ state: { screenshot: string } }> }>
+    expect(tests[0].turns[0].state.screenshot).toBe('/abs/path/turn-1.png')
+  })
+
+  it('attaches recordings to the matching test by id', () => {
+    const suite = {
+      results: [
+        { testCase: { id: 'cli-task' }, agentResult: { turns: [] } },
+        { testCase: { id: 'wallet-test' }, agentResult: { turns: [] } },
+      ],
+    }
+    const recordings = [
+      { testId: 'cli-task', relPath: 'cli-task/recording.webm' },
+      { testId: 'wallet-test', relPath: 'wallet-test/recording.webm' },
+    ]
+    const out = normalizeReport(suite, recordings) as Record<string, unknown>
+    const tests = out.tests as Array<{ id: string; recording: string | null }>
+    expect(tests[0].recording).toBe('cli-task/recording.webm')
+    expect(tests[1].recording).toBe('wallet-test/recording.webm')
+  })
+
+  it('falls back to default recording when no test id matches', () => {
+    const suite = {
+      results: [{ testCase: { id: 'whatever' }, agentResult: { turns: [] } }],
+    }
+    const recordings = [{ testId: 'default', relPath: 'recording.webm' }]
+    const out = normalizeReport(suite, recordings) as Record<string, unknown>
+    const tests = out.tests as Array<{ recording: string | null }>
+    expect(tests[0].recording).toBe('recording.webm')
+  })
+
+  it('handles legacy single-result shape with turns[] at root', () => {
+    const single = {
+      success: true,
+      turns: [
+        { turn: 0, action: { action: 'click' }, state: { screenshot: '/9j/RAW' } },
+      ],
+    }
+    const out = normalizeReport(single, []) as Record<string, unknown>
+    const tests = out.tests as Array<{ turns: Array<{ state: { screenshot: string } }> }>
+    expect(tests).toHaveLength(1)
+    expect(tests[0].turns[0].state.screenshot).toBe('data:image/jpeg;base64,/9j/RAW')
+  })
+})
+
+describe('findRecordings', () => {
+  let tmpDir: string
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'find-rec-'))
+  })
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true })
+  })
+
+  it('finds recordings one level deep', () => {
+    fs.mkdirSync(path.join(tmpDir, 'cli-task'))
+    fs.writeFileSync(path.join(tmpDir, 'cli-task', 'recording.webm'), 'fake')
+    fs.mkdirSync(path.join(tmpDir, 'wallet'))
+    fs.writeFileSync(path.join(tmpDir, 'wallet', 'recording.webm'), 'fake')
+    const recs = findRecordings(tmpDir)
+    expect(recs).toHaveLength(2)
+    expect(recs.map(r => r.testId).sort()).toEqual(['cli-task', 'wallet'])
+  })
+
+  it('returns empty when no recordings exist', () => {
+    fs.mkdirSync(path.join(tmpDir, 'sub'))
+    expect(findRecordings(tmpDir)).toEqual([])
+  })
+
+  it('finds top-level recording.webm as default', () => {
+    fs.writeFileSync(path.join(tmpDir, 'recording.webm'), 'fake')
+    const recs = findRecordings(tmpDir)
+    expect(recs).toHaveLength(1)
+    expect(recs[0].testId).toBe('default')
+  })
+
+  it('skips 0-byte recordings (Playwright finalization race)', () => {
+    fs.mkdirSync(path.join(tmpDir, 'empty-test'))
+    fs.writeFileSync(path.join(tmpDir, 'empty-test', 'recording.webm'), '')
+    fs.mkdirSync(path.join(tmpDir, 'good-test'))
+    fs.writeFileSync(path.join(tmpDir, 'good-test', 'recording.webm'), 'real-content')
+    const recs = findRecordings(tmpDir)
+    expect(recs).toHaveLength(1)
+    expect(recs[0].testId).toBe('good-test')
   })
 })
 

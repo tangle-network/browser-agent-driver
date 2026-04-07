@@ -519,8 +519,9 @@
         summaryEl.innerHTML = '<div class="empty-state" style="padding:16px 0;"><p>No data</p></div>';
         return;
       }
-      // Detect run type: design audit vs agent run
+      // Run type detection: design audit (top-level pages[]) vs agent run (top-level tests[])
       const isAudit = !!data.pages;
+      const isAgentRun = Array.isArray(data.tests);
       if (isAudit) {
         const avg = toScore(data.summary?.avgScore).toFixed(1);
         const total = data.summary?.totalFindings ?? 0;
@@ -529,6 +530,18 @@
           <div style="display:flex;align-items:center;gap:12px;">
             <div style="font-size:32px;font-weight:700;">${avg}<span style="font-size:14px;color:var(--text-muted);">/10</span></div>
             <div style="font-size:12px;color:var(--text-muted);">${total} findings<br>${data.pages.length} page${data.pages.length !== 1 ? 's' : ''}</div>
+          </div>
+        `;
+      } else if (isAgentRun) {
+        const tests = data.tests;
+        const passed = tests.filter(t => t.success).length;
+        meta.textContent = `agent run · ${tests.length} test${tests.length !== 1 ? 's' : ''}`;
+        summaryEl.innerHTML = `
+          <div>
+            <div style="font-weight:600;">${passed}/${tests.length} passed</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">
+              ${tests.reduce((s, t) => s + (t.turns?.length || 0), 0)} turns total
+            </div>
           </div>
         `;
       } else {
@@ -569,8 +582,42 @@
             </li>
           `);
         }
+      } else if (Array.isArray(data?.tests)) {
+        // Agent run with one or more tests. List each test as a header,
+        // then a Recording entry (if present), then each turn beneath.
+        data.tests.forEach((test, ti) => {
+          const okBadge = test.success
+            ? '<span class="badge badge-success">pass</span>'
+            : '<span class="badge badge-error">fail</span>';
+          items.push(`
+            <li style="padding: 12px 10px 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-subtle); display: flex; align-items: center; justify-content: space-between;">
+              <span>${escapeHtml(test.name || test.id)}</span>
+              ${okBadge}
+            </li>
+          `);
+          if (test.recording) {
+            items.push(`
+              <li class="turn-item" data-kind="recording" data-test="${ti}">
+                <span class="turn-num">▶</span>
+                <div class="turn-action"><span class="verb">Recording</span></div>
+                <span class="badge badge-info">video</span>
+              </li>
+            `);
+          }
+          (test.turns || []).forEach((t, i) => {
+            const action = t.action?.action ?? 'unknown';
+            const status = t.result?.success === false || t.verificationFailure ? 'error' : 'success';
+            items.push(`
+              <li class="turn-item" data-kind="turn" data-test="${ti}" data-index="${i}">
+                <span class="turn-num">${i + 1}</span>
+                <div class="turn-action"><span class="verb">${escapeHtml(action)}</span></div>
+                <span class="turn-status ${status}"></span>
+              </li>
+            `);
+          });
+        });
       } else if (data?.turns) {
-        // Agent run: list turns
+        // Legacy single agent run shape — turns directly at root
         data.turns.forEach((t, i) => {
           const action = t.action?.action ?? 'unknown';
           const status = t.success === false ? 'error' : 'success';
@@ -586,17 +633,118 @@
 
       list.innerHTML = items.join('') || '<li class="empty-state" style="padding:8px;font-size:12px;">No turns yet.</li>';
 
-      list.querySelectorAll('.turn-item').forEach(el => {
-        el.addEventListener('click', () => {
+      list.querySelectorAll('.turn-item').forEach(node => {
+        node.addEventListener('click', () => {
           list.querySelectorAll('.turn-item').forEach(x => x.classList.remove('active'));
-          el.classList.add('active');
-          const kind = el.dataset.kind;
-          const idx = parseInt(el.dataset.index, 10);
-          if (kind === 'page') showPage(data.pages[idx]);
-          else if (kind === 'turn') showTurn(data.turns[idx]);
-          else if (kind === 'topfixes') showTopFixes(data.topFixes, data);
+          node.classList.add('active');
+          const kind = node.dataset.kind;
+          const idx = parseInt(node.dataset.index, 10);
+          const testIdx = parseInt(node.dataset.test, 10);
+          if (kind === 'page') {
+            showPage(data.pages[idx]);
+          } else if (kind === 'topfixes') {
+            showTopFixes(data.topFixes, data);
+          } else if (kind === 'recording') {
+            showRecording(data.tests[testIdx]);
+          } else if (kind === 'turn') {
+            // Agent run: data.tests[].turns[]; legacy: data.turns[]
+            if (Number.isFinite(testIdx) && data.tests) {
+              showAgentTurn(data.tests[testIdx], idx);
+            } else {
+              showTurn(data.turns[idx]);
+            }
+          }
         });
       });
+    }
+
+    /** Render the recording.webm video player for an agent test. */
+    function showRecording(test) {
+      const main = el('main-content');
+      if (!test?.recording) {
+        main.innerHTML = '<div class="empty-state"><h2>No recording</h2><p>This test did not produce a recording.webm.</p></div>';
+        return;
+      }
+      main.innerHTML = `
+        <div style="width: 100%; max-width: 1200px;">
+          <div style="margin-bottom: 16px;">
+            <h2 style="margin: 0; font-size: 18px;">${escapeHtml(test.name || test.id)} — Recording</h2>
+            <div style="color: var(--text-muted); font-size: 12px; margin-top: 4px;">
+              Frame-by-frame screencast of the agent session. Cursor + clicks are visible inline.
+            </div>
+          </div>
+          <div class="screenshot-wrap" style="background: #000;">
+            <video controls autoplay muted loop style="max-width: 100%; max-height: calc(100vh - 220px); display: block;" src="${escapeHtml(test.recording)}">
+              Your browser doesn't support inline video playback.
+            </video>
+          </div>
+          <div style="margin-top: 12px; font-size: 12px; color: var(--text-muted);">
+            Tip: scrub the video to see the agent's cursor move to each click target.
+            Each click pulses a ring at the contact point when the run was captured with <code>--show-cursor</code>.
+          </div>
+        </div>
+      `;
+      const aside = el('aside-panel');
+      aside.innerHTML = `
+        <div class="panel">
+          <h3>Test</h3>
+          <div class="panel-body">
+            <div style="font-weight:600;">${escapeHtml(test.name || test.id)}</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:6px;">
+              ${test.success ? '<span class="badge badge-success">pass</span>' : '<span class="badge badge-error">fail</span>'}
+              ${test.turns?.length ? ' · ' + test.turns.length + ' turns' : ''}
+              ${test.durationMs ? ' · ' + Math.round(test.durationMs / 1000) + 's' : ''}
+              ${test.estimatedCostUsd ? ' · $' + test.estimatedCostUsd.toFixed(3) : ''}
+            </div>
+          </div>
+        </div>
+        ${test.verdict ? `<div class="panel"><h3>Verdict</h3><div class="panel-body">${escapeHtml(test.verdict)}</div></div>` : ''}
+        <div class="panel">
+          <h3>About this view</h3>
+          <div class="panel-body" style="font-size: 12px;">
+            The recording is a Playwright screencast captured during the run. The cursor sprite, click pulses, and element highlights are baked into the video frames when <code>--show-cursor</code> was passed to <code>bad run</code>.
+          </div>
+        </div>
+      `;
+    }
+
+    /** Render a single turn from an agent test. */
+    function showAgentTurn(test, turnIndex) {
+      const turn = test?.turns?.[turnIndex];
+      if (!turn) {
+        el('main-content').innerHTML = '<div class="empty-state"><h2>Turn not found</h2></div>';
+        return;
+      }
+      const main = el('main-content');
+      const ssRaw = turn.state?.screenshot;
+      const screenshot = ssRaw
+        ? `<img src="${escapeHtml(ssRaw)}" alt="screenshot" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'empty-screenshot',textContent:'Screenshot not available'}))">`
+        : '<div class="empty-screenshot">No screenshot for this turn</div>';
+      main.innerHTML = `
+        <div style="width: 100%; max-width: 1200px;">
+          <div style="margin-bottom: 16px;">
+            <h2 style="margin: 0; font-size: 18px;">Turn ${turnIndex + 1} — ${escapeHtml(turn.action?.action ?? 'unknown')}</h2>
+            <div style="color: var(--text-muted); font-size: 12px; margin-top: 4px;">${escapeHtml(turn.state?.url ?? '')}</div>
+          </div>
+          <div class="screenshot-wrap">${screenshot}</div>
+        </div>
+      `;
+      const aside = el('aside-panel');
+      aside.innerHTML = `
+        ${turn.action ? `
+          <div class="panel">
+            <h3>Action</h3>
+            <div class="panel-body">
+              <div style="font-weight:600;margin-bottom:6px;">${escapeHtml(turn.action.action ?? '')}</div>
+              <pre>${escapeHtml(JSON.stringify(turn.action, null, 2))}</pre>
+            </div>
+          </div>
+        ` : ''}
+        ${turn.reasoning ? `<div class="panel"><h3>Reasoning</h3><div class="panel-body">${escapeHtml(turn.reasoning)}</div></div>` : ''}
+        ${turn.expectedEffect ? `<div class="panel"><h3>Expected Effect</h3><div class="panel-body">${escapeHtml(turn.expectedEffect)}</div></div>` : ''}
+        ${turn.plan ? `<div class="panel"><h3>Plan</h3><div class="panel-body"><pre>${escapeHtml(Array.isArray(turn.plan) ? turn.plan.join('\n') : String(turn.plan))}</pre></div></div>` : ''}
+        ${turn.tokensUsed ? `<div class="panel"><h3>Tokens</h3><div class="panel-body">${turn.tokensUsed} tokens · ${turn.durationMs}ms</div></div>` : ''}
+      `;
     }
 
     function showTopFixes(fixes, data) {
@@ -756,12 +904,27 @@
         const data = await loadData();
         renderRunSummary(data);
         renderTurnList(data);
-        // Auto-select Top Fixes for design audits, first turn for agent runs
+        // Auto-select the most useful default per run type:
+        //   - Design audit: Top Fixes section if present, else first page
+        //   - Agent run: first test's recording if present, else first turn
         if (data?.topFixes?.length) {
           showTopFixes(data.topFixes, data);
         } else if (data?.pages?.length) {
           showPage(data.pages[0]);
           document.querySelector('.turn-item[data-kind="page"]')?.classList.add('active');
+        } else if (Array.isArray(data?.tests) && data.tests.length > 0) {
+          const firstTest = data.tests[0];
+          // Prefer recording when available — that's where the cursor + clicks
+          // are visible frame-by-frame. Fall back to per-turn screenshots.
+          if (firstTest.recording) {
+            showRecording(firstTest);
+            document.querySelector('.turn-item[data-kind="recording"]')?.classList.add('active');
+          } else if (firstTest.turns?.length) {
+            showAgentTurn(firstTest, 0);
+            document.querySelector('.turn-item[data-kind="turn"]')?.classList.add('active');
+          } else {
+            el('main-content').innerHTML = '<div class="empty-state"><h2>Empty test</h2><p>This test has no recording and no turn data.</p></div>';
+          }
         } else if (data?.turns?.length) {
           showTurn(data.turns[0]);
           document.querySelector('.turn-item[data-kind="turn"]')?.classList.add('active');

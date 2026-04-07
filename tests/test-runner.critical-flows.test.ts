@@ -29,7 +29,17 @@ function makeDriverWithPage(videoPath: string, page?: import('playwright').Page)
     getPage: () => page ?? ({
       video: () => ({
         path: async () => videoPath,
+        // Mirror the canonical Playwright video.saveAs() API the runner now
+        // calls. We copy the fake video bytes from the videoPath the test
+        // wrote to disk into the runner's chosen target.
+        saveAs: async (target: string) => {
+          const fsm = await import('node:fs');
+          if (videoPath && fsm.existsSync(videoPath)) {
+            fsm.copyFileSync(videoPath, target);
+          }
+        },
       }),
+      close: async () => {},
     }) as unknown as import('playwright').Page,
     close: vi.fn(async () => {}),
   };
@@ -101,7 +111,23 @@ class FakePage {
   video() {
     return {
       path: async () => this.videoPath,
+      // The runner now calls video.saveAs() (the canonical Playwright API
+      // that waits for the recording to finalize on context close). Mock
+      // by copying our fake video bytes to the requested target.
+      saveAs: async (target: string) => {
+        const fsm = await import('node:fs');
+        if (this.videoPath && fsm.existsSync(this.videoPath)) {
+          fsm.copyFileSync(this.videoPath, target);
+        }
+      },
     };
+  }
+
+  // The runner closes the page before saveAs to flush the video stream.
+  // No-op in the test mock — we just track that close was called.
+  closed = false;
+  async close(): Promise<void> {
+    this.closed = true;
   }
 
   context() {

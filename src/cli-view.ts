@@ -75,6 +75,154 @@ export function findReportJson(runDir: string): string | null {
 }
 
 /**
+ * Find all recording.webm files anywhere under the report root (one level
+ * deep — agent runs put them in `<run>/<test-id>/recording.webm`). Returns
+ * an array of `{ testId, relPath }` so the viewer can show one player per
+ * test case in a multi-test suite run.
+ *
+ * Skips 0-byte files (Playwright sometimes writes the path before flushing
+ * the video on context close, leaving an empty placeholder) — the viewer
+ * will fall back to per-turn screenshots when no usable recording exists.
+ */
+export function findRecordings(reportRoot: string): Array<{ testId: string; relPath: string }> {
+  const out: Array<{ testId: string; relPath: string }> = []
+  const isUsableRecording = (filePath: string): boolean => {
+    try {
+      const stats = fs.statSync(filePath)
+      return stats.isFile() && stats.size > 0
+    } catch {
+      return false
+    }
+  }
+  try {
+    for (const entry of fs.readdirSync(reportRoot, { withFileTypes: true })) {
+      if (entry.isDirectory()) {
+        const recording = path.join(reportRoot, entry.name, 'recording.webm')
+        if (isUsableRecording(recording)) {
+          out.push({ testId: entry.name, relPath: `${entry.name}/recording.webm` })
+        }
+      } else if (entry.name === 'recording.webm') {
+        const recording = path.join(reportRoot, entry.name)
+        if (isUsableRecording(recording)) {
+          out.push({ testId: 'default', relPath: 'recording.webm' })
+        }
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return out
+}
+
+/**
+ * Normalize the report shape so the viewer sees a consistent format.
+ *
+ * Two distinct shapes flow through here:
+ *   - **Design audit** (cli-design-audit.ts): top-level `pages[]`, each
+ *     with screenshot file paths and findings. Native shape — passed through.
+ *   - **Agent run** (test-runner.ts → FilesystemSink): top-level
+ *     `results[].agentResult.turns[]` where each turn has `state.screenshot`
+ *     as a raw base64 string. Unwrapped to a normalized `{ tests[]: { ...,
+ *     turns[] } }` shape with screenshots converted to data URLs.
+ *
+ * Recordings discovered on disk are attached to the matching test by id.
+ */
+export function normalizeReport(
+  raw: unknown,
+  recordings: Array<{ testId: string; relPath: string }>,
+): Record<string, unknown> {
+  const data = raw as Record<string, unknown>
+  if (!data || typeof data !== 'object') return { error: 'invalid report' }
+
+  // Design audit shape — has top-level `pages[]`. Pass through.
+  if (Array.isArray((data as { pages?: unknown }).pages)) {
+    return data
+  }
+
+  // Agent run shape — has top-level `results[]` with `.agentResult.turns[]`.
+  if (Array.isArray((data as { results?: unknown }).results)) {
+    const results = (data as { results: Array<Record<string, unknown>> }).results
+    const tests = results.map(r => {
+      const agentResult = (r.agentResult ?? {}) as Record<string, unknown>
+      const turns = ((agentResult.turns ?? []) as Array<Record<string, unknown>>).map(t => {
+        const state = (t.state ?? {}) as Record<string, unknown>
+        const screenshot = state.screenshot as string | undefined
+        // Convert raw base64 → data URL so the <img> tag renders it.
+        // NOTE: JPEG base64 starts with `/9j/` (first byte 0xFF), so the
+        // leading slash is NOT a path indicator. Detect format properly:
+        //   - already a data: URL → leave it
+        //   - absolute file path or http(s) URL → leave it (legacy on-disk runs)
+        //   - everything else → assume base64, prefix as JPEG data URL
+        const screenshotDataUrl = !screenshot
+          ? screenshot
+          : screenshot.startsWith('data:')
+            ? screenshot
+            : screenshot.startsWith('http://') || screenshot.startsWith('https://')
+              ? screenshot
+              : screenshot.startsWith('/') && (screenshot.endsWith('.png') || screenshot.endsWith('.jpg') || screenshot.endsWith('.jpeg') || screenshot.endsWith('.webp'))
+                ? screenshot
+                : `data:image/jpeg;base64,${screenshot}`
+        return {
+          ...t,
+          state: { ...state, screenshot: screenshotDataUrl },
+        }
+      })
+      const testCase = (r.testCase ?? {}) as Record<string, unknown>
+      const testId = (testCase.id ?? testCase.name ?? 'cli-task') as string
+      const recording = recordings.find(rec => rec.testId === testId)
+        ?? recordings.find(rec => rec.testId === 'default')
+      return {
+        id: testId,
+        name: testCase.name ?? testId,
+        success: agentResult.success ?? r.agentSuccess,
+        verdict: r.verdict,
+        turnsUsed: r.turnsUsed,
+        durationMs: r.durationMs,
+        estimatedCostUsd: r.estimatedCostUsd,
+        recording: recording ? recording.relPath : null,
+        turns,
+      }
+    })
+    return {
+      ...data,
+      // Both fields present so existing readers still work; the viewer
+      // prefers `tests[]` for agent runs.
+      tests,
+    }
+  }
+
+  // Single agent result shape (no suite wrapper) — `turns[]` directly.
+  if (Array.isArray((data as { turns?: unknown }).turns)) {
+    const turns = ((data as { turns: Array<Record<string, unknown>> }).turns).map(t => {
+      const state = (t.state ?? {}) as Record<string, unknown>
+      const screenshot = state.screenshot as string | undefined
+      const screenshotDataUrl = !screenshot
+        ? screenshot
+        : screenshot.startsWith('data:')
+          ? screenshot
+          : screenshot.startsWith('http://') || screenshot.startsWith('https://')
+            ? screenshot
+            : screenshot.startsWith('/') && (screenshot.endsWith('.png') || screenshot.endsWith('.jpg') || screenshot.endsWith('.jpeg') || screenshot.endsWith('.webp'))
+              ? screenshot
+              : `data:image/jpeg;base64,${screenshot}`
+      return { ...t, state: { ...state, screenshot: screenshotDataUrl } }
+    })
+    const recording = recordings.find(rec => rec.testId === 'default') ?? recordings[0]
+    return {
+      ...data,
+      tests: [{
+        id: 'default',
+        name: 'run',
+        recording: recording ? recording.relPath : null,
+        turns,
+      }],
+    }
+  }
+
+  return data
+}
+
+/**
  * Escape a JSON string for safe inlining inside a `<script>` block.
  *
  * The hazards:
@@ -186,14 +334,18 @@ export async function runView(opts: ViewOptions): Promise<{
   const viewerSource = fs.readFileSync(VIEWER_HTML_PATH, 'utf-8')
   const reportRaw = fs.readFileSync(reportPath, 'utf-8')
 
-  // Re-parse + re-stringify to normalize and validate the JSON, then escape
-  // the standard JSON-in-script hazards before inlining.
-  let reportJson: string
+  // Parse the report, discover any recording.webm files alongside it, and
+  // normalize the shape so the viewer sees a consistent format whether
+  // this is a design-audit run or an agent suite run.
+  let reportObj: unknown
   try {
-    reportJson = JSON.stringify(JSON.parse(reportRaw))
+    reportObj = JSON.parse(reportRaw)
   } catch {
     throw new ViewError(`report.json is not valid JSON: ${reportPath}`)
   }
+  const recordings = findRecordings(reportRoot)
+  const normalized = normalizeReport(reportObj, recordings)
+  const reportJson = JSON.stringify(normalized)
   const safeJson = escapeJsonForScript(reportJson)
 
   const inlinedHtml = viewerSource.replace(
