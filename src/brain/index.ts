@@ -9,7 +9,13 @@ import { generateText } from 'ai';
 import type { ModelMessage, LanguageModel } from 'ai';
 import type { Action, PageState, AgentConfig, DesignFinding, GoalVerification } from '../types.js';
 import { AriaSnapshotHelper } from '../drivers/snapshot.js';
-import { resolveProviderApiKey, resolveProviderModelName } from '../provider-defaults.js';
+import {
+  resolveProviderApiKey,
+  resolveProviderModelName,
+  isClaudeCodeRoutedModel,
+  ZAI_OPENAI_BASE_URL,
+  ZAI_ANTHROPIC_BASE_URL,
+} from '../provider-defaults.js';
 import { buildFirstPartyBoundaryNote } from '../domain-policy.js';
 import { generateWithSandboxBackend } from '../providers/sandbox-backend.js';
 
@@ -230,11 +236,11 @@ type UserContent = string | Array<{ type: 'text'; text: string } | { type: 'imag
 
 export class Brain {
   private modelCache = new Map<string, LanguageModel>();
-  private provider: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend';
+  private provider: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend' | 'zai-coding-plan';
   private modelName: string;
   private adaptiveModelRouting: boolean;
   private navModelName?: string;
-  private navProvider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend';
+  private navProvider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend' | 'zai-coding-plan';
   private explicitApiKey?: string;
   private baseUrl?: string;
   private debug: boolean;
@@ -247,7 +253,7 @@ export class Brain {
   private lastDecisionUrl?: string;
   private systemPrompt: string;
   private scoutModelName?: string;
-  private scoutProvider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend';
+  private scoutProvider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend' | 'zai-coding-plan';
   private scoutUseVision: boolean;
   private sandboxBackendType?: string;
   private sandboxBackendProfile?: string;
@@ -278,7 +284,7 @@ export class Brain {
   }
 
   private resolveModelName(
-    provider: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend',
+    provider: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend' | 'zai-coding-plan',
     requestedModel?: string,
   ): string {
     return resolveProviderModelName(provider, requestedModel, {
@@ -293,15 +299,21 @@ export class Brain {
 
   private generationOptions(
     maxOutputTokens: number,
-    selection?: { provider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend'; model?: string },
+    selection?: { provider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend' | 'zai-coding-plan'; model?: string },
   ): Record<string, number> {
     const providerName = selection?.provider || this.provider;
     const modelName = this.resolveModelName(providerName, selection?.model || this.modelName);
+    // CLI-spawning providers (codex-cli, claude-code, and zai-coding-plan
+    // when routed through claude-code) don't accept maxOutputTokens through
+    // the AI SDK shape — the subprocess controls its own output.
+    const isCliSpawning =
+      providerName === 'codex-cli' ||
+      providerName === 'claude-code' ||
+      providerName === 'sandbox-backend' ||
+      (providerName === 'zai-coding-plan' && isClaudeCodeRoutedModel(modelName));
     return {
       ...(this.shouldSendTemperature(modelName) ? { temperature: 0 } : {}),
-      ...(providerName === 'codex-cli' || providerName === 'claude-code' || providerName === 'sandbox-backend'
-        ? {}
-        : { maxOutputTokens }),
+      ...(isCliSpawning ? {} : { maxOutputTokens }),
     };
   }
 
@@ -311,7 +323,7 @@ export class Brain {
   }
 
   /** Lazily create the LLM model instance based on provider config */
-  private async getModel(selection?: { provider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend'; model?: string }): Promise<LanguageModel> {
+  private async getModel(selection?: { provider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend' | 'zai-coding-plan'; model?: string }): Promise<LanguageModel> {
     const providerName = selection?.provider || this.provider;
     const modelName = this.resolveModelName(providerName, selection?.model || this.modelName);
     const apiKey = resolveProviderApiKey(providerName, this.explicitApiKey);
@@ -375,6 +387,67 @@ export class Brain {
         model = provider(modelName) as LanguageModel;
         break;
       }
+      case 'zai-coding-plan': {
+        // Z.ai coding plan: GLM models (glm-4.6, glm-4.5-air) at a fraction
+        // of Anthropic prices. Two backends:
+        //   1. Default — OpenAI-compatible endpoint, native GLM models
+        //   2. claude-code routed — spawn the Claude Code CLI subprocess
+        //      with ANTHROPIC_BASE_URL/AUTH_TOKEN env vars pointed at Z.ai's
+        //      Anthropic-compatible endpoint. The user gets the Claude Code
+        //      agent loop with Z.ai pricing.
+        if (!apiKey) {
+          throw new Error(
+            'zai-coding-plan: API key required (set ZAI_API_KEY env var or pass --api-key)',
+          );
+        }
+        if (isClaudeCodeRoutedModel(modelName)) {
+          const { createClaudeCode } = await import('ai-sdk-provider-claude-code');
+          const env: Record<string, string> = {
+            // Override Claude Code's API base + auth at the env-var level.
+            // The CLI subprocess inherits these and routes all Anthropic
+            // API calls to Z.ai's Anthropic-compatible endpoint.
+            ANTHROPIC_BASE_URL: ZAI_ANTHROPIC_BASE_URL,
+            ANTHROPIC_AUTH_TOKEN: apiKey,
+            // Some Claude Code versions still read ANTHROPIC_API_KEY — set
+            // both so we don't depend on which env var name wins.
+            ANTHROPIC_API_KEY: apiKey,
+          };
+          const provider = createClaudeCode({
+            defaultSettings: {
+              ...(process.env.CLAUDE_CODE_CLI_PATH ? { pathToClaudeCodeExecutable: process.env.CLAUDE_CODE_CLI_PATH } : {}),
+              permissionMode: 'default',
+              allowDangerouslySkipPermissions: false,
+              ...(this.debug ? { verbose: true } : {}),
+              ...(this.debug
+                ? {
+                    stderr: (chunk: string) => {
+                      const line = chunk.trim();
+                      if (line) console.error(`[zai-claude-code] ${line}`);
+                    },
+                  }
+                : {}),
+              env,
+            },
+          });
+          // The Claude Code SDK takes a model alias (sonnet/haiku/opus); when
+          // the user passes a glm-* name we just hand it through — Claude
+          // Code passes it as the model param to the upstream API, which is
+          // Z.ai's Anthropic-compat endpoint that maps it to the right glm.
+          // For 'claude-code'/'cc' we default to 'sonnet' which Z.ai aliases
+          // to its strongest glm model under the coding plan.
+          const ccModel = modelName === 'claude-code' || modelName === 'cc' ? 'sonnet' : modelName;
+          model = provider(ccModel) as LanguageModel;
+          break;
+        }
+        // Default path — direct OpenAI-compatible API to Z.ai
+        const { createOpenAI } = await import('@ai-sdk/openai');
+        const provider = createOpenAI({
+          apiKey,
+          baseURL: ZAI_OPENAI_BASE_URL,
+        });
+        model = provider(modelName) as LanguageModel;
+        break;
+      }
       default: {
         // 'openai' or any OpenAI-compatible API (LiteLLM, Together, etc.)
         const { createOpenAI } = await import('@ai-sdk/openai');
@@ -394,7 +467,7 @@ export class Brain {
   private async generate(
     system: string,
     messages: ModelMessage[],
-    selection?: { provider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend'; model?: string },
+    selection?: { provider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend' | 'zai-coding-plan'; model?: string },
     maxOutputTokens = 800,
   ): Promise<{ text: string; tokensUsed?: number; inputTokens?: number; outputTokens?: number }> {
     const providerName = selection?.provider || this.provider;
