@@ -16,7 +16,6 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { readFileSync } from 'node:url'
 import * as fs from 'node:fs'
 
 function sh(cmd, args, opts = {}) {
