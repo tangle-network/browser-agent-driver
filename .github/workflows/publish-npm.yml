@@ -82,18 +82,18 @@ jobs:
           echo "version=${PKG_VERSION}" >> "${GITHUB_OUTPUT}"
 
       - name: Publish to npm (trusted publishing via OIDC)
-        # Primary auth: GitHub OIDC validated against the trusted publisher
-        # configured at:
+        # Auth: GitHub OIDC validated against the trusted publisher at
         #   https://www.npmjs.com/package/@tangle-network/browser-agent-driver/access
         # Each publish is cryptographically tied to this commit + workflow
         # run, signed by GitHub's OIDC issuer, and provenance-attested.
+        # No long-lived tokens — `id-token: write` permission is the only
+        # credential needed.
         #
-        # Fallback: NPM_TOKEN. Kept during the OIDC transition because npm
-        # 10.x had spotty trusted-publisher support for scoped packages
-        # and would silently 404 the publish PUT. After we verify a clean
-        # OIDC publish on the npm-11 path, we can drop this fallback and
-        # delete the NPM_TOKEN repo secret.
-        run: npm publish --provenance --access public
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        # We invoke `npx -y npm@11` instead of the runner's bundled npm
+        # because Node 22 ships npm 10.x, which has incomplete OIDC support
+        # for scoped packages and silently 404s the publish PUT instead of
+        # using the trusted publisher token. npm 11.5+ has the full OIDC
+        # publish path. We use `npx` rather than `npm install -g npm@latest`
+        # because the global upgrade path on Node 22 hits a broken
+        # transitive dep (promise-retry MODULE_NOT_FOUND).
+        run: npx -y npm@11 publish --provenance --access public
