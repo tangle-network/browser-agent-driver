@@ -39,6 +39,7 @@ permissions:
   contents: write       # bump package.json + CHANGELOG.md, push the tag
   pull-requests: write  # open + update the Version Packages PR
   id-token: write       # OIDC token for npm trusted publishing + provenance
+  actions: write        # gh workflow run publish-npm.yml (cross-workflow dispatch)
 
 jobs:
   release:
