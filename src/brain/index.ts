@@ -439,23 +439,32 @@ export class Brain {
           model = provider(ccModel) as LanguageModel;
           break;
         }
-        // Default path — direct OpenAI-compatible API to Z.ai
+        // Default path — direct OpenAI-compatible API to Z.ai. Z.ai's
+        // paas/v4 endpoint only implements `/chat/completions` (no
+        // `/responses`), so we MUST use `provider.chat(model)` rather than
+        // the bare `provider(model)` call which now defaults to the new
+        // OpenAI Responses API in @ai-sdk/openai v3+.
         const { createOpenAI } = await import('@ai-sdk/openai');
         const provider = createOpenAI({
           apiKey,
           baseURL: ZAI_OPENAI_BASE_URL,
         });
-        model = provider(modelName) as LanguageModel;
+        model = provider.chat(modelName) as LanguageModel;
         break;
       }
       default: {
-        // 'openai' or any OpenAI-compatible API (LiteLLM, Together, etc.)
+        // 'openai' or any OpenAI-compatible API (LiteLLM, Together, etc.).
+        // Same reason as the zai-coding-plan branch above: most third-party
+        // OpenAI-compatible proxies (LiteLLM, vLLM, Together) implement
+        // `/chat/completions` but not the new `/responses` API. Use the
+        // chat factory explicitly so we hit a path the upstream actually
+        // serves.
         const { createOpenAI } = await import('@ai-sdk/openai');
         const provider = createOpenAI({
           apiKey: apiKey || '',
           ...(this.baseUrl ? { baseURL: this.baseUrl } : {}),
         });
-        model = provider(modelName) as LanguageModel;
+        model = provider.chat(modelName) as LanguageModel;
         break;
       }
     }
