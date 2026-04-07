@@ -34,7 +34,7 @@
     "test:watch": "vitest",
     "changeset": "changeset",
     "version-packages": "changeset version && pnpm install --lockfile-only --no-frozen-lockfile",
-    "release-tag": "changeset tag && git push --follow-tags",
+    "release-tag": "node ./scripts/release-tag.mjs",
     "auth:save-state": "node ./scripts/save-storage-state.mjs",
     "auth:check-state": "node ./scripts/check-storage-state.mjs",
     "skills:install": "node ./scripts/install-skills.mjs",
