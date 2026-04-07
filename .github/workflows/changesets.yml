@@ -69,11 +69,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build
-        # Build runs unconditionally so the version PR can be sanity-checked
-        # and so the published artifact is fresh in the publish path below.
-        run: pnpm build
-
       - name: Create Release Pull Request or Tag
         id: changesets
         uses: changesets/action@v1
@@ -92,21 +87,29 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # The remaining steps only run when changesets/action actually
-      # published (i.e., the Version Packages PR was merged this run and
-      # the tags were pushed). When opening/updating the version PR, these
-      # steps are skipped.
+      # The next step only runs when changesets/action actually published
+      # (i.e., the Version Packages PR was merged this run and the tags
+      # were pushed). When opening/updating the version PR, it's skipped.
+      #
+      # Why we trigger publish-npm.yml instead of publishing inline here:
+      # the npm trusted publisher is linked to publish-npm.yml's filename.
+      # If we ran `npm publish` from THIS workflow, the OIDC token's
+      # `workflow_ref` claim would be `changesets.yml`, npm would reject it
+      # as a trusted-publisher mismatch, and the publish would 404.
+      #
+      # `gh workflow run` invokes publish-npm.yml via its workflow_dispatch
+      # entry point. publish-npm.yml runs in its own job, generating an
+      # OIDC token with workflow_ref pointing at publish-npm.yml — the
+      # exact filename the trusted publisher expects. Cross-workflow
+      # invocation via GITHUB_TOKEN IS allowed for workflow_dispatch (the
+      # downstream-trigger restriction only blocks `push` and similar
+      # automatic events).
 
-      - name: Publish to npm (OIDC trusted publishing)
+      - name: Trigger publish workflow
         if: steps.changesets.outputs.published == 'true'
-        # Use npx with npm 11 — the runner ships npm 10.x bundled which
-        # has incomplete OIDC trusted-publisher support for scoped
-        # packages. npm 11.5+ has the full path. We use npx instead of
-        # `npm install -g npm@latest` because the global upgrade hits
-        # a broken transitive dep on Node 22.
-        #
-        # Auth: pure OIDC. No NPM_TOKEN required. The id-token: write
-        # permission at the workflow level lets npm request a short-lived
-        # OIDC token that's validated against the trusted publisher at
-        # https://www.npmjs.com/package/@tangle-network/browser-agent-driver/access
-        run: npx -y npm@11 publish --provenance --access public
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "Triggering publish-npm.yml for version $VERSION"
+          gh workflow run publish-npm.yml --ref main -f version="$VERSION"
