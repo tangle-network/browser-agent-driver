@@ -1,6 +1,7 @@
 name: Changesets
 
-# Auto-versioning + auto-publish via Changesets.
+# Auto-versioning + auto-publish via Changesets — single workflow, no
+# tag handoff. The full release runs end-to-end in this one job.
 #
 # How it works:
 #   1. Every PR that changes runtime behavior adds a markdown changeset
@@ -8,20 +9,22 @@ name: Changesets
 #   2. When the PR merges to main, this workflow runs.
 #   3. If unreleased changesets exist, `changesets/action@v1` opens (or
 #      updates) a "Release: version packages" PR that bumps `package.json`
-#      and updates `CHANGELOG.md`.
+#      and updates `CHANGELOG.md`. Workflow ends here for this run.
 #   4. When that Version Packages PR is merged, this workflow runs again,
 #      detects there are no leftover changesets, and runs the `publish`
-#      script. We tag-and-push, which fires the existing `release.yml` and
-#      `publish-npm.yml` workflows that create the GitHub release and
-#      publish to npm with provenance.
+#      script which creates and pushes the version tags.
+#   5. THEN, in the same job, we build + npm publish via OIDC trusted
+#      publishing — no NPM_TOKEN, no manual tag re-push, no separate
+#      workflow needed.
 #
-# Why two-stage (tag handoff instead of publishing directly):
-#   - The existing publish-npm.yml already does version validation,
-#     OIDC trusted publishing, and provenance attestation. No reason to
-#     duplicate it.
-#   - Tag-driven publishing is more familiar and easier to revert
-#     (delete tag → re-tag) than commit-driven publishing.
-#   - Concurrency control prevents two version PRs from racing.
+# Why we publish here instead of relying on publish-npm.yml's tag trigger:
+#   - GitHub deliberately does NOT fire downstream workflows on events
+#     pushed by GITHUB_TOKEN (security: prevents recursive workflow loops)
+#   - publish-npm.yml's `on: push: tags` trigger never fires when this
+#     workflow pushes tags via the default token
+#   - Rather than introduce a PAT/App token to bypass that, we just do
+#     the publish in this same job. publish-npm.yml stays as a manual
+#     fallback (workflow_dispatch + tag push from a human terminal)
 
 on:
   push:
@@ -35,10 +38,11 @@ concurrency:
 permissions:
   contents: write       # bump package.json + CHANGELOG.md, push the tag
   pull-requests: write  # open + update the Version Packages PR
+  id-token: write       # OIDC token for npm trusted publishing + provenance
 
 jobs:
   release:
-    name: Version or Tag
+    name: Version or Publish
     if: github.repository == 'tangle-network/browser-agent-driver'
     runs-on: ubuntu-latest
     steps:
@@ -48,9 +52,6 @@ jobs:
           # Full history so changesets can read all unreleased entries
           # and so the tag push points at the right commit.
           fetch-depth: 0
-          # Use a token that can push to main even if branch protection
-          # is enabled. GITHUB_TOKEN works when "Allow GitHub Actions to
-          # create and approve pull requests" is enabled in repo settings.
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup pnpm
@@ -61,30 +62,51 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: pnpm
+          registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Build
+        # Build runs unconditionally so the version PR can be sanity-checked
+        # and so the published artifact is fresh in the publish path below.
+        run: pnpm build
 
       - name: Create Release Pull Request or Tag
         id: changesets
         uses: changesets/action@v1
         with:
           # The script that runs when consumed changesets are merged to
-          # main (i.e. the Version Packages PR was just merged). It tags
-          # the new version and pushes; the existing release.yml and
-          # publish-npm.yml workflows fire on that tag.
+          # main (the Version Packages PR was just merged). It creates the
+          # vX.Y.Z and browser-agent-driver-vX.Y.Z tags and pushes both.
           publish: pnpm release-tag
           # The script that updates package.json + CHANGELOG.md and
-          # creates/updates the Version Packages PR. We also refresh the
+          # creates/updates the Version Packages PR. Also refreshes the
           # lockfile so the PR builds cleanly.
           version: pnpm version-packages
           title: 'Release: version packages'
           commit: 'chore: version packages'
-          # Don't have changesets create its own GitHub releases — the
-          # existing release.yml workflow handles that with the standalone
-          # tarball.
           createGithubReleases: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # The remaining steps only run when changesets/action actually
+      # published (i.e., the Version Packages PR was merged this run and
+      # the tags were pushed). When opening/updating the version PR, these
+      # steps are skipped.
+
+      - name: Publish to npm (OIDC trusted publishing)
+        if: steps.changesets.outputs.published == 'true'
+        # Use npx with npm 11 — the runner ships npm 10.x bundled which
+        # has incomplete OIDC trusted-publisher support for scoped
+        # packages. npm 11.5+ has the full path. We use npx instead of
+        # `npm install -g npm@latest` because the global upgrade hits
+        # a broken transitive dep on Node 22.
+        #
+        # Auth: pure OIDC. No NPM_TOKEN required. The id-token: write
+        # permission at the workflow level lets npm request a short-lived
+        # OIDC token that's validated against the trusted publisher at
+        # https://www.npmjs.com/package/@tangle-network/browser-agent-driver/access
+        run: npx -y npm@11 publish --provenance --access public
