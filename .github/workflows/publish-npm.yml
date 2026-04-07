@@ -39,14 +39,6 @@ jobs:
           cache: pnpm
           registry-url: 'https://registry.npmjs.org'
 
-      # Upgrade npm to the latest. The bundled npm in Node 22 is 10.x,
-      # which has incomplete OIDC trusted-publisher support for scoped
-      # packages — auth silently falls back to NPM_TOKEN if missing,
-      # and the publish PUT returns a confusing 404. npm 11+ has the
-      # full OIDC publish path for scoped packages.
-      - name: Upgrade npm
-        run: npm install -g npm@latest
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
