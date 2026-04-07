@@ -59,7 +59,12 @@ export interface PlaywrightDriverOptions {
    * Inject a cursor + element-highlight overlay so screenshots show what bad
    * is doing. Adds an animated cursor sprite that travels to click targets,
    * pulse rings on click, and highlight boxes around the target element.
+   *
    * Default: false. Enable for demo recordings, debugging, and the session viewer.
+   *
+   * **Performance note:** each interactive action waits ~240ms for the cursor
+   * animation to land before executing — over a 50-turn session that's ~12s
+   * of added wall time. Leave off for headless CI; on for screen captures.
    */
   showCursor?: boolean;
 }

@@ -229,12 +229,20 @@ async function main(): Promise<void> {
       cliError('usage: bad view <run-directory>');
       process.exit(1);
     }
-    const { runView } = await import('./cli-view.js');
-    await runView({
-      runDir,
-      port: values.port ? parseInt(values.port) : undefined,
-      noOpen: values['no-open'],
-    });
+    const { runViewCli, ViewError } = await import('./cli-view.js');
+    try {
+      await runViewCli({
+        runDir,
+        port: values.port ? parseInt(values.port) : undefined,
+        noOpen: values['no-open'],
+      });
+    } catch (err) {
+      if (err instanceof ViewError) {
+        cliError(err.message);
+        process.exit(1);
+      }
+      throw err;
+    }
     return;
   }
 

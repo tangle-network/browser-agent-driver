@@ -438,9 +438,9 @@
   </div>
 
   <script>
-    // The CLI injects window.__BAD_RUN_DATA before opening this file.
+    // The CLI injects window.__bad_runData before opening this file.
     // Fall back to fetching ./report.json relative to the page if running in a webserver.
-    const runData = window.__BAD_RUN_DATA || null;
+    const runData = window.__bad_runData || null;
 
     async function loadData() {
       if (runData) return runData;
@@ -461,26 +461,71 @@
         .replace(/'/g, '&#39;');
     }
 
+    /** Coerce any score-shaped value to a finite number, defaulting to 0. */
+    function toScore(n) {
+      const v = typeof n === 'number' ? n : parseFloat(n);
+      return Number.isFinite(v) ? v : 0;
+    }
+
     function classifyScore(n) {
-      if (n >= 8) return 'good';
-      if (n >= 5) return 'ok';
+      const v = toScore(n);
+      if (v >= 8) return 'good';
+      if (v >= 5) return 'ok';
       return 'bad';
     }
 
+    /** Try to render a URL's pathname; fall back to the original string. */
+    function urlPathname(u) {
+      if (!u) return '/';
+      try {
+        const parsed = new URL(u, 'http://_local_');
+        return parsed.pathname || '/';
+      } catch {
+        return String(u);
+      }
+    }
+
+    /**
+     * Resolve a screenshot path stored in the report into something the
+     * loopback HTTP server can serve. Reports may store absolute paths
+     * (legacy) or relative paths (new). We strip everything up to and
+     * including the report root by looking for the segment matching the
+     * report directory name; otherwise return the basename in `screenshots/`.
+     */
+    function resolveScreenshotPath(p) {
+      if (!p) return null;
+      const s = String(p);
+      // Already a relative URL from the server root
+      if (!s.startsWith('/') && !s.includes('://')) return s;
+      // Find the last `/screenshots/` segment, anchor relative to it
+      const m = s.match(/(?:^|\/)(screenshots\/[^?#]+)$/);
+      if (m) return m[1];
+      // Fallback: use the basename
+      const base = s.split('/').pop();
+      return base ? `screenshots/${base}` : null;
+    }
+
+    /** Get an element by id or throw a visible error in the UI. */
+    function el(id) {
+      const node = document.getElementById(id);
+      if (!node) throw new Error(`viewer: missing element #${id}`);
+      return node;
+    }
+
     function renderRunSummary(data) {
-      const el = document.getElementById('run-summary');
-      const meta = document.getElementById('run-meta');
+      const summaryEl = el('run-summary');
+      const meta = el('run-meta');
       if (!data) {
-        el.innerHTML = '<div class="empty-state" style="padding:16px 0;"><p>No data</p></div>';
+        summaryEl.innerHTML = '<div class="empty-state" style="padding:16px 0;"><p>No data</p></div>';
         return;
       }
       // Detect run type: design audit vs agent run
       const isAudit = !!data.pages;
       if (isAudit) {
-        const avg = data.summary?.avgScore?.toFixed(1) ?? '?';
+        const avg = toScore(data.summary?.avgScore).toFixed(1);
         const total = data.summary?.totalFindings ?? 0;
-        meta.textContent = `design audit · ${data.url ?? ''}`;
-        el.innerHTML = `
+        meta.textContent = `design audit · ${escapeHtml(data.url ?? '')}`;
+        summaryEl.innerHTML = `
           <div style="display:flex;align-items:center;gap:12px;">
             <div style="font-size:32px;font-weight:700;">${avg}<span style="font-size:14px;color:var(--text-muted);">/10</span></div>
             <div style="font-size:12px;color:var(--text-muted);">${total} findings<br>${data.pages.length} page${data.pages.length !== 1 ? 's' : ''}</div>
@@ -489,7 +534,7 @@
       } else {
         meta.textContent = `agent run`;
         const turns = (data.turns || data.steps || []).length;
-        el.innerHTML = `
+        summaryEl.innerHTML = `
           <div>
             <div style="font-weight:600;">${turns} turn${turns !== 1 ? 's' : ''}</div>
             <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">${data.success === false ? 'failed' : 'completed'}</div>
@@ -499,18 +544,17 @@
     }
 
     function renderTurnList(data) {
-      const list = document.getElementById('turn-list');
+      const list = el('turn-list');
       const items = [];
 
       if (data?.pages) {
         // Design audit: list pages
         data.pages.forEach((p, i) => {
-          const status = p.error ? 'error' : 'success';
-          const score = p.score ?? 0;
+          const score = toScore(p.score);
           items.push(`
             <li class="turn-item" data-kind="page" data-index="${i}">
               <span class="turn-num">${i + 1}</span>
-              <div class="turn-action"><span class="verb">${escapeHtml(new URL(p.url).pathname || '/')}</span></div>
+              <div class="turn-action"><span class="verb">${escapeHtml(urlPathname(p.url))}</span></div>
               <span class="badge ${classifyScore(score) === 'good' ? 'badge-success' : classifyScore(score) === 'ok' ? 'badge-warn' : 'badge-error'}">${score}</span>
             </li>
           `);
@@ -556,7 +600,7 @@
     }
 
     function showTopFixes(fixes, data) {
-      const main = document.getElementById('main-content');
+      const main = el('main-content');
       main.innerHTML = `
         <div class="top-fixes">
           <h2 style="margin: 8px 0 16px; font-size: 20px;">Top Fixes (by ROI)</h2>
@@ -585,7 +629,7 @@
           `).join('')}
         </div>
       `;
-      document.getElementById('aside-panel').innerHTML = `
+      el('aside-panel').innerHTML = `
         <div class="panel">
           <h3>About Top Fixes</h3>
           <div class="panel-body">
@@ -596,9 +640,10 @@
     }
 
     function showPage(page) {
-      const main = document.getElementById('main-content');
-      const screenshot = page.screenshotPath
-        ? `<img src="${escapeHtml(page.screenshotPath.replace(/^.*\/screenshots\//, 'screenshots/'))}" alt="screenshot">`
+      const main = el('main-content');
+      const ssPath = resolveScreenshotPath(page.screenshotPath);
+      const screenshot = ssPath
+        ? `<img src="${escapeHtml(ssPath)}" alt="screenshot" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'empty-screenshot',textContent:'Screenshot not available'}))">`
         : '<div class="empty-screenshot">No screenshot</div>';
       main.innerHTML = `
         <div style="width: 100%; max-width: 1200px;">
@@ -609,7 +654,7 @@
           <div class="screenshot-wrap">${screenshot}</div>
         </div>
       `;
-      const aside = document.getElementById('aside-panel');
+      const aside = el('aside-panel');
       const ds = page.designSystemScore || {};
       const dsRows = Object.entries(ds).map(([k, v]) => `
         <div class="score-row">
@@ -649,9 +694,10 @@
     }
 
     function showTurn(turn) {
-      const main = document.getElementById('main-content');
-      const screenshot = turn.state?.screenshot
-        ? `<img src="${escapeHtml(turn.state.screenshot)}" alt="screenshot">`
+      const main = el('main-content');
+      const ssPath = resolveScreenshotPath(turn.state?.screenshot);
+      const screenshot = ssPath
+        ? `<img src="${escapeHtml(ssPath)}" alt="screenshot" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'empty-screenshot',textContent:'Screenshot not available'}))">`
         : '<div class="empty-screenshot">No screenshot</div>';
       main.innerHTML = `
         <div style="width: 100%; max-width: 1200px;">
@@ -662,7 +708,7 @@
           <div class="screenshot-wrap">${screenshot}</div>
         </div>
       `;
-      const aside = document.getElementById('aside-panel');
+      const aside = el('aside-panel');
       aside.innerHTML = `
         ${turn.action ? `
           <div class="panel">
@@ -687,21 +733,43 @@
       `;
     }
 
+    function showFatalError(err) {
+      console.error('viewer fatal error:', err);
+      const main = document.getElementById('main-content');
+      const msg = err && err.message ? err.message : String(err);
+      if (main) {
+        main.innerHTML = `
+          <div class="empty-state">
+            <h2 style="color: var(--red);">Viewer error</h2>
+            <p>${escapeHtml(msg)}</p>
+            <p style="margin-top: 16px; font-size: 11px;">Open the browser console for details.</p>
+          </div>
+        `;
+      }
+    }
+
+    window.addEventListener('error', (e) => showFatalError(e.error || e.message));
+    window.addEventListener('unhandledrejection', (e) => showFatalError(e.reason));
+
     (async () => {
-      const data = await loadData();
-      renderRunSummary(data);
-      renderTurnList(data);
-      // Auto-select Top Fixes for design audits, first turn for agent runs
-      if (data?.topFixes?.length) {
-        showTopFixes(data.topFixes, data);
-      } else if (data?.pages?.length) {
-        showPage(data.pages[0]);
-        document.querySelector('.turn-item[data-kind="page"]')?.classList.add('active');
-      } else if (data?.turns?.length) {
-        showTurn(data.turns[0]);
-        document.querySelector('.turn-item[data-kind="turn"]')?.classList.add('active');
-      } else {
-        document.getElementById('main-content').innerHTML = '<div class="empty-state"><h2>No data</h2><p>Pass a run directory or place report.json next to this file.</p></div>';
+      try {
+        const data = await loadData();
+        renderRunSummary(data);
+        renderTurnList(data);
+        // Auto-select Top Fixes for design audits, first turn for agent runs
+        if (data?.topFixes?.length) {
+          showTopFixes(data.topFixes, data);
+        } else if (data?.pages?.length) {
+          showPage(data.pages[0]);
+          document.querySelector('.turn-item[data-kind="page"]')?.classList.add('active');
+        } else if (data?.turns?.length) {
+          showTurn(data.turns[0]);
+          document.querySelector('.turn-item[data-kind="turn"]')?.classList.add('active');
+        } else {
+          el('main-content').innerHTML = '<div class="empty-state"><h2>No data</h2><p>Pass a run directory or place report.json next to this file.</p></div>';
+        }
+      } catch (err) {
+        showFatalError(err);
       }
     })();
   </script>

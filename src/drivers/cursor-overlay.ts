@@ -113,13 +113,20 @@ export const CURSOR_OVERLAY_INIT_SCRIPT = `
     whiteSpace: 'nowrap',
   });
 
-  // Append once the body exists
+  // Append to documentElement (not body) so the overlay is not affected by
+  // body's stacking context — many modern sites apply transform/will-change
+  // to body which would clip a max-z-index child appended to body.
+  // Bound the retry loop so a body-less doc (XML, PDF viewer, chrome://)
+  // doesn't spin requestAnimationFrame forever.
+  let attachAttempts = 0;
   function attach() {
-    if (!document.body) {
+    const host = document.documentElement || document.body;
+    if (!host) {
+      if (++attachAttempts > 60) return; // ~1 second of attempts
       requestAnimationFrame(attach);
       return;
     }
-    document.body.appendChild(root);
+    host.appendChild(root);
     root.appendChild(box);
     root.appendChild(ring);
     root.appendChild(cursor);

@@ -83,9 +83,35 @@ runs:
         fi
         npm install -g "@tangle-network/browser-agent-driver@${BAD_VERSION}"
 
+    # Detect the Playwright version that bad pulled in so the cache key
+    # invalidates whenever bad upgrades to a newer Playwright.
+    - name: Resolve Playwright version
+      id: pw-version
+      shell: bash
+      run: |
+        VERSION=$(npm view @tangle-network/browser-agent-driver dependencies.patchright 2>/dev/null \
+          || npm view @tangle-network/browser-agent-driver dependencies.playwright 2>/dev/null \
+          || echo "unknown")
+        echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+    # Cache Chromium binaries between runs. The post-cache install step is a
+    # no-op when the cache hits, saving ~3 minutes per CI run.
+    - name: Cache Playwright browsers
+      id: pw-cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ms-playwright
+        key: ${{ runner.os }}-playwright-${{ steps.pw-version.outputs.version }}
+
     - name: Install Playwright Chromium
       shell: bash
-      run: npx playwright install chromium --with-deps
+      run: |
+        if [ "${{ steps.pw-cache.outputs.cache-hit }}" = "true" ]; then
+          # Browsers cached; only install OS deps (apt-get on Linux runners).
+          npx playwright install-deps chromium 2>/dev/null || true
+        else
+          npx playwright install chromium --with-deps
+        fi
 
     - name: Run design audit
       id: audit

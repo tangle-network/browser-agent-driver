@@ -40,7 +40,8 @@ import type { Driver, ActionResult, ResourceBlockingOptions } from './types.js'
 import type { Action, PageState } from '../types.js'
 import { PlaywrightDriver, type PlaywrightDriverOptions, type ObserveTiming } from './playwright.js'
 
-export interface SteelDriverOptions extends PlaywrightDriverOptions {
+/** Provider-specific options grouped under `steel:` to compose with other drivers. */
+export interface SteelOptions {
   /** Steel API key. Defaults to STEEL_API_KEY env var. */
   apiKey?: string
   /** Steel API base URL. Defaults to https://api.steel.dev. */
@@ -49,12 +50,21 @@ export interface SteelDriverOptions extends PlaywrightDriverOptions {
   sessionId?: string
   /**
    * Per-session Steel options. See https://docs.steel.dev for the full schema.
-   * Common fields:
-   *   useProxy: enable residential proxy
-   *   solveCaptcha: enable CAPTCHA solving
-   *   sessionTimeout: max session duration in ms
-   *   region: 'us-east' | 'eu-west' | etc.
+   * Common fields: `useProxy`, `solveCaptcha`, `sessionTimeout`, `region`.
    */
+  sessionOptions?: Record<string, unknown>
+}
+
+export interface SteelDriverOptions extends PlaywrightDriverOptions {
+  /** Steel-specific options. Prefer this nested form over the legacy flat fields. */
+  steel?: SteelOptions
+  /** @deprecated Use `steel.apiKey` instead. */
+  apiKey?: string
+  /** @deprecated Use `steel.baseUrl` instead. */
+  baseUrl?: string
+  /** @deprecated Use `steel.sessionId` instead. */
+  sessionId?: string
+  /** @deprecated Use `steel.sessionOptions` instead. */
   sessionOptions?: Record<string, unknown>
 }
 
@@ -91,12 +101,25 @@ export class SteelDriver implements Driver {
 
   /**
    * Create a Steel session and connect Playwright to it.
+   *
+   * Accepts both the new nested form (`{ steel: { apiKey, ... } }`) and
+   * the legacy flat form (`{ apiKey, ... }`). Nested fields win when both
+   * are set, so callers can override per-call without losing defaults.
    */
   static async create(options: SteelDriverOptions = {}): Promise<SteelDriver> {
-    const apiKey = options.apiKey ?? process.env.STEEL_API_KEY
+    // Merge legacy flat fields under the nested `steel` shape so the rest
+    // of the function only deals with one source of truth.
+    const steelOpts: SteelOptions = {
+      apiKey: options.steel?.apiKey ?? options.apiKey,
+      baseUrl: options.steel?.baseUrl ?? options.baseUrl,
+      sessionId: options.steel?.sessionId ?? options.sessionId,
+      sessionOptions: options.steel?.sessionOptions ?? options.sessionOptions,
+    }
+
+    const apiKey = steelOpts.apiKey ?? process.env.STEEL_API_KEY
     if (!apiKey) {
       throw new Error(
-        'SteelDriver: STEEL_API_KEY required (pass options.apiKey or set the env var)',
+        'SteelDriver: STEEL_API_KEY required (pass options.steel.apiKey or set the env var)',
       )
     }
 
@@ -129,17 +152,17 @@ export class SteelDriver implements Driver {
     }
     const steelClient = new Ctor({
       apiKey,
-      ...(options.baseUrl ? { baseUrl: options.baseUrl } : {}),
+      ...(steelOpts.baseUrl ? { baseUrl: steelOpts.baseUrl } : {}),
     })
 
     // Reuse an existing session or create a fresh one
     let session: SteelSession
     let ownsSession: boolean
-    if (options.sessionId) {
-      session = await steelClient.sessions.retrieve(options.sessionId)
+    if (steelOpts.sessionId) {
+      session = await steelClient.sessions.retrieve(steelOpts.sessionId)
       ownsSession = false
     } else {
-      session = await steelClient.sessions.create(options.sessionOptions ?? {})
+      session = await steelClient.sessions.create(steelOpts.sessionOptions ?? {})
       ownsSession = true
     }
 
@@ -261,7 +284,7 @@ export class SteelDriver implements Driver {
     try {
       await this.browser.close()
     } catch {
-      /* ignore */
+      /* connection may already be dropped */
     }
     if (this.ownsSession) {
       try {
@@ -270,5 +293,14 @@ export class SteelDriver implements Driver {
         /* session may already be expired */
       }
     }
+  }
+
+  /**
+   * Async dispose support — enables `await using driver = await SteelDriver.create()`
+   * in Node 22+ / TypeScript 5.2+. The session is released automatically when
+   * the binding goes out of scope, even if an exception is thrown.
+   */
+  async [Symbol.asyncDispose](): Promise<void> {
+    return this.close()
   }
 }

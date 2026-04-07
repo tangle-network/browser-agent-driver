@@ -13,6 +13,7 @@ import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import * as http from 'node:http'
+import { escapeJsonForScript, findReportJson } from '../src/cli-view.js'
 
 // We test the SECURITY guarantees, not the implementation details.
 // Spin up a small fake using the same primitives as cli-view.ts and
@@ -141,20 +142,14 @@ describe('cli-view path traversal protection', () => {
   })
 })
 
-describe('XSS-safe JSON inlining', () => {
-  // Mirror the inlining logic from cli-view.ts:runView. The fix wraps a
-  // re-stringified JSON in three escapes:
-  //   </script  → <\/script
-  //   <!--      → <\!--
-  //   U+2028/29 → \u2028 / \u2029
+describe('escapeJsonForScript (the actual exported helper)', () => {
+  // Exercises the real exported function rather than a copy. The fix wraps:
+  //   </script  → <\/script  (closes the script tag mid-string)
+  //   <!--      → <\!--      (HTML comment toggles parser modes)
+  //   U+2028/29 → \u2028 / \u2029  (legal in JSON, illegal in pre-ES2019 JS strings)
 
   function safeInline(rawJson: string): string {
-    const normalized = JSON.stringify(JSON.parse(rawJson))
-    return normalized
-      .replace(/<\/(script)/gi, '<\\/$1')
-      .replace(/<!--/g, '<\\!--')
-      .replace(/\u2028/g, '\\u2028')
-      .replace(/\u2029/g, '\\u2029')
+    return escapeJsonForScript(JSON.stringify(JSON.parse(rawJson)))
   }
 
   it('escapes </script> in string values', () => {
@@ -209,22 +204,6 @@ describe('findReportJson resolution', () => {
   afterEach(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true })
   })
-
-  // Re-implement findReportJson to test its contract independent of the
-  // module's export shape.
-  function findReportJson(runDir: string): string | null {
-    const direct = path.join(runDir, 'report.json')
-    if (fs.existsSync(direct)) return direct
-    try {
-      for (const entry of fs.readdirSync(runDir, { withFileTypes: true })) {
-        if (entry.isDirectory()) {
-          const sub = path.join(runDir, entry.name, 'report.json')
-          if (fs.existsSync(sub)) return sub
-        }
-      }
-    } catch { /* ignore */ }
-    return null
-  }
 
   it('finds report.json at the top level', () => {
     fs.writeFileSync(path.join(tmpDir, 'report.json'), '{}')

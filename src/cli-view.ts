@@ -6,7 +6,10 @@
  *
  * No build pipeline, no React, no separate package — viewer.html is a
  * single self-contained file shipped in the package and copied to dist
- * at build time.
+ * at build time by `scripts/copy-static-assets.mjs`.
+ *
+ * Library-friendly: this module throws typed errors instead of calling
+ * `process.exit`. The CLI dispatcher catches and exits.
  */
 
 import * as fs from 'node:fs'
@@ -15,25 +18,49 @@ import * as http from 'node:http'
 import { fileURLToPath } from 'node:url'
 import { spawn } from 'node:child_process'
 import chalk from 'chalk'
-import { cliError } from './cli-ui.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+
+/** Resolved at module load — single canonical path, no runtime probing. */
+const VIEWER_HTML_PATH = (() => {
+  // Production: dist/cli-view.js + dist/viewer/viewer.html
+  const distPath = path.join(__dirname, 'viewer/viewer.html')
+  if (fs.existsSync(distPath)) return distPath
+  // Source dev mode: src/cli-view.ts + src/viewer/viewer.html
+  const srcPath = path.join(__dirname, '../viewer/viewer.html')
+  if (fs.existsSync(srcPath)) return srcPath
+  // Last-resort: walking up one more level (for unusual layouts)
+  const upPath = path.join(__dirname, '../../src/viewer/viewer.html')
+  if (fs.existsSync(upPath)) return upPath
+  return ''
+})()
 
 export interface ViewOptions {
   /** Run directory containing report.json + screenshots/ */
   runDir: string
-  /** Port for the local server (default 7777) */
+  /** Port for the local server. Default 7777. Auto-increments on EADDRINUSE. */
   port?: number
   /** Don't auto-open the browser */
   noOpen?: boolean
+  /** Maximum number of consecutive ports to try when EADDRINUSE. Default 10. */
+  portRetries?: number
 }
 
-function findReportJson(runDir: string): string | null {
-  // Common layouts: <runDir>/report.json or <runDir>/<sub>/report.json
+export class ViewError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ViewError'
+  }
+}
+
+/**
+ * Resolves a `report.json` file inside a run directory. Searches the
+ * run directory itself first, then one level deep.
+ */
+export function findReportJson(runDir: string): string | null {
   const direct = path.join(runDir, 'report.json')
   if (fs.existsSync(direct)) return direct
 
-  // Search one level deep
   try {
     for (const entry of fs.readdirSync(runDir, { withFileTypes: true })) {
       if (entry.isDirectory()) {
@@ -41,34 +68,50 @@ function findReportJson(runDir: string): string | null {
         if (fs.existsSync(sub)) return sub
       }
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore unreadable dir */
+  }
   return null
 }
 
-function findViewerHtml(): string {
-  // The CLI runs from dist/, the viewer is at dist/viewer/viewer.html.
-  // Walk up to find it (works in both src and dist layouts).
-  const candidates = [
-    path.join(__dirname, 'viewer/viewer.html'),
-    path.join(__dirname, '../src/viewer/viewer.html'),
-    path.join(__dirname, '../viewer/viewer.html'),
-  ]
-  for (const c of candidates) {
-    if (fs.existsSync(c)) return c
-  }
-  throw new Error('viewer.html not found in dist/ or src/')
+/**
+ * Escape a JSON string for safe inlining inside a `<script>` block.
+ *
+ * The hazards:
+ *   - `</script` (any case): closes the script tag mid-string
+ *   - `<!--`: opens an HTML comment, toggles parser modes
+ *   - U+2028 / U+2029: legal in JSON, illegal in pre-ES2019 JS string literals
+ *
+ * Exported for testing.
+ */
+export function escapeJsonForScript(json: string): string {
+  return json
+    .replace(/<\/(script)/gi, '<\\/$1')
+    .replace(/<!--/g, '<\\!--')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029')
 }
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
+  '.htm': 'text/html; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
+  '.txt': 'text/plain; charset=utf-8',
+  '.md': 'text/markdown; charset=utf-8',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
   '.webp': 'image/webp',
+  '.gif': 'image/gif',
   '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
   '.css': 'text/css',
   '.js': 'application/javascript',
+  '.mjs': 'application/javascript',
+  '.map': 'application/json',
+  '.webm': 'video/webm',
+  '.mp4': 'video/mp4',
+  '.mov': 'video/quicktime',
 }
 
 function openInBrowser(url: string): void {
@@ -82,64 +125,94 @@ function openInBrowser(url: string): void {
   }
 }
 
-export async function runView(opts: ViewOptions): Promise<void> {
+/**
+ * Listen on a port, auto-incrementing on EADDRINUSE up to `maxRetries` times.
+ */
+async function listenWithRetry(
+  server: http.Server,
+  startPort: number,
+  maxRetries: number,
+): Promise<number> {
+  for (let i = 0; i <= maxRetries; i++) {
+    const port = startPort + i
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const onError = (err: NodeJS.ErrnoException) => {
+          server.removeListener('listening', onListening)
+          reject(err)
+        }
+        const onListening = () => {
+          server.removeListener('error', onError)
+          resolve()
+        }
+        server.once('error', onError)
+        server.once('listening', onListening)
+        server.listen(port, '127.0.0.1')
+      })
+      return port
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code
+      if (code !== 'EADDRINUSE') throw err
+      // Try the next port
+      continue
+    }
+  }
+  throw new ViewError(
+    `could not bind to any port in range ${startPort}–${startPort + maxRetries} (all in use)`,
+  )
+}
+
+export async function runView(opts: ViewOptions): Promise<{
+  url: string
+  close: () => Promise<void>
+}> {
   const runDir = path.resolve(opts.runDir)
   if (!fs.existsSync(runDir) || !fs.statSync(runDir).isDirectory()) {
-    cliError(`run directory not found: ${runDir}`)
-    process.exit(1)
+    throw new ViewError(`run directory not found: ${runDir}`)
   }
 
   const reportPath = findReportJson(runDir)
   if (!reportPath) {
-    cliError(`no report.json found in ${runDir} or its subdirectories`)
-    process.exit(1)
+    throw new ViewError(`no report.json found in ${runDir} or its subdirectories`)
+  }
+
+  if (!VIEWER_HTML_PATH) {
+    throw new ViewError(
+      'viewer.html not found. The package may be missing dist/viewer/viewer.html — try reinstalling.',
+    )
   }
 
   const reportRoot = path.dirname(reportPath)
-  const viewerHtml = findViewerHtml()
-  const viewerSource = fs.readFileSync(viewerHtml, 'utf-8')
+  const viewerSource = fs.readFileSync(VIEWER_HTML_PATH, 'utf-8')
   const reportRaw = fs.readFileSync(reportPath, 'utf-8')
 
-  // Inline the report data into the HTML. CRITICAL: report.json contains
-  // LLM-generated text from arbitrary audited pages, which may include
-  // `</script>` substrings, HTML comments, or other content that breaks
-  // out of a <script> block. We escape the standard JS-in-HTML hazards:
-  //   - </script  → <\/script  (closes the script tag mid-string)
-  //   - <!--      → <\!--      (HTML comment that toggles parser modes)
-  //   - U+2028 / U+2029 → \u2028 / \u2029 (legal in JSON, illegal in JS strings)
-  // Re-parse + re-stringify to normalize and validate the JSON.
+  // Re-parse + re-stringify to normalize and validate the JSON, then escape
+  // the standard JSON-in-script hazards before inlining.
   let reportJson: string
   try {
     reportJson = JSON.stringify(JSON.parse(reportRaw))
   } catch {
-    cliError(`report.json is not valid JSON: ${reportPath}`)
-    process.exit(1)
+    throw new ViewError(`report.json is not valid JSON: ${reportPath}`)
   }
-  const safeJson = reportJson
-    .replace(/<\/(script)/gi, '<\\/$1')
-    .replace(/<!--/g, '<\\!--')
-    .replace(/\u2028/g, '\\u2028')
-    .replace(/\u2029/g, '\\u2029')
+  const safeJson = escapeJsonForScript(reportJson)
 
   const inlinedHtml = viewerSource.replace(
-    'const runData = window.__BAD_RUN_DATA || null;',
+    'const runData = window.__bad_runData || null;',
     `const runData = ${safeJson};`,
   )
 
-  const port = opts.port ?? 7777
   const server = http.createServer((req, res) => {
-    let urlPath = (req.url ?? '/').split('?')[0]
+    const urlPath = (req.url ?? '/').split('?')[0]
     if (urlPath === '/' || urlPath === '/index.html') {
       res.writeHead(200, { 'Content-Type': MIME['.html'] })
       res.end(inlinedHtml)
       return
     }
 
-    // Serve files from the report directory (screenshots, etc.).
-    // Path-traversal protection: resolve, check it stays inside reportRoot
-    // (using path.relative — startsWith on the prefix is buggy because
-    // /tmp/runA-evil shares a prefix with /tmp/runA), and resolve symlinks
-    // so they can't escape the sandbox.
+    // Path-traversal protection: resolve, check the path stays inside
+    // reportRoot via path.relative (startsWith on the prefix is buggy
+    // because /tmp/runA-evil shares a prefix with /tmp/runA), and
+    // resolve symlinks so they can't escape the sandbox.
     const decoded = decodeURIComponent(urlPath)
     const candidate = path.resolve(reportRoot, decoded.replace(/^\/+/, ''))
     const rel = path.relative(reportRoot, candidate)
@@ -158,33 +231,27 @@ export async function runView(opts: ViewOptions): Promise<void> {
     }
     const realRel = path.relative(reportRoot, realPath)
     if (realRel.startsWith('..') || path.isAbsolute(realRel)) {
-      // symlink that escapes the sandbox
+      // Symlink escaped the sandbox
       res.writeHead(403)
       res.end('forbidden')
       return
     }
-    const safePath = realPath
-    if (!fs.statSync(safePath).isFile()) {
+    if (!fs.statSync(realPath).isFile()) {
       res.writeHead(404)
       res.end('not found')
       return
     }
-    const ext = path.extname(safePath).toLowerCase()
+    const ext = path.extname(realPath).toLowerCase()
     res.writeHead(200, {
       'Content-Type': MIME[ext] ?? 'application/octet-stream',
       'Cache-Control': 'no-cache',
     })
-    fs.createReadStream(safePath).pipe(res)
+    fs.createReadStream(realPath).pipe(res)
   })
 
-  // Bind explicitly to loopback so we never expose run artifacts on a LAN.
-  // Older Node defaults to all interfaces; this is the safe choice everywhere.
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject)
-    server.listen(port, '127.0.0.1', () => resolve())
-  })
-
+  const port = await listenWithRetry(server, opts.port ?? 7777, opts.portRetries ?? 10)
   const url = `http://localhost:${port}`
+
   console.log('')
   console.log(`  ${chalk.bold('bad view')}`)
   console.log(`  ${chalk.dim('Run:')} ${reportRoot}`)
@@ -196,9 +263,27 @@ export async function runView(opts: ViewOptions): Promise<void> {
     openInBrowser(url)
   }
 
-  // Keep the process alive until the user kills it
-  process.on('SIGINT', () => {
-    console.log('\n  closing viewer…')
-    server.close(() => process.exit(0))
+  const close = () =>
+    new Promise<void>(resolve => {
+      server.close(() => resolve())
+    })
+
+  return { url, close }
+}
+
+/**
+ * CLI entrypoint that calls runView and keeps the process alive until SIGINT.
+ * Throws ViewError on failure — the dispatcher in cli.ts catches and exits.
+ */
+export async function runViewCli(opts: ViewOptions): Promise<void> {
+  const { close } = await runView(opts)
+
+  // Keep alive until SIGINT
+  await new Promise<void>(resolve => {
+    const onSigint = () => {
+      console.log('\n  closing viewer…')
+      void close().then(resolve)
+    }
+    process.once('SIGINT', onSigint)
   })
 }
