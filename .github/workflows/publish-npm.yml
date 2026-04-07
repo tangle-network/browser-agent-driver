@@ -39,6 +39,14 @@ jobs:
           cache: pnpm
           registry-url: 'https://registry.npmjs.org'
 
+      # Upgrade npm to the latest. The bundled npm in Node 22 is 10.x,
+      # which has incomplete OIDC trusted-publisher support for scoped
+      # packages — auth silently falls back to NPM_TOKEN if missing,
+      # and the publish PUT returns a confusing 404. npm 11+ has the
+      # full OIDC publish path for scoped packages.
+      - name: Upgrade npm
+        run: npm install -g npm@latest
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -82,12 +90,18 @@ jobs:
           echo "version=${PKG_VERSION}" >> "${GITHUB_OUTPUT}"
 
       - name: Publish to npm (trusted publishing via OIDC)
-        # Auth flow: the workflow's `id-token: write` permission lets the
-        # runner request a short-lived OIDC token from GitHub. `npm publish`
-        # exchanges that for a one-shot publish credential validated against
-        # the trusted publisher configured at:
+        # Primary auth: GitHub OIDC validated against the trusted publisher
+        # configured at:
         #   https://www.npmjs.com/package/@tangle-network/browser-agent-driver/access
-        # No long-lived NPM_TOKEN secret is involved — each publish is
-        # cryptographically tied to this commit + workflow run, signed by
-        # GitHub's OIDC issuer, and provenance-attested.
+        # Each publish is cryptographically tied to this commit + workflow
+        # run, signed by GitHub's OIDC issuer, and provenance-attested.
+        #
+        # Fallback: NPM_TOKEN. Kept during the OIDC transition because npm
+        # 10.x had spotty trusted-publisher support for scoped packages
+        # and would silently 404 the publish PUT. After we verify a clean
+        # OIDC publish on the npm-11 path, we can drop this fallback and
+        # delete the NPM_TOKEN repo secret.
         run: npm publish --provenance --access public
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
