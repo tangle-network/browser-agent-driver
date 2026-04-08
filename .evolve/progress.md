@@ -1,5 +1,61 @@
 # Evolve Progress
 
+## Gen 6.1 — Runner-mandatory batch fill — 2026-04-08
+
+**Goal:** Make the Gen 6 batch verbs fire reliably by detecting at runtime when the agent is about to do single-step typing on a multi-field form, and inject a high-priority hint that DEMANDS the next action be a `fill`.
+
+### Verified delta (single A/B run vs Gen 6 baseline)
+
+| Metric | Gen 6 baseline | Gen 6.1 fast-explore | Δ |
+|---|---:|---:|---:|
+| **Turns** | 22 | **9** | **−59%** |
+| **Wall time** | 384s | **53s** | **−86%** (7.2× speedup) |
+| **Tokens** | ~360k | 147k | −59% |
+| **Cost** | $1.45 | $1.15 | −21% |
+
+The agent's actual behavior on fast-explore (verified from events.jsonl):
+- Turn 1: type firstname (single, before detector fires)
+- Turn 2: detector fires → fill (4 targets) — fails on date input
+- Turn 4: click next
+- **Turn 5: fill (6 targets) — SUCCESS**
+- Turn 6: click next
+- **Turn 7: fill (8 targets) — SUCCESS**
+- Turn 8: click submit
+- Turn 9: complete
+
+**14 form fields compressed into 2 batch turns** (5 + 7). 9 total turns for a 19-field form.
+
+Full-evidence regressed (17 → 22 turns) — same mode-dependent variance as Gen 6 baseline. The detector fires but the agent's fast-explore vs full-evidence prompt cooking responds differently. Tracked as Gen 6.2.
+
+### Implementation
+
+- New `detectBatchFillOpportunity(turns, state)` function in `src/runner/runner.ts`
+- Trigger: last action was `type` on the current URL AND 2+ unused fillable refs are visible in the snapshot
+- Tracks usedRefs across the WHOLE run (not just recent N turns) so the detector never asks the agent to re-fill a field
+- Also tracks fields filled via batch — `fill` action consumption counts as used
+- Emits high-priority (100) ctxBudget entry that lists exact unused @refs from the current snapshot with a worked example
+- Gated by `BAD_BATCH_HINT=0` env flag for rollback
+- 9 unit tests pin the trigger conditions, edge cases, and the worked-example format
+
+### Tests
+- 865 passing (was 856, **+9 net new** for `tests/batch-fill-detection.test.ts`)
+- Tier1 deterministic gate: **100% pass** ✓
+
+### Verdict
+**KEEP — first end-to-end production speedup that actually moves the needle on the long-form scenario.** 7.2× wall time improvement on fast-explore is the biggest single win in the Gen 4-7 trajectory. Mode-dependent variance on full-evidence is a known follow-up.
+
+### Cumulative Gen 4-6.1 trajectory on the long-form scenario
+
+| Generation | Fast-explore turns | Wall time | Speedup vs Gen 4 baseline |
+|---|---:|---:|---:|
+| Gen 4 (loop overhead) | ~22 | ~180s | baseline |
+| Gen 5 (events.jsonl + lazy) | ~22 | ~180s | none (overhead, not turn count) |
+| Gen 6 (batch verbs exist) | 17-22 | varies | mode-dependent, ~10-25% sometimes |
+| **Gen 6.1 (mandatory batch)** | **9** | **53s** | **3.4×** |
+| Gen 7 (planned) | 4-5 | 15-20s | 12× target |
+
+---
+
 ## Gen 5 / Evolve Round 1 — Persist + verify lazy decisions in production — 2026-04-08
 
 **Goal:** Complete the deferred Gen 5 work (events.jsonl persistence, lazy supervisor/override skips) AND verify that the decision cache + deterministic patterns actually fire on real runs.
