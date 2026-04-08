@@ -11,6 +11,7 @@ import { classifyFailureReason, isExternalBlockerFailureClass } from './lib/fail
 import { loadExperimentSpec } from './lib/experiment-spec.mjs';
 import { summarizeArtifactChecks } from './lib/artifact-completeness.mjs';
 import { benchmarkSyncChildEnv, syncBenchmarkOutput } from './lib/abd-benchmark-sync.mjs';
+import { mean, stddev, wilsonInterval, bootstrapDiff95 } from './lib/stats.mjs';
 
 const argv = process.argv.slice(2);
 const getArg = (name, fallback = undefined) => {
@@ -446,57 +447,6 @@ function loadTrackSummary(runDir) {
   } catch {
     return null;
   }
-}
-
-function mean(values) {
-  if (values.length === 0) return 0;
-  return values.reduce((acc, value) => acc + value, 0) / values.length;
-}
-
-function stddev(values) {
-  if (values.length < 2) return 0;
-  const avg = mean(values);
-  const variance = values.reduce((acc, value) => acc + ((value - avg) ** 2), 0) / (values.length - 1);
-  return Math.sqrt(variance);
-}
-
-function wilsonInterval(successes, n, z = 1.96) {
-  if (n === 0) return [0, 0];
-  const p = successes / n;
-  const z2 = z * z;
-  const denom = 1 + z2 / n;
-  const center = (p + z2 / (2 * n)) / denom;
-  const margin = (z * Math.sqrt((p * (1 - p) + z2 / (4 * n)) / n)) / denom;
-  return [Math.max(0, center - margin), Math.min(1, center + margin)];
-}
-
-function bootstrapDiff95(onOutcomes, offOutcomes, samples = 2000, seed = 7) {
-  if (onOutcomes.length === 0 || offOutcomes.length === 0) return [0, 0];
-  let state = seed >>> 0;
-  const random = () => {
-    state = (state * 1664525 + 1013904223) >>> 0;
-    return state / 4294967296;
-  };
-
-  const diffs = [];
-  for (let i = 0; i < samples; i++) {
-    const onSampleMean = resampleMean(onOutcomes, random);
-    const offSampleMean = resampleMean(offOutcomes, random);
-    diffs.push(onSampleMean - offSampleMean);
-  }
-  diffs.sort((a, b) => a - b);
-  const lo = diffs[Math.floor(samples * 0.025)];
-  const hi = diffs[Math.floor(samples * 0.975)];
-  return [lo, hi];
-}
-
-function resampleMean(values, random) {
-  let total = 0;
-  for (let i = 0; i < values.length; i++) {
-    const idx = Math.floor(random() * values.length);
-    total += values[idx];
-  }
-  return total / values.length;
 }
 
 function writeCsv(filePath, rows) {

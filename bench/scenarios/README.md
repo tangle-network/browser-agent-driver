@@ -100,4 +100,4 @@ Outputs:
 ## Failure Taxonomy + Leaderboard
 
 Classify failures from any run bundle:
-`npm run bench:classify -- --root ./agent-results/ab-exp-staging --out ./agent-results/ab-exp-staging/reliability-scorecard.json --md ./agent-results/ab-exp-staging/reliability-scorecard.md`
+`pnpm reliability:scorecard -- --root ./agent-results/ab-exp-staging --out ./agent-results/ab-exp-staging/reliability-scorecard.json --md ./agent-results/ab-exp-staging/reliability-scorecard.md`

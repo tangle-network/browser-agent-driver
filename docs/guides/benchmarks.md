@@ -103,7 +103,7 @@ npm run baseline:modes -- \
 Generate a ranked failure taxonomy from results:
 
 ```bash
-npm run bench:classify -- \
+pnpm reliability:scorecard -- \
   --root ./agent-results/ab-exp-sample \
   --out ./agent-results/ab-exp-sample/reliability-scorecard.json \
   --md ./agent-results/ab-exp-sample/reliability-scorecard.md
