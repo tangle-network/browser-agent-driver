@@ -80,6 +80,49 @@ export interface AbortAction {
   reason: string;
 }
 
+/**
+ * Multi-field form fill — fill N fields, select N dropdowns, and check N
+ * checkboxes in a SINGLE action. Replaces the click+type+click+type pattern
+ * that takes one turn per field.
+ *
+ * Example payload for a 5-field form:
+ *   {
+ *     action: 'fill',
+ *     fields: { '@t1': 'Jordan', '@t2': 'Rivera', '@t3': 'jordan@example.com' },
+ *     selects: { '@s1': 'WA' },
+ *     checks: ['@c1', '@c2'],
+ *   }
+ *
+ * Each entry runs in order. Failures bail with the first error and report
+ * which field failed so the agent can recover by switching to single-step
+ * actions on the next turn.
+ */
+export interface BatchFillAction {
+  action: 'fill';
+  /** Map of @ref → text value to type into each field */
+  fields?: Record<string, string>;
+  /** Map of @ref → option value or label for select dropdowns */
+  selects?: Record<string, string>;
+  /** Array of @refs to check (checkboxes / radios) */
+  checks?: string[];
+}
+
+/**
+ * Sequential clicks on a known set of refs. For multi-step UI navigation
+ * where the agent has identified the click chain ahead of time (e.g., open
+ * menu → click submenu → click item).
+ *
+ * Each click runs in order with an optional interval. Failures bail with
+ * the first error.
+ */
+export interface ClickSequenceAction {
+  action: 'clickSequence';
+  /** Array of @refs to click in order */
+  refs: string[];
+  /** Optional wait between clicks in ms (default: 100) */
+  intervalMs?: number;
+}
+
 export type Action =
   | ClickAction
   | TypeAction
@@ -93,7 +136,9 @@ export type Action =
   | RunScriptAction
   | VerifyPreviewAction
   | CompleteAction
-  | AbortAction;
+  | AbortAction
+  | BatchFillAction
+  | ClickSequenceAction;
 
 // ============================================================================
 // Page State - What the agent sees
