@@ -1,0 +1,9 @@
+[
+  {
+    "id": "local-cookie-banner-pattern",
+    "name": "Local fixture: cookie banner pattern matcher verification",
+    "startUrl": "__FIXTURE_BASE_URL__/cookie-banner.html",
+    "goal": "Click 'Read article' to open the article on this page. The cookie banner at the bottom should be dismissed first if it's blocking interaction.",
+    "maxTurns": 5
+  }
+]

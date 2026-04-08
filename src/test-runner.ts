@@ -21,6 +21,7 @@ import type {
 } from './types.js';
 import type { Driver } from './drivers/types.js';
 import type { ArtifactSink, ProgressEvent } from './artifacts/types.js';
+import { FilesystemSink } from './artifacts/filesystem-sink.js';
 import { BrowserAgent } from './runner.js';
 import { Brain } from './brain/index.js';
 import { TrajectoryStore } from './memory/store.js';
@@ -240,6 +241,23 @@ export class TestRunner {
           : this.feedbackHints;
       }
 
+      // Per-test event bus. Wraps the suite-level live bus (when --live is
+      // on) by forwarding every event, AND drives a per-test events.jsonl
+      // sink so `bad view <run-dir>` can replay the streaming experience.
+      // Each test gets its own bus so events from concurrent runs never
+      // cross-contaminate the persistence layer.
+      const { TurnEventBus: PerTestBus } = await import('./runner/events.js');
+      const perTestBus = new PerTestBus();
+      const fsSinkRef = this.artifactSink instanceof FilesystemSink ? this.artifactSink : undefined;
+      perTestBus.subscribe((event) => {
+        // Persist every event to <baseDir>/<testId>/events.jsonl. The sink
+        // opens an append stream on first call and closes it when the test
+        // completes (in the finally block below).
+        fsSinkRef?.appendEvent(testCase.id, event);
+        // Forward to the suite-level live bus so the SSE viewer sees it.
+        this.eventBus?.emit(event);
+      }, false);
+
       const runner = new BrowserAgent({
         driver: activeDriver,
         config: this.config,
@@ -247,7 +265,7 @@ export class TestRunner {
         projectStore: this.projectStore,
         runRegistry: this.runRegistry,
         ...(this.extensions ? { extensions: this.extensions } : {}),
-        ...(this.eventBus ? { eventBus: this.eventBus } : {}),
+        eventBus: perTestBus,
         onTurn: (turn) => {
           if (timeToFirstTurnMs === undefined) {
             timeToFirstTurnMs = Math.max(0, Date.now() - runStartedAtMs);
@@ -515,6 +533,12 @@ export class TestRunner {
       };
       return result;
     } finally {
+      // Flush the per-test events.jsonl stream so the file is complete on
+      // disk before any reader (replay viewer, post-run analyzer) opens it.
+      // No-op when there's no FilesystemSink or no events were written.
+      if (this.artifactSink instanceof FilesystemSink) {
+        await this.artifactSink.closeEventStream(testCase.id).catch(() => undefined);
+      }
       await runtimeObservability?.finalize(runtimeOutcome).catch((err) => {
         if (this.config.debug) {
           console.log(`[TestRunner] Observability finalize failed for ${testCase.id}: ${err instanceof Error ? err.message : err}`);

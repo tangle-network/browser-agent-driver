@@ -13,7 +13,7 @@ import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import * as http from 'node:http'
-import { escapeJsonForScript, findReportJson, findRecordings, normalizeReport } from '../src/cli-view.js'
+import { escapeJsonForScript, findReportJson, findRecordings, findEventLogs, normalizeReport } from '../src/cli-view.js'
 
 // We test the SECURITY guarantees, not the implementation details.
 // Spin up a small fake using the same primitives as cli-view.ts and
@@ -354,6 +354,81 @@ describe('findRecordings', () => {
     const recs = findRecordings(tmpDir)
     expect(recs).toHaveLength(1)
     expect(recs[0].testId).toBe('good-test')
+  })
+})
+
+describe('findEventLogs', () => {
+  let tmpDir: string
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'find-events-'))
+  })
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true })
+  })
+
+  it('finds events.jsonl one level deep and parses each line', () => {
+    fs.mkdirSync(path.join(tmpDir, 'cli-task'))
+    fs.writeFileSync(
+      path.join(tmpDir, 'cli-task', 'events.jsonl'),
+      JSON.stringify({ type: 'turn-started', seq: 1, runId: 'r', turn: 1 }) +
+        '\n' +
+        JSON.stringify({ type: 'turn-completed', seq: 2, runId: 'r', turn: 1 }) +
+        '\n',
+    )
+    const logs = findEventLogs(tmpDir)
+    expect(logs).toHaveLength(1)
+    expect(logs[0].testId).toBe('cli-task')
+    expect(logs[0].events).toHaveLength(2)
+    expect(logs[0].events[0].type).toBe('turn-started')
+    expect(logs[0].events[1].type).toBe('turn-completed')
+  })
+
+  it('groups multiple test directories independently', () => {
+    fs.mkdirSync(path.join(tmpDir, 'a'))
+    fs.writeFileSync(
+      path.join(tmpDir, 'a', 'events.jsonl'),
+      JSON.stringify({ type: 'turn-started', seq: 1, runId: 'r', turn: 1 }) + '\n',
+    )
+    fs.mkdirSync(path.join(tmpDir, 'b'))
+    fs.writeFileSync(
+      path.join(tmpDir, 'b', 'events.jsonl'),
+      JSON.stringify({ type: 'turn-started', seq: 1, runId: 'r', turn: 1 }) + '\n' +
+        JSON.stringify({ type: 'turn-completed', seq: 2, runId: 'r', turn: 1 }) + '\n',
+    )
+    const logs = findEventLogs(tmpDir)
+    expect(logs).toHaveLength(2)
+    const byId = Object.fromEntries(logs.map((l) => [l.testId, l.events.length]))
+    expect(byId.a).toBe(1)
+    expect(byId.b).toBe(2)
+  })
+
+  it('returns empty when no events.jsonl exists', () => {
+    fs.mkdirSync(path.join(tmpDir, 'empty'))
+    expect(findEventLogs(tmpDir)).toEqual([])
+  })
+
+  it('skips bad JSON lines instead of throwing', () => {
+    fs.mkdirSync(path.join(tmpDir, 'mixed'))
+    fs.writeFileSync(
+      path.join(tmpDir, 'mixed', 'events.jsonl'),
+      JSON.stringify({ type: 'turn-started', seq: 1, runId: 'r', turn: 1 }) + '\n' +
+        'not json at all\n' +
+        JSON.stringify({ type: 'turn-completed', seq: 2, runId: 'r', turn: 1 }) + '\n',
+    )
+    const logs = findEventLogs(tmpDir)
+    expect(logs).toHaveLength(1)
+    expect(logs[0].events).toHaveLength(2) // bad line skipped, two valid survive
+  })
+
+  it('finds top-level events.jsonl as default', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, 'events.jsonl'),
+      JSON.stringify({ type: 'turn-started', seq: 1, runId: 'r', turn: 1 }) + '\n',
+    )
+    const logs = findEventLogs(tmpDir)
+    expect(logs).toHaveLength(1)
+    expect(logs[0].testId).toBe('default')
   })
 })
 
