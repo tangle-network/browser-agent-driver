@@ -1,0 +1,105 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CompetitiveTask",
+  "description": "A single benchmark task that every framework adapter (bad, browser-use, stagehand, ...) can execute and that produces a deterministic pass/fail verdict.",
+  "type": "object",
+  "required": ["id", "name", "goal", "oracle"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Stable identifier (kebab-case). Used as the cell key in result reports.",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable name for reports."
+    },
+    "goal": {
+      "type": "string",
+      "description": "Natural-language goal handed to the agent verbatim. Must be self-contained — every framework gets the same string."
+    },
+    "startUrl": {
+      "type": "string",
+      "description": "Starting URL. Use the literal placeholder __FIXTURE_BASE_URL__ for local fixtures; the runner substitutes it with the static fixture server URL at execution time."
+    },
+    "fixture": {
+      "type": "string",
+      "description": "Optional path under bench/fixtures/ that the static fixture server should expose. Required when startUrl uses __FIXTURE_BASE_URL__."
+    },
+    "maxTurns": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 30
+    },
+    "timeoutMs": {
+      "type": "integer",
+      "minimum": 1000,
+      "default": 600000
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "navigation",
+          "form-fill",
+          "extraction",
+          "auth",
+          "blocker-recovery",
+          "research",
+          "scraping",
+          "product-usage"
+        ]
+      }
+    },
+    "oracle": {
+      "type": "object",
+      "description": "How the runner verifies success. Every adapter calls oracle.evaluate(rawResult, page?) → boolean.",
+      "required": ["type"],
+      "oneOf": [
+        {
+          "properties": {
+            "type": { "const": "text-in-snapshot" },
+            "expectedText": {
+              "type": "string",
+              "description": "Substring that must appear in the final page snapshot or visible page text."
+            }
+          },
+          "required": ["type", "expectedText"]
+        },
+        {
+          "properties": {
+            "type": { "const": "url-contains" },
+            "expectedUrlFragment": {
+              "type": "string",
+              "description": "Substring that must appear in the final URL."
+            }
+          },
+          "required": ["type", "expectedUrlFragment"]
+        },
+        {
+          "properties": {
+            "type": { "const": "json-shape-match" },
+            "expectedShape": {
+              "type": "object",
+              "description": "Lite JSON-shape match: every key in expectedShape must be present in the agent's structured result. Values are matched only when the expectedShape value is non-null (literal equality) or a regex string starting with `re:`."
+            }
+          },
+          "required": ["type", "expectedShape"]
+        },
+        {
+          "properties": {
+            "type": { "const": "selector-state" },
+            "selector": {
+              "type": "string",
+              "description": "CSS selector that must exist with the given text content in the final page."
+            },
+            "expectedText": { "type": "string" }
+          },
+          "required": ["type", "selector"]
+        }
+      ]
+    }
+  }
+}

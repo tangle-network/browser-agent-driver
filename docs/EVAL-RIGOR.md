@@ -2,15 +2,16 @@
 
 This is the **only** way to validate a change in this repo. Bypassing it has caused three single-run overclaims (Gen 4, Gen 6, Gen 7). The CLAUDE.md `Measurement Rigor` section is the law; this doc is the operating manual.
 
-## The Three Tools
+## The Four Tools
 
-There are three sanctioned validation paths. **Anything that doesn't go through one of them does not produce a result that can be cited in a PR, changeset, pursuit doc, or progress.md.**
+There are four sanctioned validation paths. **Anything that doesn't go through one of them does not produce a result that can be cited in a PR, changeset, pursuit doc, or progress.md.**
 
 | Tool | Use when | Reps | Output |
 |---|---|---|---|
 | `pnpm bench:validate` | You want to check that a single config is stable / measure its mean | ≥3 (enforced) | `multi-rep-summary.{json,md}` with mean/min/max |
-| `pnpm ab:experiment` | You want to compare two configs (baseline vs challenger) | ≥3 (≥10 for promotion) | `summary.json` with Wilson CIs and bootstrap delta CI |
+| `pnpm ab:experiment` | You want to compare two `bad` configs (baseline vs challenger) | ≥3 (≥10 for promotion) | `summary.json` with Wilson CIs and bootstrap delta CI |
 | `pnpm research:pipeline --two-stage` | You have a queue of hypotheses to screen and the winners need rigorous validation | 1 screen + 5 validate | `summary.{json,md}` per hypothesis |
+| `pnpm bench:compete` | You want to compare `bad` against another framework (browser-use, Stagehand, …) | ≥3 (enforced) | `summary.json` + `comparison.md` with Wilson CIs, bootstrap CIs, Cohen's d, Mann-Whitney U, spread-test verdict per metric |
 
 ## Hard Rules (from CLAUDE.md `Measurement Rigor`)
 
