@@ -209,9 +209,14 @@ export interface BrainDecision {
   tokensUsed?: number;
   inputTokens?: number;
   outputTokens?: number;
-  /** Anthropic prompt-cache hit tokens (when cache_control was honored) */
+  /**
+   * Prompt-cache hit tokens (provider-agnostic). Reads from the AI SDK's
+   * unified `usage.inputTokenDetails.cacheReadTokens` field. Populated by:
+   *   - OpenAI / ZAI / GLM via automatic server-side caching
+   *   - Anthropic via the cache_control markers set in buildSystemForDecide
+   */
   cacheReadInputTokens?: number;
-  /** Anthropic prompt-cache miss tokens (cache write — first turn only) */
+  /** Prompt-cache write tokens (cache miss, first turn — provider-agnostic) */
   cacheCreationInputTokens?: number;
   /** Which model handled this decision (for cost tracking with adaptive routing) */
   modelUsed?: string;
@@ -526,15 +531,53 @@ export class Brain {
       abortSignal: AbortSignal.timeout(this.llmTimeoutMs),
     });
 
-    // Extract Anthropic prompt-cache stats when present. The provider exposes
-    // them via providerMetadata.anthropic.{cacheReadInputTokens, cacheCreationInputTokens}.
-    const anthropicMeta = (result.providerMetadata as Record<string, Record<string, unknown>> | undefined)?.anthropic;
-    const cacheReadInputTokens = typeof anthropicMeta?.cacheReadInputTokens === 'number'
-      ? anthropicMeta.cacheReadInputTokens
+    // Extract prompt-cache stats from the AI SDK's PROVIDER-AGNOSTIC fields:
+    //   result.usage.inputTokenDetails.{cacheReadTokens, cacheWriteTokens}
+    //
+    // These flow uniformly from every provider that supports prompt caching:
+    //   - OpenAI (gpt-5.4, gpt-4.1-mini): AUTOMATIC server-side caching for
+    //     >1024 token prefixes, no markers needed. Returns cached_tokens.
+    //   - Anthropic (claude-*): EXPLICIT cache_control markers required (we
+    //     set them in buildSystemForDecide). Returns cache_read_input_tokens.
+    //   - ZAI / GLM (zai-coding-plan via OpenAI-compatible endpoint): AUTOMATIC
+    //     server-side caching, returns cached_tokens in prompt_tokens_details.
+    //   - Google Gemini: explicit `cachedContent` ID-based caching (different
+    //     paradigm — not currently exercised).
+    //
+    // The unified inputTokenDetails fields mean we get cache observability
+    // for free across providers without per-provider extraction code.
+    const inputDetails = result.usage?.inputTokenDetails as
+      | { cacheReadTokens?: number | null; cacheWriteTokens?: number | null }
+      | undefined;
+    let cacheReadInputTokens = typeof inputDetails?.cacheReadTokens === 'number'
+      ? inputDetails.cacheReadTokens
       : undefined;
-    const cacheCreationInputTokens = typeof anthropicMeta?.cacheCreationInputTokens === 'number'
-      ? anthropicMeta.cacheCreationInputTokens
+    let cacheCreationInputTokens = typeof inputDetails?.cacheWriteTokens === 'number'
+      ? inputDetails.cacheWriteTokens
       : undefined;
+    // Fallback: some providers expose cache stats only via providerMetadata.
+    // Anthropic uses cacheReadInputTokens / cacheCreationInputTokens directly,
+    // OpenAI sometimes lands cached_tokens under providerMetadata.openai.
+    if (cacheReadInputTokens === undefined || cacheCreationInputTokens === undefined) {
+      const meta = result.providerMetadata as Record<string, Record<string, unknown>> | undefined;
+      const anthropicMeta = meta?.anthropic;
+      const openaiMeta = meta?.openai;
+      if (cacheReadInputTokens === undefined) {
+        const fromAnthropic = typeof anthropicMeta?.cacheReadInputTokens === 'number'
+          ? (anthropicMeta.cacheReadInputTokens as number)
+          : undefined;
+        const fromOpenAI = typeof openaiMeta?.cachedPromptTokens === 'number'
+          ? (openaiMeta.cachedPromptTokens as number)
+          : undefined;
+        cacheReadInputTokens = fromAnthropic ?? fromOpenAI;
+      }
+      if (cacheCreationInputTokens === undefined) {
+        const fromAnthropic = typeof anthropicMeta?.cacheCreationInputTokens === 'number'
+          ? (anthropicMeta.cacheCreationInputTokens as number)
+          : undefined;
+        cacheCreationInputTokens = fromAnthropic;
+      }
+    }
 
     return {
       text: result.text,
