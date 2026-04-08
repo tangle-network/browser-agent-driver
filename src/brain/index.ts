@@ -37,6 +37,8 @@ ACTIONS:
 - {"action": "evaluate", "criteria": "Is the layout professional? Are colors consistent?"}
 - {"action": "runScript", "script": "document.querySelector('.count').textContent"} — run JS in page context and get the result. Use for reading content not in the a11y tree (canvas, computed styles, hidden state).
 - {"action": "verifyPreview"} — after the app builds, inspect the preview iframe. Returns URL, title, a11y tree, and errors. Use this AFTER you see a preview iframe on the page.
+- {"action": "fill", "fields": {"@t1": "Jordan", "@t2": "Rivera"}, "selects": {"@s1": "WA"}, "checks": ["@c1", "@c2"]} — BATCH fill multiple form fields, dropdowns, and checkboxes in ONE turn. Use this whenever you can see 2+ form fields you need to fill — it's dramatically faster than per-field type/click. fields/selects/checks are all optional but at least one must be non-empty.
+- {"action": "clickSequence", "refs": ["@r1", "@r2", "@r3"]} — click a known sequence of refs in order. Use for multi-step UI navigation chains where the click order is obvious from the page structure.
 - {"action": "complete", "result": "description of what was accomplished"}
 - {"action": "abort", "reason": "why you cannot continue"}
 
@@ -70,7 +72,11 @@ RULES:
 11. After the app builds and a preview is visible, use "verifyPreview" to check for errors before completing
 12. BLOCKER-FIRST POLICY: if a modal, limit, quota, permission, or error dialog blocks progress, resolve THAT first before continuing the main goal
 13. For quota/limit blockers, use an unblock ladder: open manage path -> clean up old test resources if needed -> retry the original action
-14. If the same action triggers the same blocker twice, switch strategy immediately (different button/path), do not repeat blind retries`;
+14. If the same action triggers the same blocker twice, switch strategy immediately (different button/path), do not repeat blind retries
+15. BATCH FILL FOR MULTI-FIELD FORMS: when you can see 2+ form fields that need to be filled, ALWAYS use a single "fill" action with all the fields at once instead of multiple type/click turns. A 5-field form takes 1 turn with fill, not 10 turns with type. Same for dropdowns (use selects map) and checkboxes (use checks array). The page rarely cares which order fields are filled — batch them.
+   - CRITICAL: every key in fields/selects/checks MUST be an @ref taken VERBATIM from the ELEMENTS list (e.g., "@t1f2a"), or a simple [data-testid="..."] selector copied from the DATA-TESTID SELECTORS section. NEVER invent CSS combinators like "[data-testid=\"x\"] input" or "@refXXX child". If a target doesn't appear in the snapshot, use single-step type/click for it instead.
+   - Date inputs (type="date") and spinbuttons (year/month/day) typically need single-step "type" actions, NOT batch fill. They have non-text input behavior that confuses Playwright's fill(). Skip them in your batch and handle them with type after.
+   - If a batch fill fails, do NOT retry the same batch on the next turn. The error message will tell you which target failed — switch to single-step type/click for that target and shrink your next batch to just the targets that work.`;
 
 /** Search-related rules (15-17): injected when page has search elements or /search URL */
 const SEARCH_RULES = `
@@ -105,7 +111,10 @@ EXAMPLE 1 — Multi-step form fill (use actual refs from ELEMENTS, not these pla
 {"plan":["Navigate to signup page","Fill email field","Fill password field","Click submit","Verify success"],"currentStep":1,"action":{"action":"type","selector":"@REF","text":"user@example.com"},"reasoning":"I see the signup form with email input [ref=...] and password input [ref=...]. Starting with email since it is the first required field.","expectedEffect":"Email field should show 'user@example.com'"}
 
 EXAMPLE 2 — Recovery after failure:
-{"plan":["Click the send button","Wait for response"],"currentStep":0,"action":{"action":"scroll","direction":"down","amount":300},"reasoning":"My last click failed because the element was not visible in the viewport. I can see from the screenshot that the send button is below the fold. Scrolling down to bring it into view before retrying.","expectedEffect":"The send button should become visible in the viewport"}`;
+{"plan":["Click the send button","Wait for response"],"currentStep":0,"action":{"action":"scroll","direction":"down","amount":300},"reasoning":"My last click failed because the element was not visible in the viewport. I can see from the screenshot that the send button is below the fold. Scrolling down to bring it into view before retrying.","expectedEffect":"The send button should become visible in the viewport"}
+
+EXAMPLE 3 — Batch fill a multi-field form (one turn instead of ten):
+{"plan":["Fill all visible Personal Info fields","Click Next","Fill Contact step","Submit"],"currentStep":0,"action":{"action":"fill","fields":{"@firstname":"Jordan","@lastname":"Rivera","@dob":"1990-04-15"},"selects":{"@gender":"other"}},"reasoning":"Step 1 of the form has 3 text fields and 1 select all visible at once. Filling them in a single batch action saves 7 turns vs typing each individually.","expectedEffect":"All four Step 1 fields populated with the supplied values"}`;
 
 /** Full static prompt (all rules) — used as default when config.systemPrompt is not set */
 const SYSTEM_PROMPT = CORE_RULES + SEARCH_RULES + DATA_EXTRACTION_RULES + HEAVY_PAGE_RULES + REASONING_SUFFIX;
@@ -1543,6 +1552,7 @@ Only include facts that are genuinely useful. Quality over quantity. Max 10 fact
       'click', 'type', 'press', 'hover', 'select',
       'scroll', 'navigate', 'wait', 'evaluate', 'runScript',
       'verifyPreview', 'complete', 'abort',
+      'fill', 'clickSequence',
     ]);
 
     try {
@@ -1786,7 +1796,49 @@ function validateAction(actionType: string, data: Record<string, unknown>): Acti
       return { action: 'complete', result: optStr('result') };
     case 'abort':
       return { action: 'abort', reason: optStr('reason') || 'No reason provided' };
+    case 'fill': {
+      // Multi-field batch fill — at least one of fields/selects/checks must be non-empty
+      const fields = isStringRecord(data.fields) ? data.fields : undefined;
+      const selects = isStringRecord(data.selects) ? data.selects : undefined;
+      const checks = Array.isArray(data.checks) && data.checks.every((c) => typeof c === 'string')
+        ? (data.checks as string[])
+        : undefined;
+      const fieldCount = (fields ? Object.keys(fields).length : 0)
+        + (selects ? Object.keys(selects).length : 0)
+        + (checks ? checks.length : 0);
+      if (fieldCount === 0) {
+        throw new Error('fill action requires at least one of "fields" (object), "selects" (object), or "checks" (string[])');
+      }
+      return {
+        action: 'fill',
+        ...(fields ? { fields } : {}),
+        ...(selects ? { selects } : {}),
+        ...(checks ? { checks } : {}),
+      };
+    }
+    case 'clickSequence': {
+      const refs = Array.isArray(data.refs) && data.refs.every((r) => typeof r === 'string')
+        ? (data.refs as string[])
+        : null;
+      if (!refs || refs.length === 0) {
+        throw new Error('clickSequence action requires "refs" (string[]) with at least one entry');
+      }
+      return {
+        action: 'clickSequence',
+        refs,
+        ...(typeof data.intervalMs === 'number' ? { intervalMs: data.intervalMs } : {}),
+      };
+    }
     default:
       throw new Error(`Unknown action type: ${actionType}`);
   }
+}
+
+/** Type guard: value is a Record<string, string> */
+function isStringRecord(value: unknown): value is Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  for (const v of Object.values(value as Record<string, unknown>)) {
+    if (typeof v !== 'string') return false;
+  }
+  return true;
 }

@@ -590,6 +590,106 @@ export class PlaywrightDriver implements Driver {
         case 'abort':
           return { success: true };
 
+        case 'fill': {
+          // Multi-field batch fill: replaces N×2 turns of click+type with
+          // a single turn that fills N fields, selects M dropdowns, and
+          // checks K checkboxes. Failures bail with the first error and
+          // report which field failed via `error`.
+          //
+          // Per-field timeout is capped at 5s (vs the default 30s) because
+          // batch ops assume every ref was just observed in the snapshot —
+          // a missing element should fail FAST, not wait 30s for it to
+          // appear. The agent will recover by switching to single-step
+          // actions on the next turn.
+          const batchFieldTimeout = Math.min(timeout, 5_000);
+          const fieldEntries = Object.entries(action.fields ?? {});
+          const selectEntries = Object.entries(action.selects ?? {});
+          const checkEntries = action.checks ?? [];
+          if (fieldEntries.length === 0 && selectEntries.length === 0 && checkEntries.length === 0) {
+            return { success: false, error: 'fill action requires at least one of fields/selects/checks' };
+          }
+          let lastBounds: { x: number; y: number; width: number; height: number } | undefined;
+          // Cursor overlay highlights the first non-empty target so the user
+          // sees something move on screen. The actual fills happen below.
+          const firstSelector = fieldEntries[0]?.[0] ?? selectEntries[0]?.[0] ?? checkEntries[0];
+          if (firstSelector) {
+            await this.animateCursorToSelector(firstSelector, 'type');
+          }
+          for (const [ref, text] of fieldEntries) {
+            try {
+              const locator = this.snapshot.resolveLocator(this.page, ref);
+              const bounds = await this.captureBounds(locator);
+              if (bounds) lastBounds = bounds;
+              await this.withOverlayRecovery(async () => {
+                await locator.click({ timeout: batchFieldTimeout });
+                await locator.fill(text, { timeout: batchFieldTimeout });
+                await locator.evaluate((el) => {
+                  el.dispatchEvent(new Event('input', { bubbles: true }));
+                  el.dispatchEvent(new Event('change', { bubbles: true }));
+                });
+              });
+            } catch (err) {
+              const message = err instanceof Error ? err.message : String(err);
+              return { success: false, error: `fill ${ref}: ${message}` };
+            }
+          }
+          for (const [ref, value] of selectEntries) {
+            try {
+              const locator = this.snapshot.resolveLocator(this.page, ref);
+              const bounds = await this.captureBounds(locator);
+              if (bounds) lastBounds = bounds;
+              await locator.selectOption(value, { timeout: batchFieldTimeout });
+            } catch (err) {
+              const message = err instanceof Error ? err.message : String(err);
+              return { success: false, error: `fill select ${ref}: ${message}` };
+            }
+          }
+          for (const ref of checkEntries) {
+            try {
+              const locator = this.snapshot.resolveLocator(this.page, ref);
+              const bounds = await this.captureBounds(locator);
+              if (bounds) lastBounds = bounds;
+              await locator.check({ timeout: batchFieldTimeout });
+            } catch (err) {
+              const message = err instanceof Error ? err.message : String(err);
+              return { success: false, error: `fill check ${ref}: ${message}` };
+            }
+          }
+          return { success: true, ...(lastBounds ? { bounds: lastBounds } : {}) };
+        }
+
+        case 'clickSequence': {
+          // Sequential clicks on a known set of refs. For multi-step UI
+          // navigation chains where the agent has identified the chain
+          // ahead of time. Failures bail on the first error. Same fast-fail
+          // 5s per-click cap as batch fill.
+          if (action.refs.length === 0) {
+            return { success: false, error: 'clickSequence requires at least one ref' };
+          }
+          const intervalMs = action.intervalMs ?? 100;
+          const sequenceClickTimeout = Math.min(timeout, 5_000);
+          let lastBounds: { x: number; y: number; width: number; height: number } | undefined;
+          for (let i = 0; i < action.refs.length; i++) {
+            const ref = action.refs[i];
+            try {
+              const locator = this.snapshot.resolveLocator(this.page, ref);
+              const bounds = await this.captureBounds(locator);
+              if (bounds) lastBounds = bounds;
+              await this.animateCursorToSelector(ref, 'click');
+              await this.withOverlayRecovery(async () => {
+                await locator.click({ timeout: sequenceClickTimeout });
+              });
+            } catch (err) {
+              const message = err instanceof Error ? err.message : String(err);
+              return { success: false, error: `clickSequence step ${i + 1}/${action.refs.length} (${ref}): ${message}` };
+            }
+            if (i < action.refs.length - 1 && intervalMs > 0) {
+              await this.page.waitForTimeout(intervalMs);
+            }
+          }
+          return { success: true, ...(lastBounds ? { bounds: lastBounds } : {}) };
+        }
+
         default:
           return { success: false, error: `Unknown action: ${(action as { action: string }).action}` };
       }

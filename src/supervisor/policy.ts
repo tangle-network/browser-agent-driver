@@ -128,5 +128,18 @@ function actionSignature(action: Action): string {
       return 'complete';
     case 'abort':
       return 'abort';
+    case 'fill': {
+      // Multi-field batch — signature includes the sorted ref list so two
+      // fills with the same target set look identical to the stuck detector,
+      // even if the values differ. The values themselves are not part of the
+      // signature because the agent can fill different values into the same
+      // fields without it being a "stuck" loop.
+      const fieldRefs = Object.keys(action.fields ?? {}).sort().join(',');
+      const selectRefs = Object.keys(action.selects ?? {}).sort().join(',');
+      const checkRefs = (action.checks ?? []).slice().sort().join(',');
+      return `fill:${fieldRefs}|${selectRefs}|${checkRefs}`;
+    }
+    case 'clickSequence':
+      return `clickSequence:${action.refs.join(',')}`;
   }
 }

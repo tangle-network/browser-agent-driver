@@ -1,10 +1,10 @@
 {
-  "mode": "evolve",
-  "goal": "Persist + verify lazy decisions in production",
-  "status": "converged",
-  "round": 1,
-  "generation": 5,
-  "activePursuit": ".evolve/pursuits/2026-04-07-open-loop-gen5.md",
-  "branch": "gen5-evolve-r1",
-  "updatedAt": "2026-04-08T05:50:00Z"
+  "mode": "pursue",
+  "goal": "Plan-then-execute (turn count reduction via batch action verbs)",
+  "status": "evaluated",
+  "round": null,
+  "generation": 6,
+  "activePursuit": ".evolve/pursuits/2026-04-08-plan-then-execute-gen6.md",
+  "branch": "gen6-batch-verbs",
+  "updatedAt": "2026-04-08T23:30:00Z"
 }
