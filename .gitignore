@@ -11,7 +11,10 @@ agent-results-*/
 audit-results/
 bench/results/
 .agent-memory/
-extensions/
+# Top-level "extensions/" is for downloaded MetaMask/wallet extension binaries.
+# The bad code lives at src/extensions/ and must be tracked.
+/extensions/
+!src/extensions/
 .agent-wallet-profile/
 .anvil.pid
 .rpc-proxy-cert/

@@ -1,5 +1,59 @@
 # Evolve Progress
 
+## Generation 5 — Open Loop (events + hooks + lazy decisions) — 2026-04-07
+
+Pursuit: `.evolve/pursuits/2026-04-07-open-loop-gen5.md`
+Branch: `gen5-open-loop`
+
+### Shipped (24 components across 3 pillars)
+
+**Pillar A — TurnEventBus + Live Observability**
+- `src/runner/events.ts` — typed discriminated-union TurnEvent + bounded-retention bus + DistributiveOmit helper
+- `src/runner/runner.ts` — phase emission at every boundary (turn-started, observe-start/end, decide-start/end, decide-skipped-cached, decide-skipped-pattern, execute-start/end, verify-start/end, recovery-fired, override-applied, turn-end, run-end)
+- `src/cli-view-live.ts` — SSE `/events` endpoint with replay-on-connect + heartbeat + cancel POST
+- `src/cli.ts --live` — opens viewer + streams during run + waits for SIGINT after completion
+
+**Pillar B — Extension API for User Customization**
+- `src/extensions/types.ts` — `BadExtension` interface, `resolveExtensions`, `rulesForUrl`, type guards
+- `src/extensions/loader.ts` — auto-discovers `bad.config.{ts,mts,mjs,js,cjs}` from cwd + `--extension` CLI flag
+- `src/brain/index.ts` — `setExtensionRules`, `composeSystemPromptParts` injects user rules per-section + per-domain after the cached prefix
+- `src/runner/runner.ts` — subscribes extensions to the bus, applies `mutateDecision` after the override pipeline
+- `src/test-runner.ts` — passes `extensions` + `eventBus` through to every BrowserAgent
+- `docs/extensions.md` — full user-facing guide with worked examples
+
+**Pillar C — Lazy Decisions (the user's "lazy load even decisions" question)**
+- `src/runner/decision-cache.ts` — bounded LRU + TTL, key = SHA1(snapshot + url + goal + lastEffect + budgetBucket), strips volatile telemetry on cache hit
+- `src/runner/deterministic-patterns.ts` — cookie-banner-accept matcher + single-button-modal-close matcher; runs BEFORE the LLM
+- `src/runner/runner.ts` — wired both as the first two short-circuits in the decide phase; lazy `analyzeRecovery` only fires when there's an error trail
+
+### Tests
+- 830 passing (was 758, **+72 net new**)
+- New: `runner-events.test.ts` (15), `decision-cache.test.ts` (15), `deterministic-patterns.test.ts` (11), `extensions.test.ts` (24), `cli-view-live.test.ts` (7)
+
+### Tier1 deterministic gate
+- Pass rate: **100%** (4/4 — both modes × both scenarios)
+- Total cost: $0.49
+
+### Lazy-loading audit (answering Drew's question)
+
+Already lazy: 11 dynamic imports for provider modules, 13+ for subcommand handlers, patchright-vs-playwright, browser launch, snapshot helpers, CDP session, memory layer, vision capture, cursor overlay. Module loading was NOT the lever.
+
+NOT lazy before Gen 5 (now fixed):
+- LLM `decide()` was called every turn unconditionally → now skipped on cache hit and on deterministic pattern match
+- `analyzeRecovery` ran every turn → now only fires when there's an error trail
+- `detectSupervisorSignal` runs even when supervisor is disabled → deferred to Gen 5.1
+
+### What didn't ship (deferred to Gen 5.1)
+- Persisting events to `<run-dir>/events.jsonl` via FilesystemSink subscriber
+- Inspect mode (click on screenshot → highlight @ref) — needs viewer-side click handler
+- Shadow `streamText` for in-flight token display
+- Lazy `detectSupervisorSignal` and lazy override pipeline
+
+### Verdict
+**ADVANCE.** Three pillars work as a coherent system: extensions + viewer + decision cache all subscribe to the same TurnEventBus. Pass rate maintained at 100%, no regressions, +72 new tests.
+
+---
+
 ## Gen 4 / Evolve Round 1 — Verify infra savings above noise floor — 2026-04-07
 
 **Goal:** Prove or refute Gen 4's per-piece wall-clock wins with statistically significant signal.

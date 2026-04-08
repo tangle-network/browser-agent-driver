@@ -267,6 +267,10 @@ export class Brain {
   private sandboxBackendType?: string;
   private sandboxBackendProfile?: string;
   private sandboxBackendProvider?: string;
+  // Extension-supplied rules. Set via setExtensionRules() — null/undefined
+  // when no extensions are loaded (default).
+  private extensionRules?: { global?: string; search?: string; dataExtraction?: string; heavy?: string };
+  private extensionDomainRules?: Record<string, { extraRules?: string }>;
 
   constructor(config: AgentConfig = {}) {
     this.llmTimeoutMs = config.llmTimeoutMs ?? 60_000;
@@ -624,7 +628,9 @@ export class Brain {
    * with cache_control on the stable CORE_RULES prefix; other providers join.
    *
    * The first slot is ALWAYS CORE_RULES (or the user's custom override) so the
-   * cache breakpoint placement is deterministic.
+   * cache breakpoint placement is deterministic. Extension-supplied rules are
+   * appended AFTER REASONING_SUFFIX so the cached prefix stays byte-stable
+   * across turns.
    */
   private composeSystemPromptParts(goal: string, state: PageState, turn: number): string[] {
     if (this.systemPrompt !== SYSTEM_PROMPT) return [this.systemPrompt]
@@ -633,15 +639,69 @@ export class Brain {
     const snapshotSample = state.snapshot.length > 4000 ? state.snapshot.slice(0, 4000) : state.snapshot
     if (SEARCH_SNAPSHOT_PATTERN.test(snapshotSample) || /\/search\b/i.test(state.url)) {
       parts.push(SEARCH_RULES)
+      if (this.extensionRules?.search) {
+        parts.push(`\n\nUSER RULES (search):\n${this.extensionRules.search}`)
+      }
     }
     if (DATA_EXTRACTION_PATTERN.test(goal)) {
       parts.push(DATA_EXTRACTION_RULES)
+      if (this.extensionRules?.dataExtraction) {
+        parts.push(`\n\nUSER RULES (data extraction):\n${this.extensionRules.dataExtraction}`)
+      }
     }
     if (state.snapshot.length > 10_000 || turn > 10) {
       parts.push(HEAVY_PAGE_RULES)
+      if (this.extensionRules?.heavy) {
+        parts.push(`\n\nUSER RULES (heavy page):\n${this.extensionRules.heavy}`)
+      }
     }
     parts.push(REASONING_SUFFIX)
+
+    // Global user rules + matching per-domain rules. Both are appended AFTER
+    // REASONING_SUFFIX so they don't pollute the byte-stable cached prefix.
+    if (this.extensionRules?.global) {
+      parts.push(`\n\nUSER RULES (global):\n${this.extensionRules.global}`)
+    }
+    if (this.extensionDomainRules) {
+      const domainRules = this.matchDomainRules(state.url)
+      if (domainRules) {
+        parts.push(`\n\nUSER RULES (domain match):\n${domainRules}`)
+      }
+    }
     return parts
+  }
+
+  /**
+   * Find the per-domain extra rules whose domain key matches the URL host.
+   * Multiple matches are concatenated in registration order.
+   */
+  private matchDomainRules(url: string): string | undefined {
+    if (!this.extensionDomainRules) return undefined
+    let host: string
+    try {
+      host = new URL(url).hostname
+    } catch {
+      return undefined
+    }
+    const matches: string[] = []
+    for (const [domain, rules] of Object.entries(this.extensionDomainRules)) {
+      if (host.includes(domain) && rules.extraRules) {
+        matches.push(rules.extraRules)
+      }
+    }
+    return matches.length > 0 ? matches.join('\n\n') : undefined
+  }
+
+  /**
+   * Inject extension-supplied rules. Called by the runner after loading
+   * `bad.config.{js,mjs,ts}`. Pass undefined to clear.
+   */
+  setExtensionRules(
+    sectionRules?: { global?: string; search?: string; dataExtraction?: string; heavy?: string },
+    domainRules?: Record<string, { extraRules?: string }>,
+  ): void {
+    this.extensionRules = sectionRules
+    this.extensionDomainRules = domainRules
   }
 
   /**

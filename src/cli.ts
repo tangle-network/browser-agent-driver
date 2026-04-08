@@ -144,6 +144,8 @@ async function main(): Promise<void> {
       'no-open': { type: 'boolean' },
       // bad run --show-cursor (overlay)
       'show-cursor': { type: 'boolean' },
+      // bad run --live (open SSE-streaming live viewer alongside the run)
+      live: { type: 'boolean' },
       // showcase
       script: { type: 'string' },
       capture: { type: 'string' },
@@ -646,6 +648,45 @@ async function main(): Promise<void> {
   const { PlaywrightDriver } = await import('./drivers/playwright.js');
   const { TestRunner } = await import('./test-runner.js');
   const { FilesystemSink } = await import('./artifacts/filesystem-sink.js');
+  const { loadExtensions } = await import('./extensions/loader.js');
+  const { TurnEventBus } = await import('./runner/events.js');
+
+  // Optional live event bus + SSE viewer. Constructed only when `--live` is
+  // passed; otherwise the runner uses an internal no-op bus and pays nothing.
+  // The bus is shared across the entire suite so a single SSE connection
+  // observes all turns of all test cases.
+  const liveEnabled = values.live === true;
+  const liveBus = liveEnabled ? new TurnEventBus() : undefined;
+  const liveCancelController = liveEnabled ? new AbortController() : undefined;
+  let liveViewHandle: { url: string; close: () => Promise<void> } | undefined;
+  if (liveEnabled && liveBus) {
+    const { runLiveView } = await import('./cli-view-live.js');
+    liveViewHandle = await runLiveView({
+      bus: liveBus,
+      ...(liveCancelController ? { cancelController: liveCancelController } : {}),
+      port: values.port ? parseInt(values.port as string, 10) : undefined,
+      noOpen: values['no-open'] === true,
+    });
+  }
+
+  // Auto-discover bad.config.{ts,mjs,js,...} from cwd plus any explicit
+  // --extension paths. Failures are reported but never fatal: a broken user
+  // config should warn, not abort the run.
+  const explicitExtPaths = ((values.extension as string | string[] | undefined) ?? [])
+  const explicitExtArr = Array.isArray(explicitExtPaths)
+    ? explicitExtPaths
+    : explicitExtPaths
+      ? [explicitExtPaths]
+      : []
+  const extensionLoad = await loadExtensions({ explicitPaths: explicitExtArr });
+  if (extensionLoad.loadedFrom.length > 0 && !values.json) {
+    cliLog('extensions', `loaded ${extensionLoad.loadedFrom.length}: ${extensionLoad.loadedFrom.join(', ')}`);
+  }
+  if (extensionLoad.errors.length > 0 && !values.json) {
+    for (const err of extensionLoad.errors) {
+      cliWarn(`extension load failed: ${err.path} — ${err.error}`);
+    }
+  }
 
   const concurrency = launchPlan.concurrency;
   const maxTurns = driverConfig.maxTurns ?? 30;
@@ -1237,6 +1278,8 @@ async function main(): Promise<void> {
     concurrency,
     screenshotInterval,
     artifactSink: sink,
+    extensions: extensionLoad.resolved,
+    ...(liveBus ? { eventBus: liveBus } : {}),
     onProgress: (event) => {
       if (values.json) {
         console.log(JSON.stringify(event));
@@ -1267,7 +1310,10 @@ async function main(): Promise<void> {
   let runError: unknown;
 
   try {
-    result = await runner.runSuite(cases);
+    result = await runner.runSuite(
+      cases,
+      liveCancelController ? { signal: liveCancelController.signal } : undefined,
+    );
 
     // Write reports for each configured format
     const { generateReport } = await import('./test-report.js');
@@ -1310,6 +1356,9 @@ async function main(): Promise<void> {
   }
 
   if (runError) {
+    if (liveViewHandle) {
+      await liveViewHandle.close().catch(() => {});
+    }
     throw runError;
   }
 
@@ -1317,6 +1366,19 @@ async function main(): Promise<void> {
     ? `${path.basename(values.cases)} · cli run`
     : `${(values.goal || values['resume-run'] || values['fork-run'] || 'run').slice(0, 80)} · cli run`
   await syncLocalBenchmarkRun(path.resolve(sinkDir), runLabel);
+
+  // In --live mode, the user usually wants to scrub the final state in the
+  // viewer after the run finishes. Hold the process open until SIGINT and
+  // shut down the live server cleanly when the user hits Ctrl+C.
+  if (liveViewHandle) {
+    cliLog('live', `run complete — viewer at ${liveViewHandle.url} (Ctrl+C to exit)`);
+    await new Promise<void>((resolve) => {
+      const onSigint = () => {
+        liveViewHandle!.close().finally(() => resolve());
+      };
+      process.once('SIGINT', onSigint);
+    });
+  }
 
   process.exit((result?.summary.failed ?? 1) > 0 ? 1 : 0);
 }
