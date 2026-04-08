@@ -146,6 +146,9 @@ async function main(): Promise<void> {
       'show-cursor': { type: 'boolean' },
       // bad run --live (open SSE-streaming live viewer alongside the run)
       live: { type: 'boolean' },
+      // bad run --planner (Gen 7 plan-then-execute: one LLM call generates
+      // the full action sequence, runner executes deterministically)
+      planner: { type: 'boolean' },
       // showcase
       script: { type: 'string' },
       capture: { type: 'string' },
@@ -483,6 +486,7 @@ async function main(): Promise<void> {
   if (values.vision !== undefined) cliOverrides.vision = values.vision;
   if (values['vision-strategy']) cliOverrides.visionStrategy = values['vision-strategy'] as DriverConfig['visionStrategy'];
   if (values['goal-verification'] !== undefined) cliOverrides.goalVerification = values['goal-verification'];
+  if (values.planner === true) cliOverrides.plannerEnabled = true;
   if (
     values.extension?.length ||
     values['user-data-dir'] ||

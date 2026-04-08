@@ -7,7 +7,7 @@
 
 import { generateText } from 'ai';
 import type { ModelMessage, LanguageModel, SystemModelMessage } from 'ai';
-import type { Action, PageState, AgentConfig, DesignFinding, GoalVerification } from '../types.js';
+import type { Action, PageState, AgentConfig, DesignFinding, GoalVerification, Plan, PlanStep } from '../types.js';
 import { AriaSnapshotHelper } from '../drivers/snapshot.js';
 import {
   resolveProviderApiKey,
@@ -1160,6 +1160,253 @@ ${visibleSnapshot}`;
       cacheCreationInputTokens,
       modelUsed: effectiveModel,
     };
+  }
+
+  /**
+   * Gen 7: ONE LLM call generates a structured plan for the entire task.
+   *
+   * The runner executes the plan deterministically (no LLM between steps),
+   * falling back to per-action `decide()` only when verification fails.
+   * This is the architectural shift that breaks the "1 LLM call per
+   * action" assumption — a 9-action task becomes 1 plan call + 9
+   * deterministic executes instead of 9 LLM calls.
+   *
+   * Returns null when:
+   *   - the LLM response is unparseable JSON (fall through to per-action)
+   *   - the plan has zero steps
+   *   - any plan step has an invalid/unknown action shape
+   *
+   * The caller (BrowserAgent.run) treats null as "planner unavailable,
+   * use per-action loop".
+   */
+  async plan(
+    goal: string,
+    state: PageState,
+    options?: { maxSteps?: number; extraContext?: string },
+  ): Promise<{
+    plan: Plan | null
+    raw: string
+    durationMs: number
+    tokensUsed?: number
+    inputTokens?: number
+    outputTokens?: number
+    cacheReadInputTokens?: number
+    cacheCreationInputTokens?: number
+    parseError?: string
+  }> {
+    const startedAt = Date.now()
+    const maxSteps = options?.maxSteps ?? 12
+    const extraContext = options?.extraContext
+
+    // Snapshot budget for the planner: keep it conservative — the planner
+    // prompt is itself substantial, and we want the LLM to focus on the
+    // STRUCTURE of the page rather than every leaf element.
+    const snapshot = budgetSnapshot(state.snapshot, 12_000)
+
+    const planSystemPrompt = `You are a planning engine for a browser automation agent.
+
+Given a user goal and the current page state, your job is to generate a complete, ordered plan of actions that the agent will execute deterministically without re-entering you between steps. After each step, the runner verifies your stated post-condition. If verification fails the runner falls back to a per-action loop, so your job is to write a plan that requires the FEWEST steps and where every step's post-condition is reliably observable.
+
+KEY PRINCIPLES:
+
+1. PREFER BATCH VERBS. The driver supports batch \`fill\` (fill N text fields, set N selects, check N checkboxes in ONE action) and \`clickSequence\` (N sequential clicks). Use these aggressively. A 19-field form should be 2-4 fill steps, not 19 type steps.
+
+   CRITICAL EXCLUSION: DO NOT INCLUDE ANY SPINBUTTON OR DATE INPUT IN YOUR PLAN. AT ALL. Period. If you see \`spinbutton\` in the snapshot (year, month, day, hour, minute spinners) or any input that looks like a date/time picker, OMIT it from your plan completely. Playwright's locator.fill() and locator.click() both time out on these elements, and your plan will deviate and fall back to the per-action loop. The per-action fallback knows how to handle them. Just LEAVE THEM OUT. Your plan should silently skip those elements and continue with the rest of the task as if they don't exist. The runner WILL handle them after your plan completes — you do not need to plan a step for them.
+
+2. ASSUME THE SNAPSHOT IS COMPLETE. The agent will execute your plan deterministically — you only get to see the page state ONCE (now). All @refs you emit must come from the ELEMENTS list below. Do not invent refs. If you don't see an element you'd need, do NOT plan a step for it — leave a gap and the runner will recover.
+
+3. POST-CONDITIONS MUST BE OBSERVABLE. Each step's expectedEffect should describe a concrete change the runner can see in the next snapshot: a URL change, a new visible element, a status text update. Vague effects like "form is filled" are useless because verification can't check them. Use concrete strings: "Status text shows 'Account Created!'" or "URL contains /confirm/".
+
+4. NAVIGATION CHANGES THE PAGE. Once you emit a \`navigate\`, \`click\` on a Next button, or any action that loads a new page, the @refs from the current snapshot are NO LONGER VALID. After such an action, your subsequent steps cannot rely on the same refs — they must use natural-language post-conditions until the runner falls back to per-action mode and observes the new page.
+
+5. MAX ${maxSteps} STEPS. If the task genuinely requires more, plan the first ${maxSteps} and let the runner replan from the resulting state.
+
+6. ONLY EMIT \`complete\` IF THE FINAL POST-CONDITION IS GENUINELY VERIFIABLE FROM THE PRIOR STEP'S expectedEffect. Do NOT fabricate success. If you cannot reliably know from the initial state alone whether the task succeeded (e.g. you can't predict whether a server submission will succeed, you don't know what the success message will say, or the form has multi-step navigation past your visibility), simply STOP planning at the last step you're confident about. The runner will fall through to the per-action loop after your plan exhausts and that loop will continue toward completion. It is BETTER to plan 5 confident steps and let the per-action loop finish than to plan 12 speculative steps with a fabricated complete at the end.
+
+ACTION VERBS (same as the per-action prompt):
+- {"action": "click", "selector": "@REF"}
+- {"action": "type", "selector": "@REF", "text": "..."}
+- {"action": "press", "selector": "@REF", "key": "Enter"}
+- {"action": "select", "selector": "@REF", "value": "..."}
+- {"action": "scroll", "direction": "up"|"down", "amount": 500}
+- {"action": "navigate", "url": "..."}
+- {"action": "wait", "ms": 1000}
+- {"action": "fill", "fields": {"@a": "v1", "@b": "v2"}, "selects": {"@c": "v3"}, "checks": ["@d", "@e"]}
+- {"action": "clickSequence", "refs": ["@a", "@b", "@c"]}
+- {"action": "runScript", "script": "document.querySelector('.x').textContent"}
+- {"action": "complete", "result": "..."}
+- {"action": "abort", "reason": "..."}
+
+RESPONSE FORMAT — respond with ONLY this JSON:
+{
+  "reasoning": "1-2 sentence strategy summary",
+  "steps": [
+    {
+      "action": { "action": "fill", "fields": { "@t1": "Jordan", "@t2": "Rivera" } },
+      "expectedEffect": "First name and last name fields are populated",
+      "rationale": "Step 1 of the multi-step form: batch-fill all visible Personal Info text fields"
+    },
+    ...
+  ],
+  "finalResult": "Account creation form completed and confirmation visible"
+}
+
+DO NOT include any prose outside the JSON. DO NOT use markdown code blocks. The runner parses your response with JSON.parse() and will fall through to the per-action loop on parse failure.`
+
+    // Replan path: when the runner re-enters plan() after a previous plan
+    // deviated, it injects a deviation summary. The system prompt is byte-
+    // stable so prompt cache still hits — only the user message changes.
+    const userText = `GOAL: ${goal}
+
+CURRENT PAGE:
+URL: ${state.url}
+Title: ${state.title}
+
+ELEMENTS:
+${snapshot}
+${extraContext ? `\n${extraContext}\n` : ''}
+What is the complete plan?`
+
+    const result = await this.generate(
+      planSystemPrompt,
+      [{ role: 'user', content: userText }],
+      { provider: this.provider, model: this.modelName },
+      // Plans need more output tokens than decide() — a 10-step plan with
+      // batch fills + rationale per step is comfortably over 1000 tokens.
+      2_500,
+    ).catch((err) => ({
+      text: '',
+      tokensUsed: undefined,
+      inputTokens: undefined,
+      outputTokens: undefined,
+      cacheReadInputTokens: undefined,
+      cacheCreationInputTokens: undefined,
+      _error: err instanceof Error ? err.message : String(err),
+    }))
+
+    const durationMs = Date.now() - startedAt
+    const raw = (result as { text: string }).text
+
+    if (!raw) {
+      return {
+        plan: null,
+        raw: '',
+        durationMs,
+        parseError: (result as { _error?: string })._error ?? 'empty response',
+      }
+    }
+
+    // Reuse the same JSON tolerance as decide(): strip markdown fences,
+    // then JSON.parse. On parse failure, return null and let the runner
+    // fall through.
+    let body = raw.trim()
+    if (body.startsWith('```')) {
+      body = body.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
+    }
+
+    let parsed: { reasoning?: string; finalResult?: string; steps?: unknown[] }
+    try {
+      parsed = JSON.parse(body) as { reasoning?: string; finalResult?: string; steps?: unknown[] }
+    } catch (err) {
+      return {
+        plan: null,
+        raw,
+        durationMs,
+        tokensUsed: result.tokensUsed,
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+        cacheReadInputTokens: result.cacheReadInputTokens,
+        cacheCreationInputTokens: result.cacheCreationInputTokens,
+        parseError: err instanceof Error ? err.message : String(err),
+      }
+    }
+
+    if (!Array.isArray(parsed.steps) || parsed.steps.length === 0) {
+      return {
+        plan: null,
+        raw,
+        durationMs,
+        tokensUsed: result.tokensUsed,
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+        cacheReadInputTokens: result.cacheReadInputTokens,
+        cacheCreationInputTokens: result.cacheCreationInputTokens,
+        parseError: 'plan has zero steps',
+      }
+    }
+
+    // Validate each step. Each must have a parseable action and a non-empty
+    // expectedEffect string. We use the same validateAction helper that the
+    // per-action parser uses, so the action shapes stay consistent.
+    const steps: PlanStep[] = []
+    for (const [idx, rawStep] of parsed.steps.entries()) {
+      if (!rawStep || typeof rawStep !== 'object') {
+        return {
+          plan: null,
+          raw,
+          durationMs,
+          tokensUsed: result.tokensUsed,
+          inputTokens: result.inputTokens,
+          outputTokens: result.outputTokens,
+          cacheReadInputTokens: result.cacheReadInputTokens,
+          cacheCreationInputTokens: result.cacheCreationInputTokens,
+          parseError: `step ${idx + 1}: not an object`,
+        }
+      }
+      const stepObj = rawStep as Record<string, unknown>
+      const actionRaw = stepObj.action
+      if (!actionRaw || typeof actionRaw !== 'object') {
+        return {
+          plan: null,
+          raw,
+          durationMs,
+          parseError: `step ${idx + 1}: missing action`,
+        }
+      }
+      const actionData = actionRaw as Record<string, unknown>
+      const actionType = actionData.action
+      if (typeof actionType !== 'string') {
+        return {
+          plan: null,
+          raw,
+          durationMs,
+          parseError: `step ${idx + 1}: action.action must be a string`,
+        }
+      }
+      let action: Action
+      try {
+        action = validateAction(actionType, actionData)
+      } catch (err) {
+        return {
+          plan: null,
+          raw,
+          durationMs,
+          parseError: `step ${idx + 1}: ${err instanceof Error ? err.message : String(err)}`,
+        }
+      }
+      const expectedEffect = typeof stepObj.expectedEffect === 'string' && stepObj.expectedEffect.length > 0
+        ? stepObj.expectedEffect
+        : 'page state advances after this action'
+      const rationale = typeof stepObj.rationale === 'string' ? stepObj.rationale : undefined
+      steps.push({ action, expectedEffect, ...(rationale ? { rationale } : {}) })
+    }
+
+    const plan: Plan = {
+      steps: steps.slice(0, maxSteps),
+      ...(typeof parsed.finalResult === 'string' ? { finalResult: parsed.finalResult } : {}),
+      ...(typeof parsed.reasoning === 'string' ? { reasoning: parsed.reasoning } : {}),
+    }
+
+    return {
+      plan,
+      raw,
+      durationMs,
+      tokensUsed: result.tokensUsed,
+      inputTokens: result.inputTokens,
+      outputTokens: result.outputTokens,
+      cacheReadInputTokens: result.cacheReadInputTokens,
+      cacheCreationInputTokens: result.cacheCreationInputTokens,
+    }
   }
 
   /**

@@ -1,5 +1,62 @@
 # Evolve Progress
 
+## Generation 7 — Plan-then-Execute — 2026-04-08
+
+**Thesis:** ONE LLM call per strategy, not per action. The planner makes a single LLM call up front to generate the entire action sequence, the runner executes deterministically without re-entering the LLM until verification fails.
+
+### Verified result (long-form scenario, both modes converged)
+
+| Metric | Gen 5 baseline | Gen 6.1 | **Gen 7** |
+|---|---:|---:|---:|
+| Turns | 22 | 9 (fast-explore only) | **9 (both modes)** |
+| Wall time (fast) | 384s | 53s | **31s** |
+| Wall time (full) | 180s | 477s (regression) | **38s** |
+| LLM calls | 22 | 9 | **7 (1 plan + 6 decide)** |
+| Cost | $0.89 | $0.89 | **$0.22** |
+
+**Total Gen 4 → 7 wall-time speedup: 5.8×.** Cost: 4× reduction vs Gen 6.1.
+
+### Behavior trace
+
+1. **plan-completed**: 3 steps generated in 7.7s (prompt cache hit, 1792/2080 input tokens cached)
+2. step 1: `fill (2 targets)` ✓
+3. step 2: `click` (Next button) ✓
+4. step 3: `click` (radio/Next) ✓
+5. **plan-fallback-entered** (3/3 steps done — plan exhausted naturally)
+6. 6 more `decide-completed` events from per-action loop (Gen 6.1 batch detector kicks in)
+7. Final `complete` action — 9 turns total
+
+### Components shipped (8)
+
+1. `Plan` and `PlanStep` types in `src/types.ts`
+2. `plannerEnabled?: boolean` config flag (gated by `BAD_PLANNER=0` env override)
+3. 5 new TurnEvent variants (plan-started, plan-completed, plan-step-executed, plan-deviated, plan-fallback-entered)
+4. `Brain.plan(goal, state)` — single LLM call generates structured Plan with batch verbs
+5. `BrowserAgent.executePlan(...)` — deterministic step executor with verification + fallback signal
+6. Planner-first wiring in `BrowserAgent.run` with `[REPLAN]` hint injection on deviation
+7. `--planner` CLI flag + `bench/scenarios/configs/planner-on.mjs`
+8. Per-step 10s wall-clock cap so single bad steps don't block the run
+
+### Tests
+- 881 passing (was 865, **+16 net new**)
+- 11 in `tests/brain-plan-parse.test.ts`
+- 5 in `tests/runner-execute-plan.test.ts`
+- Tier1 deterministic gate: **100% pass rate** ✓
+
+### Three iterations to nail the contract
+
+| Iteration | Failure mode | Fix |
+|---|---|---|
+| v1 | Planner included date-input spinbutton in batch fill → 5s timeout | Strengthen prompt to OMIT spinbuttons |
+| v2 | Planner used single-step `type` on spinbuttons → 30s timeout per step | Add 10s wall-clock cap to plan steps |
+| v3-4 | Planner emitted fake `complete` action that hallucinated success | Make `executePlan` return `deviated` on plan exhaustion |
+| **v5** | All paths handled correctly | **9 turns / 31s / $0.22 both modes** |
+
+### Verdict
+**ADVANCE — the architectural win the entire Gen 4-7 trajectory was building toward.** 5.8× wall-time speedup vs Gen 4 baseline. Both modes converge to identical numbers, eliminating the mode-dependent variance that plagued Gen 6.
+
+---
+
 ## Gen 6.1 — Runner-mandatory batch fill — 2026-04-08
 
 **Goal:** Make the Gen 6 batch verbs fire reliably by detecting at runtime when the agent is about to do single-step typing on a multi-field form, and inject a high-priority hint that DEMANDS the next action be a `fill`.
