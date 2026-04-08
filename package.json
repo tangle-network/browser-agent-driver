@@ -52,6 +52,7 @@
     "bench:local:tier2": "node ./scripts/run-local-reliability.mjs --profile tier2",
     "bench:local:nightly": "node ./scripts/run-local-reliability.mjs --profile nightly",
     "ab:experiment": "node ./scripts/run-ab-experiment.mjs",
+    "bench:validate": "node ./scripts/run-multi-rep.mjs",
     "research:cycle": "node ./scripts/run-research-cycle.mjs",
     "research:pipeline": "node ./scripts/run-research-pipeline.mjs",
     "design:bench": "pnpm tsx bench/design/run-design-bench.ts",

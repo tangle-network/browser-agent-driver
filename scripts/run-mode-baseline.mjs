@@ -24,6 +24,7 @@ const rootDir = path.resolve(path.join(new URL('.', import.meta.url).pathname, '
 const explicitGoal = getArg('goal');
 const explicitUrl = getArg('url');
 const casesPathArg = getArg('cases');
+const fixtureBaseUrl = getArg('fixture-base-url');
 const fallbackGoal = 'Navigate to /partner/coinbase and verify Coinbase templates are visible.';
 const fallbackUrl = 'https://ai.tangle.tools';
 let goal = explicitGoal ?? fallbackGoal;
@@ -71,6 +72,17 @@ if (casesPathArg) {
   const firstCase = cases[0];
   if (!explicitGoal) goal = String(firstCase.goal ?? goal);
   if (!explicitUrl) url = String(firstCase.startUrl ?? url);
+  // Substitute __FIXTURE_BASE_URL__ if the case uses the placeholder.
+  // Mirrors run-scenario-track.mjs so single-scenario runs reach the static
+  // fixture server the same way the gate does.
+  if (typeof url === 'string' && url.includes('__FIXTURE_BASE_URL__')) {
+    if (!fixtureBaseUrl) {
+      throw new Error(
+        `Case "${firstCase.id ?? 'unknown'}" contains __FIXTURE_BASE_URL__ but --fixture-base-url was not provided`,
+      );
+    }
+    url = url.replace('__FIXTURE_BASE_URL__', fixtureBaseUrl);
+  }
   if (allowedDomains === undefined && Array.isArray(firstCase.allowedDomains)) {
     allowedDomains = firstCase.allowedDomains.filter((domain) => typeof domain === 'string' && domain.length > 0);
   }
@@ -86,6 +98,15 @@ if (casesPathArg) {
     selectedCaseName: firstCase.name ?? null,
     totalCasesInFile: cases.length,
   };
+}
+
+// Same substitution for explicitly-passed --url so callers can mix
+// fixture cases and direct URL flags consistently.
+if (typeof url === 'string' && url.includes('__FIXTURE_BASE_URL__')) {
+  if (!fixtureBaseUrl) {
+    throw new Error('--url contains __FIXTURE_BASE_URL__ but --fixture-base-url was not provided');
+  }
+  url = url.replace('__FIXTURE_BASE_URL__', fixtureBaseUrl);
 }
 
 loadLocalEnvFiles(rootDir);

@@ -385,19 +385,26 @@ export class BrowserAgent {
       hardStallWindow: this.config.supervisor?.hardStallWindow ?? DEFAULT_SUPERVISOR.hardStallWindow,
     } as const;
 
-    // Gen 7: planner-first path. When `plannerEnabled: true` (and not
-    // disabled via BAD_PLANNER=0), make a single LLM call to generate the
-    // entire plan, then execute it deterministically. On the first
-    // verification failure or selector miss, fall through to the existing
-    // per-action loop with a [REPLAN] hint injected into extraContext.
+    // Gen 7 / 7.1: planner-first path. When `plannerEnabled: true` (and not
+    // disabled via BAD_PLANNER=0), make a single LLM call to generate a
+    // plan, then execute it deterministically.
     //
-    // The fallback below the planner is the existing for-loop, unchanged.
+    // Gen 7.1 (replan-on-deviation): when a plan deviates, instead of
+    // immediately falling through to the per-action loop, call Brain.plan()
+    // AGAIN with the current page state and a deviation context. Cap at
+    // `maxReplans` total replan attempts (= initial plan + maxReplans
+    // additional plan calls). The system prompt is byte-stable so prompt
+    // cache still hits — only the user message carries the deviation
+    // history. On exhaustion, fall through to the per-action loop with a
+    // [REPLAN] hint, exactly like Gen 7 did.
+    //
     // Plan execution writes to the same `turns` array, so post-run analysis
     // sees a unified timeline regardless of which path completed the run.
     let planFallbackContext = ''
     let plannerStartTurn = 0
     const plannerEnabled =
       this.config.plannerEnabled === true && process.env.BAD_PLANNER !== '0'
+    const maxReplans = 3
     if (plannerEnabled && scenario.startUrl) {
       // Need an initial observe so the planner has something to look at.
       // The runner's main loop also observes on every iteration; this one
@@ -406,24 +413,70 @@ export class BrowserAgent {
       const initialState = await this.driver.observe().catch(() => undefined)
       if (initialState) {
         this.cachedPostState = initialState
-        this.bus.emitNow({
-          type: 'plan-started',
-          runId,
-          turn: 0,
-          goal: scenario.goal,
-        })
-        const planResult = await this.brain.plan(scenario.goal, initialState).catch((err) => ({
-          plan: null,
-          raw: '',
-          durationMs: 0,
-          parseError: err instanceof Error ? err.message : String(err),
-        }))
+        let planLoopState: PageState = initialState
+        let cumulativeTurnsConsumed = 0
+        let attempt = 0
+        let lastDeviationReason = ''
+        let lastFailedStepIndex = 0
+        let lastTotalSteps = 0
+        let replanLoopDone = false
+        let replanLoopCompleted = false
+        let lastFinalResult: string | undefined
+        let lastCompletedState: PageState = initialState
 
-        if (planResult.plan && planResult.plan.steps.length > 0) {
+        while (!replanLoopDone && attempt <= maxReplans) {
+          // Re-observe before every replan (attempt > 0); the initial plan
+          // already has the freshly-observed state above.
+          if (attempt > 0) {
+            const reobserved = await this.driver.observe().catch(() => planLoopState)
+            planLoopState = reobserved
+            this.cachedPostState = reobserved
+            this.bus.emitNow({
+              type: 'plan-replan-started',
+              runId,
+              turn: turns.length,
+              replanIndex: attempt,
+              maxReplans,
+              reason: lastDeviationReason,
+            })
+            if (this.config.debug) {
+              console.log(`[Runner] Replan attempt ${attempt}/${maxReplans}: ${lastDeviationReason}`)
+            }
+          }
+
+          this.bus.emitNow({
+            type: 'plan-started',
+            runId,
+            turn: turns.length,
+            goal: scenario.goal,
+          })
+
+          const extraContext = attempt === 0
+            ? undefined
+            : `[REPLAN ${attempt}/${maxReplans}] The previous plan attempt failed at step ${lastFailedStepIndex + 1}/${lastTotalSteps}: ${lastDeviationReason}\nGenerate a FRESH plan from the current page state to complete the goal. Do NOT repeat the failed step verbatim — diagnose why it failed and route around it. Steps already executed in earlier attempts are persisted in the page state below; pick up from there.`
+
+          const planResult = await this.brain.plan(scenario.goal, planLoopState, {
+            extraContext,
+          }).catch((err) => ({
+            plan: null,
+            raw: '',
+            durationMs: 0,
+            parseError: err instanceof Error ? err.message : String(err),
+          }))
+
+          if (!planResult.plan || planResult.plan.steps.length === 0) {
+            // Planner unavailable / parse failure / zero steps. Fall through.
+            if (this.config.debug) {
+              console.log(`[Runner] Planner unavailable on attempt ${attempt}: ${(planResult as { parseError?: string }).parseError ?? 'no plan returned'}`)
+            }
+            replanLoopDone = true
+            break
+          }
+
           this.bus.emitNow({
             type: 'plan-completed',
             runId,
-            turn: 0,
+            turn: turns.length,
             stepCount: planResult.plan.steps.length,
             plan: planResult.plan,
             durationMs: planResult.durationMs,
@@ -433,7 +486,7 @@ export class BrowserAgent {
           })
 
           if (this.config.debug) {
-            console.log(`[Runner] Plan generated: ${planResult.plan.steps.length} steps in ${planResult.durationMs}ms`)
+            console.log(`[Runner] Plan attempt ${attempt}: ${planResult.plan.steps.length} steps in ${planResult.durationMs}ms`)
           }
 
           const planResultRun = await this.executePlan(
@@ -442,54 +495,75 @@ export class BrowserAgent {
             runId,
             turns,
             runState,
-            0,
+            cumulativeTurnsConsumed,
+            {
+              tokensUsed: (planResult as { tokensUsed?: number }).tokensUsed,
+              inputTokens: (planResult as { inputTokens?: number }).inputTokens,
+              outputTokens: (planResult as { outputTokens?: number }).outputTokens,
+              cacheReadInputTokens: (planResult as { cacheReadInputTokens?: number }).cacheReadInputTokens,
+              cacheCreationInputTokens: (planResult as { cacheCreationInputTokens?: number }).cacheCreationInputTokens,
+            },
           )
+          cumulativeTurnsConsumed += planResultRun.turnsConsumed
 
           if (planResultRun.kind === 'completed') {
-            // Plan finished without deviation. Synthesize a complete turn
-            // if the plan didn't include one explicitly.
-            const lastTurn = turns[turns.length - 1]
-            if (!lastTurn || lastTurn.action.action !== 'complete') {
-              const completeTurn: Turn = {
-                turn: turns.length + 1,
-                state: planResultRun.lastState,
-                action: { action: 'complete', result: planResultRun.finalResult ?? 'Plan executed successfully' },
-                reasoning: 'Plan execution completed',
-                durationMs: 0,
-              }
-              turns.push(completeTurn)
-              this.onTurn?.(completeTurn)
-            }
-            return buildResult({
-              success: true,
-              result: planResultRun.finalResult ?? 'Plan executed successfully',
-              turns,
-              totalMs: Date.now() - startTime,
-            })
+            replanLoopCompleted = true
+            lastFinalResult = planResultRun.finalResult
+            lastCompletedState = planResultRun.lastState
+            replanLoopDone = true
+            break
           }
 
-          // Plan deviated. Fall through to the per-action loop with a
-          // [REPLAN] hint injected so the LLM knows where the plan failed
-          // and can recover from the current state.
-          planFallbackContext = `\n[REPLAN] The initial plan deviated at step ${planResultRun.failedStepIndex + 1}/${planResult.plan.steps.length}: ${planResultRun.reason}\nThe runner has fallen back to per-action mode. Continue toward the original goal from the current page state. Do not retry the failed plan step verbatim — diagnose why it failed first.\n`
-          plannerStartTurn = planResultRun.turnsConsumed
+          // Deviated. Capture context, then either replan or fall through.
+          lastDeviationReason = planResultRun.reason
+          lastFailedStepIndex = planResultRun.failedStepIndex
+          lastTotalSteps = planResult.plan.steps.length
+          planLoopState = planResultRun.lastState
+          attempt++
+          // Loop continues; if attempt > maxReplans the while-cond exits
+          // and we fall through to the per-action loop below.
+        }
+
+        if (replanLoopCompleted) {
+          // Plan finished without deviation. Synthesize a complete turn if
+          // the plan didn't include one explicitly.
+          const lastTurn = turns[turns.length - 1]
+          if (!lastTurn || lastTurn.action.action !== 'complete') {
+            const completeTurn: Turn = {
+              turn: turns.length + 1,
+              state: lastCompletedState,
+              action: { action: 'complete', result: lastFinalResult ?? 'Plan executed successfully' },
+              reasoning: 'Plan execution completed',
+              durationMs: 0,
+            }
+            turns.push(completeTurn)
+            this.onTurn?.(completeTurn)
+          }
+          return buildResult({
+            success: true,
+            result: lastFinalResult ?? 'Plan executed successfully',
+            turns,
+            totalMs: Date.now() - startTime,
+          })
+        }
+
+        // All replan attempts (or initial plan) deviated. Fall through to
+        // the per-action loop with a [REPLAN] hint that names the final
+        // deviation. The per-action loop with Gen 6.1 batch detection will
+        // finish the work.
+        if (lastDeviationReason) {
+          plannerStartTurn = cumulativeTurnsConsumed
+          planFallbackContext = `\n[REPLAN] After ${attempt} planner attempt${attempt === 1 ? '' : 's'} (1 initial + ${attempt - 1} replan${attempt === 2 ? '' : 's'}), the planner could not produce a working plan. Final deviation: ${lastDeviationReason}\nThe runner has fallen back to per-action mode. Continue toward the original goal from the current page state.\n`
           this.bus.emitNow({
             type: 'plan-fallback-entered',
             runId,
             turn: turns.length,
-            stepsCompleted: planResultRun.failedStepIndex,
-            totalSteps: planResult.plan.steps.length,
+            stepsCompleted: lastFailedStepIndex,
+            totalSteps: lastTotalSteps,
             fallbackContext: planFallbackContext,
           })
           if (this.config.debug) {
-            console.log(`[Runner] Plan deviated at step ${planResultRun.failedStepIndex + 1} — falling back to per-action loop`)
-          }
-        } else {
-          // Plan parse failed or returned 0 steps. Don't ship a plan-completed
-          // event — the planner is unavailable for this run. Fall through to
-          // the per-action loop with no fallback context.
-          if (this.config.debug) {
-            console.log(`[Runner] Planner unavailable: ${planResult.parseError ?? 'no plan returned'}`)
+            console.log(`[Runner] Falling back to per-action loop after ${attempt} planner attempts`)
           }
         }
       }
@@ -1973,6 +2047,22 @@ export class BrowserAgent {
     turns: Turn[],
     runState: RunState,
     startingTurnIndex: number,
+    /**
+     * Token usage from the Brain.plan() LLM call that produced this plan.
+     * The plan call's tokens are NOT attached to any per-step turn — there's
+     * one plan call per N steps. To make the run-level cost tally honest,
+     * we attribute the plan call to the FIRST step's Turn artifact so the
+     * downstream sum (in baseline-summary.json / report.json) reflects the
+     * real LLM spend. This was the metric bug that caused Gen 7.1 runs to
+     * report $0 cost while Gen 7 baseline runs reported $0.50.
+     */
+    planCallTokens?: {
+      tokensUsed?: number
+      inputTokens?: number
+      outputTokens?: number
+      cacheReadInputTokens?: number
+      cacheCreationInputTokens?: number
+    },
   ): Promise<
     | { kind: 'completed'; lastState: PageState; finalResult?: string; turnsConsumed: number }
     | { kind: 'deviated'; lastState: PageState; failedStepIndex: number; reason: string; turnsConsumed: number }
@@ -2008,6 +2098,12 @@ export class BrowserAgent {
       // viewer, the events.jsonl persistence, the metrics) sees a unified
       // timeline regardless of whether the runner used the planner or the
       // per-action loop.
+      //
+      // Token attribution: the FIRST step of each plan carries the
+      // Brain.plan() LLM call's token usage. Without this, runs that stay
+      // in plan-mode (Gen 7.1) report $0 cost while their Brain.plan()
+      // calls actually spent real tokens.
+      const isFirstStep = stepIdx === 0
       const turn: Turn = {
         turn: turnNumber,
         state: preStepState,
@@ -2017,6 +2113,11 @@ export class BrowserAgent {
         plan: plan.steps.map((s) => s.rationale ?? s.action.action),
         currentStep: stepIdx,
         durationMs: 0,
+        ...(isFirstStep && planCallTokens?.tokensUsed !== undefined ? { tokensUsed: planCallTokens.tokensUsed } : {}),
+        ...(isFirstStep && planCallTokens?.inputTokens !== undefined ? { inputTokens: planCallTokens.inputTokens } : {}),
+        ...(isFirstStep && planCallTokens?.outputTokens !== undefined ? { outputTokens: planCallTokens.outputTokens } : {}),
+        ...(isFirstStep && planCallTokens?.cacheReadInputTokens !== undefined ? { cacheReadInputTokens: planCallTokens.cacheReadInputTokens } : {}),
+        ...(isFirstStep && planCallTokens?.cacheCreationInputTokens !== undefined ? { cacheCreationInputTokens: planCallTokens.cacheCreationInputTokens } : {}),
       }
 
       // Terminal actions: complete and abort don't go through driver.execute

@@ -46,6 +46,7 @@ export type TurnEvent =
   | PlanStepExecutedEvent
   | PlanDeviatedEvent
   | PlanFallbackEnteredEvent
+  | PlanReplanStartedEvent
 
 interface BaseEvent {
   /** Monotonic sequence number, assigned by the bus on emit */
@@ -233,6 +234,23 @@ export interface PlanFallbackEnteredEvent extends BaseEvent {
   totalSteps: number
   /** What was injected into the per-action loop's extraContext */
   fallbackContext: string
+}
+
+/**
+ * Gen 7.1 — runner is calling Brain.plan() AGAIN after a previous plan
+ * deviated. The replan attempt re-observes the page and asks the planner
+ * for a fresh plan from the new state, with the deviation summary attached
+ * as extraContext so the planner can avoid the same trap. Capped at
+ * `maxReplans` per run; on cap-reached the runner falls through to the
+ * per-action loop instead.
+ */
+export interface PlanReplanStartedEvent extends BaseEvent {
+  type: 'plan-replan-started'
+  /** 1-indexed replan attempt number */
+  replanIndex: number
+  maxReplans: number
+  /** Why the previous plan attempt deviated */
+  reason: string
 }
 
 // ── Bus implementation ──────────────────────────────────────────────────

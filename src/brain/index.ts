@@ -1182,7 +1182,7 @@ ${visibleSnapshot}`;
   async plan(
     goal: string,
     state: PageState,
-    options?: { maxSteps?: number },
+    options?: { maxSteps?: number; extraContext?: string },
   ): Promise<{
     plan: Plan | null
     raw: string
@@ -1196,6 +1196,7 @@ ${visibleSnapshot}`;
   }> {
     const startedAt = Date.now()
     const maxSteps = options?.maxSteps ?? 12
+    const extraContext = options?.extraContext
 
     // Snapshot budget for the planner: keep it conservative — the planner
     // prompt is itself substantial, and we want the LLM to focus on the
@@ -1252,6 +1253,9 @@ RESPONSE FORMAT — respond with ONLY this JSON:
 
 DO NOT include any prose outside the JSON. DO NOT use markdown code blocks. The runner parses your response with JSON.parse() and will fall through to the per-action loop on parse failure.`
 
+    // Replan path: when the runner re-enters plan() after a previous plan
+    // deviated, it injects a deviation summary. The system prompt is byte-
+    // stable so prompt cache still hits — only the user message changes.
     const userText = `GOAL: ${goal}
 
 CURRENT PAGE:
@@ -1260,7 +1264,7 @@ Title: ${state.title}
 
 ELEMENTS:
 ${snapshot}
-
+${extraContext ? `\n${extraContext}\n` : ''}
 What is the complete plan?`
 
     const result = await this.generate(

@@ -49,6 +49,38 @@ Promotion: no pass-rate regression + meaningful latency/token improvement.
 7. Parallelize repetitions within one experiment. One clean experiment at a time for promotion.
 8. Keep pushing autonomously until baseline improves, challenger is rejected, or user input is needed.
 
+## Measurement Rigor (HARD RULES — never bypass)
+
+**The single-run trap is the #1 way bad changes get shipped.** `gpt-5.4` reasoning latency on a single `complete` action alone has 3–7s spread on identical inputs. Long-form runs have 20s+ run-to-run spread from normal LLM variance. **Anything that doesn't survive these rules does not get merged.**
+
+1. **No single-run speed/turn/cost claims. Ever.** Any claim of the form "X turns / Y seconds / Z dollars" requires **minimum 3 reps** and must be reported as `mean (min–max), N reps`. Best-case alone is forbidden in PRs, changesets, pursuit docs, and progress.md.
+2. **Spread test before promotion.** If `(challenger_mean − baseline_mean)` is less than the **worst-case spread of either side**, the result is **"comparable"**, not an improvement. Say so in the writeup.
+3. **The baseline must be re-measured under the same conditions** as the challenger (same scenario, same model, same day, same machine). Stale baselines from prior generations are reference points, not promotion gates.
+4. **`scripts/run-multi-rep.mjs` is the canonical multi-rep harness** for ad-hoc single-config validation (one config, N reps, mean/min/max table). For A/B comparisons use `npm run ab:experiment` (bootstrap CIs + Wilson). For research-pipeline experiments use `--two-stage` (1 rep screen → 5 rep validate). If a measurement isn't going through one of those three, you must run one of them yourself before claiming a result.
+
+   ```bash
+   node scripts/run-multi-rep.mjs \
+     --cases bench/scenarios/cases/long-form-dashboard.json \
+     --config bench/scenarios/configs/planner-on.mjs \
+     --reps 3 --modes fast-explore --label gen7-planner \
+     --out agent-results/multi-rep-gen7
+   ```
+5. **Cost claims still need ≥3 reps.** Token counts per LLM call are deterministic, but the *number* of LLM calls varies run-to-run, so per-run cost is variable.
+6. **Quality wins (pass-rate, completion accuracy) need ≥5 reps** because pass/fail is binary and a single flake either way swings the rate by 20% on a 5-case set.
+7. **PR description = honest data.** The PR body, the changeset, and the pursuit doc must all carry the same multi-rep numbers. If you find variance after writing them, you must update them before merge — overstated numbers shipped to a changeset are a release-blocker, not a "fix in next gen."
+8. **The summary table format** (use this verbatim):
+   ```
+   | metric        | baseline (mean) | challenger (mean) | Δ      | reps | min/max challenger | verdict    |
+   |---------------|-----------------|-------------------|--------|------|--------------------|------------|
+   | wall-time     | 53s             | 50s               | -3s    | 3    | 35s / 75s          | comparable |
+   | LLM calls     | 9               | 10.5              | +1.5   | 3    | 7 / 16             | comparable |
+   | $ per run     | $0.89           | $0.30             | -$0.59 | 3    | $0.22 / $0.41      | win        |
+   ```
+9. **"Mechanism is sound" is not validation.** A sound mechanism + a lucky run is exactly how single-run overclaims happen. Validation comes from reps, not from confidence in the design.
+10. **When a result smells too good (>3× best-known baseline), require ≥5 reps before writing it down anywhere.** Big wins are the exact regime where variance hides.
+
+**Operating manual:** [docs/EVAL-RIGOR.md](docs/EVAL-RIGOR.md) — three canonical commands (`bench:validate`, `ab:experiment`, `research:pipeline --two-stage`) + the verbatim summary table format. **No PR may be merged with metric claims that did not come out of one of those three.**
+
 ## Research Pipeline
 
 Automated hypothesis testing: `pnpm research:pipeline --queue bench/research/<queue>.json`

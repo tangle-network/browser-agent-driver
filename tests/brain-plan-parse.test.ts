@@ -213,3 +213,59 @@ describe('Brain.plan — token usage', () => {
     expect(result.tokensUsed).toBe(1500)
   })
 })
+
+describe('Brain.plan — Gen 7.1 replan extraContext', () => {
+  // Capture the user message body that the planner sends to the LLM, so
+  // we can verify the deviation context flows through to the prompt.
+  function spyGenerate(
+    brain: Brain,
+    response: string,
+  ): { calls: Array<{ system: string; messages: Array<{ role: string; content: string }> }> } {
+    const calls: Array<{ system: string; messages: Array<{ role: string; content: string }> }> = []
+    ;(brain as unknown as BrainWithGenerate).generate = async (...args: unknown[]) => {
+      const [system, messages] = args as [string, Array<{ role: string; content: string }>]
+      calls.push({ system, messages })
+      return { text: response, tokensUsed: 100, inputTokens: 80, outputTokens: 20 }
+    }
+    return { calls }
+  }
+
+  const VALID_PLAN = JSON.stringify({
+    steps: [{ action: { action: 'click', selector: '@b1' }, expectedEffect: 'clicked' }],
+  })
+
+  it('omits extraContext from the user prompt when not provided', async () => {
+    const brain = new Brain({ provider: 'openai', apiKey: 'sk-test' })
+    const spy = spyGenerate(brain, VALID_PLAN)
+    await brain.plan('click submit', STATE)
+    expect(spy.calls).toHaveLength(1)
+    const userMessage = spy.calls[0].messages[0].content
+    expect(userMessage).not.toContain('[REPLAN')
+    expect(userMessage).toContain('GOAL: click submit')
+  })
+
+  it('injects extraContext into the user prompt when provided', async () => {
+    const brain = new Brain({ provider: 'openai', apiKey: 'sk-test' })
+    const spy = spyGenerate(brain, VALID_PLAN)
+    const replanContext = '[REPLAN 1/3] The previous plan attempt failed at step 2/3: verification failed at step 2: expected effect not observed\nGenerate a FRESH plan from the current page state.'
+    await brain.plan('click submit', STATE, { extraContext: replanContext })
+    expect(spy.calls).toHaveLength(1)
+    const userMessage = spy.calls[0].messages[0].content
+    expect(userMessage).toContain('[REPLAN 1/3]')
+    expect(userMessage).toContain('verification failed at step 2')
+    expect(userMessage).toContain('GOAL: click submit')
+  })
+
+  it('keeps the system prompt byte-stable across replans (cache hit preservation)', async () => {
+    const brain = new Brain({ provider: 'openai', apiKey: 'sk-test' })
+    const spy = spyGenerate(brain, VALID_PLAN)
+    await brain.plan('click submit', STATE)
+    await brain.plan('click submit', STATE, { extraContext: '[REPLAN 1/3] failed' })
+    await brain.plan('click submit', STATE, { extraContext: '[REPLAN 2/3] failed again' })
+    expect(spy.calls).toHaveLength(3)
+    // System prompts must be byte-identical so Anthropic prompt cache reuses
+    // the planner system prompt across the initial plan and all replans.
+    expect(spy.calls[0].system).toBe(spy.calls[1].system)
+    expect(spy.calls[1].system).toBe(spy.calls[2].system)
+  })
+})
