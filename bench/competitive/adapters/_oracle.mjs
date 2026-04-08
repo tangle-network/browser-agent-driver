@@ -99,11 +99,46 @@ function evaluateJsonShape(oracle, finalState) {
       return { passed: false, reason: 'resultText is not valid JSON', detail: '' }
     }
   }
+  // JSON.parse('null') returns null, which is valid JSON but not an object;
+  // same for arrays at the top level when the schema expects an object.
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return {
+      passed: false,
+      reason: 'resultText is not a JSON object',
+      detail: `parsed type: ${parsed === null ? 'null' : Array.isArray(parsed) ? 'array' : typeof parsed}`,
+    }
+  }
   for (const [key, expectedValue] of Object.entries(expected)) {
     if (!(key in parsed)) {
       return { passed: false, reason: `missing key ${key}`, detail: '' }
     }
     if (expectedValue === null) continue
+    // Array shape: ["re:.{5,}", "re:.{5,}", "re:.{5,}"] means parsed[key] must
+    // be an array of exactly that length where each element matches the
+    // corresponding regex. Used for tasks that expect a fixed-size array of
+    // strings (e.g. "extract the top 3 reddit titles").
+    if (Array.isArray(expectedValue)) {
+      if (!Array.isArray(parsed[key])) {
+        return { passed: false, reason: `${key} is not an array`, detail: `got ${typeof parsed[key]}` }
+      }
+      if (parsed[key].length !== expectedValue.length) {
+        return { passed: false, reason: `${key} array length mismatch`, detail: `expected ${expectedValue.length}, got ${parsed[key].length}` }
+      }
+      for (let i = 0; i < expectedValue.length; i++) {
+        const elemSpec = expectedValue[i]
+        const elemValue = parsed[key][i]
+        if (elemSpec === null) continue
+        if (typeof elemSpec === 'string' && elemSpec.startsWith('re:')) {
+          const re = new RegExp(elemSpec.slice(3))
+          if (!re.test(String(elemValue))) {
+            return { passed: false, reason: `${key}[${i}] regex mismatch`, detail: `${elemValue} !~ ${re}` }
+          }
+        } else if (elemValue !== elemSpec) {
+          return { passed: false, reason: `${key}[${i}] value mismatch`, detail: `${elemValue} !== ${elemSpec}` }
+        }
+      }
+      continue
+    }
     if (typeof expectedValue === 'string' && expectedValue.startsWith('re:')) {
       const re = new RegExp(expectedValue.slice(3))
       if (!re.test(String(parsed[key]))) {

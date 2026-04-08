@@ -299,6 +299,14 @@ export interface AgentConfig {
    * Disable via BAD_PLANNER=0 env override.
    */
   plannerEnabled?: boolean;
+  /**
+   * Gen 8: extra wait BEFORE the planner's initial observe, in ms. Used by
+   * real-web runs (planner-on-realweb.mjs) to give SPAs time to load their
+   * dynamic content before the planner snapshots the page. Without this,
+   * the planner sees a half-loaded SPA and emits runScript queries against
+   * selectors that don't exist yet, returning null/empty. Default: 0.
+   */
+  initialObserveSettleMs?: number;
   /** Optional scout that ranks ambiguous link choices before the actor decides */
   scout?: ScoutConfig;
   /** Optional supervisor that can intervene when the run is hard-stalled */

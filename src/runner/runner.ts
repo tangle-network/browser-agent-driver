@@ -445,6 +445,27 @@ export class BrowserAgent {
       // The runner's main loop also observes on every iteration; this one
       // primes the planner. The result is also stashed as cachedPostState
       // so the per-action fallback's first observe is short-circuited.
+      //
+      // Gen 8: on real-web tasks (planner-on-realweb config), wait for
+      // the page to settle BEFORE the planner observes. SPA pages like
+      // npmjs.com load their data via JS after DOMContentLoaded — without
+      // a settle wait the planner snapshots a half-loaded page and emits
+      // runScript queries against selectors that don't exist yet.
+      const settleMs = this.config.initialObserveSettleMs ?? 0
+      if (settleMs > 0) {
+        const page = this.driver.getPage?.()
+        if (page) {
+          await Promise.race([
+            page.waitForLoadState('networkidle').catch(() => {}),
+            new Promise<void>((resolve) => setTimeout(resolve, settleMs)),
+          ])
+        } else {
+          await new Promise<void>((resolve) => setTimeout(resolve, settleMs))
+        }
+        if (this.config.debug) {
+          console.log(`[Runner] Gen 8 initial settle: waited ${settleMs}ms (or networkidle) before planner observe`)
+        }
+      }
       const initialState = await this.driver.observe().catch(() => undefined)
       if (initialState) {
         this.cachedPostState = initialState

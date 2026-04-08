@@ -1,0 +1,17 @@
+{
+  "id": "reddit-subreddit-titles",
+  "name": "Reddit (old) — top 3 r/programming post titles",
+  "goal": "Open https://old.reddit.com/r/programming/ (use OLD reddit, not new reddit) and extract the titles of the top 3 posts visible on the front page (the first three posts listed, not counting any pinned/sticky announcements at the very top).\n\nReturn ONLY a JSON object with EXACTLY this key:\n  - \"titles\": an array of exactly 3 strings, each being a post title\n\nExample correct output:\n  {\"titles\": [\"Why Rust async is hard\", \"Show: My new compiler\", \"The end of GIL\"]}\n\nThe array MUST have exactly 3 entries. Each string must be at least 5 characters. Do NOT include sticky/pinned posts. Complete with EXACTLY this JSON object as your final result.",
+  "startUrl": "https://old.reddit.com/r/programming/",
+  "maxTurns": 8,
+  "timeoutMs": 180000,
+  "expectedDurationSec": 30,
+  "expectedTokenBudget": 18000,
+  "tags": ["extraction", "scraping"],
+  "oracle": {
+    "type": "json-shape-match",
+    "expectedShape": {
+      "titles": ["re:.{5,}", "re:.{5,}", "re:.{5,}"]
+    }
+  }
+}

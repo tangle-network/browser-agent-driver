@@ -1,0 +1,17 @@
+{
+  "id": "npm-package-downloads",
+  "name": "npm — react weekly downloads",
+  "goal": "Open https://www.npmjs.com/package/react and find the 'Weekly Downloads' number shown on the package page.\n\nReturn ONLY a JSON object with EXACTLY this key:\n  - \"weekly_downloads\": the number as a STRING containing only digits and optional commas (e.g. \"25,847,392\" or \"25847392\"). Do NOT include the word 'downloads' or any other text.\n\nExample correct output:\n  {\"weekly_downloads\": \"25,847,392\"}\n\nThis number is displayed prominently on the package's main page under the 'Weekly Downloads' label. Complete with EXACTLY this JSON object as your final result.",
+  "startUrl": "https://www.npmjs.com/package/react",
+  "maxTurns": 6,
+  "timeoutMs": 180000,
+  "expectedDurationSec": 25,
+  "expectedTokenBudget": 16000,
+  "tags": ["extraction", "product-usage"],
+  "oracle": {
+    "type": "json-shape-match",
+    "expectedShape": {
+      "weekly_downloads": "re:^[\\d,]+$"
+    }
+  }
+}

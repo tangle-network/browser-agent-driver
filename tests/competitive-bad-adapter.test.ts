@@ -14,7 +14,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
 // @ts-expect-error mjs without types
 import * as badAdapter from '../bench/competitive/adapters/bad.mjs'
 // @ts-expect-error mjs without types
@@ -150,6 +150,163 @@ describe('oracle — json-shape-match', () => {
       finalState,
     )
     expect(v.passed).toBe(false)
+  })
+
+  it('fails when resultText is the JSON literal `null` (not an object)', () => {
+    const finalState = { finalUrl: '', finalTitle: '', finalSnapshot: '', resultText: 'null' }
+    const v = evaluateOracle(
+      { type: 'json-shape-match', expectedShape: { signature: 're:update\\(' } },
+      finalState,
+    )
+    expect(v.passed).toBe(false)
+    expect(v.reason).toMatch(/not a JSON object/)
+  })
+
+  it('fails when resultText is a top-level array (not an object)', () => {
+    const finalState = { finalUrl: '', finalTitle: '', finalSnapshot: '', resultText: '[1,2,3]' }
+    const v = evaluateOracle(
+      { type: 'json-shape-match', expectedShape: { x: null } },
+      finalState,
+    )
+    expect(v.passed).toBe(false)
+    expect(v.reason).toMatch(/not a JSON object/)
+  })
+
+  // Gen 8 array-shape extension
+  it('passes when an array key matches a fixed-length spec of regex elements', () => {
+    const finalState = {
+      finalUrl: '',
+      finalTitle: '',
+      finalSnapshot: '',
+      resultText: '{"titles": ["Alpha story title", "Beta story two", "Gamma three news"]}',
+    }
+    const v = evaluateOracle(
+      {
+        type: 'json-shape-match',
+        expectedShape: { titles: ['re:.{5,}', 're:.{5,}', 're:.{5,}'] },
+      },
+      finalState,
+    )
+    expect(v.passed).toBe(true)
+  })
+
+  it('fails when array length does not match expected length', () => {
+    const finalState = {
+      finalUrl: '',
+      finalTitle: '',
+      finalSnapshot: '',
+      resultText: '{"titles": ["one", "two"]}',
+    }
+    const v = evaluateOracle(
+      {
+        type: 'json-shape-match',
+        expectedShape: { titles: ['re:.{1,}', 're:.{1,}', 're:.{1,}'] },
+      },
+      finalState,
+    )
+    expect(v.passed).toBe(false)
+    expect(v.reason).toMatch(/length mismatch/)
+  })
+
+  it('fails when array element regex does not match', () => {
+    const finalState = {
+      finalUrl: '',
+      finalTitle: '',
+      finalSnapshot: '',
+      resultText: '{"titles": ["abc", "def", "g"]}',
+    }
+    const v = evaluateOracle(
+      {
+        type: 'json-shape-match',
+        expectedShape: { titles: ['re:.{2,}', 're:.{2,}', 're:.{2,}'] },
+      },
+      finalState,
+    )
+    expect(v.passed).toBe(false)
+    expect(v.reason).toMatch(/regex mismatch/)
+  })
+
+  it('fails when key is not an array but spec is array', () => {
+    const finalState = {
+      finalUrl: '',
+      finalTitle: '',
+      finalSnapshot: '',
+      resultText: '{"titles": "not an array"}',
+    }
+    const v = evaluateOracle(
+      {
+        type: 'json-shape-match',
+        expectedShape: { titles: ['re:.{1,}'] },
+      },
+      finalState,
+    )
+    expect(v.passed).toBe(false)
+    expect(v.reason).toMatch(/not an array/)
+  })
+})
+
+describe('detectAntiBotBlock — Gen 8', () => {
+  // @ts-expect-error mjs without types
+  let detectAntiBotBlock: (finalState: object, runResult: object) => string | null
+
+  beforeAll(async () => {
+    const mod = await import('../bench/competitive/adapters/bad.mjs')
+    // @ts-expect-error
+    detectAntiBotBlock = mod.detectAntiBotBlock
+  })
+
+  it('returns null for a clean page', () => {
+    expect(
+      detectAntiBotBlock(
+        { finalUrl: 'https://example.com', finalSnapshot: 'just a normal page', resultText: '' },
+        {},
+      ),
+    ).toBeNull()
+  })
+
+  it('detects chrome-error://', () => {
+    expect(
+      detectAntiBotBlock(
+        { finalUrl: 'chrome-error://chromewebdata/', finalSnapshot: '', resultText: '' },
+        {},
+      ),
+    ).toMatch(/chrome-error/)
+  })
+
+  it('detects cloudflare interstitial', () => {
+    expect(
+      detectAntiBotBlock(
+        { finalUrl: 'https://x.com', finalSnapshot: 'Just a moment...', resultText: '' },
+        {},
+      ),
+    ).toMatch(/cloudflare/i)
+  })
+
+  it('detects "Verifying you are human"', () => {
+    expect(
+      detectAntiBotBlock(
+        { finalUrl: 'https://x.com', finalSnapshot: 'verifying you are human', resultText: '' },
+        {},
+      ),
+    ).toMatch(/cloudflare/i)
+  })
+
+  it('detects recaptcha', () => {
+    expect(
+      detectAntiBotBlock(
+        { finalUrl: 'https://x.com', finalSnapshot: 'Please complete the recaptcha', resultText: '' },
+        {},
+      ),
+    ).toMatch(/captcha/i)
+  })
+
+  it('detects 403 access-denied banners', () => {
+    expect(
+      detectAntiBotBlock(
+        { finalUrl: 'https://x.com', finalSnapshot: 'Access Denied — your IP is blocked', resultText: '' },
+        {},
+      ),
+    ).toMatch(/access-denied/i)
   })
 })
 

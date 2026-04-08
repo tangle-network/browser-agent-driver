@@ -20,6 +20,54 @@ import { evaluateOracle } from './_oracle.mjs'
 export const FRAMEWORK_ID = 'bad'
 
 /**
+ * Anti-bot / unreachable-site detection. When a real-web task hits cloudflare,
+ * recaptcha, "Verifying you are human", or chrome-error://, this is NOT a
+ * `bad` failure — it's the site refusing the bot. Mark it as `blocked` so
+ * the gauntlet reports it separately from genuine architectural failures.
+ *
+ * Returns null if not blocked, otherwise a string reason.
+ */
+export function detectAntiBotBlock(finalState, runResult) {
+  const url = String(finalState?.finalUrl ?? '')
+  const snapshot = String(finalState?.finalSnapshot ?? '').toLowerCase()
+  const result = String(finalState?.resultText ?? '').toLowerCase()
+  const verdict = String(runResult?.verdict ?? '').toLowerCase()
+
+  // Chrome navigation error (DNS, refused, cert, blocked)
+  if (url.startsWith('chrome-error://') || verdict.includes('chrome-error')) {
+    return 'chrome-error: site unreachable from this browser environment'
+  }
+  // Cloudflare interstitial
+  const cloudflareMarkers = [
+    'just a moment...',
+    'verifying you are human',
+    'checking your browser before',
+    'cloudflare ray id',
+    '__cf_chl_',
+    'cf-chl-',
+    'cf-mitigated',
+  ]
+  for (const m of cloudflareMarkers) {
+    if (snapshot.includes(m) || result.includes(m)) {
+      return `cloudflare interstitial: "${m}"`
+    }
+  }
+  // Recaptcha / hCaptcha
+  if (snapshot.includes('recaptcha') || snapshot.includes('hcaptcha') || snapshot.includes('please complete the captcha')) {
+    return 'captcha challenge'
+  }
+  // 403 / 429 / Access Denied banners
+  if (snapshot.includes('access denied') || snapshot.includes('403 forbidden') || snapshot.includes('429 too many requests')) {
+    return 'site returned access-denied banner'
+  }
+  // Bot-detection vendors
+  if (snapshot.includes('please enable javascript and cookies to continue') || snapshot.includes('akamai') || snapshot.includes('perimeterx')) {
+    return 'bot-detection vendor block'
+  }
+  return null
+}
+
+/**
  * Detect whether the framework is available. For `bad` this is just
  * checking that dist/cli.js was built; we live in the same repo.
  */
@@ -114,7 +162,12 @@ export async function runTask(task, options) {
   const finalState = readFinalState(eventsPath, result)
   const eventTotals = aggregateLlmEvents(eventsPath)
 
-  const oracleVerdict = evaluateOracle(task.oracle, finalState)
+  // Anti-bot detection: if the site refused us, mark `blocked` so the
+  // gauntlet reports it separately from architectural failures.
+  const blockReason = detectAntiBotBlock(finalState, result)
+  const oracleVerdict = blockReason
+    ? { passed: false, reason: 'blocked by site (anti-bot / unreachable)', detail: blockReason }
+    : evaluateOracle(task.oracle, finalState)
 
   return {
     framework: 'bad',
@@ -124,6 +177,8 @@ export async function runTask(task, options) {
     startedAt: new Date(startedAt).toISOString(),
     endedAt: new Date().toISOString(),
     success: oracleVerdict.passed,
+    blocked: !!blockReason,
+    blockReason,
     oracleVerdict,
     agentClaimedSuccess: result.agentSuccess === true,
     wallTimeMs: typeof result.durationMs === 'number' ? result.durationMs : Date.now() - startedAt,
@@ -138,7 +193,7 @@ export async function runTask(task, options) {
     finalTitle: finalState.finalTitle,
     resultText: finalState.resultText,
     rawArtifactDir: runDir,
-    errorReason: oracleVerdict.passed ? null : oracleVerdict.reason,
+    errorReason: oracleVerdict.passed ? null : (blockReason ?? oracleVerdict.reason),
     exitCode,
   }
 }

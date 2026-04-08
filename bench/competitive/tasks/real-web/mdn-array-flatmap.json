@@ -1,0 +1,18 @@
+{
+  "id": "mdn-array-flatmap",
+  "name": "MDN — Array.prototype.flatMap signature lookup",
+  "goal": "Open https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/flatMap and find:\n  1. The return type of Array.prototype.flatMap (always 'A new array' or 'Array')\n  2. The function signature line\n\nReturn ONLY a JSON object with EXACTLY these keys:\n  - \"returnType\": a string containing the word 'Array' (the function's return type description)\n  - \"signature\": a string containing 'flatMap' (the syntax line, e.g. 'flatMap(callbackFn)' or 'flatMap(callbackFn, thisArg)')\n\nExample correct output:\n  {\"returnType\": \"A new Array with each element being the result of the callback function and flattened by a depth of 1\", \"signature\": \"flatMap(callbackFn)\"}\n\nDo not include any extra fields. Complete with EXACTLY this JSON object as your final result.",
+  "startUrl": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/flatMap",
+  "maxTurns": 6,
+  "timeoutMs": 180000,
+  "expectedDurationSec": 25,
+  "expectedTokenBudget": 18000,
+  "tags": ["extraction", "research"],
+  "oracle": {
+    "type": "json-shape-match",
+    "expectedShape": {
+      "returnType": "re:[Aa]rray",
+      "signature": "re:flatMap"
+    }
+  }
+}

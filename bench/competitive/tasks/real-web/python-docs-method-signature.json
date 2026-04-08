@@ -1,0 +1,17 @@
+{
+  "id": "python-docs-method-signature",
+  "name": "Python docs — dict.update method signature",
+  "goal": "Open https://docs.python.org/3/library/stdtypes.html#dict.update (the Python 3 stdlib reference for dict.update) and extract the function signature line shown for dict.update.\n\nReturn ONLY a JSON object with EXACTLY this key:\n  - \"signature\": the signature line as a string. It MUST contain 'update(' (the method name and opening paren) since that's the canonical Python method signature format.\n\nExample correct output:\n  {\"signature\": \"update([other])\"}\n\nThe signature is shown in monospace font right next to the dict.update heading in the Python docs. Complete with EXACTLY this JSON object as your final result.",
+  "startUrl": "https://docs.python.org/3/library/stdtypes.html#dict.update",
+  "maxTurns": 6,
+  "timeoutMs": 180000,
+  "expectedDurationSec": 25,
+  "expectedTokenBudget": 18000,
+  "tags": ["extraction", "research"],
+  "oracle": {
+    "type": "json-shape-match",
+    "expectedShape": {
+      "signature": "re:update\\("
+    }
+  }
+}

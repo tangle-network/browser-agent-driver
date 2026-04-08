@@ -1,0 +1,17 @@
+{
+  "id": "w3c-html-spec-find-element",
+  "name": "WHATWG HTML spec — <dialog> element categories",
+  "goal": "Open https://html.spec.whatwg.org/multipage/interactive-elements.html#the-dialog-element (the WHATWG HTML spec section on the <dialog> element) and find the 'Categories' line that lists what content categories the <dialog> element belongs to.\n\nReturn ONLY a JSON object with EXACTLY this key:\n  - \"categories\": a string containing the categories list. It MUST contain the phrase 'Flow content' because <dialog> is a flow content element.\n\nExample correct output:\n  {\"categories\": \"Flow content. Sectioning root.\"}\n\nThe Categories line appears near the top of the <dialog> element's section in the spec. Complete with EXACTLY this JSON object as your final result.",
+  "startUrl": "https://html.spec.whatwg.org/multipage/interactive-elements.html#the-dialog-element",
+  "maxTurns": 8,
+  "timeoutMs": 240000,
+  "expectedDurationSec": 40,
+  "expectedTokenBudget": 25000,
+  "tags": ["extraction", "research"],
+  "oracle": {
+    "type": "json-shape-match",
+    "expectedShape": {
+      "categories": "re:Flow content"
+    }
+  }
+}
