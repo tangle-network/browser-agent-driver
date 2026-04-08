@@ -1,0 +1,19 @@
+{
+  "id": "hn-top-story-score",
+  "name": "Hacker News — extract top story title, score, comments",
+  "goal": "Open https://news.ycombinator.com/ and extract data about the #1 story (the very first story listed at the top of the front page).\n\nReturn ONLY a JSON object with EXACTLY these three keys:\n  - \"title\": the story title (string, exactly as displayed)\n  - \"score\": the score number (integer, NOT a string — e.g. 247 not \"247 points\")\n  - \"comments\": the comment count (integer, NOT a string — e.g. 89 not \"89 comments\"; if no comments yet, use 0)\n\nExample correct output:\n  {\"title\": \"Show HN: A new browser engine\", \"score\": 247, \"comments\": 89}\n\nDo NOT include any extra fields. Do NOT wrap the JSON in markdown. Complete with EXACTLY this JSON object as your final result.",
+  "startUrl": "https://news.ycombinator.com/",
+  "maxTurns": 8,
+  "timeoutMs": 180000,
+  "expectedDurationSec": 30,
+  "expectedTokenBudget": 15000,
+  "tags": ["extraction", "scraping"],
+  "oracle": {
+    "type": "json-shape-match",
+    "expectedShape": {
+      "title": "re:.{5,}",
+      "score": "re:^\\d+$",
+      "comments": "re:^\\d+$"
+    }
+  }
+}

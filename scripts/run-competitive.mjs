@@ -88,11 +88,36 @@ fs.mkdirSync(outRoot, { recursive: true })
 const runsJsonlPath = path.join(outRoot, 'runs.jsonl')
 fs.writeFileSync(runsJsonlPath, '') // truncate
 
+// Build a map of taskId → file path by walking tasksDir recursively. This
+// lets tasks live in subdirectories like tasks/real-web/ for organization
+// while keeping the --tasks flag a simple comma-separated id list.
+function findTaskFiles(dir) {
+  const out = {}
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name)
+    if (entry.isDirectory()) {
+      Object.assign(out, findTaskFiles(full))
+    } else if (entry.isFile() && entry.name.endsWith('.json') && !entry.name.startsWith('_')) {
+      try {
+        const task = JSON.parse(fs.readFileSync(full, 'utf-8'))
+        if (task && typeof task.id === 'string') {
+          out[task.id] = full
+        }
+      } catch {
+        // Not a task file
+      }
+    }
+  }
+  return out
+}
+const allTasksById = findTaskFiles(tasksDir)
+
 // Load tasks
 const tasks = taskIds.map((id) => {
-  const taskPath = path.join(tasksDir, `${id}.json`)
+  const taskPath = allTasksById[id] ?? path.join(tasksDir, `${id}.json`)
   if (!fs.existsSync(taskPath)) {
-    console.error(`competitive: task not found: ${taskPath}`)
+    console.error(`competitive: task not found: ${id}`)
+    console.error(`  available tasks: ${Object.keys(allTasksById).sort().join(', ')}`)
     process.exit(1)
   }
   return JSON.parse(fs.readFileSync(taskPath, 'utf-8'))
@@ -191,7 +216,13 @@ for (const run of allRuns) {
 }
 for (const cell of Object.values(cellStats)) {
   const r = cell.runs
-  const passed = r.filter((x) => x.success).length
+  const passed = r.filter((x) => x.success === true).length
+  const blocked = r.filter((x) => x.blocked === true).length
+  const failed = r.filter((x) => x.success === false && x.blocked !== true).length
+  // Effective denominator excludes blocked runs — they're not architectural
+  // failures, they're site refusals. clean pass rate = passed / (total - blocked).
+  const evaluable = r.length - blocked
+  const cleanPassRate = evaluable > 0 ? passed / evaluable : 0
   const wallTimes = r.map((x) => x.wallTimeMs / 1000) // seconds
   const turns = r.map((x) => x.turnCount).filter((x) => Number.isFinite(x))
   const llmCalls = r.map((x) => x.llmCallCount).filter((x) => Number.isFinite(x))
@@ -203,9 +234,14 @@ for (const cell of Object.values(cellStats)) {
 
   cell.passRate = {
     rate: passed / r.length,
+    cleanRate: cleanPassRate,
     passed,
+    failed,
+    blocked,
     total: r.length,
+    evaluable,
     wilson95: wilsonInterval(passed, r.length),
+    wilson95Clean: wilsonInterval(passed, Math.max(1, evaluable)),
   }
   cell.wallTimeSec = statsDescribe(wallTimes)
   cell.turns = statsDescribe(turns)
@@ -219,6 +255,36 @@ for (const cell of Object.values(cellStats)) {
     inputTokens.length > 0 && cachedTokens.length === inputTokens.length
       ? mean(cachedTokens) / Math.max(1, mean(inputTokens))
       : 0
+  // Resolve per-rep video paths so the dashboard can embed them.
+  cell.runs.forEach((run) => {
+    run.videoPath = findVideoPath(run.rawArtifactDir)
+  })
+}
+
+function findVideoPath(rawArtifactDir) {
+  if (!rawArtifactDir || !fs.existsSync(rawArtifactDir)) return null
+  // Walk for any *.webm under the artifact dir. The Playwright recorder
+  // writes to either cli-task/recording.webm or _videos/<hash>.webm.
+  const candidates = []
+  const walk = (dir) => {
+    if (!fs.existsSync(dir)) return
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name)
+      if (entry.isDirectory()) {
+        walk(full)
+      } else if (entry.isFile() && entry.name.endsWith('.webm')) {
+        candidates.push(full)
+      }
+    }
+  }
+  walk(rawArtifactDir)
+  // Prefer recording.webm over _videos/<hash>.webm
+  candidates.sort((a, b) => {
+    const ar = a.endsWith('recording.webm') ? 0 : 1
+    const br = b.endsWith('recording.webm') ? 0 : 1
+    return ar - br
+  })
+  return candidates[0] ?? null
 }
 
 // ── Cross-framework comparison per task ────────────────────────────────
@@ -306,13 +372,27 @@ fs.writeFileSync(path.join(outRoot, 'summary.json'), JSON.stringify(summary, nul
 fs.writeFileSync(path.join(outRoot, 'comparison.md'), renderMarkdown(summary))
 writeCsv(path.join(outRoot, 'runs.csv'), allRuns)
 
+// Gen 8: gauntlet-summary.json + dashboard.html
+const gauntletSummary = buildGauntletSummary(summary, allRuns)
+fs.writeFileSync(
+  path.join(outRoot, 'gauntlet-summary.json'),
+  JSON.stringify(gauntletSummary, null, 2) + '\n',
+)
+fs.writeFileSync(path.join(outRoot, 'dashboard.html'), renderDashboardHtml(summary, allRuns, outRoot))
+
 console.log('\n' + renderMarkdown(summary))
 console.log(`\nCompetitive summary: ${path.join(outRoot, 'summary.json')}`)
 console.log(`Comparison markdown: ${path.join(outRoot, 'comparison.md')}`)
 console.log(`Per-rep CSV:         ${path.join(outRoot, 'runs.csv')}`)
+console.log(`Gauntlet summary:    ${path.join(outRoot, 'gauntlet-summary.json')}`)
+console.log(`Dashboard HTML:      ${path.join(outRoot, 'dashboard.html')}`)
 
-const anyFailed = allRuns.some((r) => !r.success)
-process.exit(anyFailed ? 1 : 0)
+// Gen 8: an "exit non-zero on any failure" gate is too strict for the
+// gauntlet because real-web blocks aren't architectural failures. Exit
+// non-zero only when the CLEAN pass rate (excluding blocked runs) is < 1.0
+// for any cell, OR if there were no successful runs at all.
+const anyArchFail = Object.values(cellStats).some((cell) => cell.passRate.cleanRate < 1)
+process.exit(anyArchFail ? 1 : 0)
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -445,4 +525,221 @@ function csvEscape(value) {
     return '"' + s.replaceAll('"', '""') + '"'
   }
   return s
+}
+
+// ── Gen 8: gauntlet rollup + HTML dashboard ─────────────────────────────
+
+/**
+ * Build the gauntlet rollup. One headline number per framework.
+ * Excludes blocked runs from the pass-rate denominator (clean pass rate)
+ * because anti-bot blocks aren't architectural failures.
+ */
+function buildGauntletSummary(summary, allRuns) {
+  const byFramework = {}
+  for (const cell of summary.cells) {
+    if (!byFramework[cell.framework]) {
+      byFramework[cell.framework] = {
+        framework: cell.framework,
+        tasks: 0,
+        totalRuns: 0,
+        passed: 0,
+        failed: 0,
+        blocked: 0,
+        evaluable: 0,
+        wallTimeSecMean: 0,
+        wallTimeSecP95: 0,
+        costUsdMean: 0,
+        totalTokensMean: 0,
+        cellPassRates: {},
+      }
+    }
+    const f = byFramework[cell.framework]
+    f.tasks++
+    f.totalRuns += cell.passRate.total
+    f.passed += cell.passRate.passed
+    f.failed += cell.passRate.failed
+    f.blocked += cell.passRate.blocked
+    f.evaluable += cell.passRate.evaluable
+    f.cellPassRates[cell.taskId] = {
+      passed: cell.passRate.passed,
+      total: cell.passRate.total,
+      blocked: cell.passRate.blocked,
+      cleanRate: cell.passRate.cleanRate,
+    }
+  }
+  // Aggregate wall-time / cost / tokens means weighted by run count
+  for (const f of Object.values(byFramework)) {
+    const runs = allRuns.filter((r) => r.framework === f.framework && r.blocked !== true)
+    if (runs.length > 0) {
+      const walls = runs.map((r) => r.wallTimeMs / 1000).sort((a, b) => a - b)
+      const costs = runs.map((r) => r.costUsd ?? 0)
+      const tokens = runs.map((r) => r.totalTokens ?? 0)
+      f.wallTimeSecMean = mean(walls)
+      f.wallTimeSecP95 = walls[Math.floor(walls.length * 0.95)] ?? walls[walls.length - 1]
+      f.costUsdMean = mean(costs)
+      f.totalTokensMean = mean(tokens)
+    }
+    f.cleanPassRate = f.evaluable > 0 ? f.passed / f.evaluable : 0
+    f.rawPassRate = f.totalRuns > 0 ? f.passed / f.totalRuns : 0
+  }
+  return {
+    generatedAt: summary.generatedAt,
+    gitSha: summary.gitSha,
+    repoVersion: summary.repoVersion,
+    model: summary.model,
+    reps: summary.reps,
+    taskCount: summary.tasks.length,
+    frameworks: Object.values(byFramework),
+  }
+}
+
+/**
+ * Generate dashboard.html — a self-contained HTML page that embeds every
+ * recorded video inline next to its task pass/fail status. Designed to be
+ * paste-into-browser shareable, no server required. Uses relative file://
+ * paths for the videos so it works when opened locally.
+ */
+function renderDashboardHtml(summary, allRuns, outRoot) {
+  const escapeHtml = (s) => String(s ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
+
+  const cellsByTask = {}
+  for (const cell of summary.cells) {
+    if (!cellsByTask[cell.taskId]) cellsByTask[cell.taskId] = []
+    cellsByTask[cell.taskId].push(cell)
+  }
+
+  const taskSections = summary.tasks.map((task) => {
+    const cells = cellsByTask[task.id] ?? []
+    const cellHtml = cells.map((cell) => {
+      const repHtml = cell.runs.map((run) => {
+        const relVideo = run.videoPath
+          ? path.relative(outRoot, run.videoPath)
+          : null
+        const statusBadge = run.success
+          ? '<span class="badge pass">PASS</span>'
+          : run.blocked
+            ? '<span class="badge blocked">BLOCKED</span>'
+            : '<span class="badge fail">FAIL</span>'
+        const reasonLine = run.errorReason ? `<div class="reason">${escapeHtml(run.errorReason)}</div>` : ''
+        const videoBlock = relVideo
+          ? `<video controls preload="metadata" src="${escapeHtml(relVideo)}"></video>`
+          : '<div class="no-video">no video</div>'
+        const resultPreview = run.resultText
+          ? `<details><summary>result text</summary><pre>${escapeHtml(String(run.resultText).slice(0, 800))}</pre></details>`
+          : ''
+        return `<div class="rep">
+          <div class="rep-header">
+            <span class="rep-num">rep ${run.rep}</span>
+            ${statusBadge}
+            <span class="metric">${(run.wallTimeMs / 1000).toFixed(1)}s</span>
+            <span class="metric">${run.turnCount ?? '?'} turns</span>
+            <span class="metric">${run.llmCallCount ?? '?'} LLM</span>
+            <span class="metric">${run.totalTokens ?? '?'} tok</span>
+            <span class="metric">$${(run.costUsd ?? 0).toFixed(4)}</span>
+          </div>
+          ${reasonLine}
+          ${videoBlock}
+          ${resultPreview}
+        </div>`
+      }).join('\n')
+      return `<div class="cell">
+        <h3>${escapeHtml(cell.framework)}</h3>
+        <div class="cell-stats">
+          Pass: <strong>${cell.passRate.passed}/${cell.passRate.total}</strong>
+          (${(cell.passRate.cleanRate * 100).toFixed(0)}% clean)
+          · ${(cell.wallTimeSec.mean).toFixed(1)}s mean
+          · $${cell.costUsd.mean.toFixed(4)} mean
+          · ${cell.passRate.blocked} blocked
+        </div>
+        <div class="reps">${repHtml}</div>
+      </div>`
+    }).join('\n')
+
+    return `<section class="task" id="task-${escapeHtml(task.id)}">
+      <h2>${escapeHtml(task.name)}</h2>
+      <div class="task-id">${escapeHtml(task.id)}</div>
+      ${cellHtml}
+    </section>`
+  }).join('\n')
+
+  // Top-level rollup table
+  const gauntletSummary = buildGauntletSummary(summary, allRuns)
+  const rollupRows = gauntletSummary.frameworks.map((f) => `
+    <tr>
+      <td><code>${escapeHtml(f.framework)}</code></td>
+      <td>${(f.cleanPassRate * 100).toFixed(0)}% (${f.passed}/${f.evaluable})</td>
+      <td>${f.blocked}</td>
+      <td>${f.wallTimeSecMean.toFixed(1)}s</td>
+      <td>${f.wallTimeSecP95.toFixed(1)}s</td>
+      <td>${f.totalTokensMean.toFixed(0)}</td>
+      <td>$${f.costUsdMean.toFixed(4)}</td>
+    </tr>
+  `).join('')
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>bad gauntlet — ${escapeHtml(summary.model)} · ${escapeHtml(summary.repoVersion ?? '')}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif; max-width: 1100px; margin: 32px auto; padding: 0 24px; color: #1a1a1a; line-height: 1.5; }
+    h1 { font-size: 32px; margin: 0 0 4px; }
+    .subtitle { color: #888; font-size: 14px; margin-bottom: 32px; }
+    .rollup { margin: 24px 0 48px; }
+    .rollup table { border-collapse: collapse; width: 100%; }
+    .rollup th, .rollup td { text-align: left; padding: 10px 14px; border-bottom: 1px solid #eee; font-size: 14px; }
+    .rollup th { color: #666; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+    section.task { margin: 48px 0; padding: 24px; border: 1px solid #eee; border-radius: 12px; background: #fafafa; }
+    section.task h2 { margin: 0 0 4px; font-size: 22px; }
+    .task-id { color: #888; font-family: 'SF Mono', Menlo, monospace; font-size: 12px; margin-bottom: 16px; }
+    .cell { margin: 16px 0; padding: 16px; background: white; border-radius: 8px; border: 1px solid #eee; }
+    .cell h3 { margin: 0 0 4px; font-size: 16px; }
+    .cell-stats { font-size: 13px; color: #666; margin-bottom: 12px; }
+    .reps { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+    .rep { padding: 12px; border: 1px solid #eee; border-radius: 6px; background: #fff; }
+    .rep-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; font-size: 12px; }
+    .rep-num { font-weight: 600; }
+    .metric { color: #666; font-family: 'SF Mono', Menlo, monospace; font-size: 11px; }
+    .badge { padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+    .badge.pass { background: #dcfce7; color: #14532d; }
+    .badge.fail { background: #fee2e2; color: #7f1d1d; }
+    .badge.blocked { background: #fef3c7; color: #78350f; }
+    .reason { font-size: 11px; color: #b91c1c; padding: 4px 8px; background: #fef2f2; border-radius: 4px; margin-bottom: 8px; font-family: 'SF Mono', Menlo, monospace; }
+    video { width: 100%; max-height: 240px; border-radius: 4px; background: #000; }
+    .no-video { padding: 32px; text-align: center; color: #aaa; font-size: 12px; background: #f5f5f5; border-radius: 4px; }
+    details { margin-top: 8px; }
+    details summary { font-size: 11px; color: #666; cursor: pointer; }
+    details pre { margin-top: 4px; padding: 8px; background: #f9f9f9; border-radius: 4px; font-size: 11px; max-height: 200px; overflow: auto; }
+    code { font-family: 'SF Mono', Menlo, monospace; font-size: 12px; background: #f3f3f3; padding: 1px 6px; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <h1>bad gauntlet</h1>
+  <div class="subtitle">
+    ${escapeHtml(summary.repoVersion ?? '')} · git ${escapeHtml(summary.gitSha ?? '')} ·
+    model <code>${escapeHtml(summary.model)}</code> ·
+    ${summary.reps} reps × ${summary.tasks.length} tasks ·
+    generated ${escapeHtml(summary.generatedAt)}
+  </div>
+
+  <div class="rollup">
+    <table>
+      <thead>
+        <tr>
+          <th>framework</th><th>clean pass</th><th>blocked</th><th>wall mean</th><th>wall p95</th><th>tokens mean</th><th>$ mean</th>
+        </tr>
+      </thead>
+      <tbody>${rollupRows}</tbody>
+    </table>
+  </div>
+
+  ${taskSections}
+</body>
+</html>
+`
 }

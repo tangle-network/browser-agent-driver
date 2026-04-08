@@ -1,0 +1,18 @@
+{
+  "id": "stackoverflow-answer-count",
+  "name": "Stack Overflow — accepted answer score + total answers",
+  "goal": "Open https://stackoverflow.com/questions/19590641/ and find:\n  1. The score of the accepted answer (the answer marked with a green checkmark)\n  2. The total number of answers shown for the question\n\nReturn ONLY a JSON object with EXACTLY these two keys:\n  - \"accepted_answer_score\": the score (vote count) of the accepted answer as an integer\n  - \"answer_count\": the total number of answers as an integer (e.g. if the question shows '37 Answers', use 37)\n\nExample correct output:\n  {\"accepted_answer_score\": 1247, \"answer_count\": 37}\n\nThe accepted answer is the one with a green checkmark next to it. The total answer count is shown in the heading like 'NN Answers'. Complete with EXACTLY this JSON object as your final result.",
+  "startUrl": "https://stackoverflow.com/questions/19590641/",
+  "maxTurns": 8,
+  "timeoutMs": 180000,
+  "expectedDurationSec": 30,
+  "expectedTokenBudget": 20000,
+  "tags": ["extraction", "research"],
+  "oracle": {
+    "type": "json-shape-match",
+    "expectedShape": {
+      "accepted_answer_score": "re:^\\d+$",
+      "answer_count": "re:^\\d+$"
+    }
+  }
+}
