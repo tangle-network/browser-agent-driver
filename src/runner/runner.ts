@@ -40,6 +40,10 @@ import { buildOverrideProducers, buildScoutLinkRecommendationText, buildBranchLi
 
 import type { Session } from '../memory/knowledge.js';
 import { RunRegistry } from '../memory/run-registry.js';
+import { TurnEventBus, ensureBus } from './events.js';
+import { DecisionCache } from './decision-cache.js';
+import { matchDeterministicPattern } from './deterministic-patterns.js';
+import type { ResolvedExtensions } from '../extensions/types.js';
 
 /** Build a structured session record from a completed run */
 function buildSession(scenario: Scenario, result: AgentResult): Session {
@@ -94,6 +98,22 @@ export interface BrowserAgentOptions {
   projectStore?: ProjectStore;
   /** Run registry for orchestration-facing manifests */
   runRegistry?: RunRegistry;
+  /**
+   * Optional TurnEventBus for sub-turn observability. The runner emits events
+   * at every phase boundary (observe-start/end, decide-start/end, execute,
+   * verify, recovery, override, turn-start/end). When omitted, a no-op bus is
+   * used so existing call sites are unchanged.
+   *
+   * Subscribers: live SSE viewer, events.jsonl persistence, user extensions.
+   */
+  eventBus?: TurnEventBus;
+  /**
+   * Pre-resolved user extensions (loaded from bad.config.{js,mjs,ts} or via
+   * --extension flags). The runner subscribes them to the event bus, applies
+   * mutateDecision after the LLM decide step, and forwards rule additions to
+   * the brain's system prompt composer.
+   */
+  extensions?: ResolvedExtensions;
 }
 
 export class BrowserAgent {
@@ -108,6 +128,14 @@ export class BrowserAgent {
   private knowledge?: AppKnowledge;
   private selectorCache?: SelectorCache;
   private cachedPostState: PageState | undefined;
+  private bus: TurnEventBus;
+  private currentRunId = '';
+  // In-session decision cache. Lazy-skips brain.decide() when the (snapshot,
+  // url, goal, last-effect, budget-bucket) is byte-identical to a previous
+  // turn in this run. The cache is fresh per `run()` invocation — never
+  // persists, never crosses runs.
+  private decisionCache?: DecisionCache;
+  private extensions?: ResolvedExtensions;
 
   constructor(options: BrowserAgentOptions) {
     this.driver = options.driver;
@@ -116,6 +144,20 @@ export class BrowserAgent {
     this.onTurn = options.onTurn;
     this.onPhaseTiming = options.onPhaseTiming;
     this.referenceTrajectory = options.referenceTrajectory;
+    this.bus = ensureBus(options.eventBus);
+    this.extensions = options.extensions;
+    if (this.extensions) {
+      // Forward extension-supplied prompt rules into the brain so they get
+      // included in every system prompt build. Domain-keyed rules are
+      // matched per-turn against the current URL inside composeSystemPromptParts.
+      this.brain.setExtensionRules(
+        this.extensions.combinedRules,
+        this.extensions.combinedDomainRules,
+      );
+      // Subscribe extensions to the event bus so onTurnEvent fires for
+      // every emitted event without callers having to wire it up.
+      this.bus.subscribe(this.extensions.fanOutTurnEvent, false);
+    }
     this.projectStore = options.projectStore;
     this.runRegistry = options.runRegistry;
   }
@@ -132,7 +174,20 @@ export class BrowserAgent {
     const runId = scenario.sessionId
       ? `${scenario.sessionId}_${Date.now()}`
       : RunRegistry.generateRunId()
+    this.currentRunId = runId
     const domain = safeHostname(scenario.startUrl || '') || 'unknown'
+
+    // Emit run-started so subscribers (live viewer, events.jsonl sink) can
+    // initialize their state. The bus is a no-op when no eventBus was passed
+    // to the constructor, so this is free for non-live runs.
+    this.bus.emitNow({
+      type: 'run-started',
+      runId,
+      turn: 0,
+      goal: scenario.goal,
+      startUrl: scenario.startUrl,
+      maxTurns,
+    })
 
     const buildResult = (result: Omit<AgentResult, 'phaseTimings' | 'wasteMetrics'>): AgentResult => {
       const agentResult: AgentResult = {
@@ -151,6 +206,17 @@ export class BrowserAgent {
         reason: agentResult.reason,
         turnCount: agentResult.turns.length,
       })
+      // Emit run-completed so the live viewer can swap to a "finished" UI
+      // and the events.jsonl sink can flush its tail.
+      this.bus.emitNow({
+        type: 'run-completed',
+        runId,
+        turn: 0,
+        success: agentResult.success,
+        totalTurns: agentResult.turns.length,
+        totalMs: agentResult.totalMs,
+        ...(agentResult.reason ? { reason: agentResult.reason } : {}),
+      });
       return agentResult
     };
 
@@ -172,6 +238,16 @@ export class BrowserAgent {
     this.brain.reset();
     this.cachedPostState = undefined;
     let executeTimeoutRecoveries = 0;
+
+    // Fresh decision cache per run. The cache is strictly in-session — page
+    // state changes silently between runs and a stale cached decision is a
+    // correctness landmine. Disable via BAD_DECISION_CACHE=0.
+    this.decisionCache = process.env.BAD_DECISION_CACHE === '0'
+      ? undefined
+      : new DecisionCache();
+    // Track the previous turn's expectedEffect so we can include it in the
+    // cache key. Empty string for turn 1.
+    let lastEffectForCacheKey = '';
 
     // Pre-warm the provider connection in parallel with everything else.
     // Without this, turn 1's first LLM call eats 600ms (Anthropic) to
@@ -245,10 +321,18 @@ export class BrowserAgent {
       }
 
       const turnStart = Date.now();
+      this.bus.emitNow({ type: 'turn-started', runId, turn: i });
 
       try {
         // -- 1. Check for recovery before observing --
-        if (turns.length >= 2) {
+        // Only run analyzeRecovery when there's a non-zero error trail. Used
+        // to run unconditionally; lazy-skipping it when there are no recent
+        // errors avoids the per-turn cost on the happy path. (Gen 5 lazy
+        // decision graph computation, change #20 in the pursuit spec.)
+        const hasErrorTrail = turns.length >= 2
+          && (runState.consecutiveErrors > 0
+            || turns.slice(-5).some((t) => t.error || t.verified === false));
+        if (hasErrorTrail) {
           const lastState = turns[turns.length - 1]?.state || { url: '', title: '', snapshot: '' };
           const recovery = analyzeRecovery({
             recentTurns: turns.slice(-5),
@@ -257,6 +341,15 @@ export class BrowserAgent {
           });
 
           if (recovery) {
+            const forcedActionLabel = recovery.forceBrowserAction?.action ?? recovery.forceAction;
+            this.bus.emitNow({
+              type: 'recovery-fired',
+              runId,
+              turn: i,
+              strategy: recovery.strategy,
+              feedback: recovery.feedback,
+              ...(forcedActionLabel ? { forcedAction: forcedActionLabel } : {}),
+            });
             if (this.config.debug) {
               const forced = recovery.forceBrowserAction
                 ? ` (force: ${recovery.forceBrowserAction.action})`
@@ -310,6 +403,7 @@ export class BrowserAgent {
         // -- 2. Observe (with retry) --
         // Reuse the snapshot from verifyEffect if available (no page mutations between them)
         const observeStartedAt = Date.now();
+        this.bus.emitNow({ type: 'observe-started', runId, turn: i });
         const state = this.cachedPostState ?? await withRetry(
           () => this.driver.observe(),
           1, // Observe failures are DOM access issues, not transient — retrying 3x wastes 3s
@@ -322,10 +416,29 @@ export class BrowserAgent {
           scenario.signal,
         );
         this.cachedPostState = undefined;
+        const observeDurationMs = Date.now() - observeStartedAt;
         if (phaseTimings.firstObserveMs === undefined) {
-          phaseTimings.firstObserveMs = Date.now() - observeStartedAt;
+          phaseTimings.firstObserveMs = observeDurationMs;
           this.onPhaseTiming?.('observe', phaseTimings.firstObserveMs);
         }
+        // Snapshot bytes only — never wire the full snapshot, it's huge.
+        // Screenshot data URL travels through observe-completed when vision
+        // is on so the live viewer can render it without a separate fetch.
+        const screenshotDataUrl = state.screenshot
+          ? (state.screenshot.startsWith('data:')
+            ? state.screenshot
+            : `data:image/jpeg;base64,${state.screenshot}`)
+          : undefined;
+        this.bus.emitNow({
+          type: 'observe-completed',
+          runId,
+          turn: i,
+          url: state.url,
+          title: state.title,
+          snapshotBytes: state.snapshot.length,
+          ...(screenshotDataUrl ? { screenshot: screenshotDataUrl } : {}),
+          durationMs: observeDurationMs,
+        });
 
         // Auto-navigate: if we're on about:blank with a startUrl, navigate without
         // consuming an LLM turn. The agent always does wait->navigate on blank pages.
@@ -700,31 +813,124 @@ export class BrowserAgent {
           ? await this.attachDecisionScreenshot(state)
           : state;
 
-        // -- 4. Decide (with retry) --
+        // -- 4. Decide (deterministic patterns → cache → LLM) --
         const decideStartedAt = Date.now();
-        const decision = await withRetry(
-          () => this.brain.decide(
-            scenario.goal,
-            decisionState,
-            finalExtraContext || undefined,
-            { current: i, max: maxTurns },
-            { forceVision },
-          ),
-          retries,
-          retryDelayMs,
-          (attempt, err) => {
-            if (this.config.debug) {
-              console.log(`[Runner] LLM retry ${attempt}: ${err.message}`);
+        this.bus.emitNow({ type: 'decide-started', runId, turn: i });
+
+        // Lazy decisions, level 1: deterministic UI pattern matching. If the
+        // page is a recognized pattern (cookie banner with single Accept,
+        // single-button modal close), the action is obvious and we skip the
+        // LLM entirely. Pattern matchers are bypassed under the same
+        // conditions as the cache below.
+        const previousTurn = turns[turns.length - 1];
+        const canSkipDecide =
+          !forceVision
+          && !finalExtraContext
+          && !previousTurn?.error
+          && !previousTurn?.verificationFailure
+          && process.env.BAD_PATTERN_SKIP !== '0';
+
+        let patternMatch: ReturnType<typeof matchDeterministicPattern> = null;
+        if (canSkipDecide) {
+          patternMatch = matchDeterministicPattern(decisionState);
+        }
+
+        // Lazy decisions, level 2: in-session decision cache.
+        const canUseCache =
+          this.decisionCache !== undefined
+          && canSkipDecide
+          && !patternMatch;
+        const cacheKey = canUseCache
+          ? {
+              snapshotHash: DecisionCache.hashSnapshot(decisionState.snapshot),
+              url: decisionState.url,
+              goal: scenario.goal,
+              lastEffect: lastEffectForCacheKey,
+              budgetBucket: DecisionCache.budgetBucket(i, maxTurns),
             }
-          },
-          scenario.signal,
-        );
+          : undefined;
+        const cached = canUseCache && cacheKey
+          ? this.decisionCache!.get(cacheKey)
+          : undefined;
+
+        let decision: Awaited<ReturnType<Brain['decide']>>;
+        if (patternMatch) {
+          // Pattern match — synthesize a decision, no LLM call.
+          decision = {
+            action: patternMatch.action,
+            raw: '[deterministic-pattern]',
+            reasoning: patternMatch.reasoning,
+            expectedEffect: patternMatch.expectedEffect,
+            tokensUsed: 0,
+            inputTokens: 0,
+            outputTokens: 0,
+          };
+          this.bus.emitNow({
+            type: 'decide-skipped-pattern',
+            runId,
+            turn: i,
+            action: decision.action,
+            patternId: patternMatch.patternId,
+          });
+          if (this.config.debug) {
+            console.log(`[Runner] Pattern SKIP (${patternMatch.patternId}, turn ${i}) — skipping LLM`);
+          }
+        } else if (cached) {
+          // Cache hit — replay the decision, no LLM call.
+          decision = cached.decision;
+          this.bus.emitNow({
+            type: 'decide-skipped-cached',
+            runId,
+            turn: i,
+            action: decision.action,
+            cacheKey: cached.hash,
+          });
+          if (this.config.debug) {
+            console.log(`[Runner] Decision cache HIT (turn ${i}, key ${cached.hash.slice(0, 8)}…) — skipping LLM`);
+          }
+        } else {
+          decision = await withRetry(
+            () => this.brain.decide(
+              scenario.goal,
+              decisionState,
+              finalExtraContext || undefined,
+              { current: i, max: maxTurns },
+              { forceVision },
+            ),
+            retries,
+            retryDelayMs,
+            (attempt, err) => {
+              if (this.config.debug) {
+                console.log(`[Runner] LLM retry ${attempt}: ${err.message}`);
+              }
+            },
+            scenario.signal,
+          );
+          if (cacheKey && this.decisionCache) {
+            // Store the fresh decision so a future identical turn replays it.
+            this.decisionCache.set(cacheKey, decision);
+          }
+        }
+
+        const decideDurationMs = Date.now() - decideStartedAt;
         if (phaseTimings.firstDecideMs === undefined) {
-          phaseTimings.firstDecideMs = Date.now() - decideStartedAt;
+          phaseTimings.firstDecideMs = decideDurationMs;
           this.onPhaseTiming?.('decide', phaseTimings.firstDecideMs);
         }
 
         let { action, nextActions, raw, reasoning, plan, currentStep, expectedEffect, tokensUsed, inputTokens, outputTokens, cacheReadInputTokens, cacheCreationInputTokens, modelUsed } = decision;
+        this.bus.emitNow({
+          type: 'decide-completed',
+          runId,
+          turn: i,
+          action,
+          ...(reasoning ? { reasoning } : {}),
+          ...(expectedEffect ? { expectedEffect } : {}),
+          ...(inputTokens !== undefined ? { inputTokens } : {}),
+          ...(outputTokens !== undefined ? { outputTokens } : {}),
+          ...(cacheReadInputTokens !== undefined ? { cacheReadInputTokens } : {}),
+          durationMs: decideDurationMs,
+        });
 
         // -- 4b. Override pipeline — scored selection of post-decision overrides --
         const overrideCtx: OverrideContext = {
@@ -745,6 +951,46 @@ export class BrowserAgent {
           reasoning = `${reasoning}\n[${overrideWinner.reasoningTag}] ${overrideWinner.feedback}`;
           expectedEffect = overrideWinner.expectedEffect;
           nextActions = [];
+          this.bus.emitNow({
+            type: 'override-applied',
+            runId,
+            turn: i,
+            source: 'override-pipeline',
+            reasoningTag: overrideWinner.reasoningTag,
+            feedback: overrideWinner.feedback,
+          });
+        }
+
+        // -- 4c. User extension mutateDecision (final say) --
+        // Runs AFTER the built-in override pipeline so user extensions can
+        // veto or replace any decision the built-ins might have produced.
+        // Mutations are emitted as override events on the bus for audit.
+        if (this.extensions?.applyMutateDecision) {
+          const mutated = this.extensions.applyMutateDecision(
+            { ...decision, action, reasoning, expectedEffect },
+            {
+              goal: scenario.goal,
+              turn: i,
+              maxTurns,
+              state: decisionState,
+              ...(turns[turns.length - 1]?.error
+                ? { lastError: turns[turns.length - 1]!.error }
+                : {}),
+            },
+          );
+          if (mutated.mutated) {
+            action = mutated.decision.action;
+            reasoning = mutated.decision.reasoning ?? reasoning;
+            expectedEffect = mutated.decision.expectedEffect ?? expectedEffect;
+            this.bus.emitNow({
+              type: 'override-applied',
+              runId,
+              turn: i,
+              source: 'extension',
+              reasoningTag: mutated.sources.join(','),
+              feedback: 'extension mutateDecision applied',
+            });
+          }
         }
 
         const turn: Turn = {
@@ -1114,8 +1360,9 @@ export class BrowserAgent {
         // where withOverlayRecovery × withRetry multiplied a 22s timeout to 135s).
         const executeWallClockMs = 45_000;
         let execResult: Awaited<ReturnType<Driver['execute']>>;
+        const executeStartedAt = Date.now();
+        this.bus.emitNow({ type: 'execute-started', runId, turn: i, action });
         try {
-          const executeStartedAt = Date.now();
           const executePromise = withRetry(
             () => this.driver.execute(action),
             retries,
@@ -1135,7 +1382,26 @@ export class BrowserAgent {
             phaseTimings.firstExecuteMs = Date.now() - executeStartedAt;
             this.onPhaseTiming?.('execute', phaseTimings.firstExecuteMs);
           }
+          this.bus.emitNow({
+            type: 'execute-completed',
+            runId,
+            turn: i,
+            action,
+            success: execResult.success,
+            ...(execResult.error ? { error: execResult.error } : {}),
+            ...(execResult.bounds ? { bounds: execResult.bounds } : {}),
+            durationMs: Date.now() - executeStartedAt,
+          });
         } catch (err) {
+          this.bus.emitNow({
+            type: 'execute-completed',
+            runId,
+            turn: i,
+            action,
+            success: false,
+            error: err instanceof Error ? err.message : String(err),
+            durationMs: Date.now() - executeStartedAt,
+          });
           if (err instanceof StaleRefError) {
             // Stale ref — re-observe and cache for next turn (avoid double observe).
             // Only inject available refs, not the full snapshot — next turn's observe
@@ -1279,6 +1545,8 @@ export class BrowserAgent {
 
         // -- 8. Post-action verification --
         if (expectedEffect && !turn.error) {
+          const verifyStartedAt = Date.now();
+          this.bus.emitNow({ type: 'verify-started', runId, turn: i, expectedEffect });
           const verifyResult = await this.verifyEffect(expectedEffect, state, action.action);
           turn.verified = verifyResult.verified;
           if (!verifyResult.verified) {
@@ -1289,6 +1557,14 @@ export class BrowserAgent {
           } else if (this.config.debug) {
             console.log(`[Runner] Verification passed`);
           }
+          this.bus.emitNow({
+            type: 'verify-completed',
+            runId,
+            turn: i,
+            verified: verifyResult.verified,
+            ...(verifyResult.reason ? { reason: verifyResult.reason } : {}),
+            durationMs: Date.now() - verifyStartedAt,
+          });
         } else if (
           !turn.error
           && !this.cachedPostState
@@ -1309,6 +1585,12 @@ export class BrowserAgent {
         turn.durationMs = Date.now() - turnStart;
         turns.push(turn);
         this.onTurn?.(turn);
+        this.bus.emitNow({ type: 'turn-completed', runId, turn: i, turnArtifact: turn });
+        // Stash the expectedEffect so the NEXT turn's cache key includes it.
+        // The post-action page state depends on what the agent claimed would
+        // happen, so two turns with the same snapshot but different last
+        // effects might warrant different decisions.
+        lastEffectForCacheKey = expectedEffect ?? '';
 
       } catch (err) {
         runState.recordError();

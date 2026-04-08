@@ -88,6 +88,18 @@ export interface TestRunnerOptions {
   onProgress?: (event: ProgressEvent) => void;
   /** Per-worker timeout in ms — stuck workers get force-terminated (default: none) */
   workerTimeoutMs?: number;
+  /**
+   * Resolved user extensions (loaded from bad.config.{js,mjs,ts} or via
+   * --extension flags). Forwarded to every BrowserAgent instance the runner
+   * spawns so onTurnEvent / mutateDecision / addRules fire on every test.
+   */
+  extensions?: import('./extensions/types.js').ResolvedExtensions;
+  /**
+   * Optional shared TurnEventBus. When set, every BrowserAgent uses the same
+   * bus so a live SSE viewer or events.jsonl sink can observe an entire suite
+   * from one subscription. When omitted, each agent gets its own no-op bus.
+   */
+  eventBus?: import('./runner/events.js').TurnEventBus;
 }
 
 interface RunTestOptions {
@@ -145,6 +157,10 @@ export class TestRunner {
   private workerTimeoutMs?: number;
   private defaultTimeoutMs?: number;
   private pendingArtifactOps: Set<Promise<unknown>> = new Set();
+  private extensions?: import('./extensions/types.js').ResolvedExtensions;
+  private eventBus?: import('./runner/events.js').TurnEventBus;
+  /** Suite-level abort signal — wired up by runSuite, consumed by runTest */
+  private suiteSignal?: AbortSignal;
 
   constructor(options: TestRunnerOptions) {
     if (!options.driver && !options.driverFactory) {
@@ -176,6 +192,8 @@ export class TestRunner {
     // Backward-compat: honor non-typed timeoutMs on config if explicitly set by library users.
     this.defaultTimeoutMs = options.defaultTimeoutMs
       ?? ((options.config as AgentConfig & { timeoutMs?: number } | undefined)?.timeoutMs);
+    this.extensions = options.extensions;
+    this.eventBus = options.eventBus;
   }
 
   /** Run a single test case */
@@ -228,6 +246,8 @@ export class TestRunner {
         referenceTrajectory: combinedReference,
         projectStore: this.projectStore,
         runRegistry: this.runRegistry,
+        ...(this.extensions ? { extensions: this.extensions } : {}),
+        ...(this.eventBus ? { eventBus: this.eventBus } : {}),
         onTurn: (turn) => {
           if (timeToFirstTurnMs === undefined) {
             timeToFirstTurnMs = Math.max(0, Date.now() - runStartedAtMs);
@@ -280,10 +300,14 @@ export class TestRunner {
         goal += `\n\nSuccess criteria: ${testCase.successDescription}`;
       }
 
-      // Run with timeout + abort signal
+      // Run with timeout + abort signal (per-test, suite-level, and timeout)
       const timeoutMs = this.resolveTimeoutMs(testCase);
       const timeoutAbortController = timeoutMs && timeoutMs > 0 ? new AbortController() : undefined;
-      const combinedSignal = combineAbortSignals([timeoutAbortController?.signal, options?.signal]);
+      const combinedSignal = combineAbortSignals([
+        timeoutAbortController?.signal,
+        options?.signal,
+        this.suiteSignal,
+      ]);
 
       const runPromise = runner.run({
         goal,
@@ -507,10 +531,13 @@ export class TestRunner {
   }
 
   /** Run a suite of test cases with dependency resolution and optional parallelism */
-  async runSuite(cases: TestCase[]): Promise<TestSuiteResult> {
+  async runSuite(cases: TestCase[], options?: { signal?: AbortSignal }): Promise<TestSuiteResult> {
     // Pre-load pricing database (async fetch, cached 24h)
     loadPricing().catch(() => {});
     this.onProgress?.({ type: 'suite:start', totalTests: cases.length, concurrency: this.concurrency });
+    // Stash the suite-level signal so runTest invocations can pick it up
+    // without changing every internal call site.
+    this.suiteSignal = options?.signal;
 
     let result: TestSuiteResult;
     if (this.concurrency > 1 && this.driverFactory) {
