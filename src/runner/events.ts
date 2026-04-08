@@ -18,7 +18,7 @@
  * `onTurn` callbacks consume). TurnEvent is the live, sub-turn stream.
  */
 
-import type { Action, PageState, Turn } from '../types.js'
+import type { Action, PageState, Plan, Turn } from '../types.js'
 
 // ── Event payload types ─────────────────────────────────────────────────
 
@@ -41,6 +41,11 @@ export type TurnEvent =
   | OverrideAppliedEvent
   | TurnCompletedEvent
   | RunCompletedEvent
+  | PlanStartedEvent
+  | PlanCompletedEvent
+  | PlanStepExecutedEvent
+  | PlanDeviatedEvent
+  | PlanFallbackEnteredEvent
 
 interface BaseEvent {
   /** Monotonic sequence number, assigned by the bus on emit */
@@ -169,6 +174,65 @@ export interface RunCompletedEvent extends BaseEvent {
   totalTurns: number
   totalMs: number
   reason?: string
+}
+
+// ── Plan-then-execute events (Gen 7) ───────────────────────────────────
+
+/** Brain.plan() LLM call started */
+export interface PlanStartedEvent extends BaseEvent {
+  type: 'plan-started'
+  goal: string
+}
+
+/** Brain.plan() returned a plan (or fell back to per-action on parse failure) */
+export interface PlanCompletedEvent extends BaseEvent {
+  type: 'plan-completed'
+  /** Number of steps in the plan */
+  stepCount: number
+  /** The full plan body, for replay reconstruction */
+  plan: Plan
+  /** ms spent in the plan() LLM call */
+  durationMs: number
+  /** Token usage for the plan call */
+  inputTokens?: number
+  outputTokens?: number
+  cacheReadInputTokens?: number
+}
+
+/** A single plan step finished executing (success or failure) */
+export interface PlanStepExecutedEvent extends BaseEvent {
+  type: 'plan-step-executed'
+  /** 1-indexed step number within the plan */
+  stepIndex: number
+  totalSteps: number
+  action: Action
+  /** Did the action execute without error? */
+  executeSuccess: boolean
+  /** Did the post-action verification pass? */
+  verified: boolean
+  /** Time the step took in ms (execute + verify) */
+  durationMs: number
+  /** Reason if verify failed */
+  verifyReason?: string
+}
+
+/** Plan execution deviated — a step failed verification or the executor errored */
+export interface PlanDeviatedEvent extends BaseEvent {
+  type: 'plan-deviated'
+  /** Which step deviated */
+  stepIndex: number
+  totalSteps: number
+  reason: string
+}
+
+/** Runner has fallen back from plan execution to the per-action loop */
+export interface PlanFallbackEnteredEvent extends BaseEvent {
+  type: 'plan-fallback-entered'
+  /** How many plan steps completed before fallback */
+  stepsCompleted: number
+  totalSteps: number
+  /** What was injected into the per-action loop's extraContext */
+  fallbackContext: string
 }
 
 // ── Bus implementation ──────────────────────────────────────────────────

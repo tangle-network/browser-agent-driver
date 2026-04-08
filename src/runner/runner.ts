@@ -12,7 +12,7 @@
 
 import { Brain } from '../brain/index.js';
 import type { Driver } from '../drivers/types.js';
-import type { Scenario, AgentConfig, AgentResult, Turn, PageState, SupervisorConfig, Action } from '../types.js';
+import type { Scenario, AgentConfig, AgentResult, Turn, PageState, SupervisorConfig, Action, Plan } from '../types.js';
 import { analyzeRecovery, detectPersistentTerminalBlocker, detectTerminalBlocker } from '../recovery.js';
 import { solveCaptcha, canAttemptSolve } from '../captcha.js';
 import { StaleRefError, AriaSnapshotHelper } from '../drivers/snapshot.js';
@@ -385,7 +385,117 @@ export class BrowserAgent {
       hardStallWindow: this.config.supervisor?.hardStallWindow ?? DEFAULT_SUPERVISOR.hardStallWindow,
     } as const;
 
-    for (let i = 1; i <= maxTurns; i++) {
+    // Gen 7: planner-first path. When `plannerEnabled: true` (and not
+    // disabled via BAD_PLANNER=0), make a single LLM call to generate the
+    // entire plan, then execute it deterministically. On the first
+    // verification failure or selector miss, fall through to the existing
+    // per-action loop with a [REPLAN] hint injected into extraContext.
+    //
+    // The fallback below the planner is the existing for-loop, unchanged.
+    // Plan execution writes to the same `turns` array, so post-run analysis
+    // sees a unified timeline regardless of which path completed the run.
+    let planFallbackContext = ''
+    let plannerStartTurn = 0
+    const plannerEnabled =
+      this.config.plannerEnabled === true && process.env.BAD_PLANNER !== '0'
+    if (plannerEnabled && scenario.startUrl) {
+      // Need an initial observe so the planner has something to look at.
+      // The runner's main loop also observes on every iteration; this one
+      // primes the planner. The result is also stashed as cachedPostState
+      // so the per-action fallback's first observe is short-circuited.
+      const initialState = await this.driver.observe().catch(() => undefined)
+      if (initialState) {
+        this.cachedPostState = initialState
+        this.bus.emitNow({
+          type: 'plan-started',
+          runId,
+          turn: 0,
+          goal: scenario.goal,
+        })
+        const planResult = await this.brain.plan(scenario.goal, initialState).catch((err) => ({
+          plan: null,
+          raw: '',
+          durationMs: 0,
+          parseError: err instanceof Error ? err.message : String(err),
+        }))
+
+        if (planResult.plan && planResult.plan.steps.length > 0) {
+          this.bus.emitNow({
+            type: 'plan-completed',
+            runId,
+            turn: 0,
+            stepCount: planResult.plan.steps.length,
+            plan: planResult.plan,
+            durationMs: planResult.durationMs,
+            ...(planResult.inputTokens !== undefined ? { inputTokens: planResult.inputTokens } : {}),
+            ...(planResult.outputTokens !== undefined ? { outputTokens: planResult.outputTokens } : {}),
+            ...(planResult.cacheReadInputTokens !== undefined ? { cacheReadInputTokens: planResult.cacheReadInputTokens } : {}),
+          })
+
+          if (this.config.debug) {
+            console.log(`[Runner] Plan generated: ${planResult.plan.steps.length} steps in ${planResult.durationMs}ms`)
+          }
+
+          const planResultRun = await this.executePlan(
+            planResult.plan,
+            scenario,
+            runId,
+            turns,
+            runState,
+            0,
+          )
+
+          if (planResultRun.kind === 'completed') {
+            // Plan finished without deviation. Synthesize a complete turn
+            // if the plan didn't include one explicitly.
+            const lastTurn = turns[turns.length - 1]
+            if (!lastTurn || lastTurn.action.action !== 'complete') {
+              const completeTurn: Turn = {
+                turn: turns.length + 1,
+                state: planResultRun.lastState,
+                action: { action: 'complete', result: planResultRun.finalResult ?? 'Plan executed successfully' },
+                reasoning: 'Plan execution completed',
+                durationMs: 0,
+              }
+              turns.push(completeTurn)
+              this.onTurn?.(completeTurn)
+            }
+            return buildResult({
+              success: true,
+              result: planResultRun.finalResult ?? 'Plan executed successfully',
+              turns,
+              totalMs: Date.now() - startTime,
+            })
+          }
+
+          // Plan deviated. Fall through to the per-action loop with a
+          // [REPLAN] hint injected so the LLM knows where the plan failed
+          // and can recover from the current state.
+          planFallbackContext = `\n[REPLAN] The initial plan deviated at step ${planResultRun.failedStepIndex + 1}/${planResult.plan.steps.length}: ${planResultRun.reason}\nThe runner has fallen back to per-action mode. Continue toward the original goal from the current page state. Do not retry the failed plan step verbatim — diagnose why it failed first.\n`
+          plannerStartTurn = planResultRun.turnsConsumed
+          this.bus.emitNow({
+            type: 'plan-fallback-entered',
+            runId,
+            turn: turns.length,
+            stepsCompleted: planResultRun.failedStepIndex,
+            totalSteps: planResult.plan.steps.length,
+            fallbackContext: planFallbackContext,
+          })
+          if (this.config.debug) {
+            console.log(`[Runner] Plan deviated at step ${planResultRun.failedStepIndex + 1} — falling back to per-action loop`)
+          }
+        } else {
+          // Plan parse failed or returned 0 steps. Don't ship a plan-completed
+          // event — the planner is unavailable for this run. Fall through to
+          // the per-action loop with no fallback context.
+          if (this.config.debug) {
+            console.log(`[Runner] Planner unavailable: ${planResult.parseError ?? 'no plan returned'}`)
+          }
+        }
+      }
+    }
+
+    for (let i = 1 + plannerStartTurn; i <= maxTurns; i++) {
       if (scenario.signal?.aborted) {
         return buildResult({
           success: false,
@@ -904,7 +1014,13 @@ export class BrowserAgent {
         const aiTangleOutputContext = aiTangleOutputCompletion
           ? `\nVERIFIED OUTPUT STATE DETECTED:\n${aiTangleOutputCompletion.feedback}\nReturn a terminal \`complete\` action now with concrete evidence.\n`
           : '';
-        const finalExtraContext = [extraContext, aiTanglePartnerContext, aiTangleOutputContext].filter(Boolean).join('');
+        // Gen 7: include the plan fallback hint on the FIRST per-action turn
+        // after a plan deviation. The hint tells the LLM what failed and from
+        // what point to recover. We only inject it once (consume it after
+        // first use) so it doesn't pollute every subsequent turn.
+        const planFallbackHint = planFallbackContext
+        if (planFallbackContext) planFallbackContext = ''
+        const finalExtraContext = [extraContext, aiTanglePartnerContext, aiTangleOutputContext, planFallbackHint].filter(Boolean).join('');
         const decisionState = forceVision
           ? await this.attachDecisionScreenshot(state)
           : state;
@@ -1830,6 +1946,349 @@ export class BrowserAgent {
    * - "text should appear" -> check snapshot
    * - Generic text match -> check if text appears in snapshot
    */
+  /**
+   * Gen 7: execute a Plan deterministically without re-entering the LLM
+   * between steps. Each step:
+   *   1. Drives the action via driver.execute (existing path, gets bus events)
+   *   2. Verifies the post-condition via verifyExpectedEffect
+   *   3. On success → advance to the next step
+   *   4. On failure → bail and return the deviation context for the
+   *      caller to inject into the per-action fallback loop
+   *
+   * Returns a structured summary so the caller can decide whether to
+   * complete the run, fall back, or replan. Plan execution emits these
+   * events on the bus:
+   *   - plan-step-executed (per step, success or failure)
+   *   - plan-deviated (on first failure)
+   *
+   * Plan steps are wrapped in Turn artifacts and pushed onto the same
+   * `turns` array the per-action loop uses, so post-run analysis sees a
+   * unified timeline. The Turn's `reasoning` field carries the plan
+   * step's rationale, and `verified` carries the verification result.
+   */
+  private async executePlan(
+    plan: Plan,
+    scenario: Scenario,
+    runId: string,
+    turns: Turn[],
+    runState: RunState,
+    startingTurnIndex: number,
+  ): Promise<
+    | { kind: 'completed'; lastState: PageState; finalResult?: string; turnsConsumed: number }
+    | { kind: 'deviated'; lastState: PageState; failedStepIndex: number; reason: string; turnsConsumed: number }
+  > {
+    let currentTurnIndex = startingTurnIndex
+    let lastState: PageState = turns[turns.length - 1]?.state
+      ?? { url: '', title: '', snapshot: '' }
+
+    for (let stepIdx = 0; stepIdx < plan.steps.length; stepIdx++) {
+      if (scenario.signal?.aborted) {
+        return {
+          kind: 'deviated',
+          lastState,
+          failedStepIndex: stepIdx,
+          reason: scenario.signal.reason || 'Cancelled',
+          turnsConsumed: stepIdx,
+        }
+      }
+
+      const step = plan.steps[stepIdx]
+      const stepStartedAt = Date.now()
+      const turnNumber = currentTurnIndex + 1
+      currentTurnIndex++
+
+      // Refresh the snapshot before EVERY step. The plan was built from a
+      // single observe() call at turn 1; later steps may target a different
+      // page entirely (after navigate / click "Next"). The first observe
+      // here is also what verify-against will eventually consume.
+      const preStepState = await this.driver.observe().catch(() => lastState)
+      lastState = preStepState
+
+      // Wrap each plan step in a Turn artifact so post-run analysis (the
+      // viewer, the events.jsonl persistence, the metrics) sees a unified
+      // timeline regardless of whether the runner used the planner or the
+      // per-action loop.
+      const turn: Turn = {
+        turn: turnNumber,
+        state: preStepState,
+        action: step.action,
+        reasoning: step.rationale ?? `Plan step ${stepIdx + 1}/${plan.steps.length}`,
+        expectedEffect: step.expectedEffect,
+        plan: plan.steps.map((s) => s.rationale ?? s.action.action),
+        currentStep: stepIdx,
+        durationMs: 0,
+      }
+
+      // Terminal actions: complete and abort don't go through driver.execute
+      // — the runner handles them as the end of the plan.
+      if (step.action.action === 'complete') {
+        turn.durationMs = Date.now() - stepStartedAt
+        turns.push(turn)
+        this.onTurn?.(turn)
+        this.bus.emitNow({
+          type: 'plan-step-executed',
+          runId,
+          turn: turnNumber,
+          stepIndex: stepIdx + 1,
+          totalSteps: plan.steps.length,
+          action: step.action,
+          executeSuccess: true,
+          verified: true,
+          durationMs: turn.durationMs,
+        })
+        return {
+          kind: 'completed',
+          lastState,
+          finalResult: step.action.result,
+          turnsConsumed: stepIdx + 1,
+        }
+      }
+      if (step.action.action === 'abort') {
+        turn.durationMs = Date.now() - stepStartedAt
+        turns.push(turn)
+        this.onTurn?.(turn)
+        this.bus.emitNow({
+          type: 'plan-deviated',
+          runId,
+          turn: turnNumber,
+          stepIndex: stepIdx + 1,
+          totalSteps: plan.steps.length,
+          reason: `plan aborted: ${step.action.reason}`,
+        })
+        return {
+          kind: 'deviated',
+          lastState,
+          failedStepIndex: stepIdx,
+          reason: `plan aborted: ${step.action.reason}`,
+          turnsConsumed: stepIdx + 1,
+        }
+      }
+
+      // Execute the action via the existing driver path. This emits
+      // execute-started / execute-completed events on the bus exactly
+      // like the per-action loop does.
+      //
+      // CRITICAL: each plan step gets a 10s wall-clock cap (vs the driver's
+      // default 30s). Plan steps assume every selector was just observed in
+      // the snapshot at planning time — a missing element should fail
+      // FAST and trigger fallback to per-action mode, NOT block the run for
+      // 30s. Batch verbs already enforce a 5s per-field cap internally,
+      // but single-step type/click/press/select use the full 30s default.
+      this.bus.emitNow({ type: 'execute-started', runId, turn: turnNumber, action: step.action })
+      const execStartedAt = Date.now()
+      const planStepTimeoutMs = 10_000
+      let execResult: Awaited<ReturnType<Driver['execute']>>
+      try {
+        execResult = await Promise.race([
+          this.driver.execute(step.action),
+          new Promise<Awaited<ReturnType<Driver['execute']>>>((resolve) =>
+            setTimeout(
+              () => resolve({ success: false, error: `plan step wall-clock timeout after ${planStepTimeoutMs}ms` }),
+              planStepTimeoutMs,
+            ),
+          ),
+        ])
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        execResult = { success: false, error: message }
+      }
+      const execDurationMs = Date.now() - execStartedAt
+      this.bus.emitNow({
+        type: 'execute-completed',
+        runId,
+        turn: turnNumber,
+        action: step.action,
+        success: execResult.success,
+        ...(execResult.error ? { error: execResult.error } : {}),
+        ...(execResult.bounds ? { bounds: execResult.bounds } : {}),
+        durationMs: execDurationMs,
+      })
+
+      if (!execResult.success) {
+        turn.error = execResult.error
+        turn.durationMs = Date.now() - stepStartedAt
+        turn.verified = false
+        turn.verificationFailure = `execute failed: ${execResult.error}`
+        turns.push(turn)
+        this.onTurn?.(turn)
+        runState.recordError()
+        this.bus.emitNow({
+          type: 'plan-step-executed',
+          runId,
+          turn: turnNumber,
+          stepIndex: stepIdx + 1,
+          totalSteps: plan.steps.length,
+          action: step.action,
+          executeSuccess: false,
+          verified: false,
+          durationMs: Date.now() - stepStartedAt,
+          ...(execResult.error ? { verifyReason: execResult.error } : {}),
+        })
+        this.bus.emitNow({
+          type: 'plan-deviated',
+          runId,
+          turn: turnNumber,
+          stepIndex: stepIdx + 1,
+          totalSteps: plan.steps.length,
+          reason: `execute failed: ${execResult.error}`,
+        })
+        return {
+          kind: 'deviated',
+          lastState,
+          failedStepIndex: stepIdx,
+          reason: `execute failed at step ${stepIdx + 1}: ${execResult.error}`,
+          turnsConsumed: stepIdx + 1,
+        }
+      }
+
+      runState.clearConsecutiveErrors()
+      if (execResult.bounds) turn.actionBounds = execResult.bounds
+
+      // Verify the post-condition. We re-observe to get the post-action
+      // state, then run the same verifyExpectedEffect helper the per-action
+      // loop uses. The fresh observe is also stashed in cachedPostState so
+      // the next step's pre-step observe is short-circuited (Gen 4 lazy
+      // observe optimization).
+      this.bus.emitNow({
+        type: 'verify-started',
+        runId,
+        turn: turnNumber,
+        expectedEffect: step.expectedEffect,
+      })
+      const verifyStartedAt = Date.now()
+      // Auto-pass list — these actions either don't observably mutate
+      // the page state OR they're self-verifying (the underlying Playwright
+      // call throws on real failure, so a successful return means the
+      // mutation actually happened). Strict expectedEffect verification
+      // would generate false negatives on the per-action loop fallback for
+      // these. Plan execution trusts the execute result.
+      //
+      // - wait / scroll / hover: don't mutate observable snapshot state
+      // - runScript / evaluate / verifyPreview: meta actions
+      // - fill / clickSequence: self-verifying (Playwright throws on miss),
+      //   AND input values don't always reflect in the ARIA snapshot, so
+      //   the permissive "did state change?" check would also miss them
+      const isAutoPass =
+        step.action.action === 'wait'
+        || step.action.action === 'scroll'
+        || step.action.action === 'hover'
+        || step.action.action === 'runScript'
+        || step.action.action === 'evaluate'
+        || step.action.action === 'verifyPreview'
+        || step.action.action === 'fill'
+        || step.action.action === 'clickSequence'
+      // Settle wait for mutating actions, mirroring verifyEffect's logic
+      const needsSettleWait = step.action.action === 'click'
+        || step.action.action === 'navigate'
+        || step.action.action === 'press'
+        || step.action.action === 'select'
+        || step.action.action === 'fill'
+        || step.action.action === 'clickSequence'
+      const observePromise = this.driver.observe().catch(() => preStepState)
+      if (needsSettleWait) {
+        await Promise.all([
+          observePromise,
+          new Promise((r) => setTimeout(r, 50)),
+        ])
+      }
+      const postStepState = await observePromise
+      this.cachedPostState = postStepState
+      lastState = postStepState
+
+      // Plan verification is more permissive than per-action verification:
+      // a step passes if (a) it's a non-mutating action, OR (b) the strict
+      // verifier passes, OR (c) the snapshot/url changed in any meaningful
+      // way (the action did SOMETHING). Strict failure-on-no-change is
+      // appropriate for the per-action loop where the agent can recover,
+      // but plan execution needs to push forward unless there's positive
+      // evidence of failure.
+      let verifyResult: { verified: boolean; reason?: string }
+      if (isAutoPass) {
+        verifyResult = { verified: true }
+      } else {
+        const strictResult = verifyExpectedEffect({
+          expectedEffect: step.expectedEffect,
+          preActionState: preStepState,
+          postActionState: postStepState,
+        })
+        if (strictResult.verified) {
+          verifyResult = strictResult
+        } else {
+          // Permissive fallback: did the page change at all?
+          const stateChanged =
+            preStepState.url !== postStepState.url
+            || preStepState.title !== postStepState.title
+            || preStepState.snapshot !== postStepState.snapshot
+          if (stateChanged) {
+            verifyResult = { verified: true }
+          } else {
+            verifyResult = strictResult
+          }
+        }
+      }
+      turn.verified = verifyResult.verified
+      if (!verifyResult.verified) {
+        turn.verificationFailure = verifyResult.reason
+      }
+      turn.durationMs = Date.now() - stepStartedAt
+      turns.push(turn)
+      this.onTurn?.(turn)
+
+      this.bus.emitNow({
+        type: 'verify-completed',
+        runId,
+        turn: turnNumber,
+        verified: verifyResult.verified,
+        ...(verifyResult.reason ? { reason: verifyResult.reason } : {}),
+        durationMs: Date.now() - verifyStartedAt,
+      })
+      this.bus.emitNow({
+        type: 'plan-step-executed',
+        runId,
+        turn: turnNumber,
+        stepIndex: stepIdx + 1,
+        totalSteps: plan.steps.length,
+        action: step.action,
+        executeSuccess: true,
+        verified: verifyResult.verified,
+        durationMs: Date.now() - stepStartedAt,
+        ...(verifyResult.reason ? { verifyReason: verifyResult.reason } : {}),
+      })
+
+      if (!verifyResult.verified) {
+        this.bus.emitNow({
+          type: 'plan-deviated',
+          runId,
+          turn: turnNumber,
+          stepIndex: stepIdx + 1,
+          totalSteps: plan.steps.length,
+          reason: `verification failed at step ${stepIdx + 1}: ${verifyResult.reason ?? 'expected effect not observed'}`,
+        })
+        return {
+          kind: 'deviated',
+          lastState,
+          failedStepIndex: stepIdx,
+          reason: `verification failed at step ${stepIdx + 1}: ${verifyResult.reason ?? 'expected effect not observed'}`,
+          turnsConsumed: stepIdx + 1,
+        }
+      }
+    }
+
+    // All steps verified BUT the plan ended without an explicit complete/abort.
+    // This means the planner emitted a finite sequence of "work" steps and
+    // didn't terminate. The right behavior is NOT to fabricate a complete —
+    // we treat plan exhaustion as a deviation that triggers fallback to the
+    // per-action loop. The per-action loop will continue from the current
+    // state and emit `complete` when the goal is genuinely met.
+    return {
+      kind: 'deviated',
+      lastState,
+      failedStepIndex: plan.steps.length,
+      reason: 'plan exhausted without an explicit complete or abort step — falling through to per-action loop to finish the task',
+      turnsConsumed: plan.steps.length,
+    }
+  }
+
   private async verifyEffect(
     expectedEffect: string,
     preActionState: PageState,

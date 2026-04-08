@@ -1,11 +1,10 @@
 {
-  "mode": "evolve",
-  "goal": "Mandatory batch fill via runtime hint injection",
-  "status": "converged",
-  "round": 1,
-  "generation": 6,
-  "subgeneration": "6.1",
-  "activePursuit": ".evolve/pursuits/2026-04-08-plan-then-execute-gen6.md",
-  "branch": "gen6-1-mandatory-batch",
-  "updatedAt": "2026-04-09T00:00:00Z"
+  "mode": "pursue",
+  "goal": "Plan-then-execute — one LLM call per strategy, not per action",
+  "status": "evaluated",
+  "round": null,
+  "generation": 7,
+  "activePursuit": ".evolve/pursuits/2026-04-08-plan-then-execute-gen7.md",
+  "branch": "gen7-plan-then-execute",
+  "updatedAt": "2026-04-08T07:45:00Z"
 }

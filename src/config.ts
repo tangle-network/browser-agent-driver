@@ -85,6 +85,8 @@ export interface DriverConfig {
   vision?: boolean;
   visionStrategy?: 'always' | 'never' | 'auto';
   goalVerification?: boolean;
+  /** Gen 7 plan-then-execute: single LLM call generates the full action sequence */
+  plannerEnabled?: boolean;
   qualityThreshold?: number;
   microPlan?: {
     enabled?: boolean;
@@ -297,6 +299,7 @@ export function toAgentConfig(config: DriverConfig): AgentConfig {
     vision: config.vision,
     visionStrategy: config.visionStrategy,
     goalVerification: config.goalVerification,
+    plannerEnabled: config.plannerEnabled,
     qualityThreshold: config.qualityThreshold,
     microPlan: config.microPlan
       ? {
