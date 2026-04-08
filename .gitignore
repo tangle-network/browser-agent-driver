@@ -20,3 +20,5 @@ bench/results/
 .rpc-proxy-cert/
 .rpc-proxy.pid
 mm-*.png
+# Python venv for the browser-use competitive adapter (see docs/COMPETITIVE-EVAL.md)
+.venv-browseruse/
