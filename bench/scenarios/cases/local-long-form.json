@@ -1,0 +1,9 @@
+[
+  {
+    "id": "local-long-form-fill-all",
+    "name": "Local fixture: long-form fill-all (20+ turns)",
+    "startUrl": "__FIXTURE_BASE_URL__/form.html",
+    "goal": "Fill out the entire multi-step account creation form, completing every field across all three steps before submitting:\n\nSTEP 1 (Personal Information):\n- First Name: Jordan\n- Last Name: Rivera\n- Date of Birth: 1990-04-15\n- Gender: select 'other'\nClick Next.\n\nSTEP 2 (Contact Details):\n- Email: jordan.rivera@example.com\n- Phone: 555-0142\n- Street Address: 742 Evergreen Terrace\n- City: Seattle\n- State: select Washington (WA)\n- ZIP Code: 98101\nClick Next.\n\nSTEP 3 (Preferences):\n- Plan: select 'Pro ($9/mo)'\n- Check the SMS notifications box\n- Check the Push notifications box\n- Check the Weekly digest box\n- Bio: 'Senior engineer building reliable browser automation.'\n- Website: https://jordan.example.com\n- Check the Terms of Service box\n- Check the Privacy Policy box\nClick Create Account.\n\nDo not skip any field. Fill them in the order listed above, one at a time. Verify the success message 'Account Created!' appears, then complete with a summary of what you filled in.",
+    "maxTurns": 30
+  }
+]

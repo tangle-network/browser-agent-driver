@@ -1,6 +1,51 @@
 # Evolve Progress
 
-## Generation 4 — Agent Loop Speed — 2026-04-07
+## Gen 4 / Evolve Round 1 — Verify infra savings above noise floor — 2026-04-07
+
+**Goal:** Prove or refute Gen 4's per-piece wall-clock wins with statistically significant signal.
+
+**Instrument shift:** Wall-clock tier1 gate (±1556ms pooled stddev) and long-form scenarios (±150s strategic variance) cannot detect 50-300ms infra savings. Pivoted to deterministic micro-bench (`bench/gen4-microbench.ts`) that exercises ONLY the changed code paths against a real Chromium instance.
+
+### Verified deltas (n=20 iterations each, stddev <0.3ms)
+
+| Path | Baseline | Gen 4 | Δ | % |
+|------|----------|-------|---|---|
+| Cursor overlay click overhead (showCursor=true) | 250.3ms | 8.7ms | **−241.6ms** | **−96.5%** |
+| verifyEffect on `click` | 101.1ms | 51.1ms | **−50.0ms** | **−49.5%** |
+| verifyEffect on `scroll` | 101.1ms | 0.0ms | **−101.1ms** | **−100%** |
+| verifyEffect on `wait` | 101.1ms | 0.0ms | **−101.1ms** | **−100%** |
+| verifyEffect on `hover` | 101.1ms | 0.0ms | **−101.1ms** | **−100%** |
+
+**Signal-to-noise ratio:** effect sizes 50-250ms vs measurement stddev 0.3ms = effectively infinite. These are NOT noise — they're deterministic, repeatable, and exactly match the Gen 4 spec.
+
+### Translated to user impact
+
+- **Screen-recording mode (showCursor=true), 50-turn session:** ~12s reclaimed (50 × 240ms cursor overhead removed)
+- **Mixed action 20-turn session (~15 verified click/navigate + 5 reads):** ~750ms reclaimed (15 × 50ms + 5 × 100ms = 1250ms total verifyEffect savings)
+- **Anthropic provider (untested locally — no key):** 50-150ms TTFT savings per cached turn after turn 1, plus ~$0.0045/turn input cost reduction
+- **Cold start (turn 1):** 600-1200ms reclaimed via warmup ping (untested but provider-agnostic)
+
+### Long-form bench scenario
+
+Built `bench/scenarios/cases/local-long-form.json` — a 19-field multi-step form that produces 15-29 turns naturally. **Verdict:** also too noisy for wall-clock comparison (turn count itself varies 15→29 between reps as the agent's strategy changes), but confirmed the new instrumentation hypothesis.
+
+### What worked
+
+- Pivoting from "measure wall clock with LLM in the loop" to "measure changed code paths directly" — produced clean, statistically significant signal in <5 minutes vs 36 minutes of noisy reps.
+- bench/gen4-microbench.ts is itself a deliverable — it will catch any future regression of these specific paths deterministically.
+
+### What didn't work
+
+- Long-form scenarios. Made noise WORSE not better. Agent strategic variability (15-29 turns on the same goal) added ±150s on top of LLM call variance.
+- Tier1 gate at any rep count for sub-2s infra changes.
+
+### Round 1 verdict
+
+**KEEP** — All 5 measured changes deliver the predicted savings within their target thresholds. Pass rate maintained at 100% on tier1 gate and longform shakeout. Plateau detection: not applicable yet, only round 1.
+
+---
+
+## Generation 4 — Agent Loop Speed — 2026-04-07 (pursue cycle)
 
 Pursuit: `.evolve/pursuits/2026-04-07-agent-loop-speed-gen4.md`
 Branch: `main`

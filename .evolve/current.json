@@ -1,10 +1,10 @@
 {
-  "mode": "pursue",
-  "goal": "Agent loop speed — overlap waits, cache prompts, kill dead time",
-  "status": "evaluated",
-  "round": null,
+  "mode": "evolve",
+  "goal": "Verify Gen 4 infra savings above noise floor with deterministic micro-bench",
+  "status": "converged",
+  "round": 1,
   "generation": 4,
   "activePursuit": ".evolve/pursuits/2026-04-07-agent-loop-speed-gen4.md",
-  "branch": "main",
-  "updatedAt": "2026-04-07T17:05:00Z"
+  "branch": "gen4-agent-loop-speed",
+  "updatedAt": "2026-04-07T18:00:00Z"
 }
