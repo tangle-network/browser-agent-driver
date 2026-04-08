@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest'
-import { CURSOR_OVERLAY_INIT_SCRIPT, CURSOR_ANIMATION_MS } from '../src/drivers/cursor-overlay.js'
+import { CURSOR_OVERLAY_INIT_SCRIPT } from '../src/drivers/cursor-overlay.js'
 
 describe('cursor overlay init script', () => {
   it('parses as valid JavaScript', () => {
@@ -46,10 +46,3 @@ describe('cursor overlay init script', () => {
   })
 })
 
-describe('CURSOR_ANIMATION_MS', () => {
-  it('is a positive number tuned for the CSS transition', () => {
-    expect(typeof CURSOR_ANIMATION_MS).toBe('number')
-    expect(CURSOR_ANIMATION_MS).toBeGreaterThan(0)
-    expect(CURSOR_ANIMATION_MS).toBeLessThan(1000) // sanity bound
-  })
-})

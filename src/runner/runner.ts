@@ -173,6 +173,13 @@ export class BrowserAgent {
     this.cachedPostState = undefined;
     let executeTimeoutRecoveries = 0;
 
+    // Pre-warm the provider connection in parallel with everything else.
+    // Without this, turn 1's first LLM call eats 600ms (Anthropic) to
+    // 1200ms (OpenAI) of cold-start TLS+DNS+HTTP/2 setup. By the time
+    // navigation + first observe complete, the connection pool is hot.
+    // Best-effort: failure is swallowed and turn 1 pays the cold-start.
+    const warmupPromise = this.brain.warmup();
+
     // Start navigation and load memory in parallel. Navigation is async (network
     // I/O) while memory init is sync (readFileSync), so memory completes while
     // the network request is in flight — saving the serial cost of disk reads.
@@ -201,6 +208,10 @@ export class BrowserAgent {
       phaseTimings.initialNavigateMs = Date.now() - navigateStartedAt;
       this.onPhaseTiming?.('navigate', phaseTimings.initialNavigateMs);
     }
+
+    // Don't wait on warmup before entering the loop — it races against the
+    // first observe and decode. Make sure any unhandled rejection is silenced.
+    void warmupPromise.catch(() => undefined);
 
     // Write run manifest at start
     this.runRegistry?.startRun({
@@ -713,7 +724,7 @@ export class BrowserAgent {
           this.onPhaseTiming?.('decide', phaseTimings.firstDecideMs);
         }
 
-        let { action, nextActions, raw, reasoning, plan, currentStep, expectedEffect, tokensUsed, inputTokens, outputTokens, modelUsed } = decision;
+        let { action, nextActions, raw, reasoning, plan, currentStep, expectedEffect, tokensUsed, inputTokens, outputTokens, cacheReadInputTokens, cacheCreationInputTokens, modelUsed } = decision;
 
         // -- 4b. Override pipeline — scored selection of post-decision overrides --
         const overrideCtx: OverrideContext = {
@@ -748,6 +759,8 @@ export class BrowserAgent {
           tokensUsed,
           inputTokens,
           outputTokens,
+          cacheReadInputTokens,
+          cacheCreationInputTokens,
           modelUsed,
           durationMs: Date.now() - turnStart,
         };
@@ -1266,7 +1279,7 @@ export class BrowserAgent {
 
         // -- 8. Post-action verification --
         if (expectedEffect && !turn.error) {
-          const verifyResult = await this.verifyEffect(expectedEffect, state);
+          const verifyResult = await this.verifyEffect(expectedEffect, state, action.action);
           turn.verified = verifyResult.verified;
           if (!verifyResult.verified) {
             turn.verificationFailure = verifyResult.reason;
@@ -1276,6 +1289,17 @@ export class BrowserAgent {
           } else if (this.config.debug) {
             console.log(`[Runner] Verification passed`);
           }
+        } else if (
+          !turn.error
+          && !this.cachedPostState
+          && (action.action === 'wait' || action.action === 'scroll')
+          && executedActions.length === 1
+        ) {
+          // Pure wait/scroll with no expectedEffect: the ARIA tree didn't
+          // structurally change. Reuse preActionState as the cached post-state
+          // so the next loop iteration's observe is skipped. The driver's
+          // refMap is still valid because no observe has reset it.
+          this.cachedPostState = state;
         }
 
         if (executedActions.length > 1) {
@@ -1404,10 +1428,30 @@ export class BrowserAgent {
    */
   private async verifyEffect(
     expectedEffect: string,
-    preActionState: PageState
+    preActionState: PageState,
+    actionType?: Action['action'],
   ): Promise<{ verified: boolean; reason?: string }> {
-    await new Promise(r => setTimeout(r, 100));
-    const postState = await this.driver.observe().catch(() => preActionState);
+    // Only pause for actions that mutate the page in flight (navigation,
+    // clicks that may trigger XHR/route transitions, form submits). For
+    // pure reads, scrolls, hovers, and waits the page state is already
+    // settled by the time execute returns. The previous unconditional
+    // 100ms wait was pure dead time on every turn.
+    const needsSettleWait = actionType === 'click'
+      || actionType === 'navigate'
+      || actionType === 'press'
+      || actionType === 'select';
+    // Kick observe off immediately and let the settle wait race against it.
+    // observe() polls waitForLoadState internally, so the 50ms settle is
+    // really only there to let click handlers schedule their first XHR; we
+    // don't need to *block* on it before starting observe.
+    const observePromise = this.driver.observe().catch(() => preActionState);
+    if (needsSettleWait) {
+      await Promise.all([
+        observePromise,
+        new Promise(r => setTimeout(r, 50)),
+      ]);
+    }
+    const postState = await observePromise;
     this.cachedPostState = postState;
     return verifyExpectedEffect({
       expectedEffect,

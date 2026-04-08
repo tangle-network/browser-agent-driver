@@ -229,8 +229,3 @@ export const CURSOR_OVERLAY_INIT_SCRIPT = `
 })();
 `
 
-/**
- * Wait time after `moveTo` so the cursor animation finishes before the
- * actual action fires. Tuned to match the CSS transition duration.
- */
-export const CURSOR_ANIMATION_MS = 240

@@ -6,7 +6,7 @@
  */
 
 import { generateText } from 'ai';
-import type { ModelMessage, LanguageModel } from 'ai';
+import type { ModelMessage, LanguageModel, SystemModelMessage } from 'ai';
 import type { Action, PageState, AgentConfig, DesignFinding, GoalVerification } from '../types.js';
 import { AriaSnapshotHelper } from '../drivers/snapshot.js';
 import {
@@ -209,6 +209,15 @@ export interface BrainDecision {
   tokensUsed?: number;
   inputTokens?: number;
   outputTokens?: number;
+  /**
+   * Prompt-cache hit tokens (provider-agnostic). Reads from the AI SDK's
+   * unified `usage.inputTokenDetails.cacheReadTokens` field. Populated by:
+   *   - OpenAI / ZAI / GLM via automatic server-side caching
+   *   - Anthropic via the cache_control markers set in buildSystemForDecide
+   */
+  cacheReadInputTokens?: number;
+  /** Prompt-cache write tokens (cache miss, first turn — provider-agnostic) */
+  cacheCreationInputTokens?: number;
   /** Which model handled this decision (for cost tracking with adaptive routing) */
   modelUsed?: string;
 }
@@ -474,17 +483,22 @@ export class Brain {
   }
 
   private async generate(
-    system: string,
+    system: string | SystemModelMessage[],
     messages: ModelMessage[],
     selection?: { provider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend' | 'zai-coding-plan'; model?: string },
     maxOutputTokens = 800,
-  ): Promise<{ text: string; tokensUsed?: number; inputTokens?: number; outputTokens?: number }> {
+  ): Promise<{ text: string; tokensUsed?: number; inputTokens?: number; outputTokens?: number; cacheReadInputTokens?: number; cacheCreationInputTokens?: number }> {
     const providerName = selection?.provider || this.provider;
     const modelName = this.resolveModelName(providerName, selection?.model || this.modelName);
 
+    // Sandbox backend doesn't accept structured system messages — flatten.
+    const systemForSandbox = typeof system === 'string'
+      ? system
+      : system.map(m => m.content).join('\n\n');
+
     if (providerName === 'sandbox-backend') {
       const result = await generateWithSandboxBackend({
-        system,
+        system: systemForSandbox,
         messages,
         model: modelName,
         timeoutMs: this.llmTimeoutMs,
@@ -501,19 +515,77 @@ export class Brain {
       model: modelName,
     });
 
+    // Anthropic supports structured system messages with cache_control. For
+    // every other provider, flatten back to a string — they ignore the array
+    // form's per-message provider options anyway, and some (claude-code,
+    // codex-cli) wrap their own subprocess CLI which only takes plain text.
+    const systemForRequest = providerName === 'anthropic' || typeof system === 'string'
+      ? system
+      : systemForSandbox;
+
     const result = await generateText({
       model,
-      system,
+      system: systemForRequest,
       messages,
       ...this.generationOptions(maxOutputTokens, { provider: providerName, model: modelName }),
       abortSignal: AbortSignal.timeout(this.llmTimeoutMs),
     });
+
+    // Extract prompt-cache stats from the AI SDK's PROVIDER-AGNOSTIC fields:
+    //   result.usage.inputTokenDetails.{cacheReadTokens, cacheWriteTokens}
+    //
+    // These flow uniformly from every provider that supports prompt caching:
+    //   - OpenAI (gpt-5.4, gpt-4.1-mini): AUTOMATIC server-side caching for
+    //     >1024 token prefixes, no markers needed. Returns cached_tokens.
+    //   - Anthropic (claude-*): EXPLICIT cache_control markers required (we
+    //     set them in buildSystemForDecide). Returns cache_read_input_tokens.
+    //   - ZAI / GLM (zai-coding-plan via OpenAI-compatible endpoint): AUTOMATIC
+    //     server-side caching, returns cached_tokens in prompt_tokens_details.
+    //   - Google Gemini: explicit `cachedContent` ID-based caching (different
+    //     paradigm — not currently exercised).
+    //
+    // The unified inputTokenDetails fields mean we get cache observability
+    // for free across providers without per-provider extraction code.
+    const inputDetails = result.usage?.inputTokenDetails as
+      | { cacheReadTokens?: number | null; cacheWriteTokens?: number | null }
+      | undefined;
+    let cacheReadInputTokens = typeof inputDetails?.cacheReadTokens === 'number'
+      ? inputDetails.cacheReadTokens
+      : undefined;
+    let cacheCreationInputTokens = typeof inputDetails?.cacheWriteTokens === 'number'
+      ? inputDetails.cacheWriteTokens
+      : undefined;
+    // Fallback: some providers expose cache stats only via providerMetadata.
+    // Anthropic uses cacheReadInputTokens / cacheCreationInputTokens directly,
+    // OpenAI sometimes lands cached_tokens under providerMetadata.openai.
+    if (cacheReadInputTokens === undefined || cacheCreationInputTokens === undefined) {
+      const meta = result.providerMetadata as Record<string, Record<string, unknown>> | undefined;
+      const anthropicMeta = meta?.anthropic;
+      const openaiMeta = meta?.openai;
+      if (cacheReadInputTokens === undefined) {
+        const fromAnthropic = typeof anthropicMeta?.cacheReadInputTokens === 'number'
+          ? (anthropicMeta.cacheReadInputTokens as number)
+          : undefined;
+        const fromOpenAI = typeof openaiMeta?.cachedPromptTokens === 'number'
+          ? (openaiMeta.cachedPromptTokens as number)
+          : undefined;
+        cacheReadInputTokens = fromAnthropic ?? fromOpenAI;
+      }
+      if (cacheCreationInputTokens === undefined) {
+        const fromAnthropic = typeof anthropicMeta?.cacheCreationInputTokens === 'number'
+          ? (anthropicMeta.cacheCreationInputTokens as number)
+          : undefined;
+        cacheCreationInputTokens = fromAnthropic;
+      }
+    }
 
     return {
       text: result.text,
       tokensUsed: result.usage?.totalTokens,
       inputTokens: result.usage?.inputTokens ?? undefined,
       outputTokens: result.usage?.outputTokens ?? undefined,
+      cacheReadInputTokens,
+      cacheCreationInputTokens,
     };
   }
 
@@ -543,34 +615,112 @@ export class Brain {
    * Saves ~800 tokens per turn on simple navigation tasks.
    */
   private buildSystemPrompt(goal: string, state: PageState, turn: number): string {
-    // If a custom systemPrompt was set via config, use it verbatim
-    if (this.systemPrompt !== SYSTEM_PROMPT) return this.systemPrompt
+    return this.composeSystemPromptParts(goal, state, turn).join('')
+  }
 
-    let prompt = CORE_RULES
+  /**
+   * Same as buildSystemPrompt but returns the parts so the caller can decide
+   * how to send them. For Anthropic, decide() ships them as a SystemModelMessage[]
+   * with cache_control on the stable CORE_RULES prefix; other providers join.
+   *
+   * The first slot is ALWAYS CORE_RULES (or the user's custom override) so the
+   * cache breakpoint placement is deterministic.
+   */
+  private composeSystemPromptParts(goal: string, state: PageState, turn: number): string[] {
+    if (this.systemPrompt !== SYSTEM_PROMPT) return [this.systemPrompt]
 
-    // Search rules: page has searchbox/combobox roles or URL contains /search
+    const parts: string[] = [CORE_RULES]
     const snapshotSample = state.snapshot.length > 4000 ? state.snapshot.slice(0, 4000) : state.snapshot
     if (SEARCH_SNAPSHOT_PATTERN.test(snapshotSample) || /\/search\b/i.test(state.url)) {
-      prompt += SEARCH_RULES
+      parts.push(SEARCH_RULES)
     }
-
-    // Data extraction rules: goal mentions extraction-related keywords
     if (DATA_EXTRACTION_PATTERN.test(goal)) {
-      prompt += DATA_EXTRACTION_RULES
+      parts.push(DATA_EXTRACTION_RULES)
     }
-
-    // Heavy page rules: large snapshot or late in the run
     if (state.snapshot.length > 10_000 || turn > 10) {
-      prompt += HEAVY_PAGE_RULES
+      parts.push(HEAVY_PAGE_RULES)
     }
+    parts.push(REASONING_SUFFIX)
+    return parts
+  }
 
-    prompt += REASONING_SUFFIX
-    return prompt
+  /**
+   * Build the system prompt for `decide()` in the form best suited to the
+   * active provider:
+   *   - Anthropic: a SystemModelMessage[] with `cache_control: ephemeral`
+   *     on the CORE_RULES slot. Subsequent turns get a cache hit on the
+   *     ~1500-token prefix (90% cheaper input + faster TTFT).
+   *   - Everything else: a single concatenated string (current behavior).
+   *
+   * Custom system prompts (set via config) are passed verbatim — caching
+   * is opt-in via the default prompt path only.
+   */
+  private buildSystemForDecide(
+    goal: string,
+    state: PageState,
+    turn: number,
+    providerName: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend' | 'zai-coding-plan',
+  ): string | SystemModelMessage[] {
+    const parts = this.composeSystemPromptParts(goal, state, turn)
+    if (providerName !== 'anthropic' || this.systemPrompt !== SYSTEM_PROMPT || parts.length === 0) {
+      return parts.join('')
+    }
+    // Anthropic path: first slot is CORE_RULES (cached), remaining parts ship
+    // as a separate uncached system message so the prefix stays byte-stable
+    // across turns and the cache hits.
+    const corePart: SystemModelMessage = {
+      role: 'system',
+      content: parts[0],
+      providerOptions: {
+        anthropic: {
+          cacheControl: { type: 'ephemeral' },
+        },
+      },
+    }
+    if (parts.length === 1) return [corePart]
+    return [corePart, { role: 'system', content: parts.slice(1).join('') }]
   }
 
   /** Reset conversation history (call between scenarios) */
   reset(): void {
     this.history = [];
+  }
+
+  /**
+   * Pre-warm the provider connection: instantiate the model client and fire a
+   * tiny generateText so DNS+TLS+HTTP/2 keep-alive are established BEFORE
+   * turn 1's decide call. Without this, turn 1's first LLM call eats 600ms
+   * (Anthropic) to 1200ms (OpenAI) of cold-start that has nothing to do with
+   * model latency.
+   *
+   * Cost: ~1 input token + 1 output token per run (negligible). Skips
+   * silently for CLI-spawning providers (claude-code, codex-cli) where
+   * connection warmup doesn't apply, and for sandbox-backend.
+   *
+   * Disable via BAD_NO_WARMUP=1 if a provider rejects 1-token calls.
+   */
+  async warmup(): Promise<void> {
+    if (process.env.BAD_NO_WARMUP === '1') return;
+    if (
+      this.provider === 'codex-cli'
+      || this.provider === 'claude-code'
+      || this.provider === 'sandbox-backend'
+    ) {
+      return;
+    }
+    try {
+      const model = await this.getModel();
+      // 1-token "ping" — provider charges for the input but it's the cheapest
+      // possible request shape. Errors are swallowed; warmup is best-effort.
+      await generateText({
+        model,
+        messages: [{ role: 'user', content: 'hi' }],
+        ...this.generationOptions(1),
+        abortSignal: AbortSignal.timeout(10_000),
+      }).catch(() => undefined);
+    } catch {
+      // Best-effort: any failure here just means turn 1 pays the cold-start.
+    }
   }
 
   /** Get current conversation history */
@@ -859,9 +1009,9 @@ ${visibleSnapshot}`;
       { role: 'user', content: userContent },
     ];
 
-    const dynamicSystemPrompt = useCompactFirstTurn
+    const dynamicSystemPrompt: string | SystemModelMessage[] = useCompactFirstTurn
       ? FIRST_TURN_COMPACT_PROMPT
-      : this.buildSystemPrompt(goal, state, turnInfo?.current ?? 1)
+      : this.buildSystemForDecide(goal, state, turnInfo?.current ?? 1, effectiveProvider)
 
     const modelOpts = { provider: effectiveProvider, model: effectiveModel };
     // Bump output budget near max turns so data-heavy completions don't truncate
@@ -873,6 +1023,8 @@ ${visibleSnapshot}`;
     let tokensUsed = result.tokensUsed;
     let inputTokens = result.inputTokens;
     let outputTokens = result.outputTokens;
+    let cacheReadInputTokens = result.cacheReadInputTokens;
+    let cacheCreationInputTokens = result.cacheCreationInputTokens;
 
     if (!raw) {
       throw new Error('Brain.decide: LLM returned empty response — possible rate limit or model error');
@@ -907,6 +1059,12 @@ ${visibleSnapshot}`;
           tokensUsed = (tokensUsed ?? 0) + (retryResult.tokensUsed ?? 0);
           inputTokens = (inputTokens ?? 0) + (retryResult.inputTokens ?? 0);
           outputTokens = (outputTokens ?? 0) + (retryResult.outputTokens ?? 0);
+          if (retryResult.cacheReadInputTokens !== undefined) {
+            cacheReadInputTokens = (cacheReadInputTokens ?? 0) + retryResult.cacheReadInputTokens;
+          }
+          if (retryResult.cacheCreationInputTokens !== undefined) {
+            cacheCreationInputTokens = (cacheCreationInputTokens ?? 0) + retryResult.cacheCreationInputTokens;
+          }
         }
       } catch {
         // Retry failed — fall through with original wait(1000) fallback
@@ -929,6 +1087,8 @@ ${visibleSnapshot}`;
       tokensUsed,
       inputTokens,
       outputTokens,
+      cacheReadInputTokens,
+      cacheCreationInputTokens,
       modelUsed: effectiveModel,
     };
   }

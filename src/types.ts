@@ -315,6 +315,13 @@ export interface Turn {
   inputTokens?: number;
   /** Output (completion) tokens for this turn */
   outputTokens?: number;
+  /**
+   * Prompt-cache hit tokens (provider-agnostic). Populated by OpenAI/ZAI/GLM
+   * automatic server-side caching and by Anthropic explicit cache_control.
+   */
+  cacheReadInputTokens?: number;
+  /** Prompt-cache write tokens (cache miss, first turn) */
+  cacheCreationInputTokens?: number;
   /** Which model handled this turn (for adaptive routing cost tracking) */
   modelUsed?: string;
   /** Time taken for this turn in ms */
