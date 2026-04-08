@@ -246,4 +246,180 @@ describe('BrowserAgent.executePlan', () => {
     expect(turns[0].expectedEffect).toBe('waited')
     await setup.browser.close()
   })
+
+  // Gen 7.2: when the planner emits runScript→complete with placeholder
+  // values in the complete result, the runner substitutes the runScript's
+  // actual output as the final result. Without this, extraction tasks
+  // would always return the planner's fabricated values (null, etc.) and
+  // fail their oracles. See task #108 / docs/COMPETITIVE-EVAL.md.
+  it('Gen 7.2: substitutes runScript output when complete.result has placeholder pattern', async () => {
+    const setup = await setupAgent()
+    const internals = setup.agent as unknown as AgentInternals
+    const plan: Plan = {
+      steps: [
+        {
+          action: {
+            action: 'runScript',
+            script: '(() => JSON.stringify({totalUsers: "12,847", activeSessions: "3,421", revenue: "$48,290"}))()',
+          },
+          expectedEffect: 'JSON string returned with the three metric values',
+          rationale: 'extract metrics',
+        },
+        {
+          action: {
+            action: 'complete',
+            // Planner-fabricated placeholders — totalUsers/activeSessions/revenue are null
+            // because at planning time the planner couldn't know the runScript output.
+            result: '{"totalUsers":null,"activeSessions":null,"revenue":null}',
+          },
+          expectedEffect: 'task complete',
+          rationale: 'finish',
+        },
+      ],
+    }
+    const turns: Turn[] = []
+    const result = await internals.executePlan(plan, SCENARIO, 'run_test_substitute', turns, new RunState(10), 0)
+    expect(result.kind).toBe('completed')
+    if (result.kind !== 'completed') throw new Error('narrow')
+    // The substituted finalResult should be the runScript output (real values),
+    // NOT the planner's placeholder JSON.
+    expect(result.finalResult).toContain('12,847')
+    expect(result.finalResult).toContain('3,421')
+    expect(result.finalResult).toContain('$48,290')
+    expect(result.finalResult).not.toMatch(/:\s*null\b/)
+    // The complete-step turn should be flagged as substituted in its reasoning
+    // for forensics.
+    const completeTurn = turns[turns.length - 1]
+    expect(completeTurn.action.action).toBe('complete')
+    expect(completeTurn.reasoning).toMatch(/Gen 7.2 substituted/)
+    await setup.browser.close()
+  })
+
+  // Gen 7.2: when the planner correctly emits ONLY runScript (no complete)
+  // for an extraction task, the runner should auto-emit a complete with the
+  // runScript output instead of falling through to the per-action loop.
+  // This is the supply side of the planner-prompt rule #7 in src/brain/index.ts.
+  it('Gen 7.2: auto-completes with runScript output when plan ends with successful runScript', async () => {
+    const setup = await setupAgent()
+    const internals = setup.agent as unknown as AgentInternals
+    const plan: Plan = {
+      steps: [
+        {
+          action: {
+            action: 'runScript',
+            script: '(() => JSON.stringify({totalUsers: "12,847", revenue: "$48,290"}))()',
+          },
+          expectedEffect: 'extracted JSON values',
+          rationale: 'extract metrics — no complete step per Gen 7.2 prompt rule',
+        },
+      ],
+    }
+    const turns: Turn[] = []
+    const result = await internals.executePlan(plan, SCENARIO, 'run_test_auto_complete', turns, new RunState(10), 0)
+    // Should be completed (not deviated), with the runScript output as the result.
+    expect(result.kind).toBe('completed')
+    if (result.kind !== 'completed') throw new Error('narrow')
+    expect(result.finalResult).toContain('12,847')
+    expect(result.finalResult).toContain('$48,290')
+    // turnsConsumed should be plan.steps.length + 1 (the synthesized complete turn)
+    expect(result.turnsConsumed).toBe(2)
+    // The synthesized complete turn should be in the shared turns array with
+    // a Gen 7.2 marker for forensics.
+    const lastTurn = turns[turns.length - 1]
+    expect(lastTurn.action.action).toBe('complete')
+    expect(lastTurn.reasoning).toMatch(/Gen 7.2 auto-complete/)
+    await setup.browser.close()
+  })
+
+  // Negative: if a runScript-only plan returns empty output, we should NOT
+  // auto-complete. Fall through to the per-action loop (deviated).
+  it('Gen 7.2: does NOT auto-complete when runScript output is empty', async () => {
+    const setup = await setupAgent()
+    const internals = setup.agent as unknown as AgentInternals
+    const plan: Plan = {
+      steps: [
+        {
+          action: { action: 'runScript', script: '(() => "")()' },
+          expectedEffect: 'noop',
+        },
+      ],
+    }
+    const turns: Turn[] = []
+    const result = await internals.executePlan(plan, SCENARIO, 'run_test_no_auto_empty', turns, new RunState(10), 0)
+    expect(result.kind).toBe('deviated')
+    if (result.kind !== 'deviated') throw new Error('narrow')
+    expect(result.reason).toMatch(/exhausted/)
+    await setup.browser.close()
+  })
+
+  // Negative test: a complete with a clean (non-placeholder) result should
+  // pass through unchanged even if there was a runScript earlier.
+  it('Gen 7.2: leaves complete.result unchanged when there are no placeholders', async () => {
+    const setup = await setupAgent()
+    const internals = setup.agent as unknown as AgentInternals
+    const plan: Plan = {
+      steps: [
+        {
+          action: { action: 'runScript', script: '(() => "ignored")()' },
+          expectedEffect: 'noop',
+        },
+        {
+          action: {
+            action: 'complete',
+            // Planner already knew the answer (e.g. a fixed-text task)
+            result: 'Form was submitted successfully and the success banner is visible.',
+          },
+          expectedEffect: 'done',
+        },
+      ],
+    }
+    const turns: Turn[] = []
+    const result = await internals.executePlan(plan, SCENARIO, 'run_test_no_substitute', turns, new RunState(10), 0)
+    expect(result.kind).toBe('completed')
+    if (result.kind !== 'completed') throw new Error('narrow')
+    expect(result.finalResult).toBe('Form was submitted successfully and the success banner is visible.')
+    await setup.browser.close()
+  })
+})
+
+// Pure unit tests on the placeholder detection helper. No fixture, no driver.
+describe('hasPlaceholderPattern', () => {
+  // Imported lazily to keep the integration suite above the unit suite.
+  let detect: (text: string) => boolean
+
+  beforeAll(async () => {
+    const mod = await import('../src/runner/runner.js')
+    detect = mod.hasPlaceholderPattern
+  })
+
+  it('detects JSON null literals', () => {
+    expect(detect('{"x": null, "y": 5}')).toBe(true)
+    expect(detect('{"a":null}')).toBe(true)
+    expect(detect('[null, 1, 2]')).toBe(true)
+  })
+
+  it('detects angle-bracket placeholder phrases', () => {
+    expect(detect('result: <from prior step>')).toBe(true)
+    expect(detect('value is <placeholder>')).toBe(true)
+    expect(detect('<value from runScript>')).toBe(true)
+    expect(detect('<extracted user count>')).toBe(true)
+    expect(detect('<observed result>')).toBe(true)
+  })
+
+  it('detects double-curly templates', () => {
+    expect(detect('count = {{userCount}}')).toBe(true)
+    expect(detect('{"x": "{{value}}"}')).toBe(true)
+  })
+
+  it('does NOT match clean prose results', () => {
+    expect(detect('Form was submitted successfully.')).toBe(false)
+    expect(detect('The user has 5 active sessions.')).toBe(false)
+    expect(detect('null pointer exception was caught and logged.')).toBe(false) // word "null" in prose, not JSON
+    expect(detect('')).toBe(false)
+  })
+
+  it('does NOT match JSON with real values', () => {
+    expect(detect('{"totalUsers": "12,847", "activeSessions": "3,421"}')).toBe(false)
+    expect(detect('[1, 2, 3]')).toBe(false)
+  })
 })
