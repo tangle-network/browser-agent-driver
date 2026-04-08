@@ -191,6 +191,41 @@ export interface BrowserAgentOptions {
   extensions?: ResolvedExtensions;
 }
 
+/**
+ * Gen 7.2: detect placeholder patterns in a planner-generated complete.result.
+ *
+ * The planner has to commit to its `complete.result` text BEFORE any prior
+ * runScript step actually runs, so on extraction tasks it fabricates
+ * placeholders. We detect those patterns and substitute the runScript
+ * output (deterministic, no extra LLM call).
+ *
+ * Patterns we catch:
+ *   - JSON `null` literals (e.g. `{"x": null, "y": null}`)
+ *   - "<from prior step>", "<placeholder>", "<value from ...>", "<extracted ...>", "<observed ...>"
+ *   - "{{...}}" template markers
+ *
+ * Conservative on purpose — we only substitute when the planner clearly
+ * didn't know real values at planning time. A complete.result that contains
+ * actual data (no nulls, no placeholder markers) passes through unchanged.
+ */
+export function hasPlaceholderPattern(text: string): boolean {
+  if (typeof text !== 'string' || text.length === 0) return false
+  if (/<from prior step>|<placeholder>|<value from|<extracted|<observed|<previous step|<runscript output>/i.test(text)) {
+    return true
+  }
+  if (/\{\{[^}]+\}\}/.test(text)) {
+    return true
+  }
+  // JSON-shape detection: a result that parses as JSON and contains null
+  // values is almost always a planner-fabricated extraction shell. Pure
+  // strings with the word "null" elsewhere don't match because we look
+  // for the JSON null literal pattern (`: null` or `[null`).
+  if (/:\s*null\b|\[\s*null\b/.test(text)) {
+    return true
+  }
+  return false
+}
+
 export class BrowserAgent {
   private driver: Driver;
   private brain: Brain;
@@ -2071,6 +2106,14 @@ export class BrowserAgent {
     let lastState: PageState = turns[turns.length - 1]?.state
       ?? { url: '', title: '', snapshot: '' }
 
+    // Gen 7.2: track the last successful `runScript` output across plan steps
+    // so a downstream `complete` step with placeholder values (null,
+    // "<from prior step>", etc.) can be substituted with the real script
+    // output. The planner has to commit to its `complete.result` text BEFORE
+    // runScript runs, so on extraction tasks it fabricates placeholders.
+    // This deterministic substitution fixes that without an extra LLM call.
+    let lastRunScriptOutput: string | null = null
+
     for (let stepIdx = 0; stepIdx < plan.steps.length; stepIdx++) {
       if (scenario.signal?.aborted) {
         return {
@@ -2123,6 +2166,24 @@ export class BrowserAgent {
       // Terminal actions: complete and abort don't go through driver.execute
       // — the runner handles them as the end of the plan.
       if (step.action.action === 'complete') {
+        // Gen 7.2 placeholder substitution: if the planner emitted a complete
+        // with placeholder values AND we have a real runScript output from
+        // earlier in the plan, use the runScript output as the final result.
+        // Detection is conservative: only substitute when the planner clearly
+        // didn't know real values at planning time (null literals, "<from
+        // prior step>", "{{...}}" templates, "<placeholder>", etc.).
+        let resolvedResult = step.action.result
+        if (
+          lastRunScriptOutput
+          && typeof resolvedResult === 'string'
+          && hasPlaceholderPattern(resolvedResult)
+        ) {
+          if (this.config.debug) {
+            console.log(`[Runner] Gen 7.2: substituting placeholder complete.result with runScript output (${lastRunScriptOutput.length} chars)`)
+          }
+          resolvedResult = lastRunScriptOutput
+          turn.reasoning = `${turn.reasoning ?? ''} [Gen 7.2 substituted runScript output]`.trim()
+        }
         turn.durationMs = Date.now() - stepStartedAt
         turns.push(turn)
         this.onTurn?.(turn)
@@ -2140,7 +2201,7 @@ export class BrowserAgent {
         return {
           kind: 'completed',
           lastState,
-          finalResult: step.action.result,
+          finalResult: resolvedResult,
           turnsConsumed: stepIdx + 1,
         }
       }
@@ -2244,6 +2305,13 @@ export class BrowserAgent {
 
       runState.clearConsecutiveErrors()
       if (execResult.bounds) turn.actionBounds = execResult.bounds
+
+      // Gen 7.2: capture runScript output so a downstream complete step
+      // with placeholder values can be substituted with the real output.
+      // This is the supply side of the placeholder-substitution fix above.
+      if (step.action.action === 'runScript' && typeof execResult.data === 'string' && execResult.data.length > 0) {
+        lastRunScriptOutput = execResult.data
+      }
 
       // Verify the post-condition. We re-observe to get the post-action
       // state, then run the same verifyExpectedEffect helper the per-action
@@ -2372,6 +2440,56 @@ export class BrowserAgent {
           reason: `verification failed at step ${stepIdx + 1}: ${verifyResult.reason ?? 'expected effect not observed'}`,
           turnsConsumed: stepIdx + 1,
         }
+      }
+    }
+
+    // Gen 7.2 auto-complete-from-runScript: if the plan ended without an
+    // explicit complete BUT the last successful step was a runScript with
+    // non-empty output, treat the runScript output as the final result and
+    // synthesize a complete turn. This handles the planner-prompt path where
+    // the planner correctly emits ONLY runScript on extraction tasks (per
+    // rule #7) — without this, we'd fall through to a 4-5 turn per-action
+    // loop that's much slower than necessary.
+    //
+    // Detection: the LAST step in the plan was a `runScript` AND we captured
+    // a non-empty output for it. We don't check intermediate steps because
+    // a plan like [navigate, click, runScript] where runScript is last is
+    // exactly the extraction-task shape we want to short-circuit.
+    const lastStep = plan.steps[plan.steps.length - 1]
+    if (
+      lastStep
+      && lastStep.action.action === 'runScript'
+      && lastRunScriptOutput
+    ) {
+      const synthTurnNumber = currentTurnIndex + 1
+      const synthTurn: Turn = {
+        turn: synthTurnNumber,
+        state: lastState,
+        action: { action: 'complete', result: lastRunScriptOutput },
+        reasoning: 'Gen 7.2 auto-complete: plan ended after runScript, runner emitted complete with the runScript output',
+        durationMs: 0,
+      }
+      turns.push(synthTurn)
+      this.onTurn?.(synthTurn)
+      this.bus.emitNow({
+        type: 'plan-step-executed',
+        runId,
+        turn: synthTurnNumber,
+        stepIndex: plan.steps.length + 1,
+        totalSteps: plan.steps.length + 1,
+        action: synthTurn.action,
+        executeSuccess: true,
+        verified: true,
+        durationMs: 0,
+      })
+      if (this.config.debug) {
+        console.log(`[Runner] Gen 7.2: auto-emitted complete with runScript output (${lastRunScriptOutput.length} chars) after plan exhausted`)
+      }
+      return {
+        kind: 'completed',
+        lastState,
+        finalResult: lastRunScriptOutput,
+        turnsConsumed: plan.steps.length + 1,
       }
     }
 
