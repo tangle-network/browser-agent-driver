@@ -163,17 +163,74 @@ These tools are sometimes confused with `bad` but solve a different layer:
 
 - **[`millionco/expect`](https://github.com/millionco/expect)** — AI agent testing framework. Reads git diffs, generates test plans, runs them in Playwright, reports failures back to the coding agent (Claude Code, Cursor, Copilot, …). It's a *QA productivity layer for AI coding assistants*, not a general-purpose browser agent and not an eval framework. Could conceivably USE something like `bad` underneath instead of raw Playwright. We don't benchmark against it because they don't compete on the same task.
 
-## What we'll learn
+## First head-to-head: bad v0.19.0 vs browser-use 0.12.6 (3 reps × 3 tasks, gpt-5.2, 2026-04-08)
 
-The first thing we want to know: **on the same form-fill task, how does `bad` compare to `browser-use` and `Stagehand`** on:
+3 tasks × 2 frameworks × 3 reps = 18 cells. All runs on the same machine the same day, same model (`gpt-5.2`), same fixture server. Bad ran with `--config bench/scenarios/configs/planner-on.mjs`. browser-use ran with `use_vision=False, calculate_cost=False, directly_open_url=True` (closest comparison to bad's startUrl behavior).
 
-1. **Wall-time** — does our planner+replan architecture beat their per-action loops on a 19-field form?
-2. **Cost per success** — when both finish, who's cheaper?
-3. **Token efficiency** — how many input/output tokens per successful task?
-4. **Cache utilization** — are we using prompt caching better than they are?
-5. **Pass rate at the same model class** — comparable model, comparable prompt, who's more reliable?
+### Task 1: form-fill-multi-step (19 fields, 3 form steps)
 
-Once we have answers per task, we'll know which architectural levers to pull next.
+| metric | bad (mean) | browser-use (mean) | Δ | bootstrap CI on Δ | Cohen d | verdict |
+|---|---:|---:|---:|---|---:|---|
+| pass rate | 100% (3/3) | 100% (3/3) | 0 | — | — | tied |
+| wall-time | **34.8s** | 204.8s | **+170s (+488%)** | [134.8, 200.7] | 6.76 (large) | **bad WINS — 5.9× faster** |
+| turns | 9.7 | 14.0 | +4.3 (+45%) | [0.3, 7.3] | 1.68 (large) | bad wins |
+| LLM calls | **3.0** | 8.3 | +5.3 (+177%) | — | — | **bad WINS — 2.8× fewer** |
+| total tokens | **8,930** | 72,450 | +63,520 (+711%) | [59746, 70169] | 15.37 (large) | **bad WINS — 8.1× fewer** |
+| cost | **$0.037** | $0.089 | +$0.052 (+138%) | [$0.05, $0.06] | 13.76 (large) | **bad WINS — 2.4× cheaper** |
+| cache-hit rate | 62% | **81%** | — | — | — | browser-use uses cache more |
+
+### Task 2: dashboard-extract (read 3 metric cards, return as JSON)
+
+| metric | bad (mean) | browser-use (mean) | Δ | verdict |
+|---|---:|---:|---:|---|
+| **pass rate** | **0% (0/3)** | **100% (3/3)** | — | **browser-use WINS — bad's planner can't extract** |
+| wall-time | 8.3s | 20.6s | bad 2.5× faster (but **wrong**) | browser-use only |
+| LLM calls | 1.0 | 3.0 | bad 3× fewer | — |
+| total tokens | 3,622 | 19,908 | bad 5.5× fewer (but **wrong**) | — |
+| cost | $0.013 | $0.026 | bad 2× cheaper (but **wrong**) | — |
+
+**Why bad fails:** the planner generates a 2-step plan: `runScript` to extract values, then `complete` with the result text. But the planner has to commit to the `complete` text BEFORE the `runScript` runs, so it puts placeholder values like `null` or `"<from prior step>"`. The runner emits the placeholder as the run result, the oracle fails the regex match. **This is a real architectural limitation of plan-then-execute for tasks where the final result depends on values observed mid-run.** Tracked as a Gen 7.2 follow-up.
+
+### Task 3: dashboard-edit-export (multi-step product flow: switch tab → edit row → export)
+
+| metric | bad (mean) | browser-use (mean) | Δ | bootstrap CI on Δ | Cohen d | verdict |
+|---|---:|---:|---:|---|---:|---|
+| pass rate | 100% (3/3) | 100% (3/3) | 0 | — | — | tied |
+| wall-time | **9.3s** | 151.5s | **+142s (+1531%)** | [117.7, 156.5] | 9.36 (large) | **bad WINS — 16.3× faster** |
+| turns | 5.3 | 8.7 | +3.3 (+63%) | [2.0, 4.7] | 2.89 (large) | bad wins |
+| LLM calls | **1.0** | 4.3 | +3.3 (+330%) | — | — | **bad WINS — 4.3× fewer** |
+| total tokens | **3,600** | 33,140 | +29,540 (+820%) | [15659, 47426] | 2.57 (large) | **bad WINS — 9.2× fewer** |
+| cost | **$0.013** | $0.046 | +$0.033 (+251%) | [$0.02, $0.05] | 2.77 (large) | **bad WINS — 3.5× cheaper** |
+| cache-hit rate | 59% | 70% | — | — | — | browser-use higher |
+
+### Aggregate summary
+
+| | form-fill | extract | edit-export | what it tells us |
+|---|---|---|---|---|
+| **pass rate** | bad ✓ / browser-use ✓ | **bad ✗ / browser-use ✓** | bad ✓ / browser-use ✓ | bad's planner is unsafe for tasks where the final result depends on mid-run observations |
+| **wall-time** | bad **5.9×** faster | bad 2.5× faster (wrong output) | bad **16.3×** faster | bad's planner+replan compresses N actions into ~1-3 LLM calls |
+| **cost** | bad **2.4×** cheaper | n/a (wrong) | bad **3.5×** cheaper | bad makes 2-4× fewer LLM calls per task |
+| **tokens** | bad **8.1×** fewer | n/a (wrong) | bad **9.2×** fewer | browser-use's per-step prompt is ~6-8K tokens; bad's planner amortizes the cost |
+| **cache hit** | browser-use 81% vs bad 62% | browser-use 71% vs bad 58% | browser-use 70% vs bad 59% | browser-use's longer system prompt + per-step structure caches better — there's headroom for bad to improve |
+| **variance** | bad 30-42s vs browser-use 169-239s | tight both | bad 8.9-9.9s vs browser-use 127-166s | bad is dramatically more consistent (planner makes runs deterministic) |
+
+### What this tells us about each architecture
+
+**bad's planner-then-execute (Gen 7 + Gen 7.1 replan loop):**
+- **Strength:** compresses multi-step structured tasks (forms, product flows) into 1-3 LLM calls. Wall time becomes browser time, not LLM time. Variance is dramatically lower.
+- **Weakness:** can't handle tasks where the final result must be computed from observations the planner can't see at planning time. The planner fabricates placeholder values it can't fill in later. Extraction tasks fail.
+
+**browser-use 0.12.6's per-step react loop:**
+- **Strength:** observe-then-act per turn means it always has fresh context. Extraction works because the agent reads the page values into the LLM context before generating the result.
+- **Weakness:** every turn is an LLM call. Pays the per-turn LLM latency × N. Variance is high because each per-step LLM call can hit JSON-parse errors and retry (~3-7s spread per call). Hits its own JSON-output validation errors that drive retry loops on gpt-5.2.
+
+### Honest caveats on this benchmark
+
+- **n=3 reps per cell.** Mann-Whitney U p-values are ~0.081 across the board because that's the smallest p achievable with two 3-element samples — the test is power-limited at this sample size. Bootstrap CIs and Cohen's d are more informative here.
+- **`text-in-snapshot` oracle false-positive risk for browser-use:** my Python bridge captures the final page DOM via a `on_step_end` callback (latest captured state). If the agent's last step doesn't trigger the callback after the relevant state change, the oracle reads stale state. For workflow tasks like dashboard-edit-export this means the oracle might pass on browser-use even if the actual final state didn't reach "Export complete for Alice Johnson" — the agent narrative typically mentions the expected text. A perfectly-fair oracle would inject a Playwright check at the very end; we're not there yet. Bad does NOT have this issue because its bad-adapter reads the actual ARIA snapshot from `events.jsonl observe-completed` events.
+- **bad ran with `--config planner-on.mjs`.** Without the planner, bad falls back to the per-action loop and would look much more like browser-use on form-fill (slower, more LLM calls) but would PASS the extraction task. The architectural trade-off is real.
+- **browser-use ran with `use_vision=False`.** Vision adds significant cost; turning it on would change the comparison axis to "vision vs no-vision" rather than "framework vs framework".
+- **Same OpenAI account, same day.** Cross-framework comparisons MUST run under identical provider conditions or the comparison is between provider weather, not architectures.
 
 ## Honest known limitations
 
@@ -181,3 +238,4 @@ Once we have answers per task, we'll know which architectural levers to pull nex
 - **Model parity**: every framework should be configured to the same model class (e.g. all on `gpt-5.2`), otherwise the comparison is "model A vs model B" not "framework A vs framework B".
 - **Oracle tightness**: a `text-in-snapshot` oracle can be fooled by an agent that pastes the expected text into a textarea instead of submitting the form. Use the strictest oracle the task allows (`json-shape-match` for extraction tasks, `url-contains` for navigation tasks).
 - **Cache-hit rates** are reported per cell but only when the underlying provider surfaces them. Anthropic does, OpenAI does, Google partially.
+- **Bad's planner has a known failure mode on extraction tasks** (placeholder values in `complete.result` because the planner commits before observing). Tracked as a Gen 7.2 follow-up.

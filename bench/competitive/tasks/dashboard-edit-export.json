@@ -1,0 +1,14 @@
+{
+  "id": "dashboard-edit-export",
+  "name": "Multi-step product flow: open Users tab → edit user → export",
+  "goal": "Open the dashboard at the start URL. Click the 'Users' tab to switch to it. Then click the Edit button on Alice Johnson's row. Then click the Export button at the top. Verify the workflow status shows 'Export complete for Alice Johnson'. Complete with a summary of the actions you took.",
+  "startUrl": "__FIXTURE_BASE_URL__/complex.html",
+  "fixture": "complex.html",
+  "maxTurns": 15,
+  "timeoutMs": 300000,
+  "tags": ["product-usage", "navigation"],
+  "oracle": {
+    "type": "text-in-snapshot",
+    "expectedText": "Export complete for Alice Johnson"
+  }
+}

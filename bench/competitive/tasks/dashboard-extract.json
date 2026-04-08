@@ -1,0 +1,18 @@
+{
+  "id": "dashboard-extract",
+  "name": "Dashboard metric extraction",
+  "goal": "Open the dashboard at the start URL. Read the three top metric cards (Total Users, Active Sessions, Revenue) and report them as a JSON object with keys totalUsers, activeSessions, revenue. Return ONLY the raw JSON values exactly as shown on the page (e.g. \"12,847\", \"3,421\", \"$48,290\"). Then complete with that JSON object as your final result.",
+  "startUrl": "__FIXTURE_BASE_URL__/complex.html",
+  "fixture": "complex.html",
+  "maxTurns": 15,
+  "timeoutMs": 300000,
+  "tags": ["extraction", "scraping"],
+  "oracle": {
+    "type": "json-shape-match",
+    "expectedShape": {
+      "totalUsers": "re:12,?847",
+      "activeSessions": "re:3,?421",
+      "revenue": "re:\\$?48,?290"
+    }
+  }
+}
