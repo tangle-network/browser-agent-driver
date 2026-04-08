@@ -402,7 +402,10 @@ export async function runView(opts: ViewOptions): Promise<{
   })
 
   const port = await listenWithRetry(server, opts.port ?? 7777, opts.portRetries ?? 10)
-  const url = `http://localhost:${port}`
+  // Use 127.0.0.1 explicitly so the URL matches the bind address. Linux can
+  // resolve "localhost" to ::1 (IPv6) first, which fails to connect because
+  // the server only listens on the IPv4 loopback.
+  const url = `http://127.0.0.1:${port}`
 
   console.log('')
   console.log(`  ${chalk.bold('bad view')}`)
