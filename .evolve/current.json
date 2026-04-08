@@ -1,10 +1,10 @@
 {
-  "mode": "pursue",
-  "goal": "Open Loop — events, hooks, lazy decisions",
-  "status": "evaluated",
-  "round": null,
+  "mode": "evolve",
+  "goal": "Persist + verify lazy decisions in production",
+  "status": "converged",
+  "round": 1,
   "generation": 5,
   "activePursuit": ".evolve/pursuits/2026-04-07-open-loop-gen5.md",
-  "branch": "gen5-open-loop",
-  "updatedAt": "2026-04-07T19:25:00Z"
+  "branch": "gen5-evolve-r1",
+  "updatedAt": "2026-04-08T05:50:00Z"
 }

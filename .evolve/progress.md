@@ -1,5 +1,62 @@
 # Evolve Progress
 
+## Gen 5 / Evolve Round 1 — Persist + verify lazy decisions in production — 2026-04-08
+
+**Goal:** Complete the deferred Gen 5 work (events.jsonl persistence, lazy supervisor/override skips) AND verify that the decision cache + deterministic patterns actually fire on real runs.
+
+### Shipped (5 components)
+
+1. **events.jsonl persistence via FilesystemSink**
+   - `appendEvent(testId, event)` opens an append-mode WriteStream per testId
+   - `closeEventStream(testId)` flushes a single stream; `close()` flushes all
+   - TestRunner creates a per-test bus that subscribes the file writer + forwards to the suite-level live bus
+   - Verified: 358 events written across 39 turns of long-form on first run; 4 unit tests pass
+2. **`bad view` reads events.jsonl for replay**
+   - New `findEventLogs(reportRoot)` discovers per-test events.jsonl files alongside report.json, parses each line tolerantly (skips bad lines)
+   - Inlined into viewer.html via `window.__bad_eventLogs` so the replay UI can reconstruct the streaming experience post-hoc
+   - 5 new unit tests in `tests/cli-view.test.ts` (now 30 total)
+3. **Lazy `detectSupervisorSignal`** — only computes when supervisor enabled AND past min-turns gate. Was unconditional every turn.
+4. **Lazy override pipeline** — only runs when at least one input that any producer might consume is non-null
+5. **Pattern matcher fix for real ARIA snapshot format**
+   - Production snapshots use `- button "Accept all" [ref=bfba]` (ref AFTER name, YAML-list indent)
+   - Test fixtures used `button [ref=b1] "Accept all"` (ref BEFORE name)
+   - Fixed both cookie-banner and modal matchers to extract ref + name independently of position
+   - Added regression test pinning the real format
+
+### Bug found + fixed during measurement
+
+**Pattern matcher gate over-restricted.** I had gated `canPatternSkip` on `!finalExtraContext`, which meant the matcher never fired in production because `ctxBudget.add('visible-link', ...)` always populated extraContext on pages with visible links matching the goal (668 bytes on the cookie banner page). Pattern matchers only look at the snapshot text — they don't consume extraContext or vision. Removed the gate from `canPatternSkip` (kept it on `canUseCache` because the cache replays a decision made under specific input conditions).
+
+**Double-counted decide-completed events.** The runner emitted `decide-completed` even when the LLM was skipped via pattern/cache. Fixed: `decide-completed` only fires when the LLM was actually called.
+
+### Verified hit rates
+
+| Scenario | Total decisions | LLM called | Pattern-skipped | Cached | LLM skip rate |
+|---|---:|---:|---:|---:|---:|
+| local-cookie-banner / full-evidence | 3 | 2 | 1 | 0 | **33.3%** |
+| local-cookie-banner / fast-explore | 4 | 3 | 1 | 0 | **25.0%** |
+| local-long-form (pre-fix) | 39 | 39 | 0 | 0 | 0% |
+
+The cache hit rate is 0% on every scenario tested — expected for happy-path goal-following runs where each turn has a different snapshot. The cache is for retry/recovery loops; needs a fixture that exercises revisits.
+
+### Tier1 gate
+- Pass rate: **100%** ✓
+- 840 tests pass (was 830, **+10 net new**)
+  - 4 new in `tests/filesystem-sink-events.test.ts`
+  - 5 new in `tests/cli-view.test.ts` (findEventLogs)
+  - 1 new in `tests/deterministic-patterns.test.ts` (real ARIA format regression guard)
+
+### Honest verdict
+**KEEP.** All round 1 deferrals shipped. The pattern matcher's first real-world fire (after the bug fix) is the highest-value moment of this round — it proves the lazy-decisions architecture WORKS in production, not just in unit tests. The 28.6% LLM skip rate on the cookie scenario is the first end-to-end measurement of "lazy LLM calls" actually saving an LLM call.
+
+### What's still pending (Gen 5.2 or Gen 6)
+- Inspect mode (viewer-side click handler + /inspect endpoint)
+- Shadow streamText for in-flight token display
+- Cache hit verification (needs a fixture that exercises state revisits)
+- Streaming decode with early action commit (long-deferred Gen 6 candidate)
+
+---
+
 ## Generation 5 — Open Loop (events + hooks + lazy decisions) — 2026-04-07
 
 Pursuit: `.evolve/pursuits/2026-04-07-open-loop-gen5.md`

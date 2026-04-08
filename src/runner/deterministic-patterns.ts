@@ -56,19 +56,42 @@ type Matcher = (state: PageState) => PatternMatch | null
 // where "click Accept on the cookie banner" is the wrong choice.
 
 const COOKIE_ACCEPT_RE = /\b(accept(?:\s+all)?|agree|got\s+it|i\s+understand|allow\s+all|allow\s+cookies|continue)\b/i
-const COOKIE_BANNER_REF_RE = /^\s*(button|link)\s+\[ref=([^\]]+)\][^"]*"([^"]*)"/im
+
+/**
+ * Extract a `[ref=…]` token from a line regardless of position. Real ARIA
+ * snapshots emit refs AFTER the quoted name (e.g. `- button "Accept all"
+ * [ref=bfba]`); some test fixtures put refs BEFORE. Both must work.
+ */
+function extractRef(line: string): string | null {
+  const match = line.match(/\[ref=([^\]]+)\]/)
+  return match ? match[1] : null
+}
+
+/**
+ * Extract the first quoted name from a line (e.g. `"Accept all"` → `Accept all`).
+ */
+function extractQuotedName(line: string): string | null {
+  const match = line.match(/"([^"]*)"/)
+  return match ? match[1] : null
+}
 
 const cookieBannerMatcher: Matcher = (state) => {
-  // Look for any element line containing both an accept-style verb AND a ref
+  // Look for any element line containing both an accept-style verb AND a ref.
+  // The real ARIA snapshot format emits refs AFTER the quoted name with
+  // YAML-list indent ("- button \"Accept all\" [ref=bfba]"), but tests use
+  // the older "button [ref=b1] \"Accept all\"" form. Handle both by
+  // extracting ref + text independently of position.
   const lines = state.snapshot.split('\n')
   for (const line of lines) {
-    const refMatch = line.match(/\[ref=([^\]]+)\][^"]*"([^"]*)"/i)
-    if (!refMatch) continue
-    const text = refMatch[2]
+    const ref = extractRef(line)
+    if (!ref) continue
+    const text = extractQuotedName(line)
+    if (!text) continue
     if (!COOKIE_ACCEPT_RE.test(text)) continue
-    // Filter out generic continues that aren't on a banner. Require the line
-    // to be a button or link AND for the snapshot to mention "cookie" or
-    // "consent" or "privacy" or "gdpr" within 500 chars of this line.
+    // Filter out generic accepts that aren't on a banner. Require the line
+    // to mention "button" or "link" AND for the snapshot to mention
+    // "cookie" / "consent" / "privacy" / "gdpr" / "tracking" within 500
+    // chars of this line.
     if (!/\b(button|link)\b/i.test(line)) continue
     const lineIdx = state.snapshot.indexOf(line)
     const windowStart = Math.max(0, lineIdx - 500)
@@ -76,7 +99,7 @@ const cookieBannerMatcher: Matcher = (state) => {
     const window = state.snapshot.slice(windowStart, windowEnd).toLowerCase()
     if (!/cookie|consent|privacy|gdpr|tracking/i.test(window)) continue
     return {
-      action: { action: 'click', selector: `@${refMatch[1]}` },
+      action: { action: 'click', selector: `@${ref}` },
       patternId: 'cookie-banner-accept',
       reasoning: `Deterministic pattern: cookie/consent banner with "${text}" button. Skipping LLM call.`,
       expectedEffect: 'cookie banner dismissed',
@@ -98,13 +121,15 @@ const cookieBannerMatcher: Matcher = (state) => {
 const CLOSE_VERBS_RE = /^\s*(close|dismiss|ok|×|x|got it)\s*$/i
 
 const singleButtonModalMatcher: Matcher = (state) => {
-  // Find a line starting with dialog/alertdialog (no leading whitespace —
-  // a top-level snapshot element). Children of the dialog are indented
-  // beneath it.
+  // Find a line whose first non-whitespace tokens are dialog/alertdialog.
+  // The real ARIA snapshot format uses YAML-list indent ("- dialog \"Notice\":")
+  // while older test fixtures used a flat form ("dialog [ref=d1]"). Both must
+  // be matched, so we strip the optional list marker and any leading whitespace.
   const lines = state.snapshot.split('\n')
   let dialogIdx = -1
   for (let idx = 0; idx < lines.length; idx++) {
-    if (/^(dialog|alertdialog)\b/i.test(lines[idx])) {
+    const stripped = lines[idx].replace(/^\s*-?\s*/, '')
+    if (/^(dialog|alertdialog)\b/i.test(stripped)) {
       dialogIdx = idx
       break
     }
@@ -112,26 +137,34 @@ const singleButtonModalMatcher: Matcher = (state) => {
   if (dialogIdx === -1) return null
 
   // The dialog region is its line plus the indented children that follow.
-  // Stop at the next non-indented line (sibling element).
+  // Use the indent of the dialog line as the boundary — children must be
+  // MORE indented; the next sibling (same indent or less) ends the region.
+  const dialogIndent = lines[dialogIdx].search(/\S/)
   const regionLines: string[] = [lines[dialogIdx]]
   for (let idx = dialogIdx + 1; idx < lines.length; idx++) {
-    if (lines[idx].length > 0 && !/^\s/.test(lines[idx])) break
+    const childIndent = lines[idx].search(/\S/)
+    if (childIndent === -1) {
+      // blank line — keep, doesn't count as a sibling
+      regionLines.push(lines[idx])
+      continue
+    }
+    if (childIndent <= dialogIndent) break
     regionLines.push(lines[idx])
   }
 
-  // Count interactive elements (buttons / links with refs) in the region
-  const interactiveLines = regionLines.filter((l) =>
-    /\b(button|link)\b\s+\[ref=/.test(l),
+  // Count interactive elements (buttons / links with refs) in the region.
+  const interactiveLines = regionLines.filter(
+    (l) => /\b(button|link)\b/i.test(l) && extractRef(l) !== null,
   )
   if (interactiveLines.length !== 1) return null
 
-  const match = interactiveLines[0].match(/\[ref=([^\]]+)\][^"]*"([^"]*)"/)
-  if (!match) return null
-  const text = match[2]
+  const ref = extractRef(interactiveLines[0])
+  const text = extractQuotedName(interactiveLines[0])
+  if (!ref || !text) return null
   if (!CLOSE_VERBS_RE.test(text)) return null
 
   return {
-    action: { action: 'click', selector: `@${match[1]}` },
+    action: { action: 'click', selector: `@${ref}` },
     patternId: 'single-button-modal-close',
     reasoning: `Deterministic pattern: modal with single "${text}" button. Skipping LLM call.`,
     expectedEffect: 'modal dismissed',

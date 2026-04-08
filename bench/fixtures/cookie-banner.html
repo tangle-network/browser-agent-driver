@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Cookie Banner Fixture — Pattern Matcher Verification</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 720px;
+      margin: 40px auto;
+      padding: 0 20px;
+      line-height: 1.6;
+    }
+    .cookie-banner {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: #1a1a2e;
+      color: white;
+      padding: 16px 24px;
+      box-shadow: 0 -2px 10px rgba(0,0,0,0.2);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      z-index: 1000;
+    }
+    .cookie-banner.hidden { display: none; }
+    .cookie-banner p { margin: 0; }
+    .cookie-banner button {
+      background: #28a745;
+      color: white;
+      border: none;
+      padding: 10px 24px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .content {
+      padding-bottom: 100px;
+    }
+    h1 { color: #1a1a2e; }
+    .target {
+      display: inline-block;
+      margin-top: 20px;
+      padding: 12px 24px;
+      background: #0066cc;
+      color: white;
+      text-decoration: none;
+      border-radius: 4px;
+    }
+    .status {
+      margin-top: 20px;
+      padding: 12px;
+      background: #f5f5f5;
+      border-radius: 6px;
+      font-family: monospace;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <!-- Cookie consent banner — should be matched by deterministic pattern matcher -->
+  <div class="cookie-banner" id="banner" role="banner" aria-label="Cookie consent">
+    <p>We use cookies and tracking pixels to improve your experience. Read our <a href="/privacy">privacy policy</a>.</p>
+    <button id="accept" data-testid="cookie-accept">Accept all</button>
+  </div>
+
+  <div class="content">
+    <h1>Article Title</h1>
+    <p>This is a test fixture for the Gen 5 deterministic pattern matcher. The cookie banner above should be detected as a single-Accept consent dialog and clicked WITHOUT a full LLM call.</p>
+    <p>Once the banner is dismissed, the only remaining action is to click the "Read article" link below.</p>
+    <a href="#article" class="target" id="read-article" data-testid="read-article">Read article</a>
+    <p class="status" id="status" data-testid="status">Status: cookie-banner-visible</p>
+  </div>
+
+  <script>
+    const banner = document.getElementById('banner');
+    const accept = document.getElementById('accept');
+    const status = document.getElementById('status');
+    const readArticle = document.getElementById('read-article');
+
+    accept.addEventListener('click', () => {
+      banner.classList.add('hidden');
+      status.textContent = 'Status: cookie-banner-dismissed';
+    });
+
+    readArticle.addEventListener('click', (e) => {
+      e.preventDefault();
+      status.textContent = 'Status: article-opened';
+    });
+  </script>
+</body>
+</html>

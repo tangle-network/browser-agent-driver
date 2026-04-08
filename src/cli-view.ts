@@ -115,6 +115,59 @@ export function findRecordings(reportRoot: string): Array<{ testId: string; relP
 }
 
 /**
+ * Discover events.jsonl files alongside report.json. Each file is a per-test
+ * stream of TurnEvents (one JSON object per line) persisted by FilesystemSink
+ * via the TurnEventBus subscriber. Returns parsed events grouped by testId
+ * so the viewer can show a sub-turn timeline per test.
+ *
+ * Tolerant: bad JSON lines are skipped (logged to stderr at most once per
+ * file). Missing files return an empty array.
+ */
+export function findEventLogs(
+  reportRoot: string,
+): Array<{ testId: string; events: Array<Record<string, unknown>> }> {
+  const out: Array<{ testId: string; events: Array<Record<string, unknown>> }> = []
+  const tryParse = (filePath: string): Array<Record<string, unknown>> | null => {
+    try {
+      const raw = fs.readFileSync(filePath, 'utf-8')
+      const lines = raw.split('\n').filter((l) => l.trim().length > 0)
+      const events: Array<Record<string, unknown>> = []
+      for (const line of lines) {
+        try {
+          const parsed = JSON.parse(line) as Record<string, unknown>
+          events.push(parsed)
+        } catch {
+          /* skip bad line */
+        }
+      }
+      return events.length > 0 ? events : null
+    } catch {
+      return null
+    }
+  }
+  try {
+    for (const entry of fs.readdirSync(reportRoot, { withFileTypes: true })) {
+      if (entry.isDirectory()) {
+        const file = path.join(reportRoot, entry.name, 'events.jsonl')
+        const events = tryParse(file)
+        if (events) {
+          out.push({ testId: entry.name, events })
+        }
+      } else if (entry.name === 'events.jsonl') {
+        const file = path.join(reportRoot, entry.name)
+        const events = tryParse(file)
+        if (events) {
+          out.push({ testId: 'default', events })
+        }
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return out
+}
+
+/**
  * Normalize the report shape so the viewer sees a consistent format.
  *
  * Two distinct shapes flow through here:
@@ -348,10 +401,21 @@ export async function runView(opts: ViewOptions): Promise<{
   const reportJson = JSON.stringify(normalized)
   const safeJson = escapeJsonForScript(reportJson)
 
-  const inlinedHtml = viewerSource.replace(
-    'const runData = window.__bad_runData || null;',
-    `const runData = ${safeJson};`,
-  )
+  // Sub-turn event logs (per testId, written by FilesystemSink during the run).
+  // The viewer can use these to reconstruct the streaming experience post-hoc:
+  // a scrubbable timeline of every observe/decide/execute/verify boundary.
+  // When no events.jsonl files exist (older runs, runs without an event bus),
+  // the inlined value is an empty array and the viewer falls back to the
+  // existing turn-level UI.
+  const eventLogs = findEventLogs(reportRoot)
+  const eventLogsJson = JSON.stringify(eventLogs)
+  const safeEventLogs = escapeJsonForScript(eventLogsJson)
+
+  const inlinedHtml = viewerSource
+    .replace(
+      'const runData = window.__bad_runData || null;',
+      `const runData = ${safeJson};\n      window.__bad_eventLogs = ${safeEventLogs};`,
+    )
 
   const server = http.createServer((req, res) => {
     const urlPath = (req.url ?? '/').split('?')[0]

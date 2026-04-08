@@ -605,19 +605,25 @@ export class BrowserAgent {
         if (searchScoutFeedback) {
           ctxBudget.add('search-scout', `\n${searchScoutFeedback}\n`, 50);
         }
-        const supervisorSignal = detectSupervisorSignal({
-          recentTurns: turns,
-          currentState: state,
-          currentTurn: i,
-          maxTurns,
-          window: supervisorConfig.hardStallWindow,
-        });
-        const shouldInvokeSupervisor =
+        // Lazy supervisor signal: only compute when supervisor is enabled
+        // AND we're past the minimum-turns gate. Used to run unconditionally
+        // every turn even when supervisor was disabled. Gen 5 evolve round 1.
+        const supervisorEligible =
           supervisorConfig.enabled &&
-          supervisorSignal.severity === 'hard' &&
           i >= supervisorConfig.minTurnsBeforeInvoke &&
           runState.supervisorInterventions < supervisorConfig.maxInterventions &&
           i - runState.lastSupervisorTurn > supervisorConfig.cooldownTurns;
+        const supervisorSignal = supervisorEligible
+          ? detectSupervisorSignal({
+              recentTurns: turns,
+              currentState: state,
+              currentTurn: i,
+              maxTurns,
+              window: supervisorConfig.hardStallWindow,
+            })
+          : { severity: 'none' as const, reasons: [] };
+        const shouldInvokeSupervisor =
+          supervisorEligible && supervisorSignal.severity === 'hard';
 
         if (shouldInvokeSupervisor) {
           if (this.config.debug) {
@@ -817,29 +823,38 @@ export class BrowserAgent {
         const decideStartedAt = Date.now();
         this.bus.emitNow({ type: 'decide-started', runId, turn: i });
 
-        // Lazy decisions, level 1: deterministic UI pattern matching. If the
-        // page is a recognized pattern (cookie banner with single Accept,
-        // single-button modal close), the action is obvious and we skip the
-        // LLM entirely. Pattern matchers are bypassed under the same
-        // conditions as the cache below.
+        // Lazy decisions, level 1: deterministic UI pattern matching.
+        //
+        // Patterns look at the SNAPSHOT TEXT only — they don't care about
+        // extraContext, persona injection, vision strategy, or anything
+        // else the LLM would consume. A cookie banner is a cookie banner
+        // regardless of what the goal text says or whether the screenshot
+        // is attached. So the only gate is "did the previous turn fail" —
+        // if so, give the LLM a chance to course-correct instead of
+        // mechanically retrying the same pattern action.
         const previousTurn = turns[turns.length - 1];
-        const canSkipDecide =
-          !forceVision
-          && !finalExtraContext
-          && !previousTurn?.error
+        const canPatternSkip =
+          !previousTurn?.error
           && !previousTurn?.verificationFailure
           && process.env.BAD_PATTERN_SKIP !== '0';
 
         let patternMatch: ReturnType<typeof matchDeterministicPattern> = null;
-        if (canSkipDecide) {
+        if (canPatternSkip) {
           patternMatch = matchDeterministicPattern(decisionState);
         }
 
         // Lazy decisions, level 2: in-session decision cache.
+        //
+        // The cache DOES care about extraContext: a cached decision was
+        // made under one set of context inputs, and replaying it under a
+        // different set could be wrong. Include the extraContext check
+        // here so the cache only fires when the LLM input would have been
+        // the same shape.
         const canUseCache =
           this.decisionCache !== undefined
-          && canSkipDecide
-          && !patternMatch;
+          && canPatternSkip
+          && !patternMatch
+          && !finalExtraContext;
         const cacheKey = canUseCache
           ? {
               snapshotHash: DecisionCache.hashSnapshot(decisionState.snapshot),
@@ -919,18 +934,24 @@ export class BrowserAgent {
         }
 
         let { action, nextActions, raw, reasoning, plan, currentStep, expectedEffect, tokensUsed, inputTokens, outputTokens, cacheReadInputTokens, cacheCreationInputTokens, modelUsed } = decision;
-        this.bus.emitNow({
-          type: 'decide-completed',
-          runId,
-          turn: i,
-          action,
-          ...(reasoning ? { reasoning } : {}),
-          ...(expectedEffect ? { expectedEffect } : {}),
-          ...(inputTokens !== undefined ? { inputTokens } : {}),
-          ...(outputTokens !== undefined ? { outputTokens } : {}),
-          ...(cacheReadInputTokens !== undefined ? { cacheReadInputTokens } : {}),
-          durationMs: decideDurationMs,
-        });
+        // Only emit decide-completed when the LLM was actually called.
+        // Pattern matches and cache hits already emitted their own
+        // decide-skipped-* event above; double-emitting decide-completed
+        // would inflate the LLM-call count for analytics.
+        if (!patternMatch && !cached) {
+          this.bus.emitNow({
+            type: 'decide-completed',
+            runId,
+            turn: i,
+            action,
+            ...(reasoning ? { reasoning } : {}),
+            ...(expectedEffect ? { expectedEffect } : {}),
+            ...(inputTokens !== undefined ? { inputTokens } : {}),
+            ...(outputTokens !== undefined ? { outputTokens } : {}),
+            ...(cacheReadInputTokens !== undefined ? { cacheReadInputTokens } : {}),
+            durationMs: decideDurationMs,
+          });
+        }
 
         // -- 4b. Override pipeline — scored selection of post-decision overrides --
         const overrideCtx: OverrideContext = {
@@ -944,7 +965,18 @@ export class BrowserAgent {
           aiTanglePartnerCompletion: aiTanglePartnerCompletion ?? undefined,
           aiTangleOutputCompletion: aiTangleOutputCompletion ?? undefined,
         };
-        const overrideWinner = runOverridePipeline(overrideCtx, buildOverrideProducers());
+        // Lazy override pipeline: only run when at least one input that any
+        // producer might consume is non-null. Skipping when there's nothing
+        // to override avoids the producer-list iteration on the happy path.
+        const anyOverrideInput =
+          visibleLinkMatch !== undefined ||
+          scoutLinkRecommendation !== undefined ||
+          branchLinkRecommendation !== undefined ||
+          aiTanglePartnerCompletion !== null ||
+          aiTangleOutputCompletion !== null;
+        const overrideWinner = anyOverrideInput
+          ? runOverridePipeline(overrideCtx, buildOverrideProducers())
+          : null;
         if (overrideWinner) {
           this.brain.injectFeedback(overrideWinner.feedback);
           action = overrideWinner.action;

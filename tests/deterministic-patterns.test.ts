@@ -28,6 +28,22 @@ banner [ref=b1]
     expect(match?.action).toEqual({ action: 'click', selector: '@b2' })
   })
 
+  it('matches the REAL ARIA snapshot format (ref AFTER quoted name, YAML-list indent)', () => {
+    // This is the actual format the runner produces — captured live from
+    // bench/fixtures/cookie-banner.html during evolve round 1. Earlier
+    // versions of the matcher used a positional regex that required the
+    // ref BEFORE the quoted name and missed every real cookie banner.
+    const state = makeState(`- banner "Cookie consent":
+  - link "privacy policy" [ref=lcfb]
+  - button "Accept all" [ref=bfba]
+- heading "Article Title" [ref=h2d83]
+- link "Read article" [ref=l21eb]`)
+    const match = matchDeterministicPattern(state)
+    expect(match).not.toBeNull()
+    expect(match?.patternId).toBe('cookie-banner-accept')
+    expect(match?.action).toEqual({ action: 'click', selector: '@bfba' })
+  })
+
   it('matches a GDPR consent dialog with Agree button', () => {
     const state = makeState(`
 dialog [ref=d1] "Privacy & GDPR"
