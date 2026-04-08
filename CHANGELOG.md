@@ -1,5 +1,144 @@
 # @tangle-network/browser-agent-driver
 
+## 0.17.0
+
+### Minor Changes
+
+- [#48](https://github.com/tangle-network/browser-agent-driver/pull/48) [`e059885`](https://github.com/tangle-network/browser-agent-driver/commit/e059885fb61d46d0b2b45d8fe5f6754e7b0c5895) Thanks [@drewstone](https://github.com/drewstone)! - Gen 6.1 — Runner-mandatory batch fill via runtime hint injection.
+
+  The first architectural change in the Gen 4-6 trajectory that delivers a measurable single-run speedup without statistical noise drowning the signal: **long-form fast-explore goes from 22 turns / 384s to 9 turns / 53s — 7.2× wall time speedup, 2.4× turn count reduction.**
+
+  ## What it does
+
+  Detects at runtime when the agent is filling a multi-field form one input at a time, and injects a high-priority hint into `extraContext` that DEMANDS the next action be a batch `fill`. Convinces the LLM via runtime feedback rather than prompt rules alone.
+
+  ## Trigger conditions
+
+  The detector (`detectBatchFillOpportunity` in `src/runner/runner.ts`) fires when ALL hold:
+
+  1. The agent's most recent action was a single-step `type` on the current URL
+  2. The current snapshot has 2+ unused fillable refs (textbox / searchbox / combobox / spinbutton) that the agent hasn't typed into yet
+  3. The agent hasn't already filled those refs via an earlier `fill` batch
+
+  ## What gets injected
+
+  ```
+  [BATCH FILL REQUIRED]
+  You just typed into a single field, but N more fillable fields are visible
+  on this same form. STOP. Your NEXT action MUST be a `fill` action that
+  batches ALL remaining unused fields on this page in one turn.
+
+  Unused fillable @refs from the current snapshot:
+    - @t2 (textbox: "Last name")
+    - @t3 (textbox: "Email")
+    - @c1 (combobox: "State")
+    - ...
+
+  Example:
+  {"action":"fill","fields":{"@t2":"value1","@t3":"value2"}}
+  ```
+
+  The hint is high-priority (100, never truncated) and lists EXACT @refs from the current snapshot — the agent doesn't have to guess or hallucinate selectors.
+
+  ## Verified result
+
+  Long-form fast-explore behavior trace from `events.jsonl`:
+
+  - Turn 1: type firstname (single, before detector fires)
+  - Turn 2: detector fires → fill (4 targets) — fails on date input edge case
+  - Turn 4: click next
+  - **Turn 5: fill (6 targets) — SUCCESS**
+  - Turn 6: click next
+  - **Turn 7: fill (8 targets) — SUCCESS**
+  - Turn 8: click submit
+  - Turn 9: complete
+
+  **14 form fields compressed into 2 batch turns.** 9 total turns for a 19-field form.
+
+  ## Implementation details
+
+  - Tracks `usedRefs` across the WHOLE run (not just recent N turns) so the detector never tells the agent to re-fill a field
+  - Tracks fields filled via batch `fill` action — those count as used too
+  - Bounded ref list (max 12 in the hint) to keep the prompt size sane
+  - Gated by `BAD_BATCH_HINT=0` env flag for rollback
+
+  ## Tests
+
+  865 passing (was 856, +9 net new in `tests/batch-fill-detection.test.ts`).
+
+  - Trigger conditions
+  - URL change handling
+  - Used-ref tracking across the full run (including via batch fills)
+  - 12-ref cap
+  - Worked example format
+
+  Tier1 deterministic gate: **100% pass**.
+
+  ## Cumulative trajectory
+
+  | Gen                   | Fast-explore turns | Wall time |       Speedup vs Gen 4 baseline |
+  | --------------------- | -----------------: | --------: | ------------------------------: |
+  | Gen 4                 |                ~22 |     ~180s |                        baseline |
+  | Gen 5                 |                ~22 |     ~180s | none (overhead, not turn count) |
+  | Gen 6 (verbs)         |              17-22 |    varies |          mode-dependent ~10-25% |
+  | **Gen 6.1 (this PR)** |              **9** |   **53s** |                        **3.4×** |
+  | Gen 7 (planned)       |                4-5 |    15-20s |                      12× target |
+
+  ## Adds
+
+  - `.evolve/pursuits/2026-04-08-plan-then-execute-gen7.md` — full Gen 7 spec for the next session (Brain.plan + Runner.executePlan with fallback to per-action loop)
+
+- [#46](https://github.com/tangle-network/browser-agent-driver/pull/46) [`75341af`](https://github.com/tangle-network/browser-agent-driver/commit/75341af198df3e39fa56f2607ad9aeeabd49d7b7) Thanks [@drewstone](https://github.com/drewstone)! - Gen 6 — Batch action verbs (`fill`, `clickSequence`).
+
+  The vision: turn count is the metric, not ms per turn. A 5-turn run at 3s/turn beats a 20-turn run at 2s/turn every time. Gen 4 + Gen 5 squeezed infrastructure overhead (~5–8% of wall time on a 20-turn run). The dominant cost is N × LLM call latency. The only way to make `bad` dramatically faster is to reduce N.
+
+  Gen 6 ships the minimal-viable plan-then-execute: higher-level action verbs that compress N single-step turns into 1 batch turn.
+
+  **New action verbs:**
+
+  - `fill` — multi-field batch fill in ONE action. Fills text inputs, sets selects, and checks checkboxes:
+
+    ```json
+    {
+      "action": "fill",
+      "fields": {
+        "@t1": "Jordan",
+        "@t2": "Rivera",
+        "@t3": "jordan@example.com"
+      },
+      "selects": { "@s1": "WA" },
+      "checks": ["@c1", "@c2"]
+    }
+    ```
+
+    Replaces 6+ single-step type/click turns with 1 batch turn. Verified: when the agent uses it, it compresses 6–8 fields into 1 turn (6–8× compression on those turns).
+
+  - `clickSequence` — sequential clicks on a known set of refs. For multi-step UI navigation chains:
+    ```json
+    { "action": "clickSequence", "refs": ["@menu", "@submenu", "@item"] }
+    ```
+
+  **Implementation details:**
+
+  - Per-field fast-fail timeout capped at 5s (vs the default 30s) — batch ops assume every ref was just observed in the snapshot, so a missing element fails fast and the agent recovers on the next turn
+  - Failures bail with the first error and report which field failed via the `error` message — the agent can shrink its next batch to drop the failing target
+  - New brain prompt rule ([#15](https://github.com/tangle-network/browser-agent-driver/issues/15)) instructs the agent to prefer batch fill when 2+ form fields are visible
+  - Validation guards against empty payloads, non-string field values, and inverted ref formats
+  - Supervisor signature updated so the stuck-detector recognizes batch ops as distinct from single steps
+
+  **Tests:** 856 passing (was 840, **+16 net new**).
+
+  - 10 in `tests/batch-action-parse.test.ts` (parser, validation, error paths)
+  - 6 in `tests/playwright-driver-batch.test.ts` (real Chromium, fill text/selects/checks, clickSequence, fast-fail on missing refs)
+
+  **Tier1 gate:** 100% pass rate. No regressions.
+
+  **Long-form scenario (single-run, high variance):** When the agent picks batch fill it compresses 14–19 form fields into 2–3 turns. Aggregate turn count is dominated by run-to-run agent strategy variance — multi-rep measurement is needed for statistical claims.
+
+  **Followup tracked:** runner-injected batch hint when 3+ consecutive type actions are detected on the same form (more reliable than prompt rules alone).
+
+  **Also adds:** `bench/competitive/README.md` — scaffold spec for a head-to-head benchmark vs browser-use, Stagehand, Skyvern, OpenAI/Claude Computer Use. Not yet executed live.
+
 ## 0.16.1
 
 ### Patch Changes
