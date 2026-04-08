@@ -16,7 +16,7 @@ import { AriaSnapshotHelper, dismissOverlays } from './snapshot.js';
 import { ANALYTICS_PATTERNS, IMAGE_PATTERNS, MEDIA_PATTERNS } from './block-patterns.js';
 import { buildCdpSnapshot } from './cdp-snapshot.js';
 import { getPageMetadata } from './cdp-page-state.js';
-import { CURSOR_OVERLAY_INIT_SCRIPT, CURSOR_ANIMATION_MS } from './cursor-overlay.js';
+import { CURSOR_OVERLAY_INIT_SCRIPT } from './cursor-overlay.js';
 
 function isPointerInterceptError(error: string): boolean {
   return /intercepts pointer events|subtree intercepts pointer events|not receiving pointer events/i.test(error);
@@ -62,9 +62,9 @@ export interface PlaywrightDriverOptions {
    *
    * Default: false. Enable for demo recordings, debugging, and the session viewer.
    *
-   * **Performance note:** each interactive action waits ~240ms for the cursor
-   * animation to land before executing — over a 50-turn session that's ~12s
-   * of added wall time. Leave off for headless CI; on for screen captures.
+   * **Performance:** zero added wall time. The overlay's CSS transition runs
+   * asynchronously alongside the actual click — the cursor in the next
+   * screenshot lands wherever the transition has reached by then.
    */
   showCursor?: boolean;
 }
@@ -136,29 +136,26 @@ export class PlaywrightDriver implements Driver {
       const cx = box.x + box.width / 2;
       const cy = box.y + box.height / 2;
 
+      // Schedule highlight + cursor move + click pulse in a SINGLE page.evaluate
+      // round trip. The CSS transition runs asynchronously (no waitForTimeout)
+      // — the actual click fires immediately after, and the next observe() picks
+      // up the animated cursor in whatever state it has reached.
+      //
+      // Previously this slept 240ms after the moveTo to let the transition
+      // land before the click — pure dead time on every interactive action.
+      // Over a 50-turn session that was ~12s of zero-information waiting.
+      const isClickLike = actionLabel === 'click' || actionLabel === 'type' || actionLabel === 'press';
       await this.page.evaluate(
-        ({ x, y, w, h, label, cx: cxArg, cy: cyArg }: { x: number; y: number; w: number; h: number; label: string; cx: number; cy: number }) => {
+        ({ x, y, w, h, label, cx: cxArg, cy: cyArg, pulse }: { x: number; y: number; w: number; h: number; label: string; cx: number; cy: number; pulse: boolean }) => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const ov = (window as any).__bad_overlay;
           if (!ov) return;
           ov.highlightRect(x, y, w, h);
           ov.moveTo(cxArg, cyArg, label);
+          if (pulse) ov.pulseClick(cxArg, cyArg);
         },
-        { x: box.x, y: box.y, w: box.width, h: box.height, label: actionLabel, cx, cy },
+        { x: box.x, y: box.y, w: box.width, h: box.height, label: actionLabel, cx, cy, pulse: isClickLike },
       ).catch(() => { /* CSP or page closed */ });
-
-      await this.page.waitForTimeout(CURSOR_ANIMATION_MS);
-
-      if (actionLabel === 'click' || actionLabel === 'type' || actionLabel === 'press') {
-        await this.page.evaluate(
-          ({ x, y }: { x: number; y: number }) => {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const ov = (window as any).__bad_overlay;
-            if (ov) ov.pulseClick(x, y);
-          },
-          { x: cx, y: cy },
-        ).catch(() => { /* CSP */ });
-      }
     } catch {
       // Overlay is purely cosmetic — never let it break the action
     }

@@ -315,6 +315,10 @@ export interface Turn {
   inputTokens?: number;
   /** Output (completion) tokens for this turn */
   outputTokens?: number;
+  /** Anthropic prompt-cache hit tokens (90% cheaper input on cached prefix) */
+  cacheReadInputTokens?: number;
+  /** Anthropic prompt-cache miss tokens (cache write — first turn only) */
+  cacheCreationInputTokens?: number;
   /** Which model handled this turn (for adaptive routing cost tracking) */
   modelUsed?: string;
   /** Time taken for this turn in ms */
