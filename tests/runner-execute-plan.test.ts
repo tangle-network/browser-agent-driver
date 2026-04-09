@@ -333,7 +333,9 @@ describe('BrowserAgent.executePlan', () => {
 
   // Negative: if a runScript-only plan returns empty output, we should NOT
   // auto-complete. Fall through to the per-action loop (deviated).
-  it('Gen 7.2: does NOT auto-complete when runScript output is empty', async () => {
+  // Gen 9: the deviation reason now mentions "no meaningful output" so the
+  // per-action loop's [REPLAN] context can act on it.
+  it('Gen 7.2/9: does NOT auto-complete when runScript output is empty', async () => {
     const setup = await setupAgent()
     const internals = setup.agent as unknown as AgentInternals
     const plan: Plan = {
@@ -348,7 +350,79 @@ describe('BrowserAgent.executePlan', () => {
     const result = await internals.executePlan(plan, SCENARIO, 'run_test_no_auto_empty', turns, new RunState(10), 0)
     expect(result.kind).toBe('deviated')
     if (result.kind !== 'deviated') throw new Error('narrow')
-    expect(result.reason).toMatch(/exhausted/)
+    // Gen 9: empty runScript output produces a "no meaningful output" reason
+    // (not "exhausted"), so the per-action loop's [REPLAN] context names
+    // the actual failure mode.
+    expect(result.reason).toMatch(/no meaningful output|exhausted/)
+    await setup.browser.close()
+  })
+
+  // Gen 9: when runScript returns a placeholder JSON like {"x": null},
+  // the auto-complete should DECLINE and fall through with a "no meaningful
+  // output" reason. This is the npm/mdn/w3c failure mode that browser-use
+  // recovers from via per-action iteration.
+  it('Gen 9: declines auto-complete when runScript returns {"x": null} placeholder', async () => {
+    const setup = await setupAgent()
+    const internals = setup.agent as unknown as AgentInternals
+    const plan: Plan = {
+      steps: [
+        {
+          action: {
+            action: 'runScript',
+            script: '(() => JSON.stringify({weekly_downloads: null}))()',
+          },
+          expectedEffect: 'extract failed',
+        },
+      ],
+    }
+    const turns: Turn[] = []
+    const result = await internals.executePlan(plan, SCENARIO, 'run_test_gen9_placeholder', turns, new RunState(10), 0)
+    expect(result.kind).toBe('deviated')
+    if (result.kind !== 'deviated') throw new Error('narrow')
+    expect(result.reason).toMatch(/no meaningful output/)
+    await setup.browser.close()
+  })
+
+  // Gen 9: when runScript returns the literal string "null", same fall-through.
+  it('Gen 9: declines auto-complete when runScript returns the literal string "null"', async () => {
+    const setup = await setupAgent()
+    const internals = setup.agent as unknown as AgentInternals
+    const plan: Plan = {
+      steps: [
+        {
+          action: { action: 'runScript', script: '(() => "null")()' },
+          expectedEffect: 'extract failed',
+        },
+      ],
+    }
+    const turns: Turn[] = []
+    const result = await internals.executePlan(plan, SCENARIO, 'run_test_gen9_null_string', turns, new RunState(10), 0)
+    expect(result.kind).toBe('deviated')
+    if (result.kind !== 'deviated') throw new Error('narrow')
+    expect(result.reason).toMatch(/no meaningful output/)
+    await setup.browser.close()
+  })
+
+  // Positive control: meaningful output still auto-completes correctly.
+  it('Gen 9: auto-completes when runScript output IS meaningful (positive control)', async () => {
+    const setup = await setupAgent()
+    const internals = setup.agent as unknown as AgentInternals
+    const plan: Plan = {
+      steps: [
+        {
+          action: {
+            action: 'runScript',
+            script: '(() => JSON.stringify({weekly_downloads: "25,847,392"}))()',
+          },
+          expectedEffect: 'extracted weekly downloads',
+        },
+      ],
+    }
+    const turns: Turn[] = []
+    const result = await internals.executePlan(plan, SCENARIO, 'run_test_gen9_meaningful', turns, new RunState(10), 0)
+    expect(result.kind).toBe('completed')
+    if (result.kind !== 'completed') throw new Error('narrow')
+    expect(result.finalResult).toContain('25,847,392')
     await setup.browser.close()
   })
 
@@ -380,16 +454,92 @@ describe('BrowserAgent.executePlan', () => {
     expect(result.finalResult).toBe('Form was submitted successfully and the success banner is visible.')
     await setup.browser.close()
   })
+
+  // Gen 10: extractWithIndex in a plan should run the extraction (capturing
+  // the formatted match list as turn data), then deviate with the match list
+  // in the reason so the per-action loop can pick by index.
+  it('Gen 10: extractWithIndex plan step captures matches and deviates with the list', async () => {
+    const setup = await setupAgent()
+    const { agent: localAgent, page: localPage, browser: localBrowser } = setup
+    // Use a content-rich page so extractWithIndex has something to find
+    await localPage.setContent(`
+      <h1>Array.prototype.flatMap</h1>
+      <dl>
+        <dt><code>flatMap(callbackFn)</code></dt>
+        <dd>Returns a new array formed by applying a function to each element.</dd>
+      </dl>
+      <p data-testid="weekly">Weekly downloads: 26,543,821</p>
+    `)
+    await new PlaywrightDriver(localPage, { showCursor: false }).observe()
+    const internals = localAgent as unknown as AgentInternals
+    const plan: Plan = {
+      steps: [
+        {
+          action: { action: 'extractWithIndex', query: 'p, dd, code', contains: 'downloads' },
+          expectedEffect: 'extracted matches for the downloads paragraph',
+          rationale: 'Gen 10: pick by content',
+        },
+      ],
+    }
+    const turns: Turn[] = []
+    const result = await internals.executePlan(plan, SCENARIO, 'run_test_extract', turns, new RunState(10), 0)
+    expect(result.kind).toBe('deviated')
+    if (result.kind !== 'deviated') throw new Error('narrow')
+    expect(result.reason).toMatch(/extractWithIndex/i)
+    expect(result.reason).toContain('Weekly downloads: 26,543,821')
+    expect(result.reason).toContain('[0]')
+    // The extract step should appear as a turn artifact
+    expect(turns).toHaveLength(1)
+    expect(turns[0].action.action).toBe('extractWithIndex')
+    expect(turns[0].verified).toBe(true)
+    await localBrowser.close()
+  })
+
+  // Gen 10: when extractWithIndex returns zero matches, the plan still
+  // deviates (the per-action loop must observe and try a wider query)
+  it('Gen 10: extractWithIndex with no matches deviates with empty match list', async () => {
+    const setup = await setupAgent()
+    await setup.page.setContent('<h1>Empty page with no matching content</h1>')
+    await new PlaywrightDriver(setup.page, { showCursor: false }).observe()
+    const internals = setup.agent as unknown as AgentInternals
+    const plan: Plan = {
+      steps: [
+        {
+          action: { action: 'extractWithIndex', query: 'p, dd, code', contains: 'nonexistent' },
+          expectedEffect: 'no matches',
+        },
+      ],
+    }
+    const turns: Turn[] = []
+    const result = await internals.executePlan(plan, SCENARIO, 'run_test_extract_empty', turns, new RunState(10), 0)
+    // Zero matches → no lastExtractOutput → falls into "plan exhausted" branch
+    expect(result.kind).toBe('deviated')
+    if (result.kind !== 'deviated') throw new Error('narrow')
+    expect(result.reason).toMatch(/exhausted|no matches/i)
+    await setup.browser.close()
+  })
+
+  // Gen 10: cost cap fires when totalTokensUsed exceeds tokenBudget
+  it('Gen 10 cost cap: RunState reports exhausted when tokens exceed budget', () => {
+    const state = new RunState(20, 1000)
+    state.recordTokens(800)
+    expect(state.isTokenBudgetExhausted).toBe(false)
+    state.recordTokens(300) // total = 1100 > 1000
+    expect(state.isTokenBudgetExhausted).toBe(true)
+    expect(state.totalTokensUsed).toBe(1100)
+  })
 })
 
 // Pure unit tests on the placeholder detection helper. No fixture, no driver.
 describe('hasPlaceholderPattern', () => {
   // Imported lazily to keep the integration suite above the unit suite.
   let detect: (text: string) => boolean
+  let isMeaningful: (out: string | null | undefined) => boolean
 
   beforeAll(async () => {
     const mod = await import('../src/runner/runner.js')
     detect = mod.hasPlaceholderPattern
+    isMeaningful = mod.isMeaningfulRunScriptOutput
   })
 
   it('detects JSON null literals', () => {
@@ -421,5 +571,65 @@ describe('hasPlaceholderPattern', () => {
   it('does NOT match JSON with real values', () => {
     expect(detect('{"totalUsers": "12,847", "activeSessions": "3,421"}')).toBe(false)
     expect(detect('[1, 2, 3]')).toBe(false)
+  })
+
+  // Gen 9: isMeaningfulRunScriptOutput catches the runScript outputs that
+  // SHOULD trigger a fall-through to the per-action loop.
+  describe('isMeaningfulRunScriptOutput (Gen 9)', () => {
+    it('rejects null / undefined / empty / whitespace', () => {
+      expect(isMeaningful(null)).toBe(false)
+      expect(isMeaningful(undefined)).toBe(false)
+      expect(isMeaningful('')).toBe(false)
+      expect(isMeaningful('   ')).toBe(false)
+      expect(isMeaningful('\n\t  \n')).toBe(false)
+    })
+
+    it('rejects literal "null" / "undefined" / empty quoted strings', () => {
+      expect(isMeaningful('null')).toBe(false)
+      expect(isMeaningful('undefined')).toBe(false)
+      expect(isMeaningful('""')).toBe(false)
+      expect(isMeaningful("''")).toBe(false)
+    })
+
+    it('rejects empty JSON shells', () => {
+      expect(isMeaningful('{}')).toBe(false)
+      expect(isMeaningful('[]')).toBe(false)
+    })
+
+    it('rejects JSON objects where every value is null/empty/zero', () => {
+      expect(isMeaningful('{"x": null}')).toBe(false)
+      expect(isMeaningful('{"x": null, "y": null}')).toBe(false)
+      expect(isMeaningful('{"x": "", "y": ""}')).toBe(false)
+      expect(isMeaningful('{"x": null, "y": ""}')).toBe(false)
+    })
+
+    it('rejects placeholder patterns', () => {
+      expect(isMeaningful('<from prior step>')).toBe(false)
+      expect(isMeaningful('{"x": "{{value}}"}')).toBe(false)
+    })
+
+    it('accepts JSON with real values', () => {
+      expect(isMeaningful('{"weekly_downloads": "25,847,392"}')).toBe(true)
+      expect(isMeaningful('{"x": 1815}')).toBe(true)
+    })
+
+    it('rejects JSON with ANY null value (partial extraction = retry)', () => {
+      // Even one null suggests the agent failed to extract that field; the
+      // per-action loop should retry to get all fields. This is the cleaner
+      // behavior than auto-completing with partial data.
+      expect(isMeaningful('{"x": null, "y": 5}')).toBe(false)
+      expect(isMeaningful('{"title": "Mistral 7B", "first_author": null}')).toBe(false)
+    })
+
+    it('accepts non-JSON real strings', () => {
+      expect(isMeaningful('Mistral 7B')).toBe(true)
+      expect(isMeaningful('1815')).toBe(true)
+      expect(isMeaningful('Account Created!')).toBe(true)
+    })
+
+    it('accepts non-empty arrays', () => {
+      expect(isMeaningful('[1,2,3]')).toBe(true)
+      expect(isMeaningful('["one"]')).toBe(true)
+    })
   })
 })

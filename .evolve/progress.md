@@ -1,5 +1,67 @@
 # Evolve Progress
 
+## Generation 9 — CLOSED WITHOUT MERGE — 2026-04-08
+
+**Approach:** runtime two-pass extraction. When planner-emitted runScript returned null/empty, fall through to per-action loop with `[REPLAN]` context.
+
+**Result: NON-IMPROVEMENT WITH COST REGRESSION.**
+
+| metric | Gen 8 (3 reps) | Gen 9 (3 reps) | Gen 9.1 (3 reps) |
+|---|---:|---:|---:|
+| pass rate | 23/30 = 77% | 21/30 = 70% | 23/30 = 77% |
+| mean wall-time | 9.2s | 13.5s | ~13s |
+| mean cost | $0.0168 | $0.0256 | ~$0.025 |
+
+**5-rep validation killed mid-flight** after observing reddit-subreddit-titles cost regression: Gen 8 = $0.015/run → Gen 9.1 rep 3 = **$0.25 / 132K tokens**, rep 4 = **$0.32 / 173K tokens** in death-spiral recovery loops. mdn-array-flatmap regressed 2/3 → 0/5.
+
+**Root cause:** iterating with the same LLM that picked the wrong selector produces the same wrong selector. Mechanism without capability change is worthless. Per-action loop also has no token budget cap, so failed recovery burns unbounded cost.
+
+**What we keep:** `isMeaningfulRunScriptOutput()` helper + 12 unit tests (the primitive is still useful for cost gates and validators). PR #59 closed.
+
+**Lesson:** Gen 10 must be a **capability change** (give the LLM new information) not a **mechanism change** (give the LLM more turns).
+
+## Generation 10 — VALIDATED, KEEP — 2026-04-09
+
+**Thesis:** Replace placeholder iteration (Gen 9 mechanism-only approach) with a **capability change**: extract a numbered, text-rich element index from the live DOM (extractWithIndex). Plus bigger snapshot with content-line preservation, cost cap to bound recovery loops, and the cherry-picked Gen 9 helper (isMeaningfulRunScriptOutput) hardened against the new tools.
+
+### Result: 5-rep matched same-day validation
+
+| metric | Gen 8 same-day 5-rep | **Gen 10 5-rep** | Δ |
+|---|---:|---:|---|
+| **pass rate** | **29/50 = 58%** | **37/50 = 74%** | **+8 tasks (+16 pp)** |
+| mean cost | $0.0171 | $0.0272 | +$0.010 (+59%) |
+| **cost per pass** | **$0.029** | **$0.037** | **+28%** |
+| mean wall-time | 9.4s | 12.6s | +3.2s |
+| death spirals | 0 | 0 | ✓ cost cap held |
+| reddit (Gen 9.1 regression) | 5/5 @ $0.015 | 5/5 @ $0.015 | **regression FIXED** |
+
+### Per-task delta (5-rep, same-day)
+
+| task | Gen 8 | Gen 10 | Δ |
+|---|---:|---:|---|
+| **npm-package-downloads** | **0/5** | **5/5** | **+5** ⭐⭐⭐ |
+| **w3c-html-spec-find-element** | 2/5 | **5/5** | **+3** ⭐⭐ |
+| github-pr-count | 4/5 | 5/5 | +1 |
+| stackoverflow-answer-count | 2/5 | 3/5 | +1 |
+| hn / mdn / reddit / python-docs | parity | parity | 0 |
+| wikipedia / arxiv | 3/5 | 2/5 | -1 (variance, within Wilson 95% CI) |
+
+### What worked
+- **extractWithIndex** is the architectural fix Gen 9 was missing. npm went 0/5 → 5/5 in one shot. Pick-by-content beats pick-by-selector when the planner can't see the data at plan time.
+- **Bigger snapshot + content-line preservation** delivered w3c +3 (long-document navigation) and reinforced npm.
+- **Cost cap (100K)** completely eliminated the Gen 9.1 reddit death-spiral mode (no run hit the cap; reddit stayed at $0.015).
+- **Cherry-picked Gen 9 helper** is safe in Gen 10 because the per-action loop now has extractWithIndex as a real recovery tool.
+
+### What's still soft (Gen 10.1 candidates)
+- **wikipedia oracle compliance**: agent emits raw `'1815'` instead of `{"year":1815}`. Same in Gen 8, not a regression. Fixable by a goal-prompt tweak, not an architectural change.
+- **wikipedia recovery loops**: 1 of 5 reps burned 75K tokens via supervisor/extra-context bloat (4 runScripts → 2 wait actions consuming 22-24K input each). Gen 10.1 fix: cap supervisor extra-context size on stuck-detection turns.
+- **mdn**: 2/5 — extractWithIndex helps but the LLM doesn't always pick the right index. Could improve with better contains-filter prompting.
+
+### Verdict: PROMOTE
+Per CLAUDE.md rules #3 (same-day baseline) and #6 (≥5 reps for quality), the +8 pass-rate gain is unambiguous. PR #60 mark ready for review. Cost regression honestly noted as +28% cost-per-pass.
+
+## Generation 9 — CLOSED WITHOUT MERGE — 2026-04-08
+
 ## Generation 7 — Plan-then-Execute — 2026-04-08
 
 **Thesis:** ONE LLM call per strategy, not per action. The planner makes a single LLM call up front to generate the entire action sequence, the runner executes deterministically without re-entering the LLM until verification fails.

@@ -30,6 +30,7 @@ import { runOverridePipeline } from '../override-pipeline.js';
 import type { OverrideContext } from '../override-pipeline.js';
 
 import { withRetry, findElementForRef, safeHostname, pushGoalVerificationEvidence } from './utils.js';
+import { runExtractWithIndex, formatExtractWithIndexResult } from '../drivers/extract-with-index.js';
 import { buildSearchResultsGuidance, buildVisibleLinkRecommendation, getVisibleLinkRecommendation, getRankedVisibleLinkCandidates, rankSearchCandidates } from './search-guidance.js';
 import { buildGoalVerificationClaim, collectSearchWorkflowEvidence, shouldAcceptSearchWorkflowCompletion, shouldAcceptScriptBackedCompletion, detectCompletionContentTypeMismatch } from './goal-verification.js';
 import { verifyExpectedEffect } from './effect-verification.js';
@@ -226,6 +227,55 @@ export function hasPlaceholderPattern(text: string): boolean {
   return false
 }
 
+/**
+ * Gen 9 — runtime two-pass extraction. When the planner emits a single
+ * runScript step (per Gen 7.2 rule #7) and that script returns null /
+ * empty / whitespace / `{x: null}` / a placeholder pattern, the auto-
+ * complete-from-runScript path should NOT fire. Instead the runner should
+ * mark the plan as deviated and fall through to the per-action loop where
+ * Brain.decide can re-observe the loaded page and emit a smarter action
+ * (different selector, click+wait, scroll, etc.).
+ *
+ * This addresses the failure mode the Gen 8 head-to-head gauntlet
+ * surfaced: bad's planner-only path lost to browser-use's per-action loop
+ * on tasks where the first runScript pick was wrong (npm, mdn signature,
+ * w3c, github, wikipedia variance). Two-pass gives bad's per-action loop
+ * the same recovery surface browser-use uses, with the planner's speed
+ * advantage on the cases where runScript succeeds first try.
+ *
+ * "Meaningful" means: not empty/whitespace, not the literal string `null`
+ * or `undefined`, and not matching `hasPlaceholderPattern` (which already
+ * detects JSON null fields, "<from prior step>" markers, etc.).
+ */
+export function isMeaningfulRunScriptOutput(output: string | null | undefined): boolean {
+  if (typeof output !== 'string') return false
+  const trimmed = output.trim()
+  if (trimmed.length === 0) return false
+  if (trimmed === 'null' || trimmed === 'undefined' || trimmed === '""' || trimmed === "''") return false
+  // Empty JSON shells: `{}`, `[]`, `{"x": null}`, `[null, null]`
+  if (trimmed === '{}' || trimmed === '[]') return false
+  if (hasPlaceholderPattern(trimmed)) return false
+  // If the output parses as JSON and EVERY top-level value is null/empty,
+  // treat it as not meaningful. This catches `{"x": null, "y": ""}` even
+  // though the placeholder regex would already catch the null one.
+  try {
+    const parsed = JSON.parse(trimmed)
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const values = Object.values(parsed)
+      if (values.length > 0) {
+        const allEmpty = values.every(
+          (v) => v === null || v === undefined || v === '' || v === 0,
+        )
+        if (allEmpty) return false
+      }
+    }
+    if (Array.isArray(parsed) && parsed.length === 0) return false
+  } catch {
+    // Not JSON, that's fine — fall through to "meaningful" if we got here.
+  }
+  return true
+}
+
 export class BrowserAgent {
   private driver: Driver;
   private brain: Brain;
@@ -330,10 +380,12 @@ export class BrowserAgent {
       return agentResult
     };
 
-    // Wrap onTurn to include mid-run manifest updates (every 3 turns)
+    // Wrap onTurn to include mid-run manifest updates (every 3 turns) and to
+    // accumulate per-turn token usage for the Gen 10 cost cap.
     const originalOnTurn = this.onTurn
     this.onTurn = (turn: Turn) => {
       originalOnTurn?.(turn)
+      runState.recordTokens(turn.tokensUsed)
       if (this.runRegistry && turns.length % 3 === 0) {
         try {
           this.runRegistry.updateRun(runId, {
@@ -630,6 +682,19 @@ export class BrowserAgent {
         return buildResult({
           success: false,
           reason: scenario.signal.reason || 'Cancelled',
+          turns,
+          totalMs: Date.now() - startTime,
+        });
+      }
+
+      // Gen 10: hard cost cap. Stops the per-action loop from burning unbounded
+      // tokens on cases where recovery isn't converging (the Gen 9 death-spiral
+      // failure mode where reddit hit $0.32 / 173K tokens). The cap is enforced
+      // BEFORE the next LLM call so the case aborts cleanly with a reason.
+      if (runState.isTokenBudgetExhausted) {
+        return buildResult({
+          success: false,
+          reason: `cost_cap_exceeded: ${runState.totalTokensUsed} tokens used, budget ${runState.tokenBudget}`,
           turns,
           totalMs: Date.now() - startTime,
         });
@@ -1466,6 +1531,45 @@ export class BrowserAgent {
           continue;
         }
 
+        // -- 5d. Handle extractWithIndex action (Gen 10) --
+        // Returns a numbered list of every visible element matching `query`,
+        // each with its tag, textContent, key attributes, and a stable
+        // selector. The agent picks elements by index in the next turn.
+        // This is the Gen 10 capability change: pick-by-content instead of
+        // pick-by-selector. Works on data the planner couldn't see at plan
+        // time (XHR-loaded content, dl/dt/dd, deeply-nested wrappers).
+        if (action.action === 'extractWithIndex') {
+          const page = this.driver.getPage?.();
+          if (page) {
+            try {
+              const matches = await runExtractWithIndex(page, action.query, action.contains);
+              const formatted = formatExtractWithIndexResult(matches, action.query, action.contains);
+              runState.firstSufficientEvidenceTurn ??= i;
+              pushGoalVerificationEvidence(
+                runState.goalVerificationEvidence,
+                `EXTRACT RESULT (${matches.length} matches):\n${formatted}`,
+              );
+              this.brain.injectFeedback(
+                `EXTRACT RESULT (${matches.length} matches for query "${action.query}"${action.contains ? ` containing "${action.contains}"` : ''}):\n${formatted}`,
+              );
+            } catch (extractErr: unknown) {
+              const msg = extractErr instanceof Error ? extractErr.message : String(extractErr);
+              this.brain.injectFeedback(
+                `EXTRACT ERROR: ${msg}`,
+              );
+            }
+          } else {
+            this.brain.injectFeedback(
+              'EXTRACT ERROR: Cannot access page — driver does not expose a Playwright page.',
+            );
+          }
+
+          turn.durationMs = Date.now() - turnStart;
+          turns.push(turn);
+          this.onTurn?.(turn);
+          continue;
+        }
+
         // -- 6. Check for terminal actions --
         if (action.action === 'complete') {
           // Step 1: Goal verification — did the agent actually achieve the goal?
@@ -2135,6 +2239,13 @@ export class BrowserAgent {
     // This deterministic substitution fixes that without an extra LLM call.
     let lastRunScriptOutput: string | null = null
 
+    // Gen 10: track the last extractWithIndex match list. Unlike runScript,
+    // we do NOT auto-substitute this into a placeholder complete — the LLM
+    // must read the formatted match list and pick by index. When the plan
+    // ends with extractWithIndex (or runs out of valid steps), we fall
+    // through to the per-action loop with the match list as feedback.
+    let lastExtractOutput: string | null = null
+
     for (let stepIdx = 0; stepIdx < plan.steps.length; stepIdx++) {
       if (scenario.signal?.aborted) {
         return {
@@ -2334,6 +2445,17 @@ export class BrowserAgent {
         lastRunScriptOutput = execResult.data
       }
 
+      // Gen 10: capture extractWithIndex match list for fall-through to the
+      // per-action loop. The LLM must read the list and pick by index — we
+      // do not auto-complete with the raw match list.
+      if (step.action.action === 'extractWithIndex' && typeof execResult.data === 'string' && execResult.data.length > 0) {
+        lastExtractOutput = execResult.data
+        // Also push as goal verification evidence so the verifier sees what
+        // the agent extracted.
+        runState.firstSufficientEvidenceTurn ??= currentTurnIndex
+        pushGoalVerificationEvidence(runState.goalVerificationEvidence, `EXTRACT RESULT:\n${execResult.data}`)
+      }
+
       // Verify the post-condition. We re-observe to get the post-action
       // state, then run the same verifyExpectedEffect helper the per-action
       // loop uses. The fresh observe is also stashed in cachedPostState so
@@ -2363,6 +2485,7 @@ export class BrowserAgent {
         || step.action.action === 'scroll'
         || step.action.action === 'hover'
         || step.action.action === 'runScript'
+        || step.action.action === 'extractWithIndex'
         || step.action.action === 'evaluate'
         || step.action.action === 'verifyPreview'
         || step.action.action === 'fill'
@@ -2480,13 +2603,13 @@ export class BrowserAgent {
     if (
       lastStep
       && lastStep.action.action === 'runScript'
-      && lastRunScriptOutput
+      && isMeaningfulRunScriptOutput(lastRunScriptOutput)
     ) {
       const synthTurnNumber = currentTurnIndex + 1
       const synthTurn: Turn = {
         turn: synthTurnNumber,
         state: lastState,
-        action: { action: 'complete', result: lastRunScriptOutput },
+        action: { action: 'complete', result: lastRunScriptOutput! },
         reasoning: 'Gen 7.2 auto-complete: plan ended after runScript, runner emitted complete with the runScript output',
         durationMs: 0,
       }
@@ -2504,13 +2627,55 @@ export class BrowserAgent {
         durationMs: 0,
       })
       if (this.config.debug) {
-        console.log(`[Runner] Gen 7.2: auto-emitted complete with runScript output (${lastRunScriptOutput.length} chars) after plan exhausted`)
+        console.log(`[Runner] Gen 7.2: auto-emitted complete with runScript output (${lastRunScriptOutput!.length} chars) after plan exhausted`)
       }
       return {
         kind: 'completed',
         lastState,
-        finalResult: lastRunScriptOutput,
+        finalResult: lastRunScriptOutput!,
         turnsConsumed: plan.steps.length + 1,
+      }
+    }
+
+    // Gen 10: if the plan ended with extractWithIndex, fall through to the
+    // per-action loop with the match list as feedback. The LLM must read
+    // the matches and pick by index — we do NOT auto-complete with the raw
+    // match list. This is the planner-emits-extract path for extraction
+    // tasks like npm/mdn/python-docs where the planner used the new
+    // extractWithIndex action.
+    if (lastExtractOutput) {
+      return {
+        kind: 'deviated',
+        lastState,
+        failedStepIndex: plan.steps.length,
+        reason: `plan completed extractWithIndex but the LLM must read the matches and pick by index. Match list:\n${lastExtractOutput.slice(0, 4000)}\n\nPick the index whose text matches the goal, then emit complete with result: <picked text>`,
+        turnsConsumed: plan.steps.length,
+      }
+    }
+
+    // Gen 9 (cherry-picked into Gen 10): if the last step WAS a runScript
+    // but the output was NOT meaningful (null, empty, placeholder), DO NOT
+    // auto-complete with garbage. Fall through to the per-action loop with
+    // a deviation reason that names the empty output. In Gen 10 the per-
+    // action loop has TWO new tools that make this recovery actually work:
+    //   1. extractWithIndex (the wide-query content-match action) — see
+    //      data-extraction rule #25
+    //   2. cost cap (100k tokens) — bounds any death-spiral if the LLM
+    //      can't recover, preventing the Gen 9.1 reddit failure mode
+    if (
+      lastStep
+      && lastStep.action.action === 'runScript'
+      && !isMeaningfulRunScriptOutput(lastRunScriptOutput)
+    ) {
+      if (this.config.debug) {
+        console.log(`[Runner] Gen 9: runScript returned no meaningful output (${JSON.stringify(lastRunScriptOutput).slice(0, 100)}); falling through to per-action loop for two-pass extraction`)
+      }
+      return {
+        kind: 'deviated',
+        lastState,
+        failedStepIndex: plan.steps.length - 1,
+        reason: `runScript returned no meaningful output (got: ${JSON.stringify(lastRunScriptOutput).slice(0, 200)}). The first-pass extraction failed — re-observe the page and try extractWithIndex with a wide query (e.g. 'p, span, dd, code') and a contains filter naming the expected text fragment. Pick-by-content beats pick-by-selector when the planner couldn't see the data at plan time.`,
+        turnsConsumed: plan.steps.length,
       }
     }
 

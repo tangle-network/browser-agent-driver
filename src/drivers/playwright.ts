@@ -17,6 +17,7 @@ import { ANALYTICS_PATTERNS, IMAGE_PATTERNS, MEDIA_PATTERNS } from './block-patt
 import { buildCdpSnapshot } from './cdp-snapshot.js';
 import { getPageMetadata } from './cdp-page-state.js';
 import { CURSOR_OVERLAY_INIT_SCRIPT } from './cursor-overlay.js';
+import { runExtractWithIndex, formatExtractWithIndexResult } from './extract-with-index.js';
 
 function isPointerInterceptError(error: string): boolean {
   return /intercepts pointer events|subtree intercepts pointer events|not receiving pointer events/i.test(error);
@@ -579,6 +580,17 @@ export class PlaywrightDriver implements Driver {
             ? scriptResult
             : JSON.stringify(scriptResult, null, 2);
           return { success: true, error: undefined, data: stringified };
+        }
+
+        case 'extractWithIndex': {
+          // Gen 10: numbered DOM-index extraction. Returns the formatted match
+          // list as `data` so executePlan can capture it like runScript does.
+          // The per-action loop has its own intercept (runner.ts) so this
+          // path is only hit when extractWithIndex appears in a planner-
+          // emitted Plan step.
+          const matches = await runExtractWithIndex(this.page, action.query, action.contains);
+          const formatted = formatExtractWithIndexResult(matches, action.query, action.contains);
+          return { success: true, error: undefined, data: formatted };
         }
 
         case 'evaluate':
