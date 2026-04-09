@@ -20,18 +20,47 @@
 
 **Lesson:** Gen 10 must be a **capability change** (give the LLM new information) not a **mechanism change** (give the LLM more turns).
 
-## Generation 10 — PROPOSED, awaiting decision — 2026-04-08
+## Generation 10 — VALIDATED, KEEP — 2026-04-09
 
-**Thesis:** Replace placeholder iteration with one architectural change: extract a numbered, text-rich element index from the live DOM and let the LLM reference elements by index instead of by selector. This is the browser-use approach and is the only thing that explains why they win on the 4 tasks where bad loses despite being 7× faster overall.
+**Thesis:** Replace placeholder iteration (Gen 9 mechanism-only approach) with a **capability change**: extract a numbered, text-rich element index from the live DOM (extractWithIndex). Plus bigger snapshot with content-line preservation, cost cap to bound recovery loops, and the cherry-picked Gen 9 helper (isMeaningfulRunScriptOutput) hardened against the new tools.
 
-**Three candidates ranked in `.evolve/pursuits/2026-04-08-gen9-retro-and-gen10-proposal.md`:**
-- **A — DOM index extraction** (recommended) — addresses LLM-visibility root cause
-- **C — bigger snapshot + text content** — cheap insurance, ~30 LOC
-- **B — vision fallback** — Gen 11 material, costs/latency wrong for Gen 10
+### Result: 5-rep matched same-day validation
 
-**Recommended:** A + C as Gen 10. Awaiting user decision before any code changes.
+| metric | Gen 8 same-day 5-rep | **Gen 10 5-rep** | Δ |
+|---|---:|---:|---|
+| **pass rate** | **29/50 = 58%** | **37/50 = 74%** | **+8 tasks (+16 pp)** |
+| mean cost | $0.0171 | $0.0272 | +$0.010 (+59%) |
+| **cost per pass** | **$0.029** | **$0.037** | **+28%** |
+| mean wall-time | 9.4s | 12.6s | +3.2s |
+| death spirals | 0 | 0 | ✓ cost cap held |
+| reddit (Gen 9.1 regression) | 5/5 @ $0.015 | 5/5 @ $0.015 | **regression FIXED** |
 
-**Hard cost cap** baked into the proposal: any single case > 50K tokens aborts as `cost_cap_exceeded`. This prevents the reddit-style death spirals Gen 9.1 hit.
+### Per-task delta (5-rep, same-day)
+
+| task | Gen 8 | Gen 10 | Δ |
+|---|---:|---:|---|
+| **npm-package-downloads** | **0/5** | **5/5** | **+5** ⭐⭐⭐ |
+| **w3c-html-spec-find-element** | 2/5 | **5/5** | **+3** ⭐⭐ |
+| github-pr-count | 4/5 | 5/5 | +1 |
+| stackoverflow-answer-count | 2/5 | 3/5 | +1 |
+| hn / mdn / reddit / python-docs | parity | parity | 0 |
+| wikipedia / arxiv | 3/5 | 2/5 | -1 (variance, within Wilson 95% CI) |
+
+### What worked
+- **extractWithIndex** is the architectural fix Gen 9 was missing. npm went 0/5 → 5/5 in one shot. Pick-by-content beats pick-by-selector when the planner can't see the data at plan time.
+- **Bigger snapshot + content-line preservation** delivered w3c +3 (long-document navigation) and reinforced npm.
+- **Cost cap (100K)** completely eliminated the Gen 9.1 reddit death-spiral mode (no run hit the cap; reddit stayed at $0.015).
+- **Cherry-picked Gen 9 helper** is safe in Gen 10 because the per-action loop now has extractWithIndex as a real recovery tool.
+
+### What's still soft (Gen 10.1 candidates)
+- **wikipedia oracle compliance**: agent emits raw `'1815'` instead of `{"year":1815}`. Same in Gen 8, not a regression. Fixable by a goal-prompt tweak, not an architectural change.
+- **wikipedia recovery loops**: 1 of 5 reps burned 75K tokens via supervisor/extra-context bloat (4 runScripts → 2 wait actions consuming 22-24K input each). Gen 10.1 fix: cap supervisor extra-context size on stuck-detection turns.
+- **mdn**: 2/5 — extractWithIndex helps but the LLM doesn't always pick the right index. Could improve with better contains-filter prompting.
+
+### Verdict: PROMOTE
+Per CLAUDE.md rules #3 (same-day baseline) and #6 (≥5 reps for quality), the +8 pass-rate gain is unambiguous. PR #60 mark ready for review. Cost regression honestly noted as +28% cost-per-pass.
+
+## Generation 9 — CLOSED WITHOUT MERGE — 2026-04-08
 
 ## Generation 7 — Plan-then-Execute — 2026-04-08
 

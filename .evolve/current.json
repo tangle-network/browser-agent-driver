@@ -1,13 +1,42 @@
 {
-  "mode": "pursue",
-  "goal": "Move real-web gauntlet pass rate above 26/30 by fixing the LLM-visibility bottleneck (not by iterating)",
-  "status": "awaiting_user_decision",
-  "round": null,
+  "mode": "evolve",
+  "goal": "Move real-web gauntlet pass rate above 26/30 by fixing the LLM-visibility bottleneck",
+  "status": "round2_complete_promote",
+  "round": 2,
   "generation": 10,
   "activePursuit": ".evolve/pursuits/2026-04-08-gen9-retro-and-gen10-proposal.md",
-  "branch": "main",
-  "lastClosedPursuit": ".evolve/pursuits/2026-04-08-real-task-gauntlet-gen8.md",
-  "lastClosedGeneration": 9,
-  "lastClosedReason": "Gen 9 LLM-iteration approach: no pass-rate gain at n=3, reddit cost regression $0.015 -> $0.25/$0.32 in 5-rep validation (death-spiral recovery loops). PR #59 closed, branch unmerged.",
-  "updatedAt": "2026-04-08T23:30:00Z"
+  "branch": "gen10-dom-index-extraction",
+  "verdict": "KEEP — promote",
+  "round2Result": {
+    "method": "5-rep matched same-day baseline (CLAUDE.md rules #3 + #6)",
+    "gen10_5rep": "37/50 = 74%",
+    "gen8_sameday_5rep": "29/50 = 58%",
+    "delta": "+8 tasks (+16 percentage points)",
+    "perTaskWins": [
+      "npm-package-downloads: 0/5 -> 5/5 (+5, complete fix from extractWithIndex / bigger snapshot)",
+      "w3c-html-spec-find-element: 2/5 -> 5/5 (+3, bigger snapshot enables long-doc nav)",
+      "github-pr-count: 4/5 -> 5/5 (+1)",
+      "stackoverflow-answer-count: 2/5 -> 3/5 (+1)"
+    ],
+    "perTaskVariance": [
+      "wikipedia-fact-lookup: 3/5 -> 2/5 (-1, oracle compliance issue, both struggling)",
+      "arxiv-paper-abstract: 3/5 -> 2/5 (-1, within Wilson CI overlap)"
+    ],
+    "perTaskParity": ["hn 5/5 vs 5/5", "mdn 2/5 vs 2/5", "reddit 5/5 vs 5/5", "python-docs 3/5 vs 3/5"],
+    "costAnalysis": {
+      "rawCostMean": "$0.0272 vs $0.0171 (+59%)",
+      "perPassCost": "$0.037 vs $0.029 (+28%)",
+      "deathSpirals": 0,
+      "peakRunCost": "$0.16 wikipedia (Gen 9.1 was $0.32)",
+      "redditFix": "5/5 at $0.015 mean (Gen 9.1 was 3/5 at $0.25-$0.32 death spirals — REGRESSION FIXED)"
+    },
+    "wallTime": "12.6s mean vs 9.4s (+34%)"
+  },
+  "nextSteps": [
+    "Mark PR #60 ready for review (remove draft)",
+    "Update changeset with honest 5-rep numbers + cost-per-pass framing",
+    "Append round 2 to progress.md + experiments.jsonl",
+    "Consider Gen 10.1 follow-up: cap supervisor extra-context size to reduce wikipedia recovery loops"
+  ],
+  "updatedAt": "2026-04-09T02:11:00Z"
 }
