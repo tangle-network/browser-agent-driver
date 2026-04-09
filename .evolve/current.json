@@ -1,10 +1,13 @@
 {
   "mode": "pursue",
-  "goal": "Real-task gauntlet — 10 hard real-web flows with video evidence, deterministic oracles, multi-rep validation",
-  "status": "designing",
+  "goal": "Move real-web gauntlet pass rate above 26/30 by fixing the LLM-visibility bottleneck (not by iterating)",
+  "status": "awaiting_user_decision",
   "round": null,
-  "generation": 8,
-  "activePursuit": ".evolve/pursuits/2026-04-08-real-task-gauntlet-gen8.md",
-  "branch": "gen8-real-task-gauntlet",
-  "updatedAt": "2026-04-08T22:00:00Z"
+  "generation": 10,
+  "activePursuit": ".evolve/pursuits/2026-04-08-gen9-retro-and-gen10-proposal.md",
+  "branch": "main",
+  "lastClosedPursuit": ".evolve/pursuits/2026-04-08-real-task-gauntlet-gen8.md",
+  "lastClosedGeneration": 9,
+  "lastClosedReason": "Gen 9 LLM-iteration approach: no pass-rate gain at n=3, reddit cost regression $0.015 -> $0.25/$0.32 in 5-rep validation (death-spiral recovery loops). PR #59 closed, branch unmerged.",
+  "updatedAt": "2026-04-08T23:30:00Z"
 }

@@ -1,5 +1,38 @@
 # Evolve Progress
 
+## Generation 9 — CLOSED WITHOUT MERGE — 2026-04-08
+
+**Approach:** runtime two-pass extraction. When planner-emitted runScript returned null/empty, fall through to per-action loop with `[REPLAN]` context.
+
+**Result: NON-IMPROVEMENT WITH COST REGRESSION.**
+
+| metric | Gen 8 (3 reps) | Gen 9 (3 reps) | Gen 9.1 (3 reps) |
+|---|---:|---:|---:|
+| pass rate | 23/30 = 77% | 21/30 = 70% | 23/30 = 77% |
+| mean wall-time | 9.2s | 13.5s | ~13s |
+| mean cost | $0.0168 | $0.0256 | ~$0.025 |
+
+**5-rep validation killed mid-flight** after observing reddit-subreddit-titles cost regression: Gen 8 = $0.015/run → Gen 9.1 rep 3 = **$0.25 / 132K tokens**, rep 4 = **$0.32 / 173K tokens** in death-spiral recovery loops. mdn-array-flatmap regressed 2/3 → 0/5.
+
+**Root cause:** iterating with the same LLM that picked the wrong selector produces the same wrong selector. Mechanism without capability change is worthless. Per-action loop also has no token budget cap, so failed recovery burns unbounded cost.
+
+**What we keep:** `isMeaningfulRunScriptOutput()` helper + 12 unit tests (the primitive is still useful for cost gates and validators). PR #59 closed.
+
+**Lesson:** Gen 10 must be a **capability change** (give the LLM new information) not a **mechanism change** (give the LLM more turns).
+
+## Generation 10 — PROPOSED, awaiting decision — 2026-04-08
+
+**Thesis:** Replace placeholder iteration with one architectural change: extract a numbered, text-rich element index from the live DOM and let the LLM reference elements by index instead of by selector. This is the browser-use approach and is the only thing that explains why they win on the 4 tasks where bad loses despite being 7× faster overall.
+
+**Three candidates ranked in `.evolve/pursuits/2026-04-08-gen9-retro-and-gen10-proposal.md`:**
+- **A — DOM index extraction** (recommended) — addresses LLM-visibility root cause
+- **C — bigger snapshot + text content** — cheap insurance, ~30 LOC
+- **B — vision fallback** — Gen 11 material, costs/latency wrong for Gen 10
+
+**Recommended:** A + C as Gen 10. Awaiting user decision before any code changes.
+
+**Hard cost cap** baked into the proposal: any single case > 50K tokens aborts as `cost_cap_exceeded`. This prevents the reddit-style death spirals Gen 9.1 hit.
+
 ## Generation 7 — Plan-then-Execute — 2026-04-08
 
 **Thesis:** ONE LLM call per strategy, not per action. The planner makes a single LLM call up front to generate the entire action sequence, the runner executes deterministically without re-entering the LLM until verification fails.

@@ -122,6 +122,8 @@ function actionSignature(action: Action): string {
       return `evaluate:${action.criteria}`;
     case 'runScript':
       return `runScript:${action.script.slice(0, 64)}`;
+    case 'extractWithIndex':
+      return `extractWithIndex:${action.query.slice(0, 64)}:${action.contains ?? ''}`;
     case 'verifyPreview':
       return 'verifyPreview';
     case 'complete':

@@ -36,6 +36,7 @@ ACTIONS:
 - {"action": "wait", "ms": 1000}
 - {"action": "evaluate", "criteria": "Is the layout professional? Are colors consistent?"}
 - {"action": "runScript", "script": "document.querySelector('.count').textContent"} — run JS in page context and get the result. Use for reading content not in the a11y tree (canvas, computed styles, hidden state).
+- {"action": "extractWithIndex", "query": "p, span, dd, code", "contains": "downloads"} — return a NUMBERED list of every visible element matching \`query\`, with each element's tag, full textContent, key attributes, and a stable selector. PREFER THIS OVER runScript when you need to find data inside the page but don't know the exact selector. The wide query (e.g. \`'p, span, strong'\`) finds candidates and the response shows the actual text so you can pick by content match. Optional \`contains\` filters matches to those whose text contains a substring (case-insensitive). After this action, your next turn can complete with the picked element's text or click its selector.
 - {"action": "verifyPreview"} — after the app builds, inspect the preview iframe. Returns URL, title, a11y tree, and errors. Use this AFTER you see a preview iframe on the page.
 - {"action": "fill", "fields": {"@t1": "Jordan", "@t2": "Rivera"}, "selects": {"@s1": "WA"}, "checks": ["@c1", "@c2"]} — BATCH fill multiple form fields, dropdowns, and checkboxes in ONE turn. Use this whenever you can see 2+ form fields you need to fill — it's dramatically faster than per-field type/click. fields/selects/checks are all optional but at least one must be non-empty.
 - {"action": "clickSequence", "refs": ["@r1", "@r2", "@r3"]} — click a known sequence of refs in order. Use for multi-step UI navigation chains where the click order is obvious from the page structure.
@@ -84,12 +85,13 @@ const SEARCH_RULES = `
 16. CONTENT DISCOVERY: If the ELEMENTS list doesn't show the link/content you need (e.g., the page has many links but the a11y tree is truncated), use runScript to find it: document.querySelectorAll('a[href]') filtered by keyword. Navigate to the discovered URL directly instead of clicking blindly through menus
 17. EXTERNAL SEARCH REDIRECTS: If a site's search form redirects to an external search engine (e.g., search.usa.gov for .gov sites), the results still link back to the original site. Click a relevant search result link — it will take you to the target domain. Do NOT abandon search results to navigate the target site manually`;
 
-/** Data extraction rules (18, 21-23): injected when goal involves extracting data */
+/** Data extraction rules (18, 21-23, 25): injected when goal involves extracting data */
 const DATA_EXTRACTION_RULES = `
-18. DATA EXTRACTION: When the goal asks for specific data (prices, ratings, counts, names) from a list or search results page, use runScript to extract all needed data at once: e.g., document.querySelectorAll('.product-card').forEach(...). Do NOT click into each individual item when the data is visible on the list page. Extract first, then complete with the extracted data
-21. EFFICIENT COMPLETION: When you have enough data to answer the goal, complete immediately. Do not navigate to additional pages for "confirmation" if the data was already extracted via runScript or is visible in the current a11y tree. Include all extracted data in the completion result
-22. EXTRACT BEFORE NAVIGATING: On search results, directory listings, or any page showing multiple items, ALWAYS extract ALL needed data via runScript BEFORE clicking into individual items. This includes names, phone numbers, addresses, ratings, prices — anything visible on list cards. Use: document.querySelectorAll('.result-card, .listing, [class*="card"]') to grab everything at once. Many sites use anti-bot protection on detail pages but leave listing pages accessible. If you can answer the goal from list-level data, do so without navigating deeper. NEVER click into 3+ individual items when the data is on the list page
-23. FILTER vs SEARCH: When a goal asks to filter results (e.g., "under $50", "4+ stars"), look for filter controls (sliders, dropdowns, checkboxes in a sidebar or toolbar) rather than typing filter values into the search box. Search boxes are for keyword queries, not numeric filters. After applying a filter: (1) wait 2-3 seconds for results to update, (2) verify the filter took effect by checking the updated results, (3) extract the filtered data via runScript. Do NOT keep searching for more filter controls after one is applied — extract and complete`;
+18. DATA EXTRACTION: When the goal asks for specific data (prices, ratings, counts, names) from a list or search results page, prefer extractWithIndex with a wide query (e.g. \`'p, span, dd, code, strong'\`) over runScript when you don't already see the value in the snapshot. extractWithIndex returns the actual textContent of every match so you can pick the right one by content. Use runScript only when you need a transformation the LLM can't do from text alone.
+21. EFFICIENT COMPLETION: When you have enough data to answer the goal, complete immediately. Do not navigate to additional pages for "confirmation" if the data was already extracted or is visible in the current a11y tree. Include all extracted data in the completion result
+22. EXTRACT BEFORE NAVIGATING: On search results, directory listings, or any page showing multiple items, ALWAYS extract ALL needed data BEFORE clicking into individual items. Use extractWithIndex with a wide query for unknown structure, or runScript with document.querySelectorAll('.result-card') if the structure is well-known. Many sites use anti-bot protection on detail pages but leave listing pages accessible. If you can answer the goal from list-level data, do so without navigating deeper.
+23. FILTER vs SEARCH: When a goal asks to filter results (e.g., "under $50", "4+ stars"), look for filter controls (sliders, dropdowns, checkboxes in a sidebar or toolbar) rather than typing filter values into the search box. Search boxes are for keyword queries, not numeric filters. After applying a filter: (1) wait 2-3 seconds for results to update, (2) verify the filter took effect by checking the updated results, (3) extract the filtered data. Do NOT keep searching for more filter controls after one is applied — extract and complete
+25. EXTRACTWITHINDEX RECOVERY: If a previous runScript returned null/empty/{x:null} on an extraction task, the selector was wrong. DO NOT retry the same runScript or guess a similar selector — the LLM cannot guess CSS class names that aren't visible in the snapshot. Switch to extractWithIndex with a WIDE query: \`'p, span, dd, code, strong, em'\` plus a \`contains\` filter naming the expected text fragment (e.g. contains: "downloads" for npm download counts, contains: "callbackFn" for MDN method signatures). The response shows you the actual text per element so you can pick by content match. This is the Gen 10 recovery pattern — pick-by-content beats pick-by-selector on every page where the planner couldn't see the data at plan time.`;
 
 /** Heavy page rules (19-20, 24): injected when snapshot is large or turn count is high */
 const HEAVY_PAGE_RULES = `
@@ -1000,8 +1002,11 @@ export class Brain {
       && diffTotal > 0
       && diffChanges / diffTotal < 0.3;
 
-    // Tighter snapshot budget on same-page turns — agent already saw the full page
-    const snapshotBudget = samePageAsPrevious ? 8_000 : 16_000;
+    // Tighter snapshot budget on same-page turns — agent already saw the full page.
+    // Gen 10C: raised new-page budget from 16k to 24k so extraction tasks (MDN/Python
+    // docs/W3C spec) get the full <dl>/<code>/<pre> content the LLM needs to write
+    // a working runScript on the first try.
+    const snapshotBudget = samePageAsPrevious ? 8_000 : 24_000;
     let visibleSnapshot: string;
     let elementsHeader: string;
     if (useDiffOnly) {
@@ -1198,10 +1203,12 @@ ${visibleSnapshot}`;
     const maxSteps = options?.maxSteps ?? 12
     const extraContext = options?.extraContext
 
-    // Snapshot budget for the planner: keep it conservative — the planner
-    // prompt is itself substantial, and we want the LLM to focus on the
-    // STRUCTURE of the page rather than every leaf element.
-    const snapshot = budgetSnapshot(state.snapshot, 12_000)
+    // Snapshot budget for the planner: Gen 10C raised from 12k to 24k. The
+    // planner is the most important caller for extraction tasks because it
+    // writes the runScript that runs on the first observation. Without enough
+    // snapshot context (especially `<dl>/<dt>/<code>/<pre>` content lines that
+    // Gen 10C now preserves), the planner emits selectors that don't exist.
+    const snapshot = budgetSnapshot(state.snapshot, 24_000)
 
     const planSystemPrompt = `You are a planning engine for a browser automation agent.
 
@@ -1236,6 +1243,7 @@ ACTION VERBS (same as the per-action prompt):
 - {"action": "fill", "fields": {"@a": "v1", "@b": "v2"}, "selects": {"@c": "v3"}, "checks": ["@d", "@e"]}
 - {"action": "clickSequence", "refs": ["@a", "@b", "@c"]}
 - {"action": "runScript", "script": "document.querySelector('.x').textContent"}
+- {"action": "extractWithIndex", "query": "p, span, dd, code", "contains": "downloads"} — return a NUMBERED list of visible elements matching the query with their full textContent. Use this for extraction tasks where the data lives in obscurely-classed wrappers (npm download counts, MDN \`<dl>/<dt>/<dd>\` content, Python docs \`<code>\` blocks, W3C spec content) and the planner cannot guarantee a precise selector. The next step (in plan or per-action mode) reads the result and picks the right index. STRONGLY PREFER THIS OVER runScript on ANY extraction task where the snapshot doesn't already show the value verbatim.
 - {"action": "complete", "result": "..."}
 - {"action": "abort", "reason": "..."}
 
@@ -1800,6 +1808,7 @@ Only include facts that are genuinely useful. Quality over quantity. Max 10 fact
     const VALID_ACTIONS = new Set([
       'click', 'type', 'press', 'hover', 'select',
       'scroll', 'navigate', 'wait', 'evaluate', 'runScript',
+      'extractWithIndex',
       'verifyPreview', 'complete', 'abort',
       'fill', 'clickSequence',
     ]);
@@ -1907,11 +1916,18 @@ function deduplicateSnapshot(snapshot: string): string {
 }
 
 /**
- * Cap snapshot size for non-first turns to control token cost on large pages.
- * Keeps the full snapshot when it fits within budget; otherwise truncates
- * non-interactive decorative lines first, then hard-caps with a notice.
+ * Cap snapshot size to control token cost on large pages.
+ * Keeps the full snapshot when it fits within budget; otherwise preserves:
+ *   1. Interactive elements with refs (buttons, inputs, links — for action targets)
+ *   2. Content lines: term/definition/code/pre/paragraph (for extraction tasks
+ *      like MDN, Python docs, W3C spec where the value the agent needs lives in
+ *      a `<dl>/<code>/<pre>` block, not in an interactive element)
+ *
+ * Gen 10C raised the default from 16k to 24k to give planners on extraction
+ * pages more room before truncation kicks in. The 8k same-page budget remains
+ * unchanged because by then the LLM has already seen the full snapshot once.
  */
-function budgetSnapshot(snapshot: string, maxChars = 16_000): string {
+export function budgetSnapshot(snapshot: string, maxChars = 24_000): string {
   // Skip dedup on small snapshots — not enough repetition to justify the O(n) scan
   if (snapshot.length > 6_000) {
     snapshot = deduplicateSnapshot(snapshot)
@@ -1919,29 +1935,35 @@ function budgetSnapshot(snapshot: string, maxChars = 16_000): string {
 
   if (snapshot.length <= maxChars) return snapshot;
 
-  // First pass: drop non-interactive lines (images, paragraphs, decorative text)
-  // to keep interactive elements (buttons, links, textboxes, headings).
+  // First pass: separate keep-set (interactive + content lines) from decorative.
+  // Content roles (term, definition, code, pre, paragraph) carry text the LLM
+  // needs for extraction tasks. They have no [ref=] but the text is the data.
   const lines = snapshot.split('\n');
   const interactive: string[] = [];
+  const content: string[] = [];
   const decorative: string[] = [];
   for (const line of lines) {
     if (/\b(?:button|link|textbox|combobox|menuitem|checkbox|radio|select|heading|dialog|alertdialog)\b/i.test(line) && /\[ref=/.test(line)) {
       interactive.push(line);
+    } else if (/^\s*-\s+(?:term|definition|code|pre|paragraph)\b/i.test(line)) {
+      content.push(line);
     } else {
       decorative.push(line);
     }
   }
 
-  // If interactive-only fits, use it with a truncation note
-  const interactiveText = interactive.join('\n');
-  if (interactiveText.length <= maxChars) {
-    return interactiveText + `\n... [${decorative.length} decorative elements omitted for brevity]`;
+  // If interactive + content fits, use both with a truncation note
+  const keepSet = interactive.concat(content);
+  const keepText = keepSet.join('\n');
+  if (keepText.length <= maxChars) {
+    return keepText + `\n... [${decorative.length} decorative elements omitted for brevity]`;
   }
 
-  // Second pass: when interactive elements still exceed budget, prioritize:
-  // 1. searchbox/textbox/combobox (inputs — essential for form tasks)
-  // 2. headings (structural navigation)
-  // 3. links/buttons (main content — keep all, trim from end as last resort)
+  // Second pass: when interactive + content still exceed budget, prioritize:
+  // 1. inputs (searchbox/textbox/combobox) — essential for form tasks
+  // 2. headings + dialogs — structural navigation
+  // 3. content lines (term/definition/code/pre) — extraction data
+  // 4. bulk links/buttons — main content
   const priority: string[] = [];
   const bulk: string[] = [];
   for (const line of interactive) {
@@ -1952,7 +1974,10 @@ function budgetSnapshot(snapshot: string, maxChars = 16_000): string {
     }
   }
 
-  const priorityText = priority.join('\n');
+  // Content lines come right after priority interactive (they're the extraction
+  // data) and before bulk links/buttons.
+  const priorityWithContent = priority.concat(content);
+  const priorityText = priorityWithContent.join('\n');
   const remaining = maxChars - priorityText.length - 80; // reserve space for note
   if (remaining > 0) {
     const bulkText = bulk.join('\n');
@@ -2039,6 +2064,15 @@ function validateAction(actionType: string, data: Record<string, unknown>): Acti
       return { action: 'evaluate', criteria: optStr('criteria') };
     case 'runScript':
       return { action: 'runScript', script: requireStr('script') };
+    case 'extractWithIndex': {
+      const query = requireStr('query');
+      const contains = typeof data.contains === 'string' ? data.contains : '';
+      return {
+        action: 'extractWithIndex',
+        query,
+        ...(contains ? { contains } : {}),
+      };
+    }
     case 'verifyPreview':
       return { action: 'verifyPreview' };
     case 'complete':

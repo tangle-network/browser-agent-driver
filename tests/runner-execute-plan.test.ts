@@ -380,6 +380,80 @@ describe('BrowserAgent.executePlan', () => {
     expect(result.finalResult).toBe('Form was submitted successfully and the success banner is visible.')
     await setup.browser.close()
   })
+
+  // Gen 10: extractWithIndex in a plan should run the extraction (capturing
+  // the formatted match list as turn data), then deviate with the match list
+  // in the reason so the per-action loop can pick by index.
+  it('Gen 10: extractWithIndex plan step captures matches and deviates with the list', async () => {
+    const setup = await setupAgent()
+    const { agent: localAgent, page: localPage, browser: localBrowser } = setup
+    // Use a content-rich page so extractWithIndex has something to find
+    await localPage.setContent(`
+      <h1>Array.prototype.flatMap</h1>
+      <dl>
+        <dt><code>flatMap(callbackFn)</code></dt>
+        <dd>Returns a new array formed by applying a function to each element.</dd>
+      </dl>
+      <p data-testid="weekly">Weekly downloads: 26,543,821</p>
+    `)
+    await new PlaywrightDriver(localPage, { showCursor: false }).observe()
+    const internals = localAgent as unknown as AgentInternals
+    const plan: Plan = {
+      steps: [
+        {
+          action: { action: 'extractWithIndex', query: 'p, dd, code', contains: 'downloads' },
+          expectedEffect: 'extracted matches for the downloads paragraph',
+          rationale: 'Gen 10: pick by content',
+        },
+      ],
+    }
+    const turns: Turn[] = []
+    const result = await internals.executePlan(plan, SCENARIO, 'run_test_extract', turns, new RunState(10), 0)
+    expect(result.kind).toBe('deviated')
+    if (result.kind !== 'deviated') throw new Error('narrow')
+    expect(result.reason).toMatch(/extractWithIndex/i)
+    expect(result.reason).toContain('Weekly downloads: 26,543,821')
+    expect(result.reason).toContain('[0]')
+    // The extract step should appear as a turn artifact
+    expect(turns).toHaveLength(1)
+    expect(turns[0].action.action).toBe('extractWithIndex')
+    expect(turns[0].verified).toBe(true)
+    await localBrowser.close()
+  })
+
+  // Gen 10: when extractWithIndex returns zero matches, the plan still
+  // deviates (the per-action loop must observe and try a wider query)
+  it('Gen 10: extractWithIndex with no matches deviates with empty match list', async () => {
+    const setup = await setupAgent()
+    await setup.page.setContent('<h1>Empty page with no matching content</h1>')
+    await new PlaywrightDriver(setup.page, { showCursor: false }).observe()
+    const internals = setup.agent as unknown as AgentInternals
+    const plan: Plan = {
+      steps: [
+        {
+          action: { action: 'extractWithIndex', query: 'p, dd, code', contains: 'nonexistent' },
+          expectedEffect: 'no matches',
+        },
+      ],
+    }
+    const turns: Turn[] = []
+    const result = await internals.executePlan(plan, SCENARIO, 'run_test_extract_empty', turns, new RunState(10), 0)
+    // Zero matches → no lastExtractOutput → falls into "plan exhausted" branch
+    expect(result.kind).toBe('deviated')
+    if (result.kind !== 'deviated') throw new Error('narrow')
+    expect(result.reason).toMatch(/exhausted|no matches/i)
+    await setup.browser.close()
+  })
+
+  // Gen 10: cost cap fires when totalTokensUsed exceeds tokenBudget
+  it('Gen 10 cost cap: RunState reports exhausted when tokens exceed budget', () => {
+    const state = new RunState(20, 1000)
+    state.recordTokens(800)
+    expect(state.isTokenBudgetExhausted).toBe(false)
+    state.recordTokens(300) // total = 1100 > 1000
+    expect(state.isTokenBudgetExhausted).toBe(true)
+    expect(state.totalTokensUsed).toBe(1100)
+  })
 })
 
 // Pure unit tests on the placeholder detection helper. No fixture, no driver.

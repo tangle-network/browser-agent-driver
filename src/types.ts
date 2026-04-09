@@ -71,6 +71,38 @@ export interface RunScriptAction {
   script: string;
 }
 
+/**
+ * Gen 10 — Extract a numbered, text-rich index of elements matching a CSS
+ * selector. Returns the visible textContent + tag + key attributes + a stable
+ * selector for each match. The agent then picks elements by index in the next
+ * turn (e.g., complete with `result: extracted[3].text`).
+ *
+ * This is the **capability change** Gen 10 ships: rather than asking the LLM
+ * to guess a precise selector that returns one element, the agent gets a wide
+ * net (e.g. `'p, span, dd, code'`) and reads the actual text content of every
+ * match. Pick-by-content is dramatically more reliable than selector-by-name
+ * on real-web pages where data lives in `<dl>/<dt>/<dd>/<code>/<pre>` or
+ * inside obscurely-classed wrapper divs.
+ *
+ * Example payload for npm weekly downloads:
+ *   {
+ *     action: 'extractWithIndex',
+ *     query: 'p, span, strong',
+ *     contains: 'downloads',
+ *   }
+ *
+ * Optional `contains` filters matches to only those containing the substring
+ * (case-insensitive). Without `contains`, all matches are returned (capped at
+ * 80 to keep the response readable).
+ */
+export interface ExtractWithIndexAction {
+  action: 'extractWithIndex';
+  /** CSS selector — broad selectors are fine, the response includes full text per match */
+  query: string;
+  /** Optional substring filter (case-insensitive) applied to textContent */
+  contains?: string;
+}
+
 export interface VerifyPreviewAction {
   action: 'verifyPreview';
 }
@@ -134,6 +166,7 @@ export type Action =
   | WaitAction
   | EvaluateAction
   | RunScriptAction
+  | ExtractWithIndexAction
   | VerifyPreviewAction
   | CompleteAction
   | AbortAction

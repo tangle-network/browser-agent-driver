@@ -30,6 +30,7 @@ import { runOverridePipeline } from '../override-pipeline.js';
 import type { OverrideContext } from '../override-pipeline.js';
 
 import { withRetry, findElementForRef, safeHostname, pushGoalVerificationEvidence } from './utils.js';
+import { runExtractWithIndex, formatExtractWithIndexResult } from '../drivers/extract-with-index.js';
 import { buildSearchResultsGuidance, buildVisibleLinkRecommendation, getVisibleLinkRecommendation, getRankedVisibleLinkCandidates, rankSearchCandidates } from './search-guidance.js';
 import { buildGoalVerificationClaim, collectSearchWorkflowEvidence, shouldAcceptSearchWorkflowCompletion, shouldAcceptScriptBackedCompletion, detectCompletionContentTypeMismatch } from './goal-verification.js';
 import { verifyExpectedEffect } from './effect-verification.js';
@@ -330,10 +331,12 @@ export class BrowserAgent {
       return agentResult
     };
 
-    // Wrap onTurn to include mid-run manifest updates (every 3 turns)
+    // Wrap onTurn to include mid-run manifest updates (every 3 turns) and to
+    // accumulate per-turn token usage for the Gen 10 cost cap.
     const originalOnTurn = this.onTurn
     this.onTurn = (turn: Turn) => {
       originalOnTurn?.(turn)
+      runState.recordTokens(turn.tokensUsed)
       if (this.runRegistry && turns.length % 3 === 0) {
         try {
           this.runRegistry.updateRun(runId, {
@@ -630,6 +633,19 @@ export class BrowserAgent {
         return buildResult({
           success: false,
           reason: scenario.signal.reason || 'Cancelled',
+          turns,
+          totalMs: Date.now() - startTime,
+        });
+      }
+
+      // Gen 10: hard cost cap. Stops the per-action loop from burning unbounded
+      // tokens on cases where recovery isn't converging (the Gen 9 death-spiral
+      // failure mode where reddit hit $0.32 / 173K tokens). The cap is enforced
+      // BEFORE the next LLM call so the case aborts cleanly with a reason.
+      if (runState.isTokenBudgetExhausted) {
+        return buildResult({
+          success: false,
+          reason: `cost_cap_exceeded: ${runState.totalTokensUsed} tokens used, budget ${runState.tokenBudget}`,
           turns,
           totalMs: Date.now() - startTime,
         });
@@ -1466,6 +1482,45 @@ export class BrowserAgent {
           continue;
         }
 
+        // -- 5d. Handle extractWithIndex action (Gen 10) --
+        // Returns a numbered list of every visible element matching `query`,
+        // each with its tag, textContent, key attributes, and a stable
+        // selector. The agent picks elements by index in the next turn.
+        // This is the Gen 10 capability change: pick-by-content instead of
+        // pick-by-selector. Works on data the planner couldn't see at plan
+        // time (XHR-loaded content, dl/dt/dd, deeply-nested wrappers).
+        if (action.action === 'extractWithIndex') {
+          const page = this.driver.getPage?.();
+          if (page) {
+            try {
+              const matches = await runExtractWithIndex(page, action.query, action.contains);
+              const formatted = formatExtractWithIndexResult(matches, action.query, action.contains);
+              runState.firstSufficientEvidenceTurn ??= i;
+              pushGoalVerificationEvidence(
+                runState.goalVerificationEvidence,
+                `EXTRACT RESULT (${matches.length} matches):\n${formatted}`,
+              );
+              this.brain.injectFeedback(
+                `EXTRACT RESULT (${matches.length} matches for query "${action.query}"${action.contains ? ` containing "${action.contains}"` : ''}):\n${formatted}`,
+              );
+            } catch (extractErr: unknown) {
+              const msg = extractErr instanceof Error ? extractErr.message : String(extractErr);
+              this.brain.injectFeedback(
+                `EXTRACT ERROR: ${msg}`,
+              );
+            }
+          } else {
+            this.brain.injectFeedback(
+              'EXTRACT ERROR: Cannot access page — driver does not expose a Playwright page.',
+            );
+          }
+
+          turn.durationMs = Date.now() - turnStart;
+          turns.push(turn);
+          this.onTurn?.(turn);
+          continue;
+        }
+
         // -- 6. Check for terminal actions --
         if (action.action === 'complete') {
           // Step 1: Goal verification — did the agent actually achieve the goal?
@@ -2135,6 +2190,13 @@ export class BrowserAgent {
     // This deterministic substitution fixes that without an extra LLM call.
     let lastRunScriptOutput: string | null = null
 
+    // Gen 10: track the last extractWithIndex match list. Unlike runScript,
+    // we do NOT auto-substitute this into a placeholder complete — the LLM
+    // must read the formatted match list and pick by index. When the plan
+    // ends with extractWithIndex (or runs out of valid steps), we fall
+    // through to the per-action loop with the match list as feedback.
+    let lastExtractOutput: string | null = null
+
     for (let stepIdx = 0; stepIdx < plan.steps.length; stepIdx++) {
       if (scenario.signal?.aborted) {
         return {
@@ -2334,6 +2396,17 @@ export class BrowserAgent {
         lastRunScriptOutput = execResult.data
       }
 
+      // Gen 10: capture extractWithIndex match list for fall-through to the
+      // per-action loop. The LLM must read the list and pick by index — we
+      // do not auto-complete with the raw match list.
+      if (step.action.action === 'extractWithIndex' && typeof execResult.data === 'string' && execResult.data.length > 0) {
+        lastExtractOutput = execResult.data
+        // Also push as goal verification evidence so the verifier sees what
+        // the agent extracted.
+        runState.firstSufficientEvidenceTurn ??= currentTurnIndex
+        pushGoalVerificationEvidence(runState.goalVerificationEvidence, `EXTRACT RESULT:\n${execResult.data}`)
+      }
+
       // Verify the post-condition. We re-observe to get the post-action
       // state, then run the same verifyExpectedEffect helper the per-action
       // loop uses. The fresh observe is also stashed in cachedPostState so
@@ -2363,6 +2436,7 @@ export class BrowserAgent {
         || step.action.action === 'scroll'
         || step.action.action === 'hover'
         || step.action.action === 'runScript'
+        || step.action.action === 'extractWithIndex'
         || step.action.action === 'evaluate'
         || step.action.action === 'verifyPreview'
         || step.action.action === 'fill'
@@ -2511,6 +2585,21 @@ export class BrowserAgent {
         lastState,
         finalResult: lastRunScriptOutput,
         turnsConsumed: plan.steps.length + 1,
+      }
+    }
+
+    // Gen 10: if the plan ended with extractWithIndex (or any step where we
+    // captured an extract output), fall through to the per-action loop with
+    // the match list as feedback. The LLM can then pick by index and emit
+    // the correct complete.result. This is the planner-emits-extract path
+    // for extraction tasks like npm/mdn/python-docs.
+    if (lastExtractOutput) {
+      return {
+        kind: 'deviated',
+        lastState,
+        failedStepIndex: plan.steps.length,
+        reason: `plan completed extractWithIndex but the LLM must read the matches and pick by index. Match list:\n${lastExtractOutput.slice(0, 4000)}\n\nPick the index whose text matches the goal, then emit complete with result: <picked text>`,
+        turnsConsumed: plan.steps.length,
       }
     }
 
