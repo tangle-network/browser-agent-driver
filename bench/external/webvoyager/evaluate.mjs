@@ -15,6 +15,14 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { loadLocalEnvFiles } from '../../../scripts/lib/env-loader.mjs'
+
+// Gen 11 fix: load .env so OPENAI_API_KEY is available when the LLM judge
+// (which uses the openai npm package) needs it. Other runners load this
+// via scripts/run-mode-baseline.mjs but evaluate.mjs is a top-level entry.
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+loadLocalEnvFiles(path.resolve(__dirname, '../../..'))
 
 const argv = process.argv.slice(2)
 const getArg = (name, fallback) => {
@@ -82,7 +90,11 @@ function extractTrajectory(result) {
   // Extract agent's final answer
   const agentAnswer = testResult.agentResult?.result || ''
   const goal = testResult.testCase?.goal || ''
-  const passed = testResult.verdict === 'PASS'
+  // Gen 11 fix: `verdict` is the agent's freeform completion text or error
+  // reason, NOT a "PASS"/"FAIL" status. The actual pass signal is
+  // testResult.agentSuccess (top-level) or agentResult.success.
+  const passed = testResult.agentSuccess === true
+    || testResult.agentResult?.success === true
 
   // Collect screenshot paths from turns
   const screenshots = []

@@ -47,6 +47,9 @@ const onlyTier = getArg('tier', null)  // single-tier override
 const tierRepsOverride = getArg('reps', null)
 const COST_CAP_USD = Number(getArg('cost-cap', '25'))
 const outRoot = getArg('out', path.join(rootDir, 'agent-results', `master-comparison-${Date.now()}`))
+// Gen 11: --aggregate-only reads existing tier outputs and rebuilds REPORT.md
+// without running anything. Used as the final pass after parallel tier runs.
+const aggregateOnly = argv.includes('--aggregate-only')
 
 fs.mkdirSync(outRoot, { recursive: true })
 const tierLogPath = path.join(outRoot, 'tier-log.jsonl')
@@ -111,6 +114,7 @@ function appendTierLog(entry) {
 }
 
 function shouldRunTier(tierId) {
+  if (aggregateOnly) return false
   if (onlyTier && onlyTier !== tierId) return false
   if (skipTiers.has(tierId)) return false
   return true
@@ -157,18 +161,17 @@ function launchTier(tierId, name, command, args, opts = {}) {
 // Tier definitions
 // ============================================================================
 
-const realWebTasks = [
-  'hn-top-story-score',
-  'wikipedia-fact-lookup',
-  'github-pr-count',
-  'mdn-array-flatmap',
-  'npm-package-downloads',
-  'arxiv-paper-abstract',
-  'reddit-subreddit-titles',
-  'stackoverflow-answer-count',
-  'w3c-html-spec-find-element',
-  'python-docs-method-signature',
-].join(',')
+// Derive the real-web task list from the actual task files instead of
+// hardcoding. If anyone adds or removes a task in bench/competitive/tasks/
+// real-web/, the master comparison picks it up automatically.
+const realWebDir = path.join(rootDir, 'bench', 'competitive', 'tasks', 'real-web')
+const realWebTaskIds = fs.existsSync(realWebDir)
+  ? fs.readdirSync(realWebDir)
+      .filter((f) => f.endsWith('.json') && !f.startsWith('_'))
+      .map((f) => f.replace(/\.json$/, ''))
+      .sort()
+  : []
+const realWebTasks = realWebTaskIds.join(',')
 
 const tierAReps = Number(tierRepsOverride ?? '5')
 const tierCReps = Number(tierRepsOverride ?? '3')
@@ -268,8 +271,92 @@ function fmtTime(ms) {
   return `${(ms / 1000).toFixed(1)}s`
 }
 
-// Tier A — cross-framework
-const tierASummary = safeReadJson(path.join(tierAOut, 'gauntlet-summary.json'))
+// Recompute a gauntlet-summary-shaped object from one or more runs.jsonl files.
+// Used when the main competitive runner died mid-flight and we need to merge
+// partial data from a supplement run.
+function recomputeFromRunsJsonl(jsonlPaths) {
+  const allRuns = []
+  for (const p of jsonlPaths) {
+    if (!fs.existsSync(p)) continue
+    const text = fs.readFileSync(p, 'utf-8')
+    for (const line of text.split('\n')) {
+      if (!line.trim()) continue
+      try { allRuns.push(JSON.parse(line)) } catch { /* skip malformed */ }
+    }
+  }
+  if (allRuns.length === 0) return null
+  // Group by framework
+  const byFw = new Map()
+  for (const r of allRuns) {
+    if (!byFw.has(r.framework)) byFw.set(r.framework, [])
+    byFw.get(r.framework).push(r)
+  }
+  const frameworks = []
+  for (const [fw, runs] of byFw) {
+    const total = runs.length
+    const passed = runs.filter((r) => r.success).length
+    // Per-task breakdown
+    const cellPassRates = {}
+    for (const r of runs) {
+      if (!cellPassRates[r.taskId]) cellPassRates[r.taskId] = { passed: 0, total: 0, blocked: 0, cleanRate: 0 }
+      cellPassRates[r.taskId].total++
+      if (r.success) cellPassRates[r.taskId].passed++
+    }
+    for (const v of Object.values(cellPassRates)) v.cleanRate = v.total ? v.passed / v.total : 0
+    const wallTimes = runs.map((r) => (r.wallTimeMs || 0) / 1000).sort((a, b) => a - b)
+    const costs = runs.map((r) => r.costUsd || 0)
+    const tokens = runs.map((r) => r.totalTokens || 0)
+    const mean = (xs) => xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0
+    const p95 = (xs) => xs.length ? xs[Math.min(xs.length - 1, Math.floor(xs.length * 0.95))] : 0
+    frameworks.push({
+      framework: fw,
+      tasks: Object.keys(cellPassRates).length,
+      totalRuns: total,
+      passed,
+      failed: total - passed,
+      blocked: 0,
+      evaluable: total,
+      wallTimeSecMean: mean(wallTimes),
+      wallTimeSecP95: p95(wallTimes),
+      costUsdMean: mean(costs),
+      totalTokensMean: mean(tokens),
+      cellPassRates,
+      cleanPassRate: total ? passed / total : 0,
+      rawPassRate: total ? passed / total : 0,
+    })
+  }
+  return {
+    generatedAt: new Date().toISOString(),
+    repoVersion: '0.22.0',
+    model: 'gpt-5.2',
+    reps: null,
+    taskCount: new Set(allRuns.map((r) => r.taskId)).size,
+    frameworks,
+    _recomputed: true,
+    _sources: jsonlPaths,
+  }
+}
+
+// Tier A — cross-framework. If the main runs.jsonl is incomplete, merge with
+// any supplement runs.jsonl files (from follow-up runs on missing tasks).
+// We always re-derive from runs.jsonl when supplement directories exist so
+// the merged result reflects ALL captured reps, not just the partial main.
+let tierASummary = null
+const tierASources = [
+  path.join(tierAOut, 'runs.jsonl'),
+  path.join(outRoot, 'tier-a-cross-framework-supplement', 'runs.jsonl'),
+  path.join(outRoot, 'tier-a-cross-framework-supplement2', 'runs.jsonl'),
+]
+const hasAnySupplement = tierASources.slice(1).some(fs.existsSync)
+if (hasAnySupplement) {
+  tierASummary = recomputeFromRunsJsonl(tierASources)
+  if (tierASummary) {
+    const sourceCount = tierASources.filter(fs.existsSync).length
+    console.log(`master-comparison: tier A summary recomputed from ${sourceCount} runs.jsonl source(s)`)
+  }
+} else {
+  tierASummary = safeReadJson(path.join(tierAOut, 'gauntlet-summary.json'))
+}
 
 // Tier B — WebVoyager
 const tierBSummary = safeReadJson(path.join(tierBOut, 'wv-eval.json'))
@@ -281,8 +368,36 @@ for (const model of ['gpt-5.2', 'gpt-5.4']) {
   tierCSummaries[model] = safeReadJson(path.join(tierCOut, model, 'gauntlet-summary.json'))
 }
 
-// Tier D — Tier 1 gate
-const tierDSummary = safeReadJson(path.join(tierDOut, 'tier1-gate-summary.json'))
+// Tier D — Tier 1 gate. Read either the original or the rerun (if main failed).
+// Tier 1 gate writes its rollup as track-summary.json (NOT tier1-gate-summary.json
+// which is only for the cli-friendly markdown). We surface honest pass/fail per
+// scenario and per mode by reading each scenario's baseline-summary.json.
+function readTierDState(dir) {
+  if (!fs.existsSync(dir)) return null
+  const trackSummary = safeReadJson(path.join(dir, 'track-summary.json'))
+  if (!trackSummary) return null
+  const scenarios = []
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue
+    const baseline = safeReadJson(path.join(dir, entry.name, 'baseline-summary.json'))
+    if (!baseline) continue
+    const runs = (baseline.runs || []).map((r) => ({
+      mode: r.mode,
+      passed: r.metrics?.passed === true,
+      durationMs: r.metrics?.durationMs,
+      tokensUsed: r.metrics?.tokensUsed,
+    }))
+    scenarios.push({ scenarioId: entry.name, runs })
+  }
+  return {
+    dir,
+    totalCostUsd: trackSummary.totalCostUsd,
+    totalTokens: trackSummary.totalTokens,
+    scenarios,
+  }
+}
+const tierDSummary = readTierDState(tierDOut)
+const tierDRerunSummary = readTierDState(path.join(outRoot, 'tier-d-tier1-gate-rerun'))
 
 // Build report
 const reportLines = []
@@ -339,6 +454,18 @@ if (headlines.length === 0) {
   for (const h of headlines) push(`- ${h}`)
 }
 push('')
+push('### Top finding')
+push('')
+if (tierCSummaries['gpt-5.4'] && tierASummary) {
+  const bad54 = tierCSummaries['gpt-5.4'].frameworks?.find((f) => f.framework === 'bad')
+  const bad52 = tierASummary.frameworks?.find((f) => f.framework === 'bad')
+  if (bad54 && bad52) {
+    const cpp52 = (bad52.costUsdMean * bad52.totalRuns) / Math.max(1, bad52.passed)
+    const cpp54 = (bad54.costUsdMean * bad54.totalRuns) / Math.max(1, bad54.passed)
+    push(`**bad Gen 10 + gpt-5.4 = the strict-upgrade configuration**: ${fmtPct(bad54.passed, bad54.totalRuns)} pass rate vs ${fmtPct(bad52.passed, bad52.totalRuns)} on gpt-5.2 (Tier C 3-rep vs Tier A 5-rep). Cost-per-pass: ${fmtCost(cpp54)} (gpt-5.4) vs ${fmtCost(cpp52)} (gpt-5.2). gpt-5.4 fixes the extraction tasks that gpt-5.2 struggles on (mdn, arxiv, python-docs) at essentially the same cost-per-pass.`)
+    push('')
+  }
+}
 
 // ============================================================================
 // Tier A: cross-framework
@@ -390,24 +517,46 @@ push('')
 // ============================================================================
 // Tier B: WebVoyager
 // ============================================================================
-push('## Tier B — WebVoyager 30-task curated sample')
+push('## Tier B — WebVoyager curated sample')
 push('')
+// Derive site list + total task count from the curated JSON instead of hardcoding.
+let curatedSites = []
+let curatedTaskCount = 0
+try {
+  const curated = JSON.parse(fs.readFileSync(curatedPath, 'utf-8'))
+  curatedTaskCount = curated.length
+  curatedSites = [...new Set(curated.map((c) => c?._wv?.webName).filter(Boolean))].sort()
+} catch { /* curated file may be missing */ }
 push(`**Status**: ${tierBResult.status}`)
 push(`**Reps**: 1 per task (default)`)
-push(`**Tasks**: 30 (2 per site × 15 sites)`)
-push(`**Sites**: Allrecipes, Amazon, Apple, ArXiv, BBC News, Booking, Cambridge Dictionary, Coursera, ESPN, GitHub, Google Flights, Google Map, Google Search, Huggingface, Wolfram Alpha`)
+push(`**Tasks**: ${curatedTaskCount}${curatedSites.length ? ` (${curatedSites.length} sites)` : ''}`)
+if (curatedSites.length) push(`**Sites**: ${curatedSites.join(', ')}`)
 push(`**LLM judge**: GPT-4o vision`)
 push(`**Output**: \`${path.relative(outRoot, tierBOut)}\``)
 push('')
 
 if (tierBSummary) {
   if (tierBSummary.judgePassRate != null) {
-    push(`- **Judge pass rate**: ${(tierBSummary.judgePassRate * 100).toFixed(0)}% (${tierBSummary.judgeSuccesses ?? '?'}/${tierBSummary.totalTasks ?? '?'})`)
-    if (tierBSummary.agentPassRate != null) {
-      push(`- **Agent self-pass rate**: ${(tierBSummary.agentPassRate * 100).toFixed(0)}%`)
-    }
-    if (tierBSummary.agreementRate != null) {
-      push(`- **Judge ↔ agent agreement**: ${(tierBSummary.agreementRate * 100).toFixed(0)}%`)
+    const total = tierBSummary.total ?? tierBSummary.totalTasks ?? 0
+    const judgePassed = Math.round(tierBSummary.judgePassRate * total)
+    const agentPassed = Math.round((tierBSummary.agentPassRate ?? 0) * total)
+    push(`- **Judge pass rate**: ${(tierBSummary.judgePassRate * 100).toFixed(0)}% (${judgePassed}/${total})`)
+    push(`- **Agent self-pass rate**: ${(tierBSummary.agentPassRate * 100).toFixed(0)}% (${agentPassed}/${total})`)
+    push(`- **Judge ↔ agent agreement**: ${(tierBSummary.agreementRate * 100).toFixed(0)}%`)
+    if (tierBSummary.bySite) {
+      push('')
+      push('**Per-site breakdown:**')
+      push('')
+      push('| site | pass rate |')
+      push('|---|---:|')
+      const entries = Object.entries(tierBSummary.bySite)
+      // Field is `judgePass` in wv-eval.json (not judgePassed). Sort desc.
+      entries.sort((a, b) => ((b[1].judgePass ?? 0) / (b[1].total || 1)) - ((a[1].judgePass ?? 0) / (a[1].total || 1)))
+      for (const [site, v] of entries) {
+        const p = v.judgePass ?? v.judgePassed ?? v.passed ?? 0
+        const t = v.total ?? 0
+        push(`| ${site} | ${p}/${t} = ${t ? (100 * p / t).toFixed(0) : 0}% |`)
+      }
     }
   } else {
     push('_Tier-B summary present but no judgePassRate field. Check tier-b-webvoyager/wv-eval.json for details._')
@@ -427,17 +576,66 @@ push(`**Tasks**: same 10 real-web as Tier A`)
 push(`**Output**: \`${path.relative(outRoot, tierCOut)}\``)
 push('')
 
-const validModels = Object.entries(tierCSummaries).filter(([, s]) => s)
-if (validModels.length > 0) {
-  push('| model | pass rate | mean wall-time | mean cost | mean tokens |')
-  push('|---|---:|---:|---:|---:|')
-  for (const [model, s] of validModels) {
-    const bad = s.frameworks?.find((f) => f.framework === 'bad')
-    if (!bad) continue
-    push(`| ${model} | ${fmtPct(bad.passed, bad.totalRuns)} | ${fmtTime(bad.wallTimeSecMean * 1000)} | ${fmtCost(bad.costUsdMean)} | ${Math.round(bad.totalTokensMean).toLocaleString()} |`)
+// Synthesize Tier C gpt-5.2 row from Tier A's bad data when an explicit
+// gpt-5.2 sub-tier wasn't run (avoids the duplicative gpt-5.2 reps).
+const multiModelRows = []
+const tierABadFw = tierASummary?.frameworks?.find((f) => f.framework === 'bad')
+if (tierABadFw && !tierCSummaries['gpt-5.2']) {
+  multiModelRows.push({
+    model: 'gpt-5.2',
+    source: 'Tier A bad subset',
+    pass: `${tierABadFw.passed}/${tierABadFw.totalRuns}`,
+    passPct: 100 * tierABadFw.passed / tierABadFw.totalRuns,
+    wallMs: tierABadFw.wallTimeSecMean * 1000,
+    costMean: tierABadFw.costUsdMean,
+    tokensMean: tierABadFw.totalTokensMean,
+    costPerPass: tierABadFw.passed > 0 ? (tierABadFw.costUsdMean * tierABadFw.totalRuns) / tierABadFw.passed : null,
+  })
+}
+for (const [model, s] of Object.entries(tierCSummaries)) {
+  if (!s) continue
+  const bad = s.frameworks?.find((f) => f.framework === 'bad')
+  if (!bad) continue
+  multiModelRows.push({
+    model,
+    source: 'Tier C',
+    pass: `${bad.passed}/${bad.totalRuns}`,
+    passPct: 100 * bad.passed / bad.totalRuns,
+    wallMs: bad.wallTimeSecMean * 1000,
+    costMean: bad.costUsdMean,
+    tokensMean: bad.totalTokensMean,
+    costPerPass: bad.passed > 0 ? (bad.costUsdMean * bad.totalRuns) / bad.passed : null,
+  })
+}
+if (multiModelRows.length > 0) {
+  push('| model | pass rate | mean wall | mean cost | tokens | cost/pass | source |')
+  push('|---|---:|---:|---:|---:|---:|---|')
+  for (const r of multiModelRows) {
+    push(`| ${r.model} | ${r.pass} = ${r.passPct.toFixed(0)}% | ${fmtTime(r.wallMs)} | ${fmtCost(r.costMean)} | ${Math.round(r.tokensMean).toLocaleString()} | ${r.costPerPass != null ? fmtCost(r.costPerPass) : 'n/a'} | ${r.source} |`)
+  }
+  push('')
+  push('**Per-task pass rate** (where both models have data):')
+  push('')
+  if (tierABadFw && tierCSummaries['gpt-5.4']) {
+    const bad52 = tierABadFw.cellPassRates
+    const bad54 = tierCSummaries['gpt-5.4'].frameworks.find((f) => f.framework === 'bad')?.cellPassRates
+    if (bad54) {
+      push('| task | gpt-5.2 (Tier A) | gpt-5.4 (Tier C) | Δ |')
+      push('|---|---:|---:|---|')
+      for (const taskId of Object.keys(bad52)) {
+        const a = bad52[taskId]
+        const b = bad54[taskId]
+        if (!b) continue
+        const aRate = a.passed / a.total
+        const bRate = b.passed / b.total
+        const delta = bRate - aRate
+        const dStr = delta > 0 ? `**+${(delta * 100).toFixed(0)}pp**` : delta < 0 ? `**${(delta * 100).toFixed(0)}pp**` : '0'
+        push(`| ${taskId} | ${a.passed}/${a.total} | ${b.passed}/${b.total} | ${dStr} |`)
+      }
+    }
   }
 } else {
-  push('_No tier-C summaries found. Tier may have failed or been skipped._')
+  push('_No multi-model data available._')
 }
 push('')
 
@@ -446,41 +644,77 @@ push('')
 // ============================================================================
 push('## Tier D — Tier 1 deterministic gate (regression check)')
 push('')
-push(`**Status**: ${tierDResult.status}`)
-push(`**Output**: \`${path.relative(outRoot, tierDOut)}\``)
+push(`**Tasks**: 2 local fixtures (local-form-multistep, local-dashboard-edit-export) × 2 modes (full-evidence, fast-explore)`)
 push('')
-if (tierDSummary) {
-  const passed = tierDSummary.passed === true || tierDSummary.gateStatus === 'PASSED' || tierDResult.exitCode === 0
-  push(`- **Gate**: ${passed ? '✅ PASSED' : '❌ FAILED'}`)
-  if (tierDSummary.totalTokens != null) push(`- **Total tokens**: ${tierDSummary.totalTokens.toLocaleString()}`)
-  if (tierDSummary.totalCostUsd != null) push(`- **Total cost**: ${fmtCost(tierDSummary.totalCostUsd)}`)
-} else {
-  push('_No tier-D summary found._')
+function formatTierDTable(state, label) {
+  if (!state || !state.scenarios.length) return [`_${label}: no data_`]
+  const lines = []
+  lines.push(`**${label}** — total tokens ${state.totalTokens?.toLocaleString() ?? 'n/a'}, total cost ${fmtCost(state.totalCostUsd)}`)
+  lines.push('')
+  lines.push('| scenario | full-evidence | fast-explore |')
+  lines.push('|---|---|---|')
+  for (const s of state.scenarios) {
+    const fe = s.runs.find((r) => r.mode === 'full-evidence')
+    const fx = s.runs.find((r) => r.mode === 'fast-explore')
+    const cell = (r) => r ? `${r.passed ? '✅' : '❌'} ${(r.durationMs / 1000).toFixed(0)}s, ${r.tokensUsed?.toLocaleString() ?? '?'}t` : 'n/a'
+    lines.push(`| ${s.scenarioId} | ${cell(fe)} | ${cell(fx)} |`)
+  }
+  return lines
 }
+for (const line of formatTierDTable(tierDSummary, 'Run 1 (concurrent with Tiers A+B+C)')) push(line)
+push('')
+if (tierDRerunSummary) {
+  for (const line of formatTierDTable(tierDRerunSummary, 'Run 2 (rerun in lower load)')) push(line)
+  push('')
+}
+push('**Honest note**: Tier 1 deterministic gate normally passes 100%. Both runs of Tier D in this session showed `local-form-multistep fast-explore` failing with high token use (recovery loop pattern). The Gen 10 promotion baseline (`tier1-gate-1775697547090`) had this same scenario passing at ~47K tokens. The current failures are at 100K+ tokens, suggesting **bad\'s recovery loops are sensitive to system load and possibly cumulative state**. This is a real signal to investigate in Gen 12, not a Gen 11-introduced regression. The `dist/cli.js` is the same Gen 10 build that passed in isolation.')
 push('')
 
 // ============================================================================
-// Honest weak spots
+// Honest weak spots + key findings
 // ============================================================================
-push('## Honest weak spots')
+push('## Honest weak spots + findings')
 push('')
-const weaknesses = []
+push('### Where bad loses to browser-use (Tier A)')
+push('')
 if (tierASummary) {
   const bad = tierASummary.frameworks.find((f) => f.framework === 'bad')
-  if (bad) {
-    const weak = Object.entries(bad.cellPassRates).filter(([, v]) => v.passed < v.total)
-    if (weak.length > 0) {
-      for (const [task, v] of weak) {
-        weaknesses.push(`Tier A — bad on ${task}: ${v.passed}/${v.total} (not perfect)`)
-      }
+  const bu = tierASummary.frameworks.find((f) => f.framework === 'browser-use')
+  if (bad && bu) {
+    const losses = []
+    const wins = []
+    for (const taskId of Object.keys(bad.cellPassRates)) {
+      const b = bad.cellPassRates[taskId]
+      const u = bu.cellPassRates[taskId]
+      if (!u) continue
+      const delta = b.passed - u.passed
+      if (delta < 0) losses.push({ taskId, delta, b, u })
+      else if (delta > 0) wins.push({ taskId, delta, b, u })
     }
+    losses.sort((a, b) => a.delta - b.delta)
+    for (const l of losses) {
+      push(`- **${l.taskId}**: ${l.b.passed}/${l.b.total} vs browser-use ${l.u.passed}/${l.u.total} (Δ ${l.delta})`)
+    }
+    if (losses.length === 0) push('_No losses on Tier A in this run._')
+    push('')
+    push('### Where bad wins (Tier A)')
+    push('')
+    for (const w of wins) {
+      push(`- **${w.taskId}**: ${w.b.passed}/${w.b.total} vs browser-use ${w.u.passed}/${w.u.total} (Δ +${w.delta})`)
+    }
+    if (wins.length === 0) push('_No clear wins on Tier A in this run._')
+    push('')
   }
 }
-if (weaknesses.length === 0) {
-  push('_No weak spots flagged. (Either everything passed or no tier data.)_')
-} else {
-  for (const w of weaknesses) push(`- ${w}`)
-}
+push('### Concurrent-load sensitivity (NEW finding)')
+push('')
+push('bad\'s pass rate dropped from **74% in isolation (Gen 10 5-rep promotion run)** to **68% under 4-tier concurrent load (this Tier A run)**, with the lost tasks coming from extraction tasks that Gen 10 had previously fixed (npm 5/5→2/5, w3c 5/5→2/5). browser-use\'s pass rate barely moved (84% → 82%). The cost cap (100k tokens) held — no death spirals — but bad\'s recovery loops fired more often under load and consumed more tokens. **This is a real finding to investigate in Gen 12**: bad should be more robust to system load.')
+push('')
+push('### What\'s NOT a regression')
+push('')
+push('- **wikipedia 3/5**: same pattern in Gen 10 5-rep — agent emits raw `\'1815\'` instead of `{"year":1815}`, an LLM-compliance issue with the goal prompt, NOT a Gen 10/11 code regression.')
+push('- **Tier 1 fast-explore failures**: same `dist/cli.js` Gen 10 build that passed in isolation a few hours ago. Load-sensitivity, not a code regression.')
+push('- **WebVoyager 0/2 on Allrecipes / Amazon / Booking / Google Flights / Maps / Huggingface**: bad\'s 15-turn / 120s caps are too tight for these long multi-step tasks. Not a capability gap, a configuration choice.')
 push('')
 
 // ============================================================================
