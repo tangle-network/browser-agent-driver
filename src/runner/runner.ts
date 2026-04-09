@@ -226,6 +226,55 @@ export function hasPlaceholderPattern(text: string): boolean {
   return false
 }
 
+/**
+ * Gen 9 — runtime two-pass extraction. When the planner emits a single
+ * runScript step (per Gen 7.2 rule #7) and that script returns null /
+ * empty / whitespace / `{x: null}` / a placeholder pattern, the auto-
+ * complete-from-runScript path should NOT fire. Instead the runner should
+ * mark the plan as deviated and fall through to the per-action loop where
+ * Brain.decide can re-observe the loaded page and emit a smarter action
+ * (different selector, click+wait, scroll, etc.).
+ *
+ * This addresses the failure mode the Gen 8 head-to-head gauntlet
+ * surfaced: bad's planner-only path lost to browser-use's per-action loop
+ * on tasks where the first runScript pick was wrong (npm, mdn signature,
+ * w3c, github, wikipedia variance). Two-pass gives bad's per-action loop
+ * the same recovery surface browser-use uses, with the planner's speed
+ * advantage on the cases where runScript succeeds first try.
+ *
+ * "Meaningful" means: not empty/whitespace, not the literal string `null`
+ * or `undefined`, and not matching `hasPlaceholderPattern` (which already
+ * detects JSON null fields, "<from prior step>" markers, etc.).
+ */
+export function isMeaningfulRunScriptOutput(output: string | null | undefined): boolean {
+  if (typeof output !== 'string') return false
+  const trimmed = output.trim()
+  if (trimmed.length === 0) return false
+  if (trimmed === 'null' || trimmed === 'undefined' || trimmed === '""' || trimmed === "''") return false
+  // Empty JSON shells: `{}`, `[]`, `{"x": null}`, `[null, null]`
+  if (trimmed === '{}' || trimmed === '[]') return false
+  if (hasPlaceholderPattern(trimmed)) return false
+  // If the output parses as JSON and EVERY top-level value is null/empty,
+  // treat it as not meaningful. This catches `{"x": null, "y": ""}` even
+  // though the placeholder regex would already catch the null one.
+  try {
+    const parsed = JSON.parse(trimmed)
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const values = Object.values(parsed)
+      if (values.length > 0) {
+        const allEmpty = values.every(
+          (v) => v === null || v === undefined || v === '' || v === 0,
+        )
+        if (allEmpty) return false
+      }
+    }
+    if (Array.isArray(parsed) && parsed.length === 0) return false
+  } catch {
+    // Not JSON, that's fine — fall through to "meaningful" if we got here.
+  }
+  return true
+}
+
 export class BrowserAgent {
   private driver: Driver;
   private brain: Brain;
@@ -2480,13 +2529,13 @@ export class BrowserAgent {
     if (
       lastStep
       && lastStep.action.action === 'runScript'
-      && lastRunScriptOutput
+      && isMeaningfulRunScriptOutput(lastRunScriptOutput)
     ) {
       const synthTurnNumber = currentTurnIndex + 1
       const synthTurn: Turn = {
         turn: synthTurnNumber,
         state: lastState,
-        action: { action: 'complete', result: lastRunScriptOutput },
+        action: { action: 'complete', result: lastRunScriptOutput! },
         reasoning: 'Gen 7.2 auto-complete: plan ended after runScript, runner emitted complete with the runScript output',
         durationMs: 0,
       }
@@ -2504,13 +2553,42 @@ export class BrowserAgent {
         durationMs: 0,
       })
       if (this.config.debug) {
-        console.log(`[Runner] Gen 7.2: auto-emitted complete with runScript output (${lastRunScriptOutput.length} chars) after plan exhausted`)
+        console.log(`[Runner] Gen 7.2: auto-emitted complete with runScript output (${lastRunScriptOutput!.length} chars) after plan exhausted`)
       }
       return {
         kind: 'completed',
         lastState,
-        finalResult: lastRunScriptOutput,
+        finalResult: lastRunScriptOutput!,
         turnsConsumed: plan.steps.length + 1,
+      }
+    }
+
+    // Gen 9: if the last step WAS a runScript but the output was NOT
+    // meaningful (null, empty, placeholder), DO NOT auto-complete with
+    // garbage. Fall through to the per-action loop with a deviation
+    // reason that names the empty output. The per-action loop's [REPLAN]
+    // context (built in BrowserAgent.run from this `reason` field) will
+    // tell Brain.decide that the planner's runScript returned nothing
+    // useful and it should try a different approach. This is the
+    // architectural fix that closes the gauntlet gap vs browser-use:
+    // browser-use's per-action loop wins on tasks like npm/mdn/w3c
+    // because it iterates after a failed extraction; Gen 9 gives bad
+    // the same recovery path while keeping the planner's first-try
+    // speed advantage on the cases that succeed cleanly.
+    if (
+      lastStep
+      && lastStep.action.action === 'runScript'
+      && !isMeaningfulRunScriptOutput(lastRunScriptOutput)
+    ) {
+      if (this.config.debug) {
+        console.log(`[Runner] Gen 9: runScript returned no meaningful output (${JSON.stringify(lastRunScriptOutput).slice(0, 100)}); falling through to per-action loop for two-pass extraction`)
+      }
+      return {
+        kind: 'deviated',
+        lastState,
+        failedStepIndex: plan.steps.length - 1,
+        reason: `runScript returned no meaningful output (got: ${JSON.stringify(lastRunScriptOutput).slice(0, 200)}). The first-pass extraction failed — re-observe the page and try a different approach (different selector, click+wait, or a wider DOM query).`,
+        turnsConsumed: plan.steps.length,
       }
     }
 
