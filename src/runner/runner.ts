@@ -1590,24 +1590,50 @@ export class BrowserAgent {
             // evidence and had no recent errors. The detailed result text
             // (>50 chars) combined with script-extracted evidence means the
             // verifier almost always agrees — save the round-trip.
+            //
+            // Gen 12: content-aware gate. gpt-5.4 writes verbose narratives
+            // that admit failure ("could not complete", "not visible", "did
+            // not take effect") yet marks success. The old heuristic (length
+            // + evidence + no errors) rubber-stamped these. Now we scan the
+            // result text for self-contradicting phrases and force LLM
+            // verification when found. This fixes the 6/8 judge disagreement
+            // cases from Gen 11 evolve R2.
             const agentResult = action.result || '';
             const recentErrors = turns.slice(-2).filter(t => t.error).length;
             const hasScriptEvidence = verificationEvidence.some(e => e.startsWith('SCRIPT RESULT:'));
+
+            // Content-aware gate: detect when the agent's own text admits
+            // failure despite claiming success. These phrases were found in
+            // 6 of 8 false-pass cases on WebVoyager with gpt-5.4.
+            const selfContradicting = /\b(?:could not (?:complete|find|fulfill|verify|confirm|locate|access|extract|retrieve)|not (?:visible|available|found|present|accessible|displayed|shown|confirmed|verified)|did not (?:take effect|work|succeed|load|return)|unable to (?:find|complete|verify|access|extract|retrieve)|no (?:visible (?:answer|result|data|content)|results? (?:found|returned|available))|(?:failed|failure) to (?:find|complete|set|select|navigate)|unfortunately|I (?:was|am) unable|(?:task|request|goal) (?:is|was) (?:not |in)complete)\b/i.test(agentResult);
             const fastPathEligible =
               agentResult.length > 50 &&
               recentErrors === 0 &&
-              hasScriptEvidence;
+              hasScriptEvidence &&
+              !selfContradicting;
 
             if (fastPathEligible) {
               goalResult = {
                 achieved: true,
                 confidence: 0.9,
-                evidence: ['Fast-path: agent provided detailed result with script-backed evidence and no recent errors.'],
+                evidence: ['Fast-path: agent provided detailed result with script-backed evidence, no recent errors, and no self-contradicting language.'],
                 missing: [],
               };
               if (this.config.debug) {
-                console.log('[Runner] Goal verification fast-path: skipped LLM call (strong evidence + no errors)');
+                console.log('[Runner] Goal verification fast-path: skipped LLM call (strong evidence + no errors + no self-contradiction)');
               }
+            } else if (selfContradicting) {
+              // Force LLM verification — the agent claims success but its
+              // own text suggests failure. The LLM verifier reads the actual
+              // content and makes the right call.
+              if (this.config.debug) {
+                console.log('[Runner] Gen 12: fast-path BLOCKED — agent result contains self-contradicting language, forcing LLM verification');
+              }
+              goalResult = await this.brain.verifyGoalCompletion(
+                state,
+                scenario.goal,
+                buildGoalVerificationClaim(agentResult, verificationEvidence),
+              );
             } else {
               goalResult = await this.brain.verifyGoalCompletion(
                 state,
