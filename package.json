@@ -40,6 +40,7 @@
     "auth:check-state": "node ./scripts/check-storage-state.mjs",
     "bench:validate": "node ./scripts/run-multi-rep.mjs",
     "bench:compete": "node ./scripts/run-competitive.mjs",
+    "bench:master": "node ./scripts/run-master-comparison.mjs",
     "ab:experiment": "node ./scripts/run-ab-experiment.mjs",
     "research:pipeline": "node ./scripts/run-research-pipeline.mjs",
     "research:cycle": "node ./scripts/run-research-cycle.mjs",
@@ -114,6 +115,7 @@
     "axe-core": "^4.11.2",
     "chalk": "^5.4.1",
     "ffmpeg-static": "^5.3.0",
+    "openai": "^6.34.0",
     "patchright": "1.58.2"
   },
   "devDependencies": {

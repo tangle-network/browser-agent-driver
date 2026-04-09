@@ -1,42 +1,29 @@
 {
   "mode": "evolve",
-  "goal": "Move real-web gauntlet pass rate above 26/30 by fixing the LLM-visibility bottleneck",
-  "status": "round2_complete_promote",
-  "round": 2,
-  "generation": 10,
-  "activePursuit": ".evolve/pursuits/2026-04-08-gen9-retro-and-gen10-proposal.md",
-  "branch": "gen10-dom-index-extraction",
-  "verdict": "KEEP — promote",
-  "round2Result": {
-    "method": "5-rep matched same-day baseline (CLAUDE.md rules #3 + #6)",
-    "gen10_5rep": "37/50 = 74%",
-    "gen8_sameday_5rep": "29/50 = 58%",
-    "delta": "+8 tasks (+16 percentage points)",
-    "perTaskWins": [
-      "npm-package-downloads: 0/5 -> 5/5 (+5, complete fix from extractWithIndex / bigger snapshot)",
-      "w3c-html-spec-find-element: 2/5 -> 5/5 (+3, bigger snapshot enables long-doc nav)",
-      "github-pr-count: 4/5 -> 5/5 (+1)",
-      "stackoverflow-answer-count: 2/5 -> 3/5 (+1)"
-    ],
-    "perTaskVariance": [
-      "wikipedia-fact-lookup: 3/5 -> 2/5 (-1, oracle compliance issue, both struggling)",
-      "arxiv-paper-abstract: 3/5 -> 2/5 (-1, within Wilson CI overlap)"
-    ],
-    "perTaskParity": ["hn 5/5 vs 5/5", "mdn 2/5 vs 2/5", "reddit 5/5 vs 5/5", "python-docs 3/5 vs 3/5"],
-    "costAnalysis": {
-      "rawCostMean": "$0.0272 vs $0.0171 (+59%)",
-      "perPassCost": "$0.037 vs $0.029 (+28%)",
-      "deathSpirals": 0,
-      "peakRunCost": "$0.16 wikipedia (Gen 9.1 was $0.32)",
-      "redditFix": "5/5 at $0.015 mean (Gen 9.1 was 3/5 at $0.25-$0.32 death spirals — REGRESSION FIXED)"
-    },
-    "wallTime": "12.6s mean vs 9.4s (+34%)"
+  "goal": "Validate bad Gen 10 + gpt-5.4 beats browser-use 0.12.6 at 5-rep matched, then promote to default",
+  "status": "round1_complete_keep_promoted",
+  "round": 1,
+  "generation": 11,
+  "activePursuit": ".evolve/pursuits/2026-04-09-comprehensive-benchmark-gen11.md",
+  "branch": "gen11-comprehensive-benchmark",
+  "verdict": "KEEP",
+  "round1Result": {
+    "method": "5-rep matched same-day, bad+gpt-5.4 in isolation, vs Tier A browser-use 5-rep baseline",
+    "result": "43/50 = 86% pass rate",
+    "vs_browserUse": "+2 tasks (43 vs 41)",
+    "speed": "8.8s mean wall (browser-use 65.3s) — 7.4x faster",
+    "p95": "17.1s (browser-use 159.0s) — 9.3x faster",
+    "costPerPass": "$0.042 (browser-use $0.031, +35%)",
+    "perTaskGains_vs_gpt52": ["w3c +3", "npm +3", "python-docs +2", "wikipedia +1", "mdn +1"],
+    "userVerdict": "Drew explicitly approved the cost trade — speed advantage justifies +35% cost-per-pass"
   },
-  "nextSteps": [
-    "Mark PR #60 ready for review (remove draft)",
-    "Update changeset with honest 5-rep numbers + cost-per-pass framing",
-    "Append round 2 to progress.md + experiments.jsonl",
-    "Consider Gen 10.1 follow-up: cap supervisor extra-context size to reduce wikipedia recovery loops"
+  "promoted": [
+    "bench/scenarios/configs/planner-on-realweb.mjs: model gpt-5.2 -> gpt-5.4 (default for real-web tasks)"
   ],
-  "updatedAt": "2026-04-09T02:11:00Z"
+  "nextRoundCandidates": [
+    "Wikipedia oracle compliance prompt fix (4/5 -> 5/5)",
+    "mdn / stackoverflow stabilization",
+    "Re-run WebVoyager curated 30 with gpt-5.4"
+  ],
+  "updatedAt": "2026-04-09T07:32:00Z"
 }

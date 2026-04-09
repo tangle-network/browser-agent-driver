@@ -49,6 +49,10 @@ const evalOnly = hasFlag('eval-only')
 const evalResults = getArg('results')
 const estimate = hasFlag('estimate')
 const outDir = getArg('out', path.resolve(rootDir, `agent-results/wv-${Date.now()}`))
+// Gen 11: --cases-file lets the master comparison runner pass a curated
+// subset (e.g. bench/external/webvoyager/curated-30.json) without overwriting
+// the canonical converted cases.json.
+const casesFileOverride = getArg('cases-file')
 
 const TASKS_URL = 'https://raw.githubusercontent.com/MinorJerry/WebVoyager/main/data/WebVoyager_data.jsonl'
 const PATCHES_URL = 'https://raw.githubusercontent.com/magnitudedev/webvoyager/main/data/patches.json'
@@ -80,7 +84,7 @@ function convertTasks() {
 // ── Step 3: Estimate cost ───────────────────────────────────────────────────
 
 function estimateCost() {
-  const cases = JSON.parse(fs.readFileSync(casesPath, 'utf8'))
+  const cases = JSON.parse(fs.readFileSync(activeCasesPath, 'utf8'))
   const costPerCase = 0.25 // based on WEBBENCH empirical average
   const evalCostPerCase = 0.02 // GPT-4o judge per case
   const total = cases.length
@@ -99,7 +103,7 @@ function runAgent() {
   return new Promise((resolve, reject) => {
     const args = [
       'scripts/run-scenario-track.mjs',
-      '--cases', casesPath,
+      '--cases', activeCasesPath,
       '--model', model,
       '--benchmark-profile', benchmarkProfile,
       '--modes', 'fast-explore',
@@ -139,6 +143,18 @@ function evaluate(dir) {
 
 // ── Main ────────────────────────────────────────────────────────────────────
 
+// Gen 11: when --cases-file is given, point cases.json at the override file
+// for the duration of this run by writing a sibling cases-active.json. The
+// runner downstream uses casesPath, so we just point that variable.
+let activeCasesPath = casesPath
+if (casesFileOverride) {
+  activeCasesPath = path.resolve(casesFileOverride)
+  if (!fs.existsSync(activeCasesPath)) {
+    console.error(`--cases-file not found: ${activeCasesPath}`)
+    process.exit(1)
+  }
+}
+
 async function main() {
   console.log('WebVoyager Benchmark Runner')
   console.log('══════════════════════════════════════')
@@ -152,14 +168,20 @@ async function main() {
     return
   }
 
-  // Download data
-  console.log('\n1. Downloading WebVoyager data...')
-  download(TASKS_URL, tasksPath)
-  download(PATCHES_URL, patchesPath)
+  if (casesFileOverride) {
+    console.log(`\nUsing curated cases file: ${activeCasesPath}`)
+    const curated = JSON.parse(fs.readFileSync(activeCasesPath, 'utf-8'))
+    console.log(`  ${curated.length} cases loaded`)
+  } else {
+    // Download data
+    console.log('\n1. Downloading WebVoyager data...')
+    download(TASKS_URL, tasksPath)
+    download(PATCHES_URL, patchesPath)
 
-  // Convert
-  console.log('\n2. Converting tasks...')
-  convertTasks()
+    // Convert
+    console.log('\n2. Converting tasks...')
+    convertTasks()
+  }
 
   if (estimate) {
     estimateCost()
