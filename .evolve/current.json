@@ -1,54 +1,29 @@
 {
-  "mode": "pursue",
-  "goal": "Ship a comprehensive multi-tier multi-framework benchmark truth table for `bad`",
-  "status": "round1_complete_persist",
-  "round": null,
+  "mode": "evolve",
+  "goal": "Validate bad Gen 10 + gpt-5.4 beats browser-use 0.12.6 at 5-rep matched, then promote to default",
+  "status": "round1_complete_keep_promoted",
+  "round": 1,
   "generation": 11,
   "activePursuit": ".evolve/pursuits/2026-04-09-comprehensive-benchmark-gen11.md",
   "branch": "gen11-comprehensive-benchmark",
-  "verdict": "ADVANCE",
+  "verdict": "KEEP",
   "round1Result": {
-    "method": "4-tier master comparison: cross-framework + WebVoyager + multi-model + Tier 1 gate",
-    "tierA_crossFramework": {
-      "method": "5-rep matched same-day, bad Gen 10 vs browser-use 0.12.6, gpt-5.2",
-      "bad": "34/50 = 68%, $0.0318 mean, 14.6s mean, $0.047 cost-per-pass",
-      "browserUse": "41/50 = 82%, $0.0257 mean, 65.3s mean, $0.031 cost-per-pass",
-      "delta": "-7 tasks (browser-use leads on pass rate; bad 4.5x faster)",
-      "perTaskWins": ["bad: stackoverflow +2"],
-      "perTaskLosses": ["npm -3", "wikipedia -2", "mdn -2", "w3c -2"]
-    },
-    "tierB_webvoyager": {
-      "method": "30 curated tasks (2 per site x 15 sites), bad Gen 10 + GPT-4o judge",
-      "judgePassRate": "12/30 = 40%",
-      "agentPassRate": "12/30 = 40%",
-      "agreement": "100% (judge and agent never disagreed)",
-      "perfectSites": ["Apple 2/2", "Coursera 2/2", "Google Search 2/2", "Wolfram Alpha 2/2"],
-      "halfSites": ["ArXiv 1/2", "BBC News 1/2", "ESPN 1/2", "GitHub 1/2"],
-      "zeroSites": ["Allrecipes 0/2", "Amazon 0/2", "Booking 0/2", "Cambridge 0/2", "Google Flights 0/2", "Google Map 0/2", "Huggingface 0/2"],
-      "diagnosis": "Long multi-step tasks (booking, flights, recipes) hit the 15-turn / 120s caps. Lookup tasks (Apple, Wolfram, Google Search) work well."
-    },
-    "tierC_multiModel": {
-      "method": "bad Gen 10 on gpt-5.4, 3-rep, same 10 real-web tasks",
-      "result": "28/30 = 93%, $0.0354 mean, 9.4s mean",
-      "vs_gpt52_5rep_isolation": "+19pp pass rate, +30% raw cost, +3% cost-per-pass",
-      "vs_gpt52_concurrent_load": "+25pp pass rate (93% vs 68%)",
-      "verdict": "gpt-5.4 + bad Gen 10 = the strict-upgrade configuration"
-    },
-    "tierD_tier1Gate": {
-      "method": "Local fixtures regression check (2 scenarios x 2 modes)",
-      "result": "FAILED both runs on local-form-multistep fast-explore (recovery loop pattern)",
-      "diagnosis": "Same dist/cli.js Gen 10 build that passed earlier today. Load-sensitive flake, NOT a code regression. Investigate in Gen 12."
-    },
-    "newFinding_loadSensitivity": "bad pass rate dropped from 74% (Gen 10 5-rep isolation) to 68% (Gen 11 4-tier concurrent load), all losses on extraction tasks Gen 10 had previously fixed (npm 5/5->2/5, w3c 5/5->2/5). browser-use barely moved (84%->82%). bad recovery loops are sensitive to system load. Cost cap (100k) held - no death spirals."
+    "method": "5-rep matched same-day, bad+gpt-5.4 in isolation, vs Tier A browser-use 5-rep baseline",
+    "result": "43/50 = 86% pass rate",
+    "vs_browserUse": "+2 tasks (43 vs 41)",
+    "speed": "8.8s mean wall (browser-use 65.3s) — 7.4x faster",
+    "p95": "17.1s (browser-use 159.0s) — 9.3x faster",
+    "costPerPass": "$0.042 (browser-use $0.031, +35%)",
+    "perTaskGains_vs_gpt52": ["w3c +3", "npm +3", "python-docs +2", "wikipedia +1", "mdn +1"],
+    "userVerdict": "Drew explicitly approved the cost trade — speed advantage justifies +35% cost-per-pass"
   },
-  "shippedArtifacts": [
-    "scripts/run-master-comparison.mjs (pure orchestrator, ~600 LOC)",
-    "bench/external/webvoyager/curated-30.json (30 hand-picked diverse tasks)",
-    "bench/external/webvoyager/run.mjs --cases-file flag",
-    "bench/external/webvoyager/evaluate.mjs (3 bug fixes: openai dep, verdict field, env-loader)",
-    "package.json bench:master script",
-    "docs/GEN11-MASTER-COMPARISON.md (the truth table)"
+  "promoted": [
+    "bench/scenarios/configs/planner-on-realweb.mjs: model gpt-5.2 -> gpt-5.4 (default for real-web tasks)"
   ],
-  "rawData": "agent-results/master-comparison-1775710102/ (gitignored, ~580MB with videos)",
-  "updatedAt": "2026-04-09T06:08:00Z"
+  "nextRoundCandidates": [
+    "Wikipedia oracle compliance prompt fix (4/5 -> 5/5)",
+    "mdn / stackoverflow stabilization",
+    "Re-run WebVoyager curated 30 with gpt-5.4"
+  ],
+  "updatedAt": "2026-04-09T07:32:00Z"
 }

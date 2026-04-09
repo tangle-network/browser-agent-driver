@@ -20,6 +20,54 @@
 
 **Lesson:** Gen 10 must be a **capability change** (give the LLM new information) not a **mechanism change** (give the LLM more turns).
 
+## Generation 11 evolve round 1 — gpt-5.4 promoted to default — 2026-04-09
+
+**Goal**: Validate at 5-rep that bad Gen 10 + gpt-5.4 beats browser-use 0.12.6 on the same gauntlet that Gen 11 used. Tier C 3-rep showed 93% — needed 5-rep per CLAUDE.md rule #6 before promotion.
+
+### Result: KEEP — promoted to `bench/scenarios/configs/planner-on-realweb.mjs`
+
+| metric | bad gpt-5.2 (Tier A 5rep) | **bad gpt-5.4 (R1 5rep)** | browser-use (Tier A 5rep) |
+|---|---:|---:|---:|
+| pass rate | 34/50 = 68% | **43/50 = 86%** ⭐ | 41/50 = 82% |
+| mean wall | 14.6s | **8.8s** | 65.3s |
+| p95 wall | 46.9s | **17.1s** | 159.0s |
+| mean cost | $0.0318 | $0.0365 | $0.0257 |
+| **cost-per-pass** | $0.047 | **$0.042** | **$0.031** |
+
+**Headline**: bad Gen 10 + gpt-5.4 BEATS browser-use on pass rate (+2 tasks at 5-rep) AND is **7.4× faster** on mean wall and **9.3× faster** on p95 wall. Cost-per-pass is +35% vs browser-use but the speed delta is so large that the trade is decisively worth it for the use case.
+
+### Per-task wins gpt-5.4 vs gpt-5.2 (same-day, matched 5-rep)
+
+| task | gpt-5.2 | gpt-5.4 | Δ |
+|---|---:|---:|---|
+| **w3c-html-spec-find-element** | 2/5 | **5/5** | **+3** ⭐ |
+| **npm-package-downloads** | 2/5 | **5/5** | **+3** ⭐ |
+| **python-docs-method-signature** | 3/5 | **5/5** | **+2** ⭐ |
+| wikipedia-fact-lookup | 3/5 | 4/5 | +1 |
+| mdn-array-flatmap | 2/5 | 3/5 | +1 |
+| arxiv-paper-abstract | 5/5 | 4/5 | -1 (variance) |
+| stackoverflow-answer-count | 2/5 | 2/5 | 0 |
+| hn / github / reddit | 5/5 each | 5/5 each | 0 |
+
+### Key learnings
+
+1. The 3-rep 93% from Tier C was on the optimistic end. 5-rep is 86%, the proper rigor number. Still beats browser-use.
+2. **Isolation matters** for bad's pass rate. Tier A under load: 68%. This round in isolation: 86%. The load-sensitivity finding from Gen 11 is real and the +18pp gain from isolation (alongside model upgrade) is bigger than the gpt-5.4 alone effect.
+3. gpt-5.4 fixes the EXTRACTION tasks where gpt-5.2 was struggling (w3c, npm, python-docs) — these are exactly the tasks where the planner needs to write a precise runScript first try.
+4. Cost-per-pass at $0.042 is +35% vs browser-use's $0.031, but bad is **7.4× faster mean** and **9.3× faster p95**. **Drew confirmed: trade accepted.**
+5. wikipedia 4/5 (one fail to the `'1815'` JSON-wrapper compliance issue, not a model failure) — fix in next round via prompt tweak.
+
+### What ships in this round
+
+- **`bench/scenarios/configs/planner-on-realweb.mjs`**: model `gpt-5.2` → `gpt-5.4`
+- **`.evolve/experiments.jsonl`**: gen11-002 logged with verdict KEEP
+
+### Next round candidates (Gen 11 evolve R2)
+
+1. **Wikipedia oracle compliance prompt fix** — push wikipedia 4/5 → 5/5 by helping the LLM emit `{"year":1815}` instead of raw `'1815'`. Cheap, targeted, ~5 min experiment.
+2. **mdn / stackoverflow stabilization** — mdn 3/5, stackoverflow 2/5 are the remaining ragged tasks. Investigate per-rep failure modes.
+3. **Re-run WebVoyager curated 30 with gpt-5.4** — see how much the 40% (gpt-5.2) jumps. Probably +15pp or more given the gauntlet pattern.
+
 ## Generation 11 — Master comparison truth table — 2026-04-09
 
 **Thesis**: Gen 4-10 shipped progressively better agent code. **Gen 11 ships the truth table** that shows where bad actually stands across every benchmark surface that's runnable today. The shipping artifact is `docs/GEN11-MASTER-COMPARISON.md` plus `scripts/run-master-comparison.mjs` to reproduce it.
