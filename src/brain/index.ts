@@ -166,6 +166,7 @@ RULES:
 10. Use runScript or extractWithIndex when you need to extract data that isn't clearly visible in the screenshot
 11. BATCH: when filling forms, you can type in one field, then immediately use clickAt on the next field. Plan multiple actions per turn when they are sequential and obvious.
 12. VERIFY BEFORE COMPLETING: Before using "complete", re-read the GOAL and check: does your result ACTUALLY answer what was asked? If the goal asks for "5 beauty salons with ratings > 4.8" and you only found 3, do NOT complete — keep searching. If the goal asks for a specific date/price/name and your result doesn't contain it, do NOT complete. Premature completion with wrong data is worse than using another turn.
+13. DATE PICKER BYPASS: If you encounter a complex date picker widget (calendar popup, date spinner) that is hard to interact with, DO NOT spend multiple turns clicking through calendar months. Instead, use "navigate" to construct a URL with the date parameters encoded. For Google Flights: navigate to google.com/travel/flights with search params. For Booking: navigate to booking.com/searchresults with checkin/checkout params. URL-based date setting is faster and more reliable than fighting date picker UIs.
 
 REASONING FRAMEWORK:
 1. What do I see in the screenshot? Describe the visual layout.
@@ -230,7 +231,8 @@ RULES:
 6. BLOCKER-FIRST: dismiss modals, cookie banners, login walls before continuing
 7. BATCH FILL: when 2+ form fields are visible with refs, use a single "fill" action
 8. If stuck after multiple attempts, use "abort"
-9. VERIFY BEFORE COMPLETING: Before using "complete", re-read the GOAL and check: does your result ACTUALLY answer what was asked? If the goal asks for specific data (prices, names, ratings, counts) and your result doesn't contain ALL of them, keep going. Premature completion with partial data is worse than using another turn.`;
+9. VERIFY BEFORE COMPLETING: Before using "complete", re-read the GOAL and check: does your result ACTUALLY answer what was asked? If the goal asks for specific data (prices, names, ratings, counts) and your result doesn't contain ALL of them, keep going. Premature completion with partial data is worse than using another turn.
+10. DATE PICKER BYPASS: If you encounter a complex date picker widget (calendar popup, date spinner) that is hard to interact with, DO NOT spend multiple turns clicking through calendar months. Instead, use "navigate" to construct a URL with the date parameters encoded. For Google Flights: navigate to google.com/travel/flights with search params. For Booking: navigate to booking.com/searchresults with checkin/checkout params. URL-based date setting is faster and more reliable than fighting date picker UIs.`;
 
 /** Pattern for detecting data-extraction keywords in goal text */
 const DATA_EXTRACTION_PATTERN = /\b(extract|list|find|data|price|pric|names?|rating|cost|count)\b/i;

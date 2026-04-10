@@ -973,10 +973,11 @@ export class TestRunner {
 
   private resolveTimeoutMs(testCase: TestCase): number | undefined {
     const base = testCase.timeoutMs ?? this.defaultTimeoutMs;
-    // Gen 14: vision mode needs more time — each turn takes ~15s vs ~5s for DOM.
-    // Boost timeout 50% so 120s cases get 180s, preventing false timeouts.
+    // Gen 17: vision mode gets 2× timeout (was 1.5×). Allrecipes had 12/12
+    // failures as timeouts at 180s — tasks were succeeding but running out
+    // of time due to slow site loading + vision per-turn overhead.
     if (base && (this.config?.observationMode === 'vision' || this.config?.observationMode === 'hybrid')) {
-      return Math.round(base * 1.5);
+      return Math.round(base * 2);
     }
     return base;
   }

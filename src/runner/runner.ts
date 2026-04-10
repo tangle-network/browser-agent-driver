@@ -334,10 +334,11 @@ export class BrowserAgent {
     const turns: Turn[] = [];
     const startTime = Date.now();
     const phaseTimings: import('../types.js').RunPhaseTimings = {};
-    // Gen 14: vision mode gets 50% more token budget. Image tokens are
-    // information-dense; the Gen 13 cost cap hits (101-106k) were on tasks
-    // the agent was successfully completing.
-    const visionBudgetMultiplier = this.config.observationMode === 'vision' || this.config.observationMode === 'hybrid' ? 1.5 : 1;
+    // Gen 17: vision+planner mode gets 2× token budget. The planner reduces
+    // per-turn cost but complex sites (Booking: 140k mean on failures) still
+    // hit the 150k cap. 200k gives planner tasks enough headroom while still
+    // catching death spirals.
+    const visionBudgetMultiplier = isVisionMode ? 2 : 1;
     const runState = new RunState(maxTurns, Math.round(DEFAULT_TOKEN_BUDGET * visionBudgetMultiplier));
 
     const runId = scenario.sessionId
