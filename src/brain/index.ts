@@ -1491,10 +1491,12 @@ KEY PRINCIPLES:
 7. EXTRACTION TASKS: when the goal asks you to READ, EXTRACT, REPORT, or RETURN values from the page (numbers, text, lists, structured data), the LAST step of your plan MUST be \`runScript\`. Do NOT emit a \`complete\` step after the runScript with literal values in \`result\`, because at planning time you cannot know what runScript will return — any values you write would be fabricated. The runner has a deterministic substitution path: it will use the runScript output as the final result, OR fall through to per-action mode where the LLM can see the script output. Either way is fine. The wrong move is to put placeholder JSON like \`{"x":null,"y":null}\` or \`"<from prior step>"\` in the complete result; the runner detects and replaces those, but it's cleaner if you simply omit the complete step. RIGHT: \`[{action:runScript, script:"..."}]\`. WRONG: \`[{action:runScript,...}, {action:complete, result:"{x:null}"}]\`.
 
 ACTION VERBS (same as the per-action prompt):
-- {"action": "click", "selector": "@REF"}
-- {"action": "type", "selector": "@REF", "text": "..."}
+- {"action": "click", "selector": "@REF"} — use when the element has a ref in ELEMENTS
+- {"action": "type", "selector": "@REF", "text": "..."} — type into a ref element
 - {"action": "press", "selector": "@REF", "key": "Enter"}
 - {"action": "select", "selector": "@REF", "value": "..."}
+- {"action": "clickAt", "x": 512, "y": 384} — click at pixel coordinates (use when you can see the element in the screenshot but it has no ref)
+- {"action": "typeAt", "x": 300, "y": 200, "text": "..."} — click at coordinates then type
 - {"action": "scroll", "direction": "up"|"down", "amount": 500}
 - {"action": "navigate", "url": "..."}
 - {"action": "wait", "ms": 1000}
@@ -1535,9 +1537,21 @@ ${snapshot}
 ${extraContext ? `\n${extraContext}\n` : ''}
 What is the complete plan?`
 
+    // Gen 20: vision-aware planner. When hybrid mode is active AND a
+    // screenshot is available, send the screenshot alongside the DOM so
+    // the planner can see the visual layout. This helps on sites like
+    // Google Flights where the DOM doesn't convey form structure well.
+    const isVisionPlanner = (this.observationMode === 'hybrid' || this.observationMode === 'vision') && !!state.screenshot;
+    const userContent: UserContent = isVisionPlanner
+      ? [
+          { type: 'text' as const, text: userText },
+          { type: 'image' as const, image: state.screenshot!, mediaType: 'image/jpeg' },
+        ]
+      : userText;
+
     const result = await this.generate(
       planSystemPrompt,
-      [{ role: 'user', content: userText }],
+      [{ role: 'user', content: userContent }],
       { provider: this.provider, model: this.modelName },
       // Plans need more output tokens than decide() — a 10-step plan with
       // batch fills + rationale per step is comfortably over 1000 tokens.
