@@ -167,6 +167,31 @@ export class PlaywrightDriver implements Driver {
     }
   }
 
+  /**
+   * Animate cursor to raw (x, y) coordinates — for clickAt/typeAt actions.
+   * Same visual effect as animateCursorToSelector but without needing a locator.
+   */
+  private async animateCursorToCoord(x: number, y: number, label: string): Promise<void> {
+    if (!this.options.showCursor) return;
+    if (this.cursorInstallPromise) {
+      await this.cursorInstallPromise.catch(() => undefined);
+    }
+    try {
+      await this.page.evaluate(
+        ({ cx, cy, lbl }: { cx: number; cy: number; lbl: string }) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const ov = (window as any).__bad_overlay;
+          if (!ov) return;
+          ov.moveTo(cx, cy, lbl);
+          ov.pulseClick(cx, cy);
+        },
+        { cx: x, cy: y, lbl: label },
+      ).catch(() => {});
+    } catch {
+      // Cosmetic — never break the action
+    }
+  }
+
   /** Get phase-level timing from the last observe() call */
   getLastTiming(): ObserveTiming | undefined {
     return this.lastTiming;
@@ -712,6 +737,7 @@ export class PlaywrightDriver implements Driver {
           const viewport = this.page.viewportSize() ?? { width: 1920, height: 1080 };
           const actualX = Math.round(action.x * (viewport.width / VIRTUAL_SCREEN.width));
           const actualY = Math.round(action.y * (viewport.height / VIRTUAL_SCREEN.height));
+          await this.animateCursorToCoord(actualX, actualY, 'clickAt');
           await this.page.mouse.click(actualX, actualY);
           return { success: true, bounds: { x: actualX, y: actualY, width: 1, height: 1 } };
         }
@@ -720,6 +746,7 @@ export class PlaywrightDriver implements Driver {
           const viewport = this.page.viewportSize() ?? { width: 1920, height: 1080 };
           const actualX = Math.round(action.x * (viewport.width / VIRTUAL_SCREEN.width));
           const actualY = Math.round(action.y * (viewport.height / VIRTUAL_SCREEN.height));
+          await this.animateCursorToCoord(actualX, actualY, 'typeAt');
           await this.page.mouse.click(actualX, actualY);
           await this.page.waitForTimeout(100);
           await this.page.keyboard.type(action.text);
