@@ -732,14 +732,16 @@ export class PlaywrightDriver implements Driver {
           return { success: true, ...(lastBounds ? { bounds: lastBounds } : {}) };
         }
 
-        // Gen 13: Vision-first coordinate-based actions
+        // Gen 13: Vision-first coordinate-based actions.
+        // Bounds use a 40×40 box centered on the click point so the
+        // bad-app ClickOverlay renders a visible highlight + ripple.
         case 'clickAt': {
           const viewport = this.page.viewportSize() ?? { width: 1920, height: 1080 };
           const actualX = Math.round(action.x * (viewport.width / VIRTUAL_SCREEN.width));
           const actualY = Math.round(action.y * (viewport.height / VIRTUAL_SCREEN.height));
           await this.animateCursorToCoord(actualX, actualY, 'clickAt');
           await this.page.mouse.click(actualX, actualY);
-          return { success: true, bounds: { x: actualX, y: actualY, width: 1, height: 1 } };
+          return { success: true, bounds: { x: actualX - 20, y: actualY - 20, width: 40, height: 40 } };
         }
 
         case 'typeAt': {
@@ -750,7 +752,7 @@ export class PlaywrightDriver implements Driver {
           await this.page.mouse.click(actualX, actualY);
           await this.page.waitForTimeout(100);
           await this.page.keyboard.type(action.text);
-          return { success: true, bounds: { x: actualX, y: actualY, width: 1, height: 1 } };
+          return { success: true, bounds: { x: actualX - 20, y: actualY - 20, width: 40, height: 40 } };
         }
 
         default:
