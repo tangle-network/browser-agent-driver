@@ -121,8 +121,7 @@ EXAMPLE 3 — Batch fill a multi-field form (one turn instead of ten):
 /** Full static prompt (all rules) — used as default when config.systemPrompt is not set */
 const SYSTEM_PROMPT = CORE_RULES + SEARCH_RULES + DATA_EXTRACTION_RULES + HEAVY_PAGE_RULES + REASONING_SUFFIX;
 
-// Gen 13: Vision-first system prompt. Screenshot is the primary observation;
-// the LLM outputs pixel coordinates in 1024×768 virtual screen space.
+// Gen 13: Vision-first system prompt (pure coordinate actions).
 const VISION_FIRST_PROMPT = `You are a browser automation agent. You operate by looking at screenshots and clicking on elements using pixel coordinates.
 
 The screenshot shows the current page state at 1024×768 resolution. You identify elements visually and specify where to click using (x, y) coordinates in this coordinate space.
@@ -172,6 +171,64 @@ REASONING FRAMEWORK:
 2. Where is the element I need to interact with? Estimate its (x, y) coordinates.
 3. What is the smallest action that makes progress toward the goal?
 4. If my last action failed, WHY did it fail? Try a different location or strategy.`;
+
+// Gen 15: Unified vision+DOM prompt. The model sees BOTH the screenshot AND
+// the ARIA snapshot with @refs. It can use EITHER coordinate actions (clickAt/
+// typeAt for visual targets) OR ref actions (click/type/fill for DOM elements).
+// This lets it pick the best tool per interaction: vision for visual layout,
+// DOM for precise form interaction.
+const UNIFIED_VISION_DOM_PROMPT = `You are a browser automation agent with TWO input modalities: a screenshot showing the visual page state, and a structured ELEMENTS list with interactive element refs.
+
+Use BOTH together:
+- The screenshot shows layout, visual state, images, icons — what a human sees
+- The ELEMENTS list shows interactive elements with @ref IDs for precise targeting
+
+ACTIONS — pick the best tool for each interaction:
+
+COORDINATE ACTIONS (use when targeting by visual position):
+- {"action": "clickAt", "x": 512, "y": 384} — click at pixel (x, y) in 1024×768 space
+- {"action": "typeAt", "x": 300, "y": 200, "text": "query"} — click + type
+
+REF ACTIONS (use for form fields, buttons, links with clear @refs — faster and more precise):
+- {"action": "click", "selector": "@REF"}
+- {"action": "type", "selector": "@REF", "text": "text"}
+- {"action": "press", "selector": "@REF", "key": "Enter"}
+- {"action": "select", "selector": "@REF", "value": "option"}
+- {"action": "fill", "fields": {"@REF1": "val1", "@REF2": "val2"}} — batch fill multiple form fields
+
+SHARED ACTIONS:
+- {"action": "scroll", "direction": "up" | "down", "amount": 500}
+- {"action": "navigate", "url": "https://..."}
+- {"action": "wait", "ms": 1000}
+- {"action": "runScript", "script": "..."} — run JS in page context
+- {"action": "extractWithIndex", "query": "p, span", "contains": "keyword"}
+- {"action": "complete", "result": "description"}
+- {"action": "abort", "reason": "why"}
+
+WHEN TO USE WHICH:
+- Form fields with @refs → use ref actions (type, fill) — they're faster and never miss
+- Buttons/links with @refs → use click with @ref
+- Visual elements without clear refs (map pins, image buttons, custom widgets) → use clickAt
+- Date pickers, dropdown items rendered dynamically → use clickAt (refs may be stale)
+
+RESPONSE FORMAT — respond with ONLY a JSON object:
+{
+  "plan": ["step 1", "step 2", ...],
+  "currentStep": 0,
+  "action": { "action": "click", "selector": "@REF" },
+  "reasoning": "Why I chose this action",
+  "expectedEffect": "What should change"
+}
+
+RULES:
+1. Respond with ONLY valid JSON
+2. Use @ref selectors from ELEMENTS when available — they are stable and precise
+3. Fall back to clickAt coordinates when the target has no ref or is visual-only
+4. LOOK at the screenshot — it shows visual state the ELEMENTS list may miss
+5. When the goal is achieved, use "complete" with a detailed result
+6. BLOCKER-FIRST: dismiss modals, cookie banners, login walls before continuing
+7. BATCH FILL: when 2+ form fields are visible with refs, use a single "fill" action
+8. If stuck after multiple attempts, use "abort"`;
 
 /** Pattern for detecting data-extraction keywords in goal text */
 const DATA_EXTRACTION_PATTERN = /\b(extract|list|find|data|price|pric|names?|rating|cost|count)\b/i;
@@ -1240,16 +1297,22 @@ ${visibleSnapshot}`;
   ): Promise<BrainDecision> {
     this.lastDecisionUrl = state.url;
 
+    // Gen 15: hybrid mode sends full DOM snapshot (budgeted) so the model
+    // can use ref-based actions for precise form interaction. Pure vision
+    // sends only URL/title.
+    const isHybrid = this.observationMode === 'hybrid';
+    const samePageAsPrevious = this.lastDecisionUrl === state.url;
+    const snapshotBudget = isHybrid ? (samePageAsPrevious ? 8_000 : 16_000) : 0;
+
     let textContent = `GOAL: ${goal}
 
 CURRENT PAGE:
 URL: ${state.url}
 Title: ${state.title}`;
 
-    // In hybrid mode, include a compact DOM snapshot for context
-    if (this.observationMode === 'hybrid' && state.snapshot) {
-      const compact = budgetSnapshot(state.snapshot, 4_000);
-      textContent += `\n\nELEMENTS (supplementary — use screenshot for primary visual targeting):\n${compact}`;
+    if (isHybrid && state.snapshot) {
+      const snap = budgetSnapshot(state.snapshot, snapshotBudget);
+      textContent += `\n\nELEMENTS:\n${snap}`;
     }
 
     if (turnInfo) {
@@ -1302,7 +1365,9 @@ Title: ${state.title}`;
     const modelOpts = { provider: this.provider, model: this.modelName };
     const nearingEnd = turnInfo && turnInfo.current >= turnInfo.max - 3;
     const maxTokens = nearingEnd ? 1200 : 600;
-    const result = await this.generate(VISION_FIRST_PROMPT, messages, modelOpts, maxTokens);
+    // Gen 15: hybrid uses the unified prompt with both action vocabularies
+    const systemPrompt = isHybrid ? UNIFIED_VISION_DOM_PROMPT : VISION_FIRST_PROMPT;
+    const result = await this.generate(systemPrompt, messages, modelOpts, maxTokens);
 
     const raw = result.text;
     if (!raw) {
