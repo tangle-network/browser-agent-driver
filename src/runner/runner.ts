@@ -1770,10 +1770,16 @@ export class BrowserAgent {
               runState.verificationRejectionCount++;
               turn.verificationFailure = goalResult.missing.join('; ') || 'Goal verification failed';
               runState.firstSufficientEvidenceTurn ??= i;
-              // Goal not met — reject completion and feed back what's missing
-              const escalation = runState.verificationRejectionCount >= 2
-                ? ' Use runScript to extract exact data and include in completion.'
-                : '';
+              // Gen 19: progressive strategy-shift escalation on rejection.
+              // Each rejection level suggests a MORE different approach.
+              let escalation: string;
+              if (runState.verificationRejectionCount >= 3) {
+                escalation = ' STRATEGY SHIFT REQUIRED: Your previous approaches have failed 3 times. Try a COMPLETELY different method: use navigate to go to a different search engine or URL, try extractWithIndex instead of runScript, or scroll to look for the data in a different part of the page. Do NOT repeat what you just tried.';
+              } else if (runState.verificationRejectionCount >= 2) {
+                escalation = ' Use runScript or extractWithIndex to extract the exact data from the page and include ALL required values in your completion result.';
+              } else {
+                escalation = ' Re-read the GOAL carefully — your result is missing specific data the goal asked for. Find and include it before completing.';
+              }
               this.brain.injectFeedback(
                 `REJECTED (${goalResult.confidence.toFixed(2)}). Missing: ${goalResult.missing.join('; ')}.${escalation}`
               );
