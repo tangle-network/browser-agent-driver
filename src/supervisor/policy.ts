@@ -143,5 +143,9 @@ function actionSignature(action: Action): string {
     }
     case 'clickSequence':
       return `clickSequence:${action.refs.join(',')}`;
+    case 'clickAt':
+      return `clickAt:${action.x},${action.y}`;
+    case 'typeAt':
+      return `typeAt:${action.x},${action.y}:${action.text.slice(0, 32)}`;
   }
 }

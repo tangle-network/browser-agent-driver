@@ -155,6 +155,25 @@ export interface ClickSequenceAction {
   intervalMs?: number;
 }
 
+// Gen 13: Vision-first coordinate-based actions
+export interface ClickAtAction {
+  action: 'clickAt';
+  /** X coordinate in virtual screen space (0-1024) */
+  x: number;
+  /** Y coordinate in virtual screen space (0-768) */
+  y: number;
+}
+
+export interface TypeAtAction {
+  action: 'typeAt';
+  /** X coordinate in virtual screen space (0-1024) */
+  x: number;
+  /** Y coordinate in virtual screen space (0-768) */
+  y: number;
+  /** Text to type after clicking */
+  text: string;
+}
+
 export type Action =
   | ClickAction
   | TypeAction
@@ -171,7 +190,9 @@ export type Action =
   | CompleteAction
   | AbortAction
   | BatchFillAction
-  | ClickSequenceAction;
+  | ClickSequenceAction
+  | ClickAtAction
+  | TypeAtAction;
 
 // ============================================================================
 // Plan - Structured action sequence (Gen 7)
@@ -301,6 +322,8 @@ export interface AgentConfig {
   vision?: boolean;
   /** Vision policy: always, never, or auto-escalate on ambiguous/stalled states */
   visionStrategy?: 'always' | 'never' | 'auto';
+  /** Gen 13: observation mode — 'dom' (default), 'vision', or 'hybrid' */
+  observationMode?: 'dom' | 'vision' | 'hybrid';
   /** Max conversation history turns to keep (default: 10) */
   maxHistoryTurns?: number;
   /** Number of retries on transient failures (default: 3) */

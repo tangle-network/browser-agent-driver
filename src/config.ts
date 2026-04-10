@@ -84,6 +84,11 @@ export interface DriverConfig {
   screenshotInterval?: number;
   vision?: boolean;
   visionStrategy?: 'always' | 'never' | 'auto';
+  /** Gen 13: observation mode — controls primary input to Brain.decide.
+   *  'dom' (default): ARIA snapshot primary, screenshot secondary
+   *  'vision': screenshot primary, minimal DOM context
+   *  'hybrid': both screenshot and DOM snapshot at full weight */
+  observationMode?: 'dom' | 'vision' | 'hybrid';
   goalVerification?: boolean;
   /** Gen 7 plan-then-execute: single LLM call generates the full action sequence */
   plannerEnabled?: boolean;
@@ -300,6 +305,7 @@ export function toAgentConfig(config: DriverConfig): AgentConfig {
     retryDelayMs: config.retryDelayMs,
     vision: config.vision,
     visionStrategy: config.visionStrategy,
+    observationMode: config.observationMode,
     goalVerification: config.goalVerification,
     plannerEnabled: config.plannerEnabled,
     initialObserveSettleMs: config.initialObserveSettleMs,

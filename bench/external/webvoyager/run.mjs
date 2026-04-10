@@ -39,7 +39,7 @@ const getArg = (name, fallback) => {
 const hasFlag = (name) => argv.includes(`--${name}`)
 
 const model = getArg('model', 'gpt-5.4')
-const benchmarkProfile = getArg('benchmark-profile', 'webbench-stealth')
+const benchmarkProfile = getArg('benchmark-profile', 'webvoyager')
 const site = getArg('site')
 const maxTasks = getArg('max-tasks', '0')
 const concurrency = getArg('concurrency', '3')

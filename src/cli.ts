@@ -197,6 +197,7 @@ async function main(): Promise<void> {
       'trace-ttl-days': { type: 'string' },
       vision: { type: 'boolean' },
       'vision-strategy': { type: 'string' },
+      'observation-mode': { type: 'string' },
       debug: { type: 'boolean', short: 'd', default: false },
 
       // Resource blocking
@@ -485,6 +486,7 @@ async function main(): Promise<void> {
   if (values.headless !== undefined) cliOverrides.headless = values.headless;
   if (values.vision !== undefined) cliOverrides.vision = values.vision;
   if (values['vision-strategy']) cliOverrides.visionStrategy = values['vision-strategy'] as DriverConfig['visionStrategy'];
+  if (values['observation-mode']) cliOverrides.observationMode = values['observation-mode'] as DriverConfig['observationMode'];
   if (values['goal-verification'] !== undefined) cliOverrides.goalVerification = values['goal-verification'];
   if (values.planner === true) cliOverrides.plannerEnabled = true;
   if (
@@ -606,10 +608,13 @@ async function main(): Promise<void> {
     };
   }
 
-  // Mode presets apply only when equivalent flags were not explicitly set.
+  // Mode presets apply only when equivalent flags were not explicitly set
+  // AND the profile didn't already set them. This lets benchmark profiles
+  // (e.g. benchmark-webvoyager) enable vision/screenshots without fast-explore
+  // clobbering those values.
   if (mode === 'fast-explore') {
-    if (values.vision === undefined) cliOverrides.vision = false;
-    if (!values['screenshot-interval']) cliOverrides.screenshotInterval = 0;
+    if (values.vision === undefined && cliOverrides.vision === undefined) cliOverrides.vision = false;
+    if (!values['screenshot-interval'] && cliOverrides.screenshotInterval === undefined) cliOverrides.screenshotInterval = 0;
     if (values['goal-verification'] === undefined) cliOverrides.goalVerification = true;
     if (values['quality-threshold'] === undefined) cliOverrides.qualityThreshold = 0;
     if (!values['block-analytics'] && !values['block-images'] && !values['block-media']) {
@@ -619,9 +624,23 @@ async function main(): Promise<void> {
       };
     }
   } else if (mode === 'full-evidence') {
-    if (values.vision === undefined) cliOverrides.vision = true;
-    if (!values['screenshot-interval']) cliOverrides.screenshotInterval = 3;
+    if (values.vision === undefined && cliOverrides.vision === undefined) cliOverrides.vision = true;
+    if (!values['screenshot-interval'] && cliOverrides.screenshotInterval === undefined) cliOverrides.screenshotInterval = 3;
     if (values['goal-verification'] === undefined) cliOverrides.goalVerification = true;
+  }
+
+  // Gen 13: vision/hybrid observation mode requires vision + screenshots.
+  // Viewport forced to 1024×768 to match Claude's computer-use training
+  // distribution — coordinates map 1:1 with no scaling needed.
+  if (cliOverrides.observationMode === 'vision' || cliOverrides.observationMode === 'hybrid') {
+    if (cliOverrides.vision === undefined) cliOverrides.vision = true;
+    if (cliOverrides.visionStrategy === undefined) cliOverrides.visionStrategy = 'always';
+    if (cliOverrides.screenshotInterval === undefined || cliOverrides.screenshotInterval === 0) {
+      cliOverrides.screenshotInterval = 1;
+    }
+    if (!cliOverrides.viewport) {
+      cliOverrides.viewport = { width: 1024, height: 768 };
+    }
   }
 
   const driverConfig = mergeConfig(fileConfig, cliOverrides);

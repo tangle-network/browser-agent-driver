@@ -1,29 +1,32 @@
 {
-  "mode": "evolve",
-  "goal": "Validate bad Gen 10 + gpt-5.4 beats browser-use 0.12.6 at 5-rep matched, then promote to default",
-  "status": "round1_complete_keep_promoted",
+  "mode": "pursue",
+  "goal": "Gen 13 — vision-first observation mode to close 31pp gap to Magnitude on WebVoyager",
+  "status": "round1_iterate",
   "round": 1,
-  "generation": 11,
-  "activePursuit": ".evolve/pursuits/2026-04-09-comprehensive-benchmark-gen11.md",
-  "branch": "gen11-comprehensive-benchmark",
-  "verdict": "KEEP",
-  "round1Result": {
-    "method": "5-rep matched same-day, bad+gpt-5.4 in isolation, vs Tier A browser-use 5-rep baseline",
-    "result": "43/50 = 86% pass rate",
-    "vs_browserUse": "+2 tasks (43 vs 41)",
-    "speed": "8.8s mean wall (browser-use 65.3s) — 7.4x faster",
-    "p95": "17.1s (browser-use 159.0s) — 9.3x faster",
-    "costPerPass": "$0.042 (browser-use $0.031, +35%)",
-    "perTaskGains_vs_gpt52": ["w3c +3", "npm +3", "python-docs +2", "wikipedia +1", "mdn +1"],
-    "userVerdict": "Drew explicitly approved the cost trade — speed advantage justifies +35% cost-per-pass"
+  "generation": 13,
+  "activePursuit": ".evolve/pursuits/2026-04-09-vision-first-gen13.md",
+  "branch": "main",
+  "verdict": null,
+  "priorGenerations": {
+    "gen12": {
+      "pr": "#63",
+      "title": "Honest self-assessment (content-aware fast-path verifier)",
+      "verdict": "KEEP",
+      "keyResult": "agent-judge agreement 73%→83%, selfContradicting regex blocks fast-path on failure narratives"
+    },
+    "gen11": {
+      "pr": "#62",
+      "title": "Master comparison truth table",
+      "verdict": "KEEP",
+      "keyResult": "gpt-5.4 promoted at 86% (5-rep), 7.4x faster than browser-use"
+    },
+    "gen10": {
+      "pr": "#60",
+      "title": "DOM index extraction + bigger snapshot + cost cap",
+      "verdict": "KEEP",
+      "keyResult": "37/50=74% (5-rep), +8 tasks vs same-day Gen 8"
+    }
   },
-  "promoted": [
-    "bench/scenarios/configs/planner-on-realweb.mjs: model gpt-5.2 -> gpt-5.4 (default for real-web tasks)"
-  ],
-  "nextRoundCandidates": [
-    "Wikipedia oracle compliance prompt fix (4/5 -> 5/5)",
-    "mdn / stackoverflow stabilization",
-    "Re-run WebVoyager curated 30 with gpt-5.4"
-  ],
-  "updatedAt": "2026-04-09T07:32:00Z"
+  "acceptance": "WebVoyager curated-30 judge pass rate ≥70% (from 47%)",
+  "updatedAt": "2026-04-09T16:50:00Z"
 }

@@ -23,6 +23,11 @@ function isPointerInterceptError(error: string): boolean {
   return /intercepts pointer events|subtree intercepts pointer events|not receiving pointer events/i.test(error);
 }
 
+// Gen 13: Virtual screen dimensions for vision-first coordinate actions.
+// Claude's computer-use training uses 1024x768. Screenshots are resized to
+// this before being sent, and coordinate outputs are in this space.
+const VIRTUAL_SCREEN = { width: 1024, height: 768 } as const;
+
 /** Phase-level timing breakdown for observe() */
 export interface ObserveTiming {
   /** Total observe() time in ms */
@@ -700,6 +705,25 @@ export class PlaywrightDriver implements Driver {
             }
           }
           return { success: true, ...(lastBounds ? { bounds: lastBounds } : {}) };
+        }
+
+        // Gen 13: Vision-first coordinate-based actions
+        case 'clickAt': {
+          const viewport = this.page.viewportSize() ?? { width: 1920, height: 1080 };
+          const actualX = Math.round(action.x * (viewport.width / VIRTUAL_SCREEN.width));
+          const actualY = Math.round(action.y * (viewport.height / VIRTUAL_SCREEN.height));
+          await this.page.mouse.click(actualX, actualY);
+          return { success: true, bounds: { x: actualX, y: actualY, width: 1, height: 1 } };
+        }
+
+        case 'typeAt': {
+          const viewport = this.page.viewportSize() ?? { width: 1920, height: 1080 };
+          const actualX = Math.round(action.x * (viewport.width / VIRTUAL_SCREEN.width));
+          const actualY = Math.round(action.y * (viewport.height / VIRTUAL_SCREEN.height));
+          await this.page.mouse.click(actualX, actualY);
+          await this.page.waitForTimeout(100);
+          await this.page.keyboard.type(action.text);
+          return { success: true, bounds: { x: actualX, y: actualY, width: 1, height: 1 } };
         }
 
         default:

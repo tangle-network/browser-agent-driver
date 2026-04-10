@@ -121,6 +121,58 @@ EXAMPLE 3 — Batch fill a multi-field form (one turn instead of ten):
 /** Full static prompt (all rules) — used as default when config.systemPrompt is not set */
 const SYSTEM_PROMPT = CORE_RULES + SEARCH_RULES + DATA_EXTRACTION_RULES + HEAVY_PAGE_RULES + REASONING_SUFFIX;
 
+// Gen 13: Vision-first system prompt. Screenshot is the primary observation;
+// the LLM outputs pixel coordinates in 1024×768 virtual screen space.
+const VISION_FIRST_PROMPT = `You are a browser automation agent. You operate by looking at screenshots and clicking on elements using pixel coordinates.
+
+The screenshot shows the current page state at 1024×768 resolution. You identify elements visually and specify where to click using (x, y) coordinates in this coordinate space.
+
+ACTIONS:
+- {"action": "clickAt", "x": 512, "y": 384} — click at pixel coordinates (x, y) in 1024×768 space
+- {"action": "typeAt", "x": 300, "y": 200, "text": "search query"} — click at coordinates then type text
+- {"action": "scroll", "direction": "up" | "down", "amount": 500}
+- {"action": "navigate", "url": "https://..."}
+- {"action": "wait", "ms": 1000}
+- {"action": "complete", "result": "description of what was accomplished"}
+- {"action": "abort", "reason": "why you cannot continue"}
+- {"action": "runScript", "script": "document.querySelector('.count').textContent"} — run JS in page context for data the screenshot can't show
+- {"action": "extractWithIndex", "query": "p, span, dd", "contains": "keyword"} — find text in the DOM by content match
+
+COORDINATE SYSTEM:
+- (0, 0) is the top-left corner of the viewport
+- (1024, 768) is the bottom-right corner
+- Click the CENTER of the target element, not its edge
+- For text inputs, click the middle of the input field
+- For buttons, click the center of the button text or icon
+
+RESPONSE FORMAT — respond with ONLY a JSON object:
+{
+  "plan": ["step 1", "step 2", ...],
+  "currentStep": 0,
+  "action": { "action": "clickAt", "x": 512, "y": 384 },
+  "reasoning": "I see [element description] at approximately (x, y). Clicking it to [purpose].",
+  "expectedEffect": "What should change after this action"
+}
+
+RULES:
+1. Respond with ONLY valid JSON, no markdown or extra text
+2. LOOK at the screenshot carefully — it is your primary information source
+3. Include plan, currentStep, reasoning, and expectedEffect in every response
+4. When the goal is achieved, use "complete" with a detailed result description
+5. If stuck after multiple attempts, use "abort" — don't loop forever
+6. If an action failed, try a DIFFERENT approach (different location, different strategy)
+7. For search: click the search box, type your query, then press Enter
+8. For navigation: click visible links or use the "navigate" action for direct URLs
+9. BLOCKER-FIRST: if a modal, cookie banner, or error dialog blocks progress, dismiss it first
+10. Use runScript or extractWithIndex when you need to extract data that isn't clearly visible in the screenshot
+11. BATCH: when filling forms, you can type in one field, then immediately use clickAt on the next field. Plan multiple actions per turn when they are sequential and obvious.
+
+REASONING FRAMEWORK:
+1. What do I see in the screenshot? Describe the visual layout.
+2. Where is the element I need to interact with? Estimate its (x, y) coordinates.
+3. What is the smallest action that makes progress toward the goal?
+4. If my last action failed, WHY did it fail? Try a different location or strategy.`;
+
 /** Pattern for detecting data-extraction keywords in goal text */
 const DATA_EXTRACTION_PATTERN = /\b(extract|list|find|data|price|pric|names?|rating|cost|count)\b/i;
 
@@ -268,6 +320,7 @@ export class Brain {
   private maxHistoryTurns: number;
   private visionEnabled: boolean;
   private visionStrategy: 'always' | 'never' | 'auto';
+  private observationMode: 'dom' | 'vision' | 'hybrid';
   private llmTimeoutMs: number;
   private compactFirstTurn: boolean;
   private lastDecisionUrl?: string;
@@ -298,6 +351,7 @@ export class Brain {
     this.maxHistoryTurns = config.maxHistoryTurns || 10;
     this.visionEnabled = config.vision !== false;
     this.visionStrategy = config.visionStrategy ?? (this.visionEnabled ? 'always' : 'never');
+    this.observationMode = config.observationMode ?? 'dom';
     this.compactFirstTurn = config.compactFirstTurn === true;
     this.sandboxBackendType = config.sandboxBackendType;
     this.sandboxBackendProfile = config.sandboxBackendProfile;
@@ -985,6 +1039,11 @@ export class Brain {
     turnInfo?: { current: number; max: number },
     options?: { forceVision?: boolean }
   ): Promise<BrainDecision> {
+    // Gen 13: vision-first or hybrid mode — delegate to the vision path
+    if (this.observationMode === 'vision' || this.observationMode === 'hybrid') {
+      return this.decideVision(goal, state, extraContext, turnInfo);
+    }
+
     const useCompactFirstTurn = this.compactFirstTurn && turnInfo?.current === 1;
     const samePageAsPrevious = this.lastDecisionUrl === state.url;
     const isFirstTurn = !turnInfo || turnInfo.current <= 1;
@@ -1164,6 +1223,103 @@ ${visibleSnapshot}`;
       cacheReadInputTokens,
       cacheCreationInputTokens,
       modelUsed: effectiveModel,
+    };
+  }
+
+  /**
+   * Gen 13: Vision-first decision path. The screenshot is the primary
+   * observation; DOM snapshot is minimal context (URL, title only in pure
+   * vision mode, or compact DOM in hybrid mode). The LLM outputs
+   * coordinate-based actions (clickAt, typeAt) in 1024×768 virtual space.
+   */
+  private async decideVision(
+    goal: string,
+    state: PageState,
+    extraContext?: string,
+    turnInfo?: { current: number; max: number },
+  ): Promise<BrainDecision> {
+    this.lastDecisionUrl = state.url;
+
+    let textContent = `GOAL: ${goal}
+
+CURRENT PAGE:
+URL: ${state.url}
+Title: ${state.title}`;
+
+    // In hybrid mode, include a compact DOM snapshot for context
+    if (this.observationMode === 'hybrid' && state.snapshot) {
+      const compact = budgetSnapshot(state.snapshot, 4_000);
+      textContent += `\n\nELEMENTS (supplementary — use screenshot for primary visual targeting):\n${compact}`;
+    }
+
+    if (turnInfo) {
+      const remaining = turnInfo.max - turnInfo.current;
+      textContent += `\n\nTURN: ${turnInfo.current}/${turnInfo.max} (${remaining} remaining)`;
+      if (remaining === 1) {
+        textContent += ` — FINAL TURN: return a terminal action only (complete or abort)`;
+      } else if (remaining <= 3) {
+        textContent += ` — RUNNING LOW, prioritize completing the goal or aborting`;
+      }
+    }
+
+    if (extraContext) {
+      textContent += `\n\n${extraContext}`;
+    }
+
+    textContent += '\n\nLook at the screenshot. What action should you take?';
+
+    // Screenshot is required for vision-first mode
+    if (!state.screenshot) {
+      return {
+        action: { action: 'wait', ms: 500 },
+        reasoning: 'No screenshot available for vision-first mode — waiting for page to render',
+        raw: '{"action":{"action":"wait","ms":500}}',
+      };
+    }
+
+    const userContent: UserContent = [
+      { type: 'text' as const, text: textContent },
+      { type: 'image' as const, image: state.screenshot, mediaType: 'image/jpeg' },
+    ];
+
+    const messages: ModelMessage[] = [
+      ...this.compactHistory(),
+      { role: 'user', content: userContent },
+    ];
+
+    const modelOpts = { provider: this.provider, model: this.modelName };
+    const nearingEnd = turnInfo && turnInfo.current >= turnInfo.max - 3;
+    const maxTokens = nearingEnd ? 1200 : 600;
+    const result = await this.generate(VISION_FIRST_PROMPT, messages, modelOpts, maxTokens);
+
+    const raw = result.text;
+    if (!raw) {
+      throw new Error('Brain.decideVision: LLM returned empty response');
+    }
+
+    if (this.debug) {
+      console.log('[Brain/Vision] Response:', raw.slice(0, 300));
+    }
+
+    const parsed = this.parse(raw);
+
+    this.history.push({ role: 'user', content: userContent });
+    this.history.push({ role: 'assistant', content: raw });
+
+    const maxMessages = this.maxHistoryTurns * 2;
+    if (this.history.length > maxMessages) {
+      this.history = this.history.slice(-maxMessages);
+    }
+
+    return {
+      ...parsed,
+      raw,
+      tokensUsed: result.tokensUsed,
+      inputTokens: result.inputTokens,
+      outputTokens: result.outputTokens,
+      cacheReadInputTokens: result.cacheReadInputTokens,
+      cacheCreationInputTokens: result.cacheCreationInputTokens,
+      modelUsed: this.modelName,
     };
   }
 
@@ -1811,6 +1967,7 @@ Only include facts that are genuinely useful. Quality over quantity. Max 10 fact
       'extractWithIndex',
       'verifyPreview', 'complete', 'abort',
       'fill', 'clickSequence',
+      'clickAt', 'typeAt',
     ]);
 
     try {
@@ -2112,6 +2269,11 @@ function validateAction(actionType: string, data: Record<string, unknown>): Acti
         ...(typeof data.intervalMs === 'number' ? { intervalMs: data.intervalMs } : {}),
       };
     }
+    // Gen 13: Vision-first coordinate actions
+    case 'clickAt':
+      return { action: 'clickAt', x: num(data.x, 0), y: num(data.y, 0) };
+    case 'typeAt':
+      return { action: 'typeAt', x: num(data.x, 0), y: num(data.y, 0), text: optStr('text') };
     default:
       throw new Error(`Unknown action type: ${actionType}`);
   }
