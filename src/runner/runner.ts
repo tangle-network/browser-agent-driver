@@ -1522,6 +1522,9 @@ export class BrowserAgent {
                 : JSON.stringify(scriptResult, null, 2);
               runState.firstSufficientEvidenceTurn ??= i;
               pushGoalVerificationEvidence(runState.goalVerificationEvidence, `SCRIPT RESULT:\n${stringified ?? '(undefined)'}`);
+              if (typeof stringified === 'string' && stringified.length > 10) {
+                runState.recordEvidence(`EXTRACTED (turn ${i}): ${stringified.slice(0, 500)}`);
+              }
               this.brain.injectFeedback(
                 `SCRIPT RESULT:\n${stringified ?? '(undefined)'}`
               );
@@ -1561,6 +1564,9 @@ export class BrowserAgent {
                 runState.goalVerificationEvidence,
                 `EXTRACT RESULT (${matches.length} matches):\n${formatted}`,
               );
+              if (formatted.length > 10) {
+                runState.recordEvidence(`EXTRACTED (turn ${i}): ${formatted.slice(0, 500)}`);
+              }
               this.brain.injectFeedback(
                 `EXTRACT RESULT (${matches.length} matches for query "${action.query}"${action.contains ? ` containing "${action.contains}"` : ''}):\n${formatted}`,
               );
@@ -1594,6 +1600,7 @@ export class BrowserAgent {
           );
           const verificationEvidence = [
             ...runState.goalVerificationEvidence,
+            ...runState.extractedEvidence,
             ...persistentSearchEvidence,
           ];
 
@@ -2487,6 +2494,9 @@ export class BrowserAgent {
       // This is the supply side of the placeholder-substitution fix above.
       if (step.action.action === 'runScript' && typeof execResult.data === 'string' && execResult.data.length > 0) {
         lastRunScriptOutput = execResult.data
+        if (execResult.data.length > 10) {
+          runState.recordEvidence(`EXTRACTED (turn ${currentTurnIndex}): ${execResult.data.slice(0, 500)}`)
+        }
       }
 
       // Gen 10: capture extractWithIndex match list for fall-through to the
@@ -2498,6 +2508,9 @@ export class BrowserAgent {
         // the agent extracted.
         runState.firstSufficientEvidenceTurn ??= currentTurnIndex
         pushGoalVerificationEvidence(runState.goalVerificationEvidence, `EXTRACT RESULT:\n${execResult.data}`)
+        if (execResult.data.length > 10) {
+          runState.recordEvidence(`EXTRACTED (turn ${currentTurnIndex}): ${execResult.data.slice(0, 500)}`)
+        }
       }
 
       // Verify the post-condition. We re-observe to get the post-action

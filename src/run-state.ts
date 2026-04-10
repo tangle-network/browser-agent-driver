@@ -30,6 +30,8 @@ export class RunState {
   supervisorInterventions = 0;
   lastSupervisorTurn = -Infinity;
   goalVerificationEvidence: string[] = [];
+  /** Gen 25: accumulated evidence extracted during the run */
+  extractedEvidence: string[] = [];
   searchScoutUrls = new Set<string>();
 
   readonly maxTotalErrors: number;
@@ -71,5 +73,11 @@ export class RunState {
 
   get isTokenBudgetExhausted(): boolean {
     return this.totalTokensUsed >= this.tokenBudget;
+  }
+
+  recordEvidence(evidence: string): void {
+    if (evidence && evidence.length > 10 && this.extractedEvidence.length < 20) {
+      this.extractedEvidence.push(evidence);
+    }
   }
 }

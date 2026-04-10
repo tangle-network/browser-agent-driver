@@ -1,15 +1,14 @@
-// Gen 16: hybrid with DOM planner + vision fallback.
-// Planner uses DOM-only (1 LLM call → N deterministic steps, ~2k tokens/turn).
-// Per-action fallback uses unified vision+DOM (screenshot + refs, ~10k tokens/turn).
-// This is the "best of both worlds" — DOM speed for easy steps, vision accuracy
-// when the planner stalls or deviates.
+// Gen 22: model cascade — gpt-5.4 for planning, gpt-4.1-mini for execution.
+// The planner needs vision + reasoning (expensive). The per-action executor
+// just follows instructions (cheap). 9× cheaper output tokens on execution.
 //
-// Gen 15 baseline: 73.7% on full WebVoyager (590 tasks). 55% of failures were
-// cost_cap_exceeded because vision per-action loop burned ~10k tokens/turn.
-// The planner cuts token usage 3-5× on navigation/form-fill steps.
+// Gen 20 baseline: ~92% on failure rerun. Cost: $0.20/task.
+// Gen 22 target: same accuracy, ~$0.06/task.
 export default {
   provider: 'openai',
   model: 'gpt-5.4',
+  adaptiveModelRouting: true,
+  navModel: 'gpt-4.1-mini',
   plannerEnabled: true,
   vision: true,
   visionStrategy: 'always',

@@ -759,13 +759,19 @@ export class Brain {
    * not for decide(). The flag is kept for future experiments with better routing signals.
    */
   private shouldUseNavigationModel(
-    _state: PageState,
-    _extraContext?: string,
-    _turnInfo?: { current: number; max: number },
+    state: PageState,
+    extraContext?: string,
+    turnInfo?: { current: number; max: number },
   ): boolean {
-    // Disabled for decide() — primary model is more cost-effective overall.
-    // Verification still routes to nav model (separate code path).
-    return false;
+    if (!this.adaptiveModelRouting || !this.navModelName) return false;
+    // Gen 22: use cheap model for DOM-only same-page turns (form filling,
+    // clicking known elements). Keep expensive model for first turn, new
+    // pages, and error recovery where reasoning matters.
+    const isFirstTurn = !turnInfo || turnInfo.current <= 1;
+    const samePageAsPrevious = this.lastDecisionUrl === state.url;
+    const hasError = extraContext?.includes('REJECTED') || extraContext?.includes('ERROR');
+    if (isFirstTurn || !samePageAsPrevious || hasError) return false;
+    return true;
   }
 
   /**
