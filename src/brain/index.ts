@@ -99,6 +99,27 @@ const HEAVY_PAGE_RULES = `
 20. SECTION NAVIGATION: When you need to find a specific section (e.g., rugby, sports, travel) and the nav links aren't in the truncated a11y tree, use runScript to discover navigation: JSON.stringify(Array.from(document.querySelectorAll('nav a, header a, [role="navigation"] a, .nav a')).slice(0, 30).map(a => ({text: a.textContent.trim(), href: a.href}))). Then navigate directly to the matching section URL
 24. HEAVY PAGE RECOVERY: If a page takes very long to load or seems stuck, do NOT wait — use runScript to check document.readyState and extract whatever content is already in the DOM. Partial data is better than a timeout. If the page is completely blank, try navigating to a simpler version (mobile site, search page) instead of waiting`;
 
+/** Gen 24: URL-first navigation — GENERAL PURPOSE, not site-specific.
+ * Teaches the agent to construct search/results URLs from goal text
+ * instead of fighting form UIs. Works on any site with URL parameters. */
+const URL_FIRST_RULES = `
+URL-FIRST NAVIGATION: When a search form is complex (date pickers, multi-step dropdowns, dynamic widgets), try constructing a results URL directly instead of interacting with the form.
+
+STRATEGY:
+1. Look at the current URL structure. Most search sites encode parameters: ?q=query, ?checkin=date, ?dest=city, etc.
+2. Construct a URL with the goal's parameters filled in. Use the site's own URL pattern.
+3. Navigate directly to that URL — skip the form entirely.
+4. If the URL doesn't work (wrong page, error), fall back to form interaction.
+
+HOW TO DISCOVER URL PATTERNS:
+- If you're on a search results page, the URL already shows the pattern. Modify the parameters for your goal.
+- Most sites accept ?q= or ?search= for keyword queries.
+- Travel sites typically use: checkin/checkout dates, destination/origin, adults count.
+- Use runScript to read window.location.href if the URL isn't visible in the snapshot.
+
+WHY: Complex forms with date pickers, calendar widgets, and multi-step dropdowns consume many turns and often time out. A single "navigate" action replaces 5-10 form interaction turns.`;
+
+
 /** Reasoning framework and examples (always appended after rules) */
 const REASONING_SUFFIX = `
 
@@ -1511,6 +1532,8 @@ ACTION VERBS (same as the per-action prompt):
 - {"action": "extractWithIndex", "query": "p, span, dd, code", "contains": "downloads"} — return a NUMBERED list of visible elements matching the query with their full textContent. Use this for extraction tasks where the data lives in obscurely-classed wrappers (npm download counts, MDN \`<dl>/<dt>/<dd>\` content, Python docs \`<code>\` blocks, W3C spec content) and the planner cannot guarantee a precise selector. The next step (in plan or per-action mode) reads the result and picks the right index. STRONGLY PREFER THIS OVER runScript on ANY extraction task where the snapshot doesn't already show the value verbatim.
 - {"action": "complete", "result": "..."}
 - {"action": "abort", "reason": "..."}
+
+${URL_FIRST_RULES}
 
 RESPONSE FORMAT — respond with ONLY this JSON:
 {
