@@ -218,9 +218,12 @@ RESPONSE FORMAT — respond with ONLY a JSON object:
   "plan": ["step 1", "step 2", ...],
   "currentStep": 0,
   "action": { "action": "click", "selector": "@REF" },
+  "nextActions": [{ "action": "type", "selector": "@REF2", "text": "query" }],
   "reasoning": "Why I chose this action",
   "expectedEffect": "What should change"
 }
+
+NOTE: "nextActions" is optional — include up to 3 safe follow-up actions (click, type, press, clickAt, typeAt, scroll) that are DETERMINISTIC given the current state. For example: click a search box THEN type a query. This saves turns.
 
 RULES:
 1. Respond with ONLY valid JSON
@@ -1301,12 +1304,19 @@ ${visibleSnapshot}`;
   ): Promise<BrainDecision> {
     this.lastDecisionUrl = state.url;
 
-    // Gen 15: hybrid mode sends full DOM snapshot (budgeted) so the model
-    // can use ref-based actions for precise form interaction. Pure vision
-    // sends only URL/title.
+    // Gen 18: adaptive observation — diff-focused on same-page turns.
+    // When the page changed slightly after an action (modal opened, dropdown
+    // expanded, content loaded), the DIFF is the signal. Send only what
+    // changed instead of the full snapshot. Saves 3-5k tokens per turn.
     const isHybrid = this.observationMode === 'hybrid';
     const samePageAsPrevious = this.lastDecisionUrl === state.url;
-    const snapshotBudget = isHybrid ? (samePageAsPrevious ? 4_000 : 6_000) : 0;
+    const isFirstTurn = !turnInfo || turnInfo.current <= 1;
+    const rawDiff = state.snapshotDiffRaw;
+    const diffChanges = rawDiff ? rawDiff.added.length + rawDiff.removed.length + rawDiff.changed.length : 0;
+    const diffTotal = rawDiff ? diffChanges + rawDiff.unchangedCount : 0;
+    const useDiffOnly = isHybrid && samePageAsPrevious && !isFirstTurn
+      && rawDiff !== undefined && diffChanges > 0 && diffTotal > 0
+      && diffChanges / diffTotal < 0.4;
 
     let textContent = `GOAL: ${goal}
 
@@ -1315,8 +1325,19 @@ URL: ${state.url}
 Title: ${state.title}`;
 
     if (isHybrid && state.snapshot) {
-      const snap = budgetSnapshot(state.snapshot, snapshotBudget);
-      textContent += `\n\nELEMENTS:\n${snap}`;
+      if (useDiffOnly) {
+        // Diff-focused: only what changed since last turn
+        const lines: string[] = [];
+        if (rawDiff!.added.length) lines.push('ADDED:', ...rawDiff!.added);
+        if (rawDiff!.changed.length) lines.push('CHANGED:', ...rawDiff!.changed);
+        if (rawDiff!.removed.length) lines.push('REMOVED:', ...rawDiff!.removed);
+        lines.push(`(${rawDiff!.unchangedCount} elements unchanged — refs from previous turn still valid)`);
+        textContent += `\n\nPAGE CHANGES (what changed after your last action — this is the important part):\n${lines.join('\n')}`;
+      } else {
+        const snapshotBudget = samePageAsPrevious ? 4_000 : 6_000;
+        const snap = budgetSnapshot(state.snapshot, snapshotBudget);
+        textContent += `\n\nELEMENTS:\n${snap}`;
+      }
     }
 
     if (turnInfo) {

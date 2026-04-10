@@ -140,7 +140,8 @@ const DEFAULT_MAX_TURNS = 20;
 const DEFAULT_RETRIES = 3;
 const DEFAULT_RETRY_DELAY_MS = 1000;
 const DEFAULT_MICRO_PLAN_ACTIONS = 2;
-const SAFE_MICRO_ACTIONS = new Set<Action['action']>(['click', 'type', 'press', 'hover', 'select', 'scroll', 'wait']);
+// Gen 18: clickAt/typeAt added so vision-mode can emit multi-action turns
+const SAFE_MICRO_ACTIONS = new Set<Action['action']>(['click', 'type', 'press', 'hover', 'select', 'scroll', 'wait', 'clickAt', 'typeAt']);
 const DEFAULT_SUPERVISOR: Required<Pick<SupervisorConfig, 'enabled' | 'useVision' | 'minTurnsBeforeInvoke' | 'cooldownTurns' | 'maxInterventions' | 'hardStallWindow'>> = {
   enabled: true,
   useVision: true,
