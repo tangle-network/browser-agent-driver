@@ -323,7 +323,12 @@ export class BrowserAgent {
   }
 
   async run(scenario: Scenario): Promise<AgentResult> {
-    const maxTurns = scenario.maxTurns || DEFAULT_MAX_TURNS;
+    // Gen 14: vision mode gets more turns — each turn takes ~15s (screenshot
+    // encode + image tokens) vs ~5s for DOM-first. Without the boost, vision
+    // runs out of turns before completing multi-step tasks.
+    const isVisionMode = this.config.observationMode === 'vision' || this.config.observationMode === 'hybrid';
+    const baseMaxTurns = scenario.maxTurns || DEFAULT_MAX_TURNS;
+    const maxTurns = isVisionMode ? Math.max(baseMaxTurns, 20) : baseMaxTurns;
     const retries = this.config.retries ?? DEFAULT_RETRIES;
     const retryDelayMs = this.config.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
     const turns: Turn[] = [];

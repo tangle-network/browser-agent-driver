@@ -972,8 +972,13 @@ export class TestRunner {
   }
 
   private resolveTimeoutMs(testCase: TestCase): number | undefined {
-    if (testCase.timeoutMs !== undefined) return testCase.timeoutMs;
-    return this.defaultTimeoutMs;
+    const base = testCase.timeoutMs ?? this.defaultTimeoutMs;
+    // Gen 14: vision mode needs more time — each turn takes ~15s vs ~5s for DOM.
+    // Boost timeout 50% so 120s cases get 180s, preventing false timeouts.
+    if (base && (this.config?.observationMode === 'vision' || this.config?.observationMode === 'hybrid')) {
+      return Math.round(base * 1.5);
+    }
+    return base;
   }
 
   private makeSkippedResult(tc: TestCase, reason: string): TestResult {
