@@ -1282,8 +1282,20 @@ Title: ${state.title}`;
       { type: 'image' as const, image: state.screenshot, mediaType: 'image/jpeg' },
     ];
 
+    // Gen 14: strip ALL screenshots from history. The current turn's
+    // screenshot is the only image the model needs — old screenshots are
+    // dead weight that pushes cumulative token count past the cost cap.
+    // This alone fixes 3/5 Gen 13 failures (cost_cap at 101-106k).
+    const compacted = this.compactHistory().map((msg) => {
+      if (msg.role !== 'user' || !Array.isArray(msg.content)) return msg;
+      const textOnly = (msg.content as Array<{ type: string }>)
+        .filter((part) => part.type === 'text');
+      if (textOnly.length === msg.content.length) return msg;
+      return { ...msg, content: textOnly } as ModelMessage;
+    });
+
     const messages: ModelMessage[] = [
-      ...this.compactHistory(),
+      ...compacted,
       { role: 'user', content: userContent },
     ];
 

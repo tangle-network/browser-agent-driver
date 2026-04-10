@@ -24,7 +24,7 @@ import { detectSupervisorSignal, formatSupervisorSignal } from '../supervisor/po
 import { requestSupervisorDirective } from '../supervisor/critic.js';
 import { shouldAcceptFirstPartyBoundaryCompletion } from '../domain-policy.js';
 import { deriveWasteMetrics } from '../run-metrics.js';
-import { RunState } from '../run-state.js';
+import { RunState, DEFAULT_TOKEN_BUDGET } from '../run-state.js';
 import { ContextBudget } from '../context-budget.js';
 import { runOverridePipeline } from '../override-pipeline.js';
 import type { OverrideContext } from '../override-pipeline.js';
@@ -329,7 +329,11 @@ export class BrowserAgent {
     const turns: Turn[] = [];
     const startTime = Date.now();
     const phaseTimings: import('../types.js').RunPhaseTimings = {};
-    const runState = new RunState(maxTurns);
+    // Gen 14: vision mode gets 50% more token budget. Image tokens are
+    // information-dense; the Gen 13 cost cap hits (101-106k) were on tasks
+    // the agent was successfully completing.
+    const visionBudgetMultiplier = this.config.observationMode === 'vision' || this.config.observationMode === 'hybrid' ? 1.5 : 1;
+    const runState = new RunState(maxTurns, Math.round(DEFAULT_TOKEN_BUDGET * visionBudgetMultiplier));
 
     const runId = scenario.sessionId
       ? `${scenario.sessionId}_${Date.now()}`
