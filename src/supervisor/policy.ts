@@ -147,5 +147,9 @@ function actionSignature(action: Action): string {
       return `clickAt:${action.x},${action.y}`;
     case 'typeAt':
       return `typeAt:${action.x},${action.y}:${action.text.slice(0, 32)}`;
+    case 'clickLabel':
+      return `clickLabel:${action.label}`;
+    case 'typeLabel':
+      return `typeLabel:${action.label}:${action.text.slice(0, 32)}`;
   }
 }

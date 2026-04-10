@@ -18,6 +18,8 @@ import { buildCdpSnapshot } from './cdp-snapshot.js';
 import { getPageMetadata } from './cdp-page-state.js';
 import { CURSOR_OVERLAY_INIT_SCRIPT } from './cursor-overlay.js';
 import { runExtractWithIndex, formatExtractWithIndexResult } from './extract-with-index.js';
+import { SOM_INJECT_SCRIPT, SOM_REMOVE_SCRIPT } from './som-overlay.js';
+import type { SomElement } from './som-overlay.js';
 
 function isPointerInterceptError(error: string): boolean {
   return /intercepts pointer events|subtree intercepts pointer events|not receiving pointer events/i.test(error);
@@ -87,6 +89,8 @@ export class PlaywrightDriver implements Driver {
    * the init script. Undefined if showCursor is off.
    */
   private cursorInstallPromise?: Promise<void>;
+  /** Gen 23: SoM element map from last observe — used to resolve clickLabel/typeLabel */
+  private somElements: SomElement[] = [];
 
   constructor(
     private page: Page,
@@ -367,6 +371,17 @@ export class PlaywrightDriver implements Driver {
       }
     }
 
+    // Gen 23: SoM overlay — inject numbered labels, screenshot, remove.
+    // Only when visionStrategy is 'always' (vision/hybrid mode).
+    const useSom = captureScreenshot && this.options.visionStrategy === 'always';
+    if (useSom) {
+      try {
+        this.somElements = await this.page.evaluate(SOM_INJECT_SCRIPT) as SomElement[];
+      } catch { this.somElements = []; }
+    } else {
+      this.somElements = [];
+    }
+
     // Screenshot still via Playwright (viewport compositing)
     const ssStart = performance.now();
     let screenshot: string | undefined;
@@ -375,6 +390,11 @@ export class PlaywrightDriver implements Driver {
       screenshot = buf.toString('base64');
     }
     const screenshotMs = performance.now() - ssStart;
+
+    // Remove SoM overlay after screenshot
+    if (useSom) {
+      await this.page.evaluate(SOM_REMOVE_SCRIPT).catch(() => {});
+    }
 
     const snapshotDiff = this.snapshot.getDiff();
     const snapshotDiffRaw = this.snapshot.getRawDiff();
@@ -753,6 +773,25 @@ export class PlaywrightDriver implements Driver {
           await this.page.waitForTimeout(100);
           await this.page.keyboard.type(action.text);
           return { success: true, bounds: { x: actualX - 20, y: actualY - 20, width: 40, height: 40 } };
+        }
+
+        // Gen 23: SoM label-based actions — resolve label → element center → click
+        case 'clickLabel': {
+          const el = this.somElements.find(e => e.label === action.label);
+          if (!el) return { success: false, error: `SoM label [${action.label}] not found (${this.somElements.length} elements available)` };
+          await this.animateCursorToCoord(el.cx, el.cy, `[${action.label}]`);
+          await this.page.mouse.click(el.cx, el.cy);
+          return { success: true, bounds: { x: el.x, y: el.y, width: el.width, height: el.height } };
+        }
+
+        case 'typeLabel': {
+          const el = this.somElements.find(e => e.label === action.label);
+          if (!el) return { success: false, error: `SoM label [${action.label}] not found` };
+          await this.animateCursorToCoord(el.cx, el.cy, `[${action.label}]`);
+          await this.page.mouse.click(el.cx, el.cy);
+          await this.page.waitForTimeout(100);
+          await this.page.keyboard.type(action.text);
+          return { success: true, bounds: { x: el.x, y: el.y, width: el.width, height: el.height } };
         }
 
         default:

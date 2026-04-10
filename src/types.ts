@@ -174,6 +174,21 @@ export interface TypeAtAction {
   text: string;
 }
 
+// Gen 23: SoM (Set-of-Marks) label-based action
+export interface ClickLabelAction {
+  action: 'clickLabel';
+  /** Label number from the SoM overlay (e.g., 3 for element [3]) */
+  label: number;
+}
+
+export interface TypeLabelAction {
+  action: 'typeLabel';
+  /** Label number from the SoM overlay */
+  label: number;
+  /** Text to type after clicking */
+  text: string;
+}
+
 export type Action =
   | ClickAction
   | TypeAction
@@ -192,7 +207,9 @@ export type Action =
   | BatchFillAction
   | ClickSequenceAction
   | ClickAtAction
-  | TypeAtAction;
+  | TypeAtAction
+  | ClickLabelAction
+  | TypeLabelAction;
 
 // ============================================================================
 // Plan - Structured action sequence (Gen 7)

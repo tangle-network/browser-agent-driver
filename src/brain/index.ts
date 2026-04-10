@@ -187,16 +187,21 @@ Use BOTH together:
 
 ACTIONS — pick the best tool for each interaction:
 
-COORDINATE ACTIONS (use when targeting by visual position):
-- {"action": "clickAt", "x": 512, "y": 384} — click at pixel (x, y) in 1024×768 space
-- {"action": "typeAt", "x": 300, "y": 200, "text": "query"} — click + type
+LABEL ACTIONS (PREFERRED — use the [N] numbered labels visible on the screenshot):
+- {"action": "clickLabel", "label": 3} — click element labeled [3] in the screenshot
+- {"action": "typeLabel", "label": 5, "text": "query"} — click [5] then type text
+The screenshot has numbered red badges on interactive elements. Use these labels — they're MORE ACCURATE than coordinate guessing.
 
-REF ACTIONS (use for form fields, buttons, links with clear @refs — faster and more precise):
+REF ACTIONS (use for form fields, buttons, links with clear @refs from ELEMENTS):
 - {"action": "click", "selector": "@REF"}
 - {"action": "type", "selector": "@REF", "text": "text"}
 - {"action": "press", "selector": "@REF", "key": "Enter"}
 - {"action": "select", "selector": "@REF", "value": "option"}
 - {"action": "fill", "fields": {"@REF1": "val1", "@REF2": "val2"}} — batch fill multiple form fields
+
+COORDINATE ACTIONS (fallback when no label or ref is available):
+- {"action": "clickAt", "x": 512, "y": 384} — click at pixel (x, y) in 1024×768 space
+- {"action": "typeAt", "x": 300, "y": 200, "text": "query"} — click + type
 
 SHARED ACTIONS:
 - {"action": "scroll", "direction": "up" | "down", "amount": 500}
@@ -207,11 +212,11 @@ SHARED ACTIONS:
 - {"action": "complete", "result": "description"}
 - {"action": "abort", "reason": "why"}
 
-WHEN TO USE WHICH:
-- Form fields with @refs → use ref actions (type, fill) — they're faster and never miss
-- Buttons/links with @refs → use click with @ref
-- Visual elements without clear refs (map pins, image buttons, custom widgets) → use clickAt
-- Date pickers, dropdown items rendered dynamically → use clickAt (refs may be stale)
+WHEN TO USE WHICH (priority order):
+1. Element has a [N] label in the screenshot → use clickLabel/typeLabel (most accurate)
+2. Element has an @ref in ELEMENTS → use click/type/fill (fast and precise)
+3. Element is visible but has no label or ref → use clickAt/typeAt (coordinate fallback)
+- Date pickers, dropdown items rendered dynamically → use clickLabel if labeled, else clickAt
 
 RESPONSE FORMAT — respond with ONLY a JSON object:
 {
@@ -2084,6 +2089,7 @@ Only include facts that are genuinely useful. Quality over quantity. Max 10 fact
       'verifyPreview', 'complete', 'abort',
       'fill', 'clickSequence',
       'clickAt', 'typeAt',
+      'clickLabel', 'typeLabel',
     ]);
 
     try {
@@ -2390,6 +2396,11 @@ function validateAction(actionType: string, data: Record<string, unknown>): Acti
       return { action: 'clickAt', x: num(data.x, 0), y: num(data.y, 0) };
     case 'typeAt':
       return { action: 'typeAt', x: num(data.x, 0), y: num(data.y, 0), text: optStr('text') };
+    // Gen 23: SoM label-based actions
+    case 'clickLabel':
+      return { action: 'clickLabel', label: num(data.label, 0) };
+    case 'typeLabel':
+      return { action: 'typeLabel', label: num(data.label, 0), text: optStr('text') };
     default:
       throw new Error(`Unknown action type: ${actionType}`);
   }
