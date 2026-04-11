@@ -1,32 +1,24 @@
 {
   "mode": "pursue",
   "goal": "#1 on WebVoyager",
-  "status": "ready-for-full-run",
+  "status": "gen21-shipped",
   "generation": 27,
+  "subGeneration": "21-parallel-tabs",
   "branch": "main",
-  "changes": [
-    "Cost cap 200k→300k (40 tasks were at old turn/cost limits)",
-    "DuckDuckGo search fallback (Google/Bing block headless browsers)",
-    "CAPTCHA checkbox solver (reCAPTCHA bypass, Cambridge Dict flipped)",
-    "Form reset detection + keyboard auto-retry (Google Flights fix)",
-    "Block-level snapshot dedup (93% compression on card-heavy pages)",
-    "Progressive snapshot budget (4k→2.5k after 8+ same-page turns)",
-    "Vision model cascade to gpt-4.1-mini (cost reduction)",
-    "Form stall injection with origin+pathname matching",
-    "Supervisor suggests DDG fallback on form stalls",
-    "Batch fill 150ms settle delay between fields"
+  "npmVersion": "0.23.0",
+  "shipped": {
+    "gen27": "stealth, anti-bot, form intelligence, CAPTCHA, card dedup",
+    "gen21": "parallel tab execution (GoalDecomposer + ParallelRunner + EvidenceMerger)"
+  },
+  "heldOutResults": {
+    "competitive": "10/10 (100%)",
+    "webbench50": "44/50 (88% raw), 95.7% excl DataDome",
+    "systemChromeUnblocked": "9/13 previously-blocked sites"
+  },
+  "nextActions": [
+    "Gen 29-30 audit (bad-app production readiness)",
+    "Full WebVoyager 590 run with Gen 27",
+    "Gen 28: multi-model orchestrator (half day)"
   ],
-  "validatedFlips": [
-    "booking-16: PASS 8t/$0.06 (was 19t/FAIL)",
-    "booking-20: PASS 25t/$0.76 (was cost_cap)",
-    "cambridge-dictionary-19: PASS 5t/$0.03 (was reCAPTCHA blocked)",
-    "3/8 Google Flights via batch fill variance + cost cap"
-  ],
-  "remainingBlockers": [
-    "Google Flights form reset (keyboard retry shipped but untested at scale)",
-    "Anti-bot on DDG/Bing/Skyscanner (headless browser detection)",
-    "Google sorry page CAPTCHA (checkbox solver works but sorry page may not have reCAPTCHA)"
-  ],
-  "expectedRange": "93-96% (549-566/590)",
-  "updatedAt": "2026-04-11T09:25:00Z"
+  "updatedAt": "2026-04-11T15:10:00Z"
 }

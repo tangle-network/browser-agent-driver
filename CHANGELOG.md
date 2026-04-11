@@ -1,5 +1,38 @@
 # @tangle-network/browser-agent-driver
 
+## 0.24.0
+
+### Minor Changes
+
+- Gen 21 + 26b + 28: parallel tabs, site pattern learning, multi-model orchestration
+
+  **Gen 21 — Parallel Tab Execution:**
+
+  - GoalDecomposer classifies goals as simple vs compound (1 cheap LLM call)
+  - ParallelRunner creates N tabs, runs sub-goals via Promise.all
+  - EvidenceMerger combines results into one coherent answer
+  - Opt-in via `parallelTabs: { enabled: true, maxTabs: 3 }`
+
+  **Gen 26b — Site Pattern Learning:**
+
+  - Mechanical pattern extraction after successful runs (no LLM call)
+  - Learns: cookie banner dismissal, page load timing, search URL patterns, form field sequences
+  - Confidence-scored facts: repeated observation boosts, contradiction decays, <0.1 auto-prunes
+  - `knowledge.clearPatterns()` to wipe learned facts, `knowledge.reset()` for full reset
+  - Stored in `.agent-memory/knowledge/<domain>.json` — commit to repo or cache in CI
+
+  **Gen 28 — Multi-Model Orchestration:**
+
+  - `models.planner/executor/verifier/supervisor` per-role config
+  - Each role falls back to main model when not set
+  - Use expensive models for planning, cheap models for execution
+
+  **Docs:**
+
+  - Comprehensive README rewrite with organized ToC
+  - All Gen 21-28 features documented with examples
+  - Benchmark results, competitive leaderboard, SDK surface
+
 ## 0.23.0
 
 ### Minor Changes
