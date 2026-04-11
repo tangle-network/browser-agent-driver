@@ -1202,20 +1202,22 @@ export class BrowserAgent {
             '\nData extracted. If it answers the goal, complete now.\n', 80);
         }
 
-        // Gen 27: form stall detection — when the agent has been on the same
-        // site/path for 12+ turns, suggest search engine fallback. Compare by
+        // Gen 27: form stall detection — escalating urgency. Compare by
         // origin+pathname (ignoring query params) because sites like Google
         // Flights update URL params with each form interaction without actually
         // navigating to results.
-        if (i >= 12) {
-          const urlBase = (u: string) => { try { const p = new URL(u); return p.origin + p.pathname; } catch { return u; } };
-          const lookback = Math.min(12, turns.length);
-          const recentBases = turns.slice(-lookback).map(t => t.state?.url ? urlBase(t.state.url) : '').filter(Boolean);
+        {
+          const urlBase = (u: string) => { try { const p = new URL(u); return (p.origin + p.pathname).replace(/\/+$/, ''); } catch { return u; } };
           const currentBase = urlBase(state.url);
-          const sameBaseCount = recentBases.filter(b => b === currentBase).length;
-          if (sameBaseCount >= 10) {
+          const sameBaseCount = turns.filter(t => t.state?.url && urlBase(t.state.url) === currentBase).length;
+          if (sameBaseCount >= 15) {
+            // Hard stall: 15+ turns on same page. Demand navigation away.
             ctxBudget.add('form-stall',
-              `\nFORM STALL: You have been on this page for ${sameBaseCount}+ turns. If the form/date picker is not cooperating, navigate to google.com/search?q={your goal as a search query} to find the answer via Google Search results instead.\n`, 90);
+              `\nCRITICAL FORM STALL: You have spent ${sameBaseCount} turns on this page without completing your goal. The form is NOT going to cooperate. Your NEXT action MUST be: navigate to google.com/search?q={your goal as a natural language search query}. Do NOT try the form again.\n`, 95);
+          } else if (sameBaseCount >= 10) {
+            // Soft stall: suggest fallback but don't force it.
+            ctxBudget.add('form-stall',
+              `\nFORM STALL WARNING: You have been on this page for ${sameBaseCount} turns. Consider navigating to google.com/search?q={your goal as a search query} to find the answer via Google Search results instead.\n`, 85);
           }
         }
 
