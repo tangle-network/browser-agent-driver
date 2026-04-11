@@ -875,7 +875,11 @@ export class BrowserAgent {
                 )
                 terminalBlocker = detectTerminalBlocker(state)
               }
-            } catch { /* CAPTCHA solve failed, fall through to abort */ }
+            } catch (captchaErr) {
+              if (this.config.debug) {
+                console.log('[Runner] CAPTCHA solve error:', captchaErr instanceof Error ? captchaErr.message : String(captchaErr));
+              }
+            }
           }
         }
         if (terminalBlocker) {
