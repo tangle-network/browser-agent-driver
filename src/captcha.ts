@@ -88,10 +88,18 @@ export async function detectCaptcha(page: Page): Promise<CaptchaDetection | null
       'iframe[src*="captcha"], iframe[src*="challenge"], iframe[src*="arkoselabs"]'
     )
     if (challengeIframe) return { type: 'image-challenge', siteKey: undefined }
+    // Google sorry page: check for the recaptcha form by ID
+    const sorryForm = document.querySelector<HTMLFormElement>('#captcha-form, form[action*="sorry"]')
+    if (sorryForm) return { type: 'recaptcha-v2', siteKey: undefined }
     return null
   }) as { type: string; siteKey?: string } | null
 
-  if (!result) return null
+  if (!result) {
+    // Fallback: check frames directly for reCAPTCHA (may load late)
+    const hasAnchorFrame = page.frames().some(f => f.url().includes('recaptcha/api2/anchor'))
+    if (hasAnchorFrame) return { type: 'recaptcha-v2' as CaptchaType, pageUrl }
+    return null
+  }
   return { type: result.type as CaptchaType, siteKey: result.siteKey, pageUrl }
 }
 
@@ -453,6 +461,27 @@ async function solveRecaptchaV2(
  * For solvable types, annotates tiles, screenshots, asks the LLM, clicks
  * with human-like timing, and handles dynamic tile replacement.
  */
+/**
+ * Try clicking the reCAPTCHA checkbox ("I'm not a robot"). If the checkbox
+ * alone solves the challenge (no image grid), we're done. If it triggers
+ * an image challenge, fall through to the image solver.
+ */
+async function tryCheckboxClick(page: Page): Promise<boolean> {
+  const anchorFrame = page.frames().find(f => f.url().includes('recaptcha/api2/anchor'))
+  if (!anchorFrame) return false
+  try {
+    const checkbox = anchorFrame.locator('#recaptcha-anchor')
+    if (!await checkbox.isVisible({ timeout: 3000 })) return false
+    // Human-like click with slight random offset
+    await checkbox.click({ delay: randomDelay(50, 150) })
+    // Wait for either: solved (checkbox checked) or image challenge appears
+    await page.waitForTimeout(randomDelay(2000, 4000))
+    return isRecaptchaSolved(page)
+  } catch {
+    return false
+  }
+}
+
 export async function solveCaptcha(
   page: Page,
   model: LanguageModel,
@@ -466,6 +495,20 @@ export async function solveCaptcha(
   const emptyResult = (error: string, type: CaptchaType | null = null): CaptchaSolveResult => ({
     success: false, attempts: 0, type, attemptLog: [], durationMs: Date.now() - start, error,
   })
+
+  // Step 0: try clicking the reCAPTCHA checkbox first. On many pages
+  // (including Google's sorry page), this alone solves the challenge.
+  const checkboxSolved = await tryCheckboxClick(page)
+  if (checkboxSolved) {
+    return {
+      success: true, attempts: 1, type: 'recaptcha-v2',
+      instruction: 'checkbox click', attemptLog: [{
+        tilesClicked: [], instruction: 'checkbox', modelRefused: false,
+        durationMs: Date.now() - start,
+      }],
+      durationMs: Date.now() - start,
+    }
+  }
 
   const detection = await detectCaptcha(page)
   if (!detection) return emptyResult('no captcha detected')

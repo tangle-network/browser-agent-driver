@@ -1216,12 +1216,13 @@ export class BrowserAgent {
           const sameBaseCount = turns.filter(t => t.state?.url && urlBase(t.state.url) === currentBase).length;
           if (sameBaseCount >= 15) {
             // Hard stall: 15+ turns on same page. Demand navigation away.
+            // Use DuckDuckGo — Google Search triggers anti-bot CAPTCHAs.
             ctxBudget.add('form-stall',
-              `\nCRITICAL FORM STALL: You have spent ${sameBaseCount} turns on this page without completing your goal. The form is NOT going to cooperate. Your NEXT action MUST be: navigate to google.com/search?q={your goal as a natural language search query}. Do NOT try the form again.\n`, 95);
+              `\nCRITICAL FORM STALL: You have spent ${sameBaseCount} turns on this page without completing your goal. The form is NOT going to cooperate. Your NEXT action MUST be: navigate to https://duckduckgo.com/?q={your goal as a natural language search query}. Do NOT try the form again. Do NOT use google.com/search (it blocks automated access). Use DuckDuckGo.\n`, 95);
           } else if (sameBaseCount >= 10) {
             // Soft stall: suggest fallback but don't force it.
             ctxBudget.add('form-stall',
-              `\nFORM STALL WARNING: You have been on this page for ${sameBaseCount} turns. Consider navigating to google.com/search?q={your goal as a search query} to find the answer via Google Search results instead.\n`, 85);
+              `\nFORM STALL WARNING: You have been on this page for ${sameBaseCount} turns. Consider navigating to https://duckduckgo.com/?q={your goal as a search query} to find the answer via search results instead. Do NOT use google.com/search (it blocks automated browsers).\n`, 85);
           }
         }
 
@@ -2011,6 +2012,15 @@ export class BrowserAgent {
         } else {
           runState.clearConsecutiveErrors();
           executeTimeoutRecoveries = 0; // Reset on successful action
+
+          // Gen 27: surface form reset warnings from batch fill verification
+          if ('warning' in execResult && typeof (execResult as { warning?: string }).warning === 'string') {
+            const warning = (execResult as { warning: string }).warning;
+            this.brain.injectFeedback(warning);
+            if (this.config.debug) {
+              console.log(`[Runner] Fill warning: ${warning}`);
+            }
+          }
 
           // Capture element bounding box for replay overlays
           if (execResult.bounds) {

@@ -6,6 +6,8 @@ function mockPage(evaluateResult: unknown) {
   return {
     url: () => 'https://example.com/page',
     evaluate: vi.fn().mockResolvedValue(evaluateResult),
+    frames: () => [],
+    waitForTimeout: vi.fn().mockResolvedValue(undefined),
   } as unknown as import('playwright').Page
 }
 

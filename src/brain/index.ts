@@ -122,17 +122,22 @@ IMPORTANT EXCEPTIONS — some sites BLOCK direct URL navigation:
 - If a direct URL navigate lands on the homepage or an error page instead of results, the site blocks URL manipulation. STOP trying URLs and use the site's form/search UI instead.
 - After ONE failed URL attempt, switch to form interaction immediately. Do NOT retry different URL patterns — you will waste turns.
 
-SEARCH ENGINE FALLBACK: If BOTH URL construction AND form interaction have stalled (3+ turns on the same form with no progress), use Google Search as a proxy:
-1. Navigate to google.com/search?q={goal rephrased as a search query}. Example: goal "Find cheapest one-way flight from NYC to London on Jan 15" → google.com/search?q=cheapest+one+way+flight+NYC+to+London+January+15+2026
-2. Google embeds structured widgets for flights, hotels, recipes, products — read the data directly from search results.
-3. OR click through from the search widget to the target site — Google's links pre-fill parameters, bypassing the form entirely.
-4. This is a LAST RESORT after URL construction and direct form interaction have both failed. Do not jump to Google Search on the first turn.
+SEARCH ENGINE FALLBACK: If BOTH URL construction AND form interaction have stalled (3+ turns on the same form with no progress), use DuckDuckGo as a proxy:
+1. Navigate to https://duckduckgo.com/?q={goal rephrased as a search query}. Example: goal "Find cheapest one-way flight from NYC to London on Jan 15" → https://duckduckgo.com/?q=cheapest+one+way+flight+NYC+to+London+January+15+2026
+2. Read the search results to find the answer, OR click through to a comparison site (Kayak, Skyscanner, Google Flights via result link) that has the data.
+3. IMPORTANT: Do NOT use google.com/search — it blocks automated browsers with CAPTCHA pages. Always use duckduckgo.com instead.
+4. This is a LAST RESORT after URL construction and direct form interaction have both failed. Do not jump to search on the first turn.
+
+FORM RESET DETECTION: Some sites (especially SPAs) silently reset form fields after filling. After batch-filling a form:
+1. Use runScript to verify values stuck: document.querySelector('[aria-label="From"]')?.value or similar.
+2. If fields reset to defaults (wrong city, blank dates), do NOT re-fill with the same approach — it will reset again.
+3. Instead, switch to keyboard-only interaction: click the field, type the value character by character, wait for autocomplete dropdown, press Enter to confirm. Then Tab to the next field.
+4. If the form keeps resetting after 3 fill attempts, use the search engine fallback immediately.
 
 DATE PICKER STRATEGY: Calendar widgets often ignore programmatic fill/type. When a date field opens a calendar popup that blocks further input:
-1. Try typing the date directly into the field in the site's format (e.g., "Jan 25, 2026" or "01/25/2026").
-2. If the calendar popup covers the input, press Escape first to dismiss it, then type.
-3. If typing doesn't stick, use runScript to read available dates: document.querySelectorAll('[data-iso],[aria-label*="January"],[aria-label*="25"]') and click the matching element.
-4. NEVER spend more than 4 turns on a single date field. If it's not set after 4 attempts, switch to the search engine fallback above.
+1. Try typing the date directly into the field in the site's format (e.g., "Jan 25, 2026" or "01/25/2026"). Press Escape first if the calendar covers the input.
+2. If typing doesn't stick, use runScript to find clickable date elements: document.querySelectorAll('[data-iso],[aria-label*="January"],[aria-label*="25"]') and click the matching element.
+3. NEVER spend more than 4 turns on a single date field. If it's not set after 4 attempts, switch to the search engine fallback above.
 
 WHY: Complex forms with date pickers, calendar widgets, and multi-step dropdowns consume many turns and often time out. A single "navigate" action replaces 5-10 form interaction turns. But only use this on sites that support it.`;
 
@@ -278,15 +283,16 @@ RULES:
 7. BATCH FILL: when 2+ form fields are visible with refs, use a single "fill" action
 8. If stuck after multiple attempts, use "abort"
 9. VERIFY BEFORE COMPLETING: Before using "complete", re-read the GOAL and check: does your result ACTUALLY answer what was asked? If the goal asks for specific data (prices, names, ratings, counts) and your result doesn't contain ALL of them, keep going. Premature completion with partial data is worse than using another turn.
-10. DATE PICKER STRATEGY: When a calendar popup opens over a date field:
-  a. Try typing the date directly (e.g., "Jan 25, 2026" or "01/25/2026"). Press Escape first if the calendar covers the input.
-  b. If typing doesn't stick, use runScript to find clickable date elements: document.querySelectorAll('[data-iso],[aria-label*="25"]') and click the match.
-  c. NEVER spend more than 4 turns on a single date field. If it's not set after 4 attempts, use the search engine fallback.
-11. SEARCH ENGINE FALLBACK: When BOTH form interaction AND URL construction have failed (3+ turns stuck on the same form):
-  a. Navigate to google.com/search?q={goal rephrased as a search query}
-  b. Google embeds structured widgets (flights, hotels, recipes) — extract data directly from the search results.
-  c. OR click through from the search widget to the target site with parameters pre-filled.
-  d. This is a LAST RESORT after direct interaction has failed — do not use it as a first approach.`;
+10. FORM RESET DETECTION: After batch-filling a form, verify values stuck via runScript. If fields reset to defaults, switch to keyboard-only: click field → type value → wait for autocomplete → press Enter → Tab to next. Do NOT re-fill with the same approach if it reset once.
+11. DATE PICKER STRATEGY: When a calendar popup opens over a date field:
+  a. Press Escape to dismiss, then type the date directly (e.g., "Jan 25, 2026").
+  b. If typing doesn't stick, use runScript to find clickable dates: document.querySelectorAll('[data-iso],[aria-label*="25"]').
+  c. NEVER spend more than 4 turns on a single date field. Switch to search fallback after 4 attempts.
+12. SEARCH ENGINE FALLBACK: When BOTH form interaction AND URL construction have failed (3+ turns stuck):
+  a. Navigate to https://duckduckgo.com/?q={goal rephrased as a search query}
+  b. Read search results or click through to comparison sites (Kayak, Skyscanner) for the data.
+  c. IMPORTANT: Do NOT use google.com/search — it blocks automated browsers with CAPTCHAs. Always use duckduckgo.com.
+  d. This is a LAST RESORT — do not use it as a first approach.`;
 
 /** Pattern for detecting data-extraction keywords in goal text */
 const DATA_EXTRACTION_PATTERN = /\b(extract|list|find|data|price|pric|names?|rating|cost|count)\b/i;
@@ -1391,7 +1397,12 @@ Title: ${state.title}`;
         lines.push(`(${rawDiff!.unchangedCount} elements unchanged — refs from previous turn still valid)`);
         textContent += `\n\nPAGE CHANGES (what changed after your last action — this is the important part):\n${lines.join('\n')}`;
       } else {
-        const snapshotBudget = samePageAsPrevious ? 4_000 : 6_000;
+        // Progressive budget reduction: more turns on same page = less snapshot
+        // needed (agent has already seen the full page, rely on screenshot + diff).
+        const sameTurnCount = samePageAsPrevious ? (turnInfo?.current || 0) : 0;
+        const snapshotBudget = samePageAsPrevious
+          ? (sameTurnCount >= 8 ? 2_500 : 4_000)  // aggressive after 8+ same-page turns
+          : 6_000;
         const snap = budgetSnapshot(state.snapshot, snapshotBudget);
         textContent += `\n\nELEMENTS:\n${snap}`;
       }
@@ -2212,6 +2223,23 @@ function deduplicateSnapshot(snapshot: string): string {
   const nameStem = (name: string): string =>
     name.replace(/\d+/g, '#')
 
+  // Structural fingerprint for a block of lines (element + its children).
+  // Used for card-level dedup: two hotel cards have different names but the
+  // same structure (listitem > link + img + text + text + button).
+  const structuralFingerprint = (startIdx: number, baseIndent: string): { fp: string; endIdx: number } => {
+    const roles: string[] = []
+    let j = startIdx
+    while (j < lines.length) {
+      const p = parseLine(lines[j])
+      if (!p) { j++; continue }
+      // Stop when we hit an element at the same or shallower indent (sibling or parent)
+      if (j > startIdx && p.indent.length <= baseIndent.length) break
+      roles.push(p.role)
+      j++
+    }
+    return { fp: roles.join(','), endIdx: j }
+  }
+
   let i = 0
   while (i < lines.length) {
     const parsed = parseLine(lines[i])
@@ -2223,7 +2251,41 @@ function deduplicateSnapshot(snapshot: string): string {
       continue
     }
 
-    // Collect a consecutive run of same (indent, role) with similar name stems
+    // Try block-level dedup first: look for consecutive sibling blocks
+    // with the same structural fingerprint (same child-role sequence).
+    // This catches card patterns like Booking hotel results, Allrecipes cards.
+    if (/\b(?:listitem|article|group|region)\b/i.test(parsed.role)) {
+      const { fp: firstFp, endIdx: firstEnd } = structuralFingerprint(i, parsed.indent)
+      if (firstEnd > i + 2 && firstFp.includes(',')) { // non-trivial block
+        const blocks: Array<{ start: number; end: number; firstLine: string }> = [
+          { start: i, end: firstEnd, firstLine: lines[i] },
+        ]
+        let scanIdx = firstEnd
+        while (scanIdx < lines.length) {
+          const nextParsed = parseLine(lines[scanIdx])
+          if (!nextParsed || nextParsed.indent !== parsed.indent || nextParsed.role !== parsed.role) break
+          const { fp: nextFp, endIdx: nextEnd } = structuralFingerprint(scanIdx, nextParsed.indent)
+          if (nextFp !== firstFp) break
+          blocks.push({ start: scanIdx, end: nextEnd, firstLine: lines[scanIdx] })
+          scanIdx = nextEnd
+        }
+
+        if (blocks.length >= 3) {
+          // Emit first 2 blocks fully, summarize the rest
+          for (let b = 0; b < Math.min(2, blocks.length); b++) {
+            for (let k = blocks[b].start; k < blocks[b].end; k++) {
+              out.push(lines[k])
+            }
+          }
+          const remaining = blocks.length - 2
+          out.push(`${parsed.indent}... [${remaining} more similar ${parsed.role} blocks with same structure]`)
+          i = blocks[blocks.length - 1].end
+          continue
+        }
+      }
+    }
+
+    // Line-level dedup: consecutive runs of same (indent, role, name stem)
     const group: NonNullable<ReturnType<typeof parseLine>>[] = [parsed]
     const stem = nameStem(parsed.name)
     let j = i + 1

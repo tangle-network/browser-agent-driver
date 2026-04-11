@@ -724,6 +724,36 @@ export class PlaywrightDriver implements Driver {
               return { success: false, error: `fill check ${ref}: ${message}` };
             }
           }
+          // Gen 27: post-fill verification. Read back field values to detect
+          // silent form resets (e.g., Google Flights wiping fields on state change).
+          // Report mismatches so the agent can switch to keyboard-only filling.
+          if (fieldEntries.length > 0) {
+            await this.page.waitForTimeout(200); // let framework settle
+            const mismatches: string[] = [];
+            for (const [ref, expectedText] of fieldEntries) {
+              try {
+                const locator = this.snapshot.resolveLocator(this.page, ref);
+                const actualValue = await locator.inputValue({ timeout: 2000 }).catch(() =>
+                  locator.evaluate((el: HTMLElement) => {
+                    if ('value' in el) return (el as HTMLInputElement).value;
+                    return el.textContent?.trim() || '';
+                  }).catch(() => '')
+                );
+                const expected = expectedText.toLowerCase().trim();
+                const actual = (actualValue || '').toLowerCase().trim();
+                if (actual && expected && !actual.includes(expected) && !expected.includes(actual)) {
+                  mismatches.push(`${ref}: expected "${expectedText}" but got "${actualValue}"`);
+                }
+              } catch { /* skip verification for inaccessible fields */ }
+            }
+            if (mismatches.length > 0) {
+              return {
+                success: true,
+                ...(lastBounds ? { bounds: lastBounds } : {}),
+                warning: `FORM RESET DETECTED: ${mismatches.length}/${fieldEntries.length} field(s) did not retain values: ${mismatches.join('; ')}. Try keyboard-only interaction (click field, type, Enter to confirm from autocomplete, Tab to next).`,
+              };
+            }
+          }
           return { success: true, ...(lastBounds ? { bounds: lastBounds } : {}) };
         }
 

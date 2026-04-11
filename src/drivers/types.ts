@@ -16,6 +16,8 @@ export interface ActionResult {
   error?: string;
   /** Data returned by the action (e.g., runScript result) */
   data?: string;
+  /** Non-fatal warning (e.g., form fields didn't retain values after fill) */
+  warning?: string;
   /** Bounding box of the target element at action time (for replay overlays) */
   bounds?: ActionBounds;
 }
