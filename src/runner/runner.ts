@@ -338,11 +338,10 @@ export class BrowserAgent {
     const turns: Turn[] = [];
     const startTime = Date.now();
     const phaseTimings: import('../types.js').RunPhaseTimings = {};
-    // Gen 17: vision+planner mode gets 2× token budget. The planner reduces
-    // per-turn cost but complex sites (Booking: 140k mean on failures) still
-    // hit the 150k cap. 200k gives planner tasks enough headroom while still
-    // catching death spirals.
-    const visionBudgetMultiplier = isVisionMode ? 2 : 1;
+    // Gen 27: vision+planner mode gets 3× token budget (300k). Gen 26 showed
+    // 4 cost_cap failures and 18 turn-exhausted tasks (now getting 30 turns
+    // but hitting 200k cap). The timeout (600s) is the real safety net.
+    const visionBudgetMultiplier = isVisionMode ? 3 : 1;
     const runState = new RunState(maxTurns, Math.round(DEFAULT_TOKEN_BUDGET * visionBudgetMultiplier));
 
     const runId = scenario.sessionId
@@ -1201,6 +1200,22 @@ export class BrowserAgent {
         if (lastTurn?.action.action === 'runScript' && !lastTurn.error) {
           ctxBudget.add('extraction-guard',
             '\nData extracted. If it answers the goal, complete now.\n', 80);
+        }
+
+        // Gen 27: form stall detection — when the agent has been on the same
+        // URL for 12+ turns, suggest search engine fallback. Threshold is 12
+        // (not 8) because passing form tasks can take 15-20 turns — a lower
+        // threshold would interrupt successful interactions. At turn 12 there
+        // are still ~18 turns left for the Google Search approach to work.
+        if (i >= 12) {
+          const lookback = Math.min(12, turns.length);
+          const recentUrls = turns.slice(-lookback).map(t => t.state?.url).filter(Boolean);
+          const currentUrl = state.url;
+          const sameUrlCount = recentUrls.filter(u => u === currentUrl).length;
+          if (sameUrlCount >= 10) {
+            ctxBudget.add('form-stall',
+              `\nFORM STALL: You have been on this page for ${sameUrlCount}+ turns. If the form/date picker is not cooperating, navigate to google.com/search?q={your goal as a search query} to find the answer via Google Search results instead.\n`, 90);
+          }
         }
 
         const extraContext = ctxBudget.build();

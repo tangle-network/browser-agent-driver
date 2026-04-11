@@ -1,32 +1,21 @@
 {
   "mode": "pursue",
-  "goal": "Gen 13 — vision-first observation mode to close 31pp gap to Magnitude on WebVoyager",
-  "status": "round1_iterate",
-  "round": 1,
-  "generation": 13,
-  "activePursuit": ".evolve/pursuits/2026-04-09-vision-first-gen13.md",
+  "goal": "#1 on WebVoyager",
+  "status": "validating",
+  "generation": 27,
   "branch": "main",
-  "verdict": null,
-  "priorGenerations": {
-    "gen12": {
-      "pr": "#63",
-      "title": "Honest self-assessment (content-aware fast-path verifier)",
-      "verdict": "KEEP",
-      "keyResult": "agent-judge agreement 73%→83%, selfContradicting regex blocks fast-path on failure narratives"
-    },
-    "gen11": {
-      "pr": "#62",
-      "title": "Master comparison truth table",
-      "verdict": "KEEP",
-      "keyResult": "gpt-5.4 promoted at 86% (5-rep), 7.4x faster than browser-use"
-    },
-    "gen10": {
-      "pr": "#60",
-      "title": "DOM index extraction + bigger snapshot + cost cap",
-      "verdict": "KEEP",
-      "keyResult": "37/50=74% (5-rep), +8 tasks vs same-day Gen 8"
-    }
+  "changes": [
+    "Search engine fallback: Google Search as proxy for complex forms",
+    "Date picker strategy: keyboard-first, runScript discovery, 4-turn limit",
+    "Cost cap 200k→300k: 4 cost_cap + 18 turns-exhausted failures get headroom",
+    "Model cascade for vision: same-page turns use gpt-4.1-mini (cost reduction)",
+    "Form stall injection: runner hints at Google Search after 12+ same-URL turns"
+  ],
+  "validationRunning": "agent-results/gen27-flights-validation/ + gen27v2-flights-validation/",
+  "earlyResults": {
+    "flightsV1": "3/6 (50%) — baseline was 0/8",
+    "flightsV2": "2/2 — both from form variance, not fallback",
+    "bookingV1": "1/4 (25%) — booking-20 flipped"
   },
-  "acceptance": "WebVoyager curated-30 judge pass rate ≥70% (from 47%)",
-  "updatedAt": "2026-04-09T16:50:00Z"
+  "updatedAt": "2026-04-11T07:30:00Z"
 }

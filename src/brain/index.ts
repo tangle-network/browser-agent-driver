@@ -121,6 +121,18 @@ IMPORTANT EXCEPTIONS — some sites BLOCK direct URL navigation:
 - If a direct URL navigate lands on the homepage or an error page instead of results, the site blocks URL manipulation. STOP trying URLs and use the site's form/search UI instead.
 - After ONE failed URL attempt, switch to form interaction immediately. Do NOT retry different URL patterns — you will waste turns.
 
+SEARCH ENGINE FALLBACK: If BOTH URL construction AND form interaction have stalled (3+ turns on the same form with no progress), use Google Search as a proxy:
+1. Navigate to google.com/search?q={goal rephrased as a search query}. Example: goal "Find cheapest one-way flight from NYC to London on Jan 15" → google.com/search?q=cheapest+one+way+flight+NYC+to+London+January+15+2026
+2. Google embeds structured widgets for flights, hotels, recipes, products — read the data directly from search results.
+3. OR click through from the search widget to the target site — Google's links pre-fill parameters, bypassing the form entirely.
+4. This is a LAST RESORT after URL construction and direct form interaction have both failed. Do not jump to Google Search on the first turn.
+
+DATE PICKER STRATEGY: Calendar widgets often ignore programmatic fill/type. When a date field opens a calendar popup that blocks further input:
+1. Try typing the date directly into the field in the site's format (e.g., "Jan 25, 2026" or "01/25/2026").
+2. If the calendar popup covers the input, press Escape first to dismiss it, then type.
+3. If typing doesn't stick, use runScript to read available dates: document.querySelectorAll('[data-iso],[aria-label*="January"],[aria-label*="25"]') and click the matching element.
+4. NEVER spend more than 4 turns on a single date field. If it's not set after 4 attempts, switch to the search engine fallback above.
+
 WHY: Complex forms with date pickers, calendar widgets, and multi-step dropdowns consume many turns and often time out. A single "navigate" action replaces 5-10 form interaction turns. But only use this on sites that support it.`;
 
 
@@ -265,7 +277,15 @@ RULES:
 7. BATCH FILL: when 2+ form fields are visible with refs, use a single "fill" action
 8. If stuck after multiple attempts, use "abort"
 9. VERIFY BEFORE COMPLETING: Before using "complete", re-read the GOAL and check: does your result ACTUALLY answer what was asked? If the goal asks for specific data (prices, names, ratings, counts) and your result doesn't contain ALL of them, keep going. Premature completion with partial data is worse than using another turn.
-10. DATE PICKER BYPASS: If you encounter a complex date picker widget (calendar popup, date spinner) that is hard to interact with, DO NOT spend multiple turns clicking through calendar months. Instead, use "navigate" to construct a URL with the date parameters encoded. For Google Flights: navigate to google.com/travel/flights with search params. For Booking: navigate to booking.com/searchresults with checkin/checkout params. URL-based date setting is faster and more reliable than fighting date picker UIs.`;
+10. DATE PICKER STRATEGY: When a calendar popup opens over a date field:
+  a. Try typing the date directly (e.g., "Jan 25, 2026" or "01/25/2026"). Press Escape first if the calendar covers the input.
+  b. If typing doesn't stick, use runScript to find clickable date elements: document.querySelectorAll('[data-iso],[aria-label*="25"]') and click the match.
+  c. NEVER spend more than 4 turns on a single date field. If it's not set after 4 attempts, use the search engine fallback.
+11. SEARCH ENGINE FALLBACK: When BOTH form interaction AND URL construction have failed (3+ turns stuck on the same form):
+  a. Navigate to google.com/search?q={goal rephrased as a search query}
+  b. Google embeds structured widgets (flights, hotels, recipes) — extract data directly from the search results.
+  c. OR click through from the search widget to the target site with parameters pre-filled.
+  d. This is a LAST RESORT after direct interaction has failed — do not use it as a first approach.`;
 
 /** Pattern for detecting data-extraction keywords in goal text */
 const DATA_EXTRACTION_PATTERN = /\b(extract|list|find|data|price|pric|names?|rating|cost|count)\b/i;
@@ -1423,7 +1443,12 @@ Title: ${state.title}`;
       { role: 'user', content: userContent },
     ];
 
-    const modelOpts = { provider: this.provider, model: this.modelName };
+    // Gen 27: model cascade for vision turns. Same-page non-error turns
+    // use the cheap nav model (gpt-4.1-mini) since they're just following
+    // instructions, not reasoning about new pages.
+    const useNavModel = this.shouldUseNavigationModel(state, extraContext, turnInfo);
+    const effectiveModel = useNavModel ? (this.navModelName || this.modelName) : this.modelName;
+    const modelOpts = { provider: this.provider, model: effectiveModel };
     const nearingEnd = turnInfo && turnInfo.current >= turnInfo.max - 3;
     const maxTokens = nearingEnd ? 1200 : 600;
     // Gen 15: hybrid uses the unified prompt with both action vocabularies
