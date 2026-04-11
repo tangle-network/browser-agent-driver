@@ -74,10 +74,13 @@ describe('isSolvable', () => {
     expect(isSolvable('recaptcha-v2')).toBe(true)
   })
 
+  it('returns true for turnstile', () => {
+    expect(isSolvable('turnstile')).toBe(true)
+  })
+
   it.each([
     'recaptcha-v3',
     'hcaptcha',
-    'turnstile',
     'image-challenge',
   ] satisfies CaptchaType[])('returns false for %s', (type) => {
     expect(isSolvable(type)).toBe(false)
@@ -101,8 +104,8 @@ describe('canAttemptSolve', () => {
     expect(canAttemptSolve(['recaptcha-widget'])).toBe(true)
   })
 
-  it('returns false when evidence has only cloudflare signals', () => {
-    expect(canAttemptSolve(['cloudflare-challenge', 'cloudflare-ray'])).toBe(false)
+  it('returns true when evidence has cloudflare signals', () => {
+    expect(canAttemptSolve(['cloudflare-challenge', 'cloudflare-ray'])).toBe(true)
   })
 
   it('returns false when evidence has only generic bot signals', () => {
@@ -122,12 +125,12 @@ describe('solveCaptcha', () => {
   })
 
   it('returns error for unsolvable type', async () => {
-    const page = mockPage({ type: 'turnstile', siteKey: 'abc' })
+    const page = mockPage({ type: 'hcaptcha', siteKey: 'abc' })
     const model = {} as import('ai').LanguageModel
     const result = await solveCaptcha(page, model)
     expect(result.success).toBe(false)
-    expect(result.error).toBe('unsolvable type: turnstile')
-    expect(result.type).toBe('turnstile')
+    expect(result.error).toBe('unsolvable type: hcaptcha')
+    expect(result.type).toBe('hcaptcha')
     expect(result.attempts).toBe(0)
   })
 

@@ -107,7 +107,10 @@ export async function detectCaptcha(page: Page): Promise<CaptchaDetection | null
 // Solvability
 // ---------------------------------------------------------------------------
 
-const SOLVABLE_TYPES = new Set<CaptchaType>(['recaptcha-v2'])
+// Gen 27: turnstile is "solvable" in the sense that we can attempt the
+// checkbox click. With patchright (CDP leak fixes), Turnstile's behavioral
+// check often passes on the first click without further challenge.
+const SOLVABLE_TYPES = new Set<CaptchaType>(['recaptcha-v2', 'turnstile'])
 
 /** Whether we have a solver implementation for this CAPTCHA type */
 export function isSolvable(type: CaptchaType): boolean {
@@ -117,9 +120,8 @@ export function isSolvable(type: CaptchaType): boolean {
 /** Pre-filter: should we even try CAPTCHA solving given the terminal blocker evidence? */
 export function canAttemptSolve(evidence: string[]): boolean {
   if (evidence.length === 0) return false
-  // If evidence contains captcha/verify-human signals, there's a solvable challenge.
-  // Google's "unusual traffic" page embeds a reCAPTCHA v2 — always attempt solve.
-  const solvableSignals = ['captcha', 'verify-human', 'google-unusual-traffic', 'google-sorry']
+  // If evidence contains captcha/verify-human/turnstile signals, there's a solvable challenge.
+  const solvableSignals = ['captcha', 'verify-human', 'google-unusual-traffic', 'google-sorry', 'turnstile', 'cloudflare']
   return evidence.some(e => solvableSignals.some(s => e.includes(s)))
 }
 
@@ -518,7 +520,82 @@ export async function solveCaptcha(
   switch (detection.type) {
     case 'recaptcha-v2':
       return solveRecaptchaV2(page, model, maxAttempts, opts?.fallbackModel)
+    case 'turnstile':
+      return solveTurnstile(page)
     default:
       return emptyResult(`no solver for: ${detection.type}`, detection.type)
+  }
+}
+
+/**
+ * Cloudflare Turnstile solver. Turnstile uses behavioral analysis — with
+ * patchright (no CDP leaks) and realistic browser fingerprints, clicking
+ * the checkbox often passes without further challenge.
+ */
+async function solveTurnstile(page: Page): Promise<CaptchaSolveResult> {
+  const start = Date.now()
+  const emptyResult = (error: string): CaptchaSolveResult => ({
+    success: false, attempts: 1, type: 'turnstile', attemptLog: [],
+    durationMs: Date.now() - start, error,
+  })
+
+  // Find the Turnstile iframe
+  const turnstileFrame = page.frames().find(f =>
+    f.url().includes('challenges.cloudflare.com')
+  )
+  if (!turnstileFrame) return emptyResult('no turnstile frame found')
+
+  try {
+    // Wait for the checkbox to appear
+    const checkbox = turnstileFrame.locator('input[type="checkbox"], .cb-i, #challenge-stage')
+    await checkbox.first().waitFor({ state: 'visible', timeout: 5000 }).catch(() => {})
+
+    // Click with human-like timing
+    await page.waitForTimeout(randomDelay(500, 1500))
+
+    // Try clicking the checkbox element within the Turnstile iframe
+    const clickTarget = turnstileFrame.locator('body')
+    await clickTarget.click({
+      position: { x: 28, y: 28 }, // approximate center of the checkbox
+      delay: randomDelay(30, 80),
+    })
+
+    // Wait for Turnstile to process the click
+    await page.waitForTimeout(randomDelay(3000, 5000))
+
+    // Check if the page navigated away from the challenge
+    const currentUrl = page.url()
+    const stillOnChallenge = page.frames().some(f =>
+      f.url().includes('challenges.cloudflare.com')
+    )
+
+    // Check for success indicators
+    const successIndicators = await page.evaluate(() => {
+      const turnstileResponse = document.querySelector<HTMLInputElement>(
+        'input[name="cf-turnstile-response"], [name="cf-turnstile-response"]'
+      )
+      return {
+        hasResponse: !!turnstileResponse?.value,
+        bodyText: document.body.innerText?.slice(0, 200) || '',
+      }
+    }).catch(() => ({ hasResponse: false, bodyText: '' }))
+
+    if (successIndicators.hasResponse || !stillOnChallenge) {
+      // Wait for page reload after Turnstile pass
+      await page.waitForLoadState('domcontentloaded', { timeout: 10_000 }).catch(() => {})
+      return {
+        success: true, attempts: 1, type: 'turnstile',
+        instruction: 'turnstile checkbox click',
+        attemptLog: [{
+          tilesClicked: [], instruction: 'turnstile', modelRefused: false,
+          durationMs: Date.now() - start,
+        }],
+        durationMs: Date.now() - start,
+      }
+    }
+
+    return emptyResult('turnstile click did not pass behavioral check')
+  } catch (err) {
+    return emptyResult(`turnstile error: ${err instanceof Error ? err.message : String(err)}`)
   }
 }

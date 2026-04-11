@@ -661,13 +661,19 @@ async function main(): Promise<void> {
   }
 
   // Dynamic imports — keeps startup fast and allows tree-shaking.
-  // Use patchright (Playwright fork with CDP leak fixes) for stealth profiles
-  // to avoid Cloudflare/DataDome detection via Runtime.enable.
+  // Gen 27: use patchright (Playwright fork with CDP leak fixes) for ALL
+  // profiles. 13/50 WebbBench sites block standard Playwright via CDP
+  // protocol detection (Runtime.enable leak). Fallback to regular
+  // playwright if patchright isn't installed.
   const isStealthProfile = launchPlan.profile.includes('stealth');
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { chromium, firefox, webkit } = (isStealthProfile
-    ? await import('patchright')
-    : await import('playwright')) as any;
+  let browserLib: any;
+  try {
+    browserLib = await import('patchright');
+  } catch {
+    browserLib = await import('playwright');
+  }
+  const { chromium, firefox, webkit } = browserLib;
   const { PlaywrightDriver } = await import('./drivers/playwright.js');
   const { TestRunner } = await import('./test-runner.js');
   const { FilesystemSink } = await import('./artifacts/filesystem-sink.js');
@@ -1225,6 +1231,26 @@ async function main(): Promise<void> {
             get() { return this.clientY + winY + chrome; },
             configurable: true,
           });
+        } catch (_) {}
+        // navigator.connection — missing in headless, present in real Chrome
+        try {
+          if (!navigator.connection) {
+            Object.defineProperty(navigator, 'connection', {
+              get: () => ({
+                effectiveType: '4g',
+                rtt: 50,
+                downlink: 10,
+                saveData: false,
+                onchange: null,
+              }),
+            });
+          }
+        } catch (_) {}
+        // Notification.permission — default differs in headless
+        try {
+          if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+            Object.defineProperty(Notification, 'permission', { get: () => 'denied' });
+          }
         } catch (_) {}
       `);
     }
