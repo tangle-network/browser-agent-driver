@@ -186,6 +186,24 @@ export class AppKnowledge {
     return lines.join('\n');
   }
 
+  /** Clear all learned patterns (facts). Keeps session history. */
+  clearPatterns(): void {
+    this.data.facts = []
+    this.data.updatedAt = new Date().toISOString()
+  }
+
+  /** Clear everything — facts and sessions. Full reset. */
+  reset(): void {
+    this.data.facts = []
+    this.data.sessions = []
+    this.data.updatedAt = new Date().toISOString()
+  }
+
+  /** Number of facts stored */
+  get factCount(): number {
+    return this.data.facts.length
+  }
+
   /** Persist to disk */
   save(): void {
     writeFileSync(this.path, JSON.stringify(this.data, null, 2));

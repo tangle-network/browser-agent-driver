@@ -404,7 +404,7 @@ export class BrowserAgent {
         phaseTimings,
         wasteMetrics: deriveWasteMetrics(turns, runState.verificationRejectionCount, runState.firstSufficientEvidenceTurn),
       }
-      this.saveMemory(scenario, agentResult)
+      this.saveMemory(scenario, agentResult, turns)
       // Complete run manifest
       const lastTurn = agentResult.turns[agentResult.turns.length - 1]
       this.runRegistry?.completeRun(runId, {
@@ -2275,10 +2275,30 @@ export class BrowserAgent {
   }
 
   /** Persist knowledge, selector cache, and session history to disk */
-  private saveMemory(scenario?: Scenario, result?: AgentResult): void {
+  private saveMemory(scenario?: Scenario, result?: AgentResult, turns?: Turn[]): void {
     try {
       if (this.knowledge && scenario && result) {
         this.knowledge.recordSession(buildSession(scenario, result))
+
+        // Gen 26b: extract reusable patterns from successful runs.
+        // Patterns gain confidence with repeated observation and auto-decay
+        // when contradicted. Low-confidence facts are pruned automatically.
+        if (result.success && turns && turns.length > 0) {
+          const domain = safeHostname(scenario.startUrl || '') || ''
+          if (domain) {
+            // Dynamic import to keep the module tree clean
+            import('./pattern-extractor.js').then(({ extractPatterns, recordPatterns }) => {
+              const patterns = extractPatterns(turns, domain, result.success)
+              if (patterns.length > 0) {
+                recordPatterns(this.knowledge!, patterns)
+                this.knowledge!.save()
+                if (this.config.debug) {
+                  console.log(`[Runner] Recorded ${patterns.length} patterns for ${domain}`)
+                }
+              }
+            }).catch(() => { /* pattern extraction is best-effort */ })
+          }
+        }
       }
       this.knowledge?.save();
       this.selectorCache?.save();
