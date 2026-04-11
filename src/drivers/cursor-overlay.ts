@@ -39,6 +39,16 @@ export const CURSOR_OVERLAY_INIT_SCRIPT = `
   });
 
   // ── Cursor sprite (SVG arrow) ──────────────────────────────────────────
+  // ── Idle bounce keyframes ──────────────────────────────────────────
+  const style = document.createElement('style');
+  style.textContent = \`
+    @keyframes __bad_cursor_bob {
+      0%, 100% { margin-top: 0px; }
+      50% { margin-top: -3px; }
+    }
+  \`;
+  (document.head || document.documentElement).appendChild(style);
+
   const cursor = document.createElementNS(NS, 'svg');
   cursor.setAttribute('width', '24');
   cursor.setAttribute('height', '24');
@@ -49,9 +59,10 @@ export const CURSOR_OVERLAY_INIT_SCRIPT = `
     left: '0',
     top: '0',
     transform: 'translate(-100px, -100px)',
-    transition: 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)',
+    transition: 'transform 400ms cubic-bezier(0.34, 1.56, 0.64, 1)',
     pointerEvents: 'none',
-    filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.4))',
+    filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))',
+    animation: '__bad_cursor_bob 1.8s ease-in-out infinite',
   });
   cursor.innerHTML = \`
     <path d="M3 2 L21 12 L13 14 L9 22 Z" fill="#ffffff" stroke="#0b1220" stroke-width="1.5" stroke-linejoin="round"/>
@@ -88,7 +99,7 @@ export const CURSOR_OVERLAY_INIT_SCRIPT = `
     boxShadow: '0 0 0 4px rgba(34, 197, 94, 0.18)',
     transform: 'translate(-100px, -100px)',
     pointerEvents: 'none',
-    transition: 'all 180ms ease-out',
+    transition: 'all 350ms cubic-bezier(0.34, 1.56, 0.64, 1)',
     opacity: '0',
   });
 
@@ -98,18 +109,19 @@ export const CURSOR_OVERLAY_INIT_SCRIPT = `
     position: 'fixed',
     left: '0',
     top: '0',
-    padding: '4px 10px',
-    background: 'rgba(11, 18, 32, 0.92)',
+    padding: '5px 12px',
+    background: 'rgba(11, 18, 32, 0.95)',
     color: '#ffffff',
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    fontSize: '12px',
+    fontSize: '13px',
     fontWeight: '600',
-    borderRadius: '6px',
+    letterSpacing: '0.01em',
+    borderRadius: '8px',
     transform: 'translate(-200px, -200px)',
     pointerEvents: 'none',
     opacity: '0',
-    transition: 'all 220ms cubic-bezier(0.22, 1, 0.36, 1)',
-    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+    transition: 'transform 400ms cubic-bezier(0.34, 1.56, 0.64, 1), opacity 200ms ease',
+    boxShadow: '0 4px 16px rgba(0,0,0,0.35)',
     whiteSpace: 'nowrap',
   });
 
