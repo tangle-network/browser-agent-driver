@@ -396,6 +396,17 @@ export interface AgentConfig {
     /** Max solve attempts per encounter (default: 5) */
     maxAttempts?: number;
   };
+
+  /** Gen 21: parallel tab execution for compound goals */
+  parallelTabs?: {
+    /** Enable goal decomposition + parallel tab execution (default: false) */
+    enabled?: boolean;
+    /** Max parallel tabs (default: 3) */
+    maxTabs?: number;
+  };
+
+  /** Override token budget (used internally by parallel runner to split budget) */
+  tokenBudget?: number;
 }
 
 export interface ObservabilityConfig {

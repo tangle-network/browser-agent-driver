@@ -325,6 +325,42 @@ export class BrowserAgent {
   }
 
   async run(scenario: Scenario): Promise<AgentResult> {
+    // Gen 21: parallel tab execution for compound goals.
+    // Pre-flight: check if the goal should be decomposed into parallel sub-goals.
+    if (this.config.parallelTabs?.enabled && scenario.goal && scenario.startUrl) {
+      const context = this.driver.getPage?.()?.context();
+      if (context) {
+        const { decomposeGoal } = await import('./goal-decomposer.js');
+        const decomposition = await decomposeGoal(
+          scenario.goal,
+          scenario.startUrl,
+          {
+            provider: this.config.provider || 'openai',
+            model: this.config.navModel || 'gpt-4.1-mini',
+            apiKey: this.config.apiKey,
+          },
+        );
+        if (decomposition.type === 'compound' && decomposition.subGoals) {
+          const { runParallel } = await import('./parallel-runner.js');
+          const result = await runParallel({
+            context,
+            config: this.config,
+            originalGoal: scenario.goal,
+            subGoals: decomposition.subGoals,
+            scenario,
+            onTurn: this.onTurn ? (_label: string, turn: Turn) => this.onTurn!(turn) : undefined,
+            projectStore: this.projectStore,
+          });
+          return {
+            success: result.success,
+            reason: result.mergedResult,
+            turns: [],
+            totalMs: result.totalMs,
+          } as AgentResult;
+        }
+      }
+    }
+
     // Gen 14: vision mode gets more turns — each turn takes ~15s (screenshot
     // encode + image tokens) vs ~5s for DOM-first. Without the boost, vision
     // runs out of turns before completing multi-step tasks.
