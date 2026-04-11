@@ -330,7 +330,9 @@ export class BrowserAgent {
     // runs out of turns before completing multi-step tasks.
     const isVisionMode = this.config.observationMode === 'vision' || this.config.observationMode === 'hybrid';
     const baseMaxTurns = scenario.maxTurns || DEFAULT_MAX_TURNS;
-    const maxTurns = isVisionMode ? Math.max(baseMaxTurns, 20) : baseMaxTurns;
+    // Gen 26: 30 turn minimum for vision. 15/51 failures were turn budget
+    // exhaustion at 20. The cost cap (200k tokens) is the real bound.
+    const maxTurns = isVisionMode ? Math.max(baseMaxTurns, 30) : baseMaxTurns;
     const retries = this.config.retries ?? DEFAULT_RETRIES;
     const retryDelayMs = this.config.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
     const turns: Turn[] = [];

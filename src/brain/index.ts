@@ -117,7 +117,11 @@ HOW TO DISCOVER URL PATTERNS:
 - Travel sites typically use: checkin/checkout dates, destination/origin, adults count.
 - Use runScript to read window.location.href if the URL isn't visible in the snapshot.
 
-WHY: Complex forms with date pickers, calendar widgets, and multi-step dropdowns consume many turns and often time out. A single "navigate" action replaces 5-10 form interaction turns.`;
+IMPORTANT EXCEPTIONS — some sites BLOCK direct URL navigation:
+- If a direct URL navigate lands on the homepage or an error page instead of results, the site blocks URL manipulation. STOP trying URLs and use the site's form/search UI instead.
+- After ONE failed URL attempt, switch to form interaction immediately. Do NOT retry different URL patterns — you will waste turns.
+
+WHY: Complex forms with date pickers, calendar widgets, and multi-step dropdowns consume many turns and often time out. A single "navigate" action replaces 5-10 form interaction turns. But only use this on sites that support it.`;
 
 
 /** Reasoning framework and examples (always appended after rules) */

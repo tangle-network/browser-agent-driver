@@ -973,11 +973,11 @@ export class TestRunner {
 
   private resolveTimeoutMs(testCase: TestCase): number | undefined {
     const base = testCase.timeoutMs ?? this.defaultTimeoutMs;
-    // Gen 17: vision mode gets 2× timeout (was 1.5×). Allrecipes had 12/12
-    // failures as timeouts at 180s — tasks were succeeding but running out
-    // of time due to slow site loading + vision per-turn overhead.
+    // Gen 26: vision mode gets 5× timeout (600s for 120s base cases).
+    // The cost cap (200k tokens) is the real safety net. Timeout was
+    // artificially killing 7 tasks that were making progress.
     if (base && (this.config?.observationMode === 'vision' || this.config?.observationMode === 'hybrid')) {
-      return Math.round(base * 2);
+      return Math.round(base * 5);
     }
     return base;
   }
