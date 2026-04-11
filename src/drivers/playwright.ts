@@ -747,10 +747,34 @@ export class PlaywrightDriver implements Driver {
               } catch { /* skip verification for inaccessible fields */ }
             }
             if (mismatches.length > 0) {
+              // Auto-retry mismatched fields with keyboard-mode:
+              // click → triple-click (select all) → type → short wait.
+              // This fires individual key events that framework components handle
+              // better than locator.fill()'s programmatic value assignment.
+              const retried: string[] = [];
+              for (const mismatch of mismatches) {
+                const ref = mismatch.split(':')[0];
+                const entry = fieldEntries.find(([r]) => r === ref);
+                if (!entry) continue;
+                try {
+                  const locator = this.snapshot.resolveLocator(this.page, ref);
+                  await locator.click({ timeout: 3000 });
+                  // Select all existing text
+                  await this.page.keyboard.press('Control+a');
+                  await this.page.waitForTimeout(50);
+                  // Type character-by-character to fire proper key events
+                  await this.page.keyboard.type(entry[1], { delay: 30 });
+                  await this.page.waitForTimeout(300);
+                  retried.push(ref);
+                } catch { /* skip failed retries */ }
+              }
+              const retriedNote = retried.length > 0
+                ? ` Auto-retried ${retried.length} field(s) with keyboard input.`
+                : '';
               return {
                 success: true,
                 ...(lastBounds ? { bounds: lastBounds } : {}),
-                warning: `FORM RESET DETECTED: ${mismatches.length}/${fieldEntries.length} field(s) did not retain values: ${mismatches.join('; ')}. Try keyboard-only interaction (click field, type, Enter to confirm from autocomplete, Tab to next).`,
+                warning: `FORM RESET DETECTED: ${mismatches.length}/${fieldEntries.length} field(s) did not retain values.${retriedNote} If fields are still wrong, use keyboard-only interaction (click field → type → Enter to confirm autocomplete → Tab to next).`,
               };
             }
           }
