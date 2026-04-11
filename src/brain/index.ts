@@ -116,7 +116,7 @@ HOW TO DISCOVER URL PATTERNS:
 - Most sites accept ?q= or ?search= for keyword queries.
 - Travel sites typically use: checkin/checkout dates, destination/origin, adults count.
 - Use runScript to read window.location.href if the URL isn't visible in the snapshot.
-- ENCODED PARAMETERS: If a URL contains encoded/obfuscated parameters (base64, protobuf, long hash strings), you CANNOT reconstruct them manually. Do not attempt to guess or modify encoded parameters — they will produce invalid URLs. Use form interaction or the search engine fallback instead.
+- ENCODED PARAMETERS: If a URL contains encoded parameters (base64, protobuf), you may be able to replicate them from a previous successful URL, but do NOT invent new encodings. If a navigate with encoded parameters lands on the wrong page, do not retry with a different encoding — it will waste turns.
 
 IMPORTANT EXCEPTIONS — some sites BLOCK direct URL navigation:
 - If a direct URL navigate lands on the homepage or an error page instead of results, the site blocks URL manipulation. STOP trying URLs and use the site's form/search UI instead.
