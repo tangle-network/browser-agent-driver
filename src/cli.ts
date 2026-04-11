@@ -170,6 +170,7 @@ async function main(): Promise<void> {
       'scout-min-top-score': { type: 'string' },
       'scout-max-score-gap': { type: 'string' },
       headless: { type: 'boolean' },
+      proxy: { type: 'string' },
       timeout: { type: 'string' },
       extension: { type: 'string', multiple: true },
       'user-data-dir': { type: 'string' },
@@ -484,6 +485,7 @@ async function main(): Promise<void> {
   }
   if (values.sink) cliOverrides.outputDir = values.sink;
   if (values.headless !== undefined) cliOverrides.headless = values.headless;
+  if (values.proxy) cliOverrides.proxy = values.proxy as string;
   if (values.vision !== undefined) cliOverrides.vision = values.vision;
   if (values['vision-strategy']) cliOverrides.visionStrategy = values['vision-strategy'] as DriverConfig['visionStrategy'];
   if (values['observation-mode']) cliOverrides.observationMode = values['observation-mode'] as DriverConfig['observationMode'];
@@ -955,6 +957,7 @@ async function main(): Promise<void> {
       args: launchPlan.browserArgs,
       viewport,
       recordVideo: { dir: videoDir, size: viewport },
+      ...(launchPlan.proxyServer ? { proxy: { server: launchPlan.proxyServer } } : {}),
     });
     launchDiagnostics.browserLaunchMs = Date.now() - persistentLaunchStartedAt;
     await applyStorageStateToPersistentContext(persistentContext, storageStatePath);
@@ -1084,6 +1087,8 @@ async function main(): Promise<void> {
       ...(browserName === 'chromium' ? { args: launchPlan.browserArgs } : {}),
       // Use system Chrome for stealth profiles — real TLS/JA3 fingerprint vs bundled Chromium
       ...(isStealthProfile && browserName === 'chromium' ? { channel: 'chrome' } : {}),
+      // Residential/SOCKS5/HTTP proxy — routes all traffic through the proxy
+      ...(launchPlan.proxyServer ? { proxy: { server: launchPlan.proxyServer } } : {}),
     })
     launchDiagnostics.browserLaunchMs = Date.now() - browserLaunchStartedAt
   }

@@ -13,6 +13,8 @@ export interface BrowserLaunchPlan {
   browserArgs: string[];
   extensionPaths: string[];
   userDataDir?: string;
+  /** Residential/SOCKS5/HTTP proxy URL (e.g. http://user:pass@proxy:port) */
+  proxyServer?: string;
   warnings: string[];
   errors: string[];
 }
@@ -118,6 +120,8 @@ export function buildBrowserLaunchPlan(
     warnings.push('--cdp-url connects to an existing browser; --profile-dir and wallet options are ignored.')
   }
 
+  const proxyServer = config.proxy || process.env.BAD_PROXY_URL || undefined;
+
   return {
     profile,
     cdpUrl,
@@ -129,6 +133,7 @@ export function buildBrowserLaunchPlan(
     browserArgs,
     extensionPaths,
     userDataDir: userDataDir ?? (walletMode ? undefined : profileDir),
+    proxyServer,
     warnings,
     errors,
   };

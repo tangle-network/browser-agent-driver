@@ -37,6 +37,8 @@ export interface DriverConfig {
   headless?: boolean;
   viewport?: { width: number; height: number };
   browserArgs?: string[];
+  /** Residential/SOCKS5/HTTP proxy URL (e.g. http://user:pass@proxy:port). Also reads BAD_PROXY_URL env. */
+  proxy?: string;
   wallet?: {
     enabled?: boolean;
     /** Wallet address (hex with 0x prefix). Auto-detected from MetaMask if not set. Used for RPC interception. */
