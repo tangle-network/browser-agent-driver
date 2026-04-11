@@ -415,6 +415,8 @@ export function detectTerminalBlocker(state: PageState): TerminalBlockerDetectio
     ['cloudflare-checking', /\bchecking your browser before accessing\b/i],
     ['cf-challenge', /\bcf[-_ ]challenge\b/i],
     ['turnstile', /\bturnstile\b/i],
+    ['google-unusual-traffic', /\bunusual traffic\b/i],
+    ['google-sorry', /\bgoogle\.com\/sorry\b/i],
   ];
   const botHits = botPatterns.filter(([, pattern]) => pattern.test(haystack)).map(([name]) => name);
   if (botHits.length > 0) {

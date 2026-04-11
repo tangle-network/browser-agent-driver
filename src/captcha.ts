@@ -109,8 +109,9 @@ export function isSolvable(type: CaptchaType): boolean {
 /** Pre-filter: should we even try CAPTCHA solving given the terminal blocker evidence? */
 export function canAttemptSolve(evidence: string[]): boolean {
   if (evidence.length === 0) return false
-  // If evidence contains captcha/verify-human signals, there's a solvable challenge
-  const solvableSignals = ['captcha', 'verify-human']
+  // If evidence contains captcha/verify-human signals, there's a solvable challenge.
+  // Google's "unusual traffic" page embeds a reCAPTCHA v2 — always attempt solve.
+  const solvableSignals = ['captcha', 'verify-human', 'google-unusual-traffic', 'google-sorry']
   return evidence.some(e => solvableSignals.some(s => e.includes(s)))
 }
 

@@ -677,7 +677,8 @@ export class PlaywrightDriver implements Driver {
           if (firstSelector) {
             await this.animateCursorToSelector(firstSelector, 'type');
           }
-          for (const [ref, text] of fieldEntries) {
+          for (let fi = 0; fi < fieldEntries.length; fi++) {
+            const [ref, text] = fieldEntries[fi]!;
             try {
               const locator = this.snapshot.resolveLocator(this.page, ref);
               const bounds = await this.captureBounds(locator);
@@ -690,6 +691,12 @@ export class PlaywrightDriver implements Driver {
                   el.dispatchEvent(new Event('change', { bubbles: true }));
                 });
               });
+              // Gen 27: settle delay between fields. Complex forms (Google
+              // Flights, Booking) use framework-managed state that needs time
+              // to process each field before the next one is filled.
+              if (fi < fieldEntries.length - 1) {
+                await this.page.waitForTimeout(150);
+              }
             } catch (err) {
               const message = err instanceof Error ? err.message : String(err);
               return { success: false, error: `fill ${ref}: ${message}` };
