@@ -512,8 +512,9 @@ export class BrowserAgent {
 
     const supervisorConfig = {
       enabled: this.config.supervisor?.enabled ?? DEFAULT_SUPERVISOR.enabled,
-      model: this.config.supervisor?.model || this.config.model || 'gpt-5.4',
-      provider: this.config.supervisor?.provider || this.config.provider || 'openai',
+      // Gen 28: models.supervisor overrides supervisor.model, falls back to main
+      model: this.config.models?.supervisor?.model || this.config.supervisor?.model || this.config.model || 'gpt-5.4',
+      provider: (this.config.models?.supervisor?.provider || this.config.supervisor?.provider || this.config.provider || 'openai') as 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend',
       useVision: this.config.supervisor?.useVision ?? DEFAULT_SUPERVISOR.useVision,
       minTurnsBeforeInvoke: this.config.supervisor?.minTurnsBeforeInvoke ?? DEFAULT_SUPERVISOR.minTurnsBeforeInvoke,
       cooldownTurns: this.config.supervisor?.cooldownTurns ?? DEFAULT_SUPERVISOR.cooldownTurns,

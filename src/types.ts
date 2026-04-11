@@ -321,6 +321,18 @@ export interface AgentConfig {
   navModel?: string;
   /** Provider for navModel (defaults to provider) */
   navProvider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend';
+
+  /** Gen 28: per-role model overrides. Each role falls back to the main model/provider. */
+  models?: {
+    /** Planner — needs best reasoning. Default: main model. */
+    planner?: { model: string; provider?: string };
+    /** Executor — follows plans, can be cheap. Default: navModel or main model. */
+    executor?: { model: string; provider?: string };
+    /** Verifier — structured yes/no. Default: navModel or main model. */
+    verifier?: { model: string; provider?: string };
+    /** Supervisor — strategic recovery. Default: main model. */
+    supervisor?: { model: string; provider?: string };
+  };
   /** API key (defaults to OPENAI_API_KEY) */
   apiKey?: string;
   /** Custom API base URL (for LiteLLM, local models, etc.) */

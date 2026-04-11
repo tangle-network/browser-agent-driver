@@ -449,6 +449,13 @@ export class Brain {
   private scoutModelName?: string;
   private scoutProvider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend' | 'zai-coding-plan';
   private scoutUseVision: boolean;
+  // Gen 28: per-role model overrides
+  private plannerModel?: string;
+  private plannerProvider?: string;
+  private verifierModel?: string;
+  private verifierProvider?: string;
+  private supervisorModel?: string;
+  private supervisorProvider?: string;
   private sandboxBackendType?: string;
   private sandboxBackendProfile?: string;
   private sandboxBackendProvider?: string;
@@ -480,6 +487,19 @@ export class Brain {
     this.scoutModelName = config.scout?.model;
     this.scoutProvider = config.scout?.provider;
     this.scoutUseVision = config.scout?.useVision === true;
+    // Gen 28: per-role model overrides
+    this.plannerModel = config.models?.planner?.model;
+    this.plannerProvider = config.models?.planner?.provider;
+    this.verifierModel = config.models?.verifier?.model;
+    this.verifierProvider = config.models?.verifier?.provider;
+    this.supervisorModel = config.models?.supervisor?.model;
+    this.supervisorProvider = config.models?.supervisor?.provider;
+    // executor uses navModel (already wired) — config.models.executor overrides it
+    if (config.models?.executor) {
+      this.navModelName = config.models.executor.model;
+      this.navProvider = (config.models.executor.provider as typeof this.navProvider) || this.navProvider;
+      this.adaptiveModelRouting = true; // enable routing when executor model is set
+    }
   }
 
   private resolveModelName(
@@ -1624,10 +1644,14 @@ What is the complete plan?`
         ]
       : userText;
 
+    // Gen 28: planner can use a different model (e.g., Claude Opus for reasoning)
+    const planModelOpts = this.plannerModel
+      ? { provider: (this.plannerProvider || this.provider) as typeof this.provider, model: this.plannerModel }
+      : { provider: this.provider, model: this.modelName };
     const result = await this.generate(
       planSystemPrompt,
       [{ role: 'user', content: userContent }],
-      { provider: this.provider, model: this.modelName },
+      planModelOpts,
       // Plans need more output tokens than decide() — a 10-step plan with
       // batch fills + rationale per step is comfortably over 1000 tokens.
       2_500,
@@ -1926,13 +1950,12 @@ Was the goal actually achieved? Analyze the current page state carefully.`;
 
     const userContent = this.buildUserContent(textContent, state.screenshot, true);
 
-    // Verification is a structured yes/no task — use nav model if available
-    const verifyProvider = this.adaptiveModelRouting && this.navModelName
-      ? (this.navProvider || this.provider)
-      : undefined;
-    const verifyModel = this.adaptiveModelRouting && this.navModelName
-      ? this.navModelName
-      : undefined;
+    // Gen 28: verifier can use its own model, falls back to nav model, then main
+    const verifyProvider = this.verifierProvider
+      ? this.verifierProvider as typeof this.provider
+      : (this.adaptiveModelRouting && this.navModelName ? (this.navProvider || this.provider) : undefined);
+    const verifyModel = this.verifierModel
+      || (this.adaptiveModelRouting && this.navModelName ? this.navModelName : undefined);
 
     const result = await this.generate(
       `Verify whether the browser agent achieved its goal. Respond with ONLY JSON:
