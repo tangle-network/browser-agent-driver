@@ -34,6 +34,9 @@ export class RunState {
   extractedEvidence: string[] = [];
   searchScoutUrls = new Set<string>();
 
+  // Gen 24b: checkpoint replay — save known-good URLs for rollback on wrong-path
+  checkpoints: Array<{ url: string; turn: number }> = [];
+
   readonly maxTotalErrors: number;
 
   /** Total LLM tokens (input + output + cache) charged to this case so far. */

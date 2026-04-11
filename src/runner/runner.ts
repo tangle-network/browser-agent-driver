@@ -494,6 +494,23 @@ export class BrowserAgent {
       await navPromise;
       phaseTimings.initialNavigateMs = Date.now() - navigateStartedAt;
       this.onPhaseTiming?.('navigate', phaseTimings.initialNavigateMs);
+
+      // Gen 24b: page warm-up — simulate human settling time after page load.
+      // DataDome and similar ML anti-bot systems measure time-to-first-interaction.
+      // Bots act within 100ms; humans take 1-3 seconds to orient on a new page.
+      // Also adds a small random scroll to generate natural mouse/scroll events.
+      const page = this.driver.getPage?.();
+      if (page) {
+        const settleMs = 1500 + Math.floor(Math.random() * 1500); // 1.5-3s
+        await page.waitForTimeout(settleMs);
+        // Small exploratory scroll — humans look around before acting
+        await page.mouse.move(
+          300 + Math.random() * 400,
+          200 + Math.random() * 200,
+        );
+        await page.mouse.wheel(0, 100 + Math.random() * 200);
+        await page.waitForTimeout(300 + Math.floor(Math.random() * 500));
+      }
     }
 
     // Don't wait on warmup before entering the loop — it races against the
@@ -1379,6 +1396,23 @@ export class BrowserAgent {
             console.log(`[Runner] Decision cache HIT (turn ${i}, key ${cached.hash.slice(0, 8)}…) — skipping LLM`);
           }
         } else {
+          // Gen 24b: micro-movements during LLM "thinking" — anti-bot systems
+          // flag frozen cursors. Run small random mouse drifts in parallel with
+          // the LLM call. Stops when the decision arrives.
+          let microMoving = true;
+          const microMoveLoop = (async () => {
+            const p = this.driver.getPage?.();
+            if (!p) return;
+            while (microMoving) {
+              await p.mouse.move(
+                300 + Math.random() * 600,
+                200 + Math.random() * 400,
+                { steps: 3 },
+              ).catch(() => {});
+              await p.waitForTimeout(800 + Math.floor(Math.random() * 1200)).catch(() => {});
+            }
+          })();
+
           decision = await withRetry(
             () => this.brain.decide(
               scenario.goal,
@@ -1396,6 +1430,8 @@ export class BrowserAgent {
             },
             scenario.signal,
           );
+          microMoving = false;
+          void microMoveLoop; // ensure no unhandled rejection
           if (cacheKey && this.decisionCache) {
             // Store the fresh decision so a future identical turn replays it.
             this.decisionCache.set(cacheKey, decision);
@@ -1840,8 +1876,23 @@ export class BrowserAgent {
               runState.verificationRejectionCount++;
               turn.verificationFailure = goalResult.missing.join('; ') || 'Goal verification failed';
               runState.firstSufficientEvidenceTurn ??= i;
+
+              // Gen 24b: checkpoint replay on 2nd rejection. Navigate back
+              // to a previous page where the agent had correct data, instead
+              // of continuing from the wrong-path state.
+              let replayNote = '';
+              if (runState.verificationRejectionCount === 2 && runState.checkpoints.length >= 2) {
+                // Go back to the second-to-last checkpoint (before the wrong path)
+                const target = runState.checkpoints[runState.checkpoints.length - 2];
+                if (target) {
+                  try {
+                    await this.driver.execute({ action: 'navigate', url: target.url });
+                    replayNote = ` ROLLED BACK to ${target.url} (checkpoint from turn ${target.turn}). You went down the wrong path — try a different approach from this known-good page.`;
+                  } catch { /* rollback failed, continue from current state */ }
+                }
+              }
+
               // Gen 19: progressive strategy-shift escalation on rejection.
-              // Each rejection level suggests a MORE different approach.
               let escalation: string;
               if (runState.verificationRejectionCount >= 3) {
                 escalation = ' STRATEGY SHIFT REQUIRED: Your previous approaches have failed 3 times. Try a COMPLETELY different method: use navigate to go to a different search engine or URL, try extractWithIndex instead of runScript, or scroll to look for the data in a different part of the page. Do NOT repeat what you just tried.';
@@ -1851,7 +1902,7 @@ export class BrowserAgent {
                 escalation = ' Re-read the GOAL carefully — your result is missing specific data the goal asked for. Find and include it before completing.';
               }
               this.brain.injectFeedback(
-                `REJECTED (${goalResult.confidence.toFixed(2)}). Missing: ${goalResult.missing.join('; ')}.${escalation}`
+                `REJECTED (${goalResult.confidence.toFixed(2)}). Missing: ${goalResult.missing.join('; ')}.${escalation}${replayNote}`
               );
               turn.durationMs = Date.now() - turnStart;
               turns.push(turn);
@@ -2057,6 +2108,16 @@ export class BrowserAgent {
             if (this.config.debug) {
               console.log(`[Runner] Fill warning: ${warning}`);
             }
+          }
+
+          // Gen 24b: save checkpoint when URL changes after successful action.
+          // These are rollback points for wrong-path recovery.
+          const postUrl = this.driver.getPage?.()?.url() || '';
+          const lastCheckpointUrl = runState.checkpoints[runState.checkpoints.length - 1]?.url;
+          if (postUrl && postUrl !== 'about:blank' && postUrl !== lastCheckpointUrl) {
+            runState.checkpoints.push({ url: postUrl, turn: i });
+            // Keep max 5 checkpoints to avoid unbounded growth
+            if (runState.checkpoints.length > 5) runState.checkpoints.shift();
           }
 
           // Capture element bounding box for replay overlays
