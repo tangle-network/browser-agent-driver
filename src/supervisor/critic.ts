@@ -52,6 +52,7 @@ FOR "force_action":
 - Choose one action from: click, type, press, hover, select, scroll, navigate, wait
 - If using selector, use ONLY refs present in ELEMENTS as "@refId"
 - Prefer low-risk unblock actions before destructive actions
+- If the worker is stalled on a form (date picker, search form), consider navigating to google.com/search?q={goal as search query} to find the answer via Google Search results instead
 
 Respond ONLY JSON:
 {
