@@ -25,6 +25,76 @@ function isPointerInterceptError(error: string): boolean {
   return /intercepts pointer events|subtree intercepts pointer events|not receiving pointer events/i.test(error);
 }
 
+// ---------------------------------------------------------------------------
+// Mouse humanization — Bezier curve movement with gaussian jitter
+// ---------------------------------------------------------------------------
+
+/** Cubic bezier interpolation for a single axis */
+function cubicBezier(t: number, p0: number, p1: number, p2: number, p3: number): number {
+  const u = 1 - t;
+  return u * u * u * p0 + 3 * u * u * t * p1 + 3 * u * t * t * p2 + t * t * t * p3;
+}
+
+/** Generate Bezier control points with human-like overshoot */
+function bezierControlPoints(
+  x0: number, y0: number, x1: number, y1: number,
+): { cp1x: number; cp1y: number; cp2x: number; cp2y: number } {
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  // Control points offset perpendicular to the line + slight overshoot
+  const spread = Math.max(30, Math.sqrt(dx * dx + dy * dy) * 0.3);
+  const angle = Math.atan2(dy, dx);
+  const perpAngle = angle + Math.PI / 2;
+  const jitter1 = (Math.random() - 0.5) * spread;
+  const jitter2 = (Math.random() - 0.5) * spread;
+  return {
+    cp1x: x0 + dx * 0.25 + Math.cos(perpAngle) * jitter1,
+    cp1y: y0 + dy * 0.25 + Math.sin(perpAngle) * jitter1,
+    cp2x: x0 + dx * 0.75 + Math.cos(perpAngle) * jitter2,
+    cp2y: y0 + dy * 0.75 + Math.sin(perpAngle) * jitter2,
+  };
+}
+
+/** Gaussian-distributed click offset — never hits exact center */
+function gaussianOffset(size: number): number {
+  const sigma = size * 0.15;
+  // Box-Muller transform
+  const u1 = Math.random() || 0.001;
+  const u2 = Math.random();
+  return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2) * sigma;
+}
+
+/**
+ * Move the real mouse along a Bezier curve from current position to target.
+ * Generates 8-15 intermediate points with velocity-based timing (fast in
+ * middle, slow at endpoints). Total duration 150-400ms.
+ */
+async function humanMouseMove(page: Page, targetX: number, targetY: number): Promise<void> {
+  // Get current mouse position (approximate from last known or viewport center)
+  const viewport = page.viewportSize();
+  const startX = viewport ? viewport.width / 2 : 512;
+  const startY = viewport ? viewport.height / 2 : 384;
+
+  const { cp1x, cp1y, cp2x, cp2y } = bezierControlPoints(startX, startY, targetX, targetY);
+  const steps = 8 + Math.floor(Math.random() * 8); // 8-15 points
+  const totalMs = 150 + Math.floor(Math.random() * 250); // 150-400ms
+
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    // Ease-in-out timing (slow start/end, fast middle)
+    const eased = t < 0.5
+      ? 2 * t * t
+      : -1 + (4 - 2 * t) * t;
+    const x = cubicBezier(eased, startX, cp1x, cp2x, targetX);
+    const y = cubicBezier(eased, startY, cp1y, cp2y, targetY);
+    await page.mouse.move(x, y);
+    if (i < steps) {
+      const stepDelay = Math.max(1, Math.floor(totalMs / steps * (0.5 + Math.random())));
+      await page.waitForTimeout(stepDelay);
+    }
+  }
+}
+
 // Gen 13: Virtual screen dimensions for vision-first coordinate actions.
 // Claude's computer-use training uses 1024x768. Screenshots are resized to
 // this before being sent, and coordinate outputs are in this space.
@@ -507,6 +577,12 @@ export class PlaywrightDriver implements Driver {
           const locator = this.snapshot.resolveLocator(this.page, action.selector);
           const bounds = await this.captureBounds(locator);
           await this.animateCursorToSelector(action.selector, 'click');
+          // Human-like mouse movement to the target before clicking
+          if (bounds) {
+            const targetX = bounds.x + bounds.width / 2 + gaussianOffset(bounds.width);
+            const targetY = bounds.y + bounds.height / 2 + gaussianOffset(bounds.height);
+            await humanMouseMove(this.page, targetX, targetY);
+          }
           // Listen for popups but don't block: collect any that fire during the click
           let popupPage: import('playwright').Page | null = null;
           const onPopup = (page: import('playwright').Page) => { popupPage = page; };
@@ -821,6 +897,7 @@ export class PlaywrightDriver implements Driver {
           const actualX = Math.round(action.x * (viewport.width / VIRTUAL_SCREEN.width));
           const actualY = Math.round(action.y * (viewport.height / VIRTUAL_SCREEN.height));
           await this.animateCursorToCoord(actualX, actualY, 'clickAt');
+          await humanMouseMove(this.page, actualX, actualY);
           await this.page.mouse.click(actualX, actualY);
           return { success: true, bounds: { x: actualX - 20, y: actualY - 20, width: 40, height: 40 } };
         }

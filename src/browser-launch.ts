@@ -146,6 +146,9 @@ function applyProfileBrowserArgs(
     '--disable-infobars',
     '--no-first-run',
     '--no-default-browser-check',
+    // Real GPU rendering — headless defaults to SwiftShader which has a
+    // distinct WebGL fingerprint that anti-bot systems flag.
+    '--use-gl=desktop',
   ];
 
   for (const arg of stealthArgs) {
