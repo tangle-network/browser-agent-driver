@@ -1,5 +1,15 @@
 # @tangle-network/browser-agent-driver
 
+## 0.24.1
+
+### Patch Changes
+
+- Checkpoint replay, DataDome behavioral bypass, context window compression
+
+  - Checkpoint replay: saves URL checkpoints after page transitions, navigates back to last known-good state on 2nd verification rejection
+  - DataDome bypass: page warm-up delay (1.5-3s), micro-mouse-movements during LLM thinking, scroll-before-click
+  - Context compression: deep compact at 8 messages back (was 10), hard prune at 20 messages. History drops from 30-60k to 8-12k tokens on long runs.
+
 ## 0.24.0
 
 ### Minor Changes
