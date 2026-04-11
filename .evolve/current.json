@@ -1,24 +1,30 @@
 {
   "mode": "pursue",
   "goal": "#1 on WebVoyager",
-  "status": "gen21-shipped",
+  "status": "all-gens-shipped-need-measurement",
   "generation": 27,
-  "subGeneration": "21-parallel-tabs",
   "branch": "main",
-  "npmVersion": "0.23.0",
+  "npmVersion": "0.24.0",
   "shipped": {
-    "gen27": "stealth, anti-bot, form intelligence, CAPTCHA, card dedup",
-    "gen21": "parallel tab execution (GoalDecomposer + ParallelRunner + EvidenceMerger)"
+    "gen27": "stealth, anti-bot, form intelligence, CAPTCHA, card dedup, system Chrome",
+    "gen21": "parallel tab execution",
+    "gen26b": "site pattern learning from successful runs",
+    "gen28": "per-role model orchestration",
+    "gen24b": "checkpoint replay on wrong-path failures",
+    "datadome": "behavioral timing bypass (page warm-up, micro-movements)",
+    "compression": "aggressive context window pruning (30-60k → 8-12k)"
   },
+  "unpublished": "71195a9 (checkpoint + DataDome + compression) → needs v0.25.0",
   "heldOutResults": {
     "competitive": "10/10 (100%)",
-    "webbench50": "44/50 (88% raw), 95.7% excl DataDome",
+    "webbench50_raw": "44/50 (88%)",
+    "webbench50_excl_datadome": "44/46 (95.7%) — DataDome bypass now shipped, untested",
     "systemChromeUnblocked": "9/13 previously-blocked sites"
   },
-  "nextActions": [
-    "Gen 29-30 audit (bad-app production readiness)",
-    "Full WebVoyager 590 run with Gen 27",
-    "Gen 28: multi-model orchestrator (half day)"
-  ],
-  "updatedAt": "2026-04-11T15:10:00Z"
+  "webvoyagerBaseline": {
+    "gen25_full_run": "539/590 (91.3%) at $54",
+    "gen27_estimated": "93-96% (NEVER MEASURED — all improvements untested at scale)"
+  },
+  "criticalGap": "No full WebVoyager 590 run since Gen 25. We've shipped 8 generations of improvements but the real number is unknown.",
+  "updatedAt": "2026-04-11T23:20:00Z"
 }
