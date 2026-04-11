@@ -1203,18 +1203,19 @@ export class BrowserAgent {
         }
 
         // Gen 27: form stall detection — when the agent has been on the same
-        // URL for 12+ turns, suggest search engine fallback. Threshold is 12
-        // (not 8) because passing form tasks can take 15-20 turns — a lower
-        // threshold would interrupt successful interactions. At turn 12 there
-        // are still ~18 turns left for the Google Search approach to work.
+        // site/path for 12+ turns, suggest search engine fallback. Compare by
+        // origin+pathname (ignoring query params) because sites like Google
+        // Flights update URL params with each form interaction without actually
+        // navigating to results.
         if (i >= 12) {
+          const urlBase = (u: string) => { try { const p = new URL(u); return p.origin + p.pathname; } catch { return u; } };
           const lookback = Math.min(12, turns.length);
-          const recentUrls = turns.slice(-lookback).map(t => t.state?.url).filter(Boolean);
-          const currentUrl = state.url;
-          const sameUrlCount = recentUrls.filter(u => u === currentUrl).length;
-          if (sameUrlCount >= 10) {
+          const recentBases = turns.slice(-lookback).map(t => t.state?.url ? urlBase(t.state.url) : '').filter(Boolean);
+          const currentBase = urlBase(state.url);
+          const sameBaseCount = recentBases.filter(b => b === currentBase).length;
+          if (sameBaseCount >= 10) {
             ctxBudget.add('form-stall',
-              `\nFORM STALL: You have been on this page for ${sameUrlCount}+ turns. If the form/date picker is not cooperating, navigate to google.com/search?q={your goal as a search query} to find the answer via Google Search results instead.\n`, 90);
+              `\nFORM STALL: You have been on this page for ${sameBaseCount}+ turns. If the form/date picker is not cooperating, navigate to google.com/search?q={your goal as a search query} to find the answer via Google Search results instead.\n`, 90);
           }
         }
 
