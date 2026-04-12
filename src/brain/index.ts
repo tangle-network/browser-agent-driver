@@ -1051,20 +1051,13 @@ export class Brain {
       ? userIndices[userIndices.length - 1]
       : this.history.length;
 
-    // Gen 24b: aggressive three-tier compression to control token growth.
-    // After 30 turns, history was 30-60k tokens — now capped at ~8-12k.
+    // Three-tier compression:
     //   Zone 1 (intact):         last 2 turns — full content
-    //   Zone 2 (standard):       turns 3-4 back — ELEMENTS stripped from user msgs
-    //   Zone 3 (deep compact):   turns 5+ back — one-line summaries
-    const deepCompactBefore = Math.max(0, this.history.length - 8);
-
-    // Hard prune: drop messages beyond 20 (10 turns) — even one-line
-    // summaries accumulate. Keep first 2 msgs (initial context) + last 18.
-    if (this.history.length > 20) {
-      const head = this.history.slice(0, 2);
-      const tail = this.history.slice(-18);
-      this.history = [...head, ...tail];
-    }
+    //   Zone 2 (standard):       turns 3-5 back — ELEMENTS stripped from user msgs
+    //   Zone 3 (deep compact):   turns 6+ back — both user and assistant ultra-compacted
+    // REVERTED from aggressive 8/20 — the hard prune at 20 messages caused
+    // Google Flights to lose essential history on 30-turn runs.
+    const deepCompactBefore = Math.max(0, this.history.length - 10);
 
     return this.history.map((msg, idx) => {
       // Zone 1: keep recent turns intact

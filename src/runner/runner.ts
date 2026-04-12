@@ -495,22 +495,9 @@ export class BrowserAgent {
       phaseTimings.initialNavigateMs = Date.now() - navigateStartedAt;
       this.onPhaseTiming?.('navigate', phaseTimings.initialNavigateMs);
 
-      // Gen 24b: page warm-up — simulate human settling time after page load.
-      // DataDome and similar ML anti-bot systems measure time-to-first-interaction.
-      // Bots act within 100ms; humans take 1-3 seconds to orient on a new page.
-      // Also adds a small random scroll to generate natural mouse/scroll events.
-      const page = this.driver.getPage?.();
-      if (page) {
-        const settleMs = 1500 + Math.floor(Math.random() * 1500); // 1.5-3s
-        await page.waitForTimeout(settleMs);
-        // Small exploratory scroll — humans look around before acting
-        await page.mouse.move(
-          300 + Math.random() * 400,
-          200 + Math.random() * 200,
-        );
-        await page.mouse.wheel(0, 100 + Math.random() * 200);
-        await page.waitForTimeout(300 + Math.floor(Math.random() * 500));
-      }
+      // REVERTED: page warm-up delay caused pre-first-turn timeouts on Google
+      // Flights (0-turn failures at 600s) and click timeouts on Allrecipes.
+      // DataDome bypass needs a different approach — not blocking the main loop.
     }
 
     // Don't wait on warmup before entering the loop — it races against the
@@ -1260,24 +1247,13 @@ export class BrowserAgent {
             '\nData extracted. If it answers the goal, complete now.\n', 80);
         }
 
-        // Gen 27: form stall detection — escalating urgency. Compare by
-        // origin+pathname (ignoring query params) because sites like Google
-        // Flights update URL params with each form interaction without actually
-        // navigating to results.
+        // REVERTED: form stall → DDG/external search fallback. Caused the agent
+        // to navigate to Priceline, Expedia, DuckDuckGo which all block with
+        // anti-bot. Worse than staying on the original site and grinding.
+        // The stall detection idea is sound but the fallback destination is wrong.
+        // TODO: revisit with a same-site strategy (runScript extraction, URL
+        // construction from current state) instead of cross-site navigation.
         {
-          const urlBase = (u: string) => { try { const p = new URL(u); return (p.origin + p.pathname).replace(/\/+$/, ''); } catch { return u; } };
-          const currentBase = urlBase(state.url);
-          const sameBaseCount = turns.filter(t => t.state?.url && urlBase(t.state.url) === currentBase).length;
-          if (sameBaseCount >= 15) {
-            // Hard stall: 15+ turns on same page. Demand navigation away.
-            // Use DuckDuckGo — Google Search triggers anti-bot CAPTCHAs.
-            ctxBudget.add('form-stall',
-              `\nCRITICAL FORM STALL: You have spent ${sameBaseCount} turns on this page without completing your goal. The form is NOT going to cooperate. Your NEXT action MUST be: navigate to https://duckduckgo.com/?q={your goal as a natural language search query}. Do NOT try the form again. Do NOT use google.com/search (it blocks automated access). Use DuckDuckGo.\n`, 95);
-          } else if (sameBaseCount >= 10) {
-            // Soft stall: suggest fallback but don't force it.
-            ctxBudget.add('form-stall',
-              `\nFORM STALL WARNING: You have been on this page for ${sameBaseCount} turns. Consider navigating to https://duckduckgo.com/?q={your goal as a search query} to find the answer via search results instead. Do NOT use google.com/search (it blocks automated browsers).\n`, 85);
-          }
         }
 
         const extraContext = ctxBudget.build();
@@ -1396,22 +1372,10 @@ export class BrowserAgent {
             console.log(`[Runner] Decision cache HIT (turn ${i}, key ${cached.hash.slice(0, 8)}…) — skipping LLM`);
           }
         } else {
-          // Gen 24b: micro-movements during LLM "thinking" — anti-bot systems
-          // flag frozen cursors. Run small random mouse drifts in parallel with
-          // the LLM call. Stops when the decision arrives.
-          let microMoving = true;
-          const microMoveLoop = (async () => {
-            const p = this.driver.getPage?.();
-            if (!p) return;
-            while (microMoving) {
-              await p.mouse.move(
-                300 + Math.random() * 600,
-                200 + Math.random() * 400,
-                { steps: 3 },
-              ).catch(() => {});
-              await p.waitForTimeout(800 + Math.floor(Math.random() * 1200)).catch(() => {});
-            }
-          })();
+          // REVERTED: micro-movements during LLM thinking caused interference
+          // with page state on interactive sites. The mouse.move calls during
+          // decide() could trigger hover states, tooltips, or dismiss elements
+          // the agent was about to click.
 
           decision = await withRetry(
             () => this.brain.decide(
@@ -1430,8 +1394,6 @@ export class BrowserAgent {
             },
             scenario.signal,
           );
-          microMoving = false;
-          void microMoveLoop; // ensure no unhandled rejection
           if (cacheKey && this.decisionCache) {
             // Store the fresh decision so a future identical turn replays it.
             this.decisionCache.set(cacheKey, decision);
