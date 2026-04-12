@@ -122,22 +122,15 @@ IMPORTANT EXCEPTIONS — some sites BLOCK direct URL navigation:
 - If a direct URL navigate lands on the homepage or an error page instead of results, the site blocks URL manipulation. STOP trying URLs and use the site's form/search UI instead.
 - After ONE failed URL attempt, switch to form interaction immediately. Do NOT retry different URL patterns — you will waste turns.
 
-SEARCH ENGINE FALLBACK: If BOTH URL construction AND form interaction have stalled (3+ turns on the same form with no progress), use DuckDuckGo as a proxy:
-1. Navigate to https://duckduckgo.com/?q={goal rephrased as a search query}. Example: goal "Find cheapest one-way flight from NYC to London on Jan 15" → https://duckduckgo.com/?q=cheapest+one+way+flight+NYC+to+London+January+15+2026
-2. Read the search results to find the answer, OR click through to a comparison site (Kayak, Skyscanner, Google Flights via result link) that has the data.
-3. IMPORTANT: Do NOT use google.com/search — it blocks automated browsers with CAPTCHA pages. Always use duckduckgo.com instead.
-4. This is a LAST RESORT after URL construction and direct form interaction have both failed. Do not jump to search on the first turn.
-
 FORM RESET DETECTION: Some sites (especially SPAs) silently reset form fields after filling. After batch-filling a form:
 1. Use runScript to verify values stuck: document.querySelector('[aria-label="From"]')?.value or similar.
 2. If fields reset to defaults (wrong city, blank dates), do NOT re-fill with the same approach — it will reset again.
 3. Instead, switch to keyboard-only interaction: click the field, type the value character by character, wait for autocomplete dropdown, press Enter to confirm. Then Tab to the next field.
-4. If the form keeps resetting after 3 fill attempts, use the search engine fallback immediately.
 
 DATE PICKER STRATEGY: Calendar widgets often ignore programmatic fill/type. When a date field opens a calendar popup that blocks further input:
 1. Try typing the date directly into the field in the site's format (e.g., "Jan 25, 2026" or "01/25/2026"). Press Escape first if the calendar covers the input.
 2. If typing doesn't stick, use runScript to find clickable date elements: document.querySelectorAll('[data-iso],[aria-label*="January"],[aria-label*="25"]') and click the matching element.
-3. NEVER spend more than 4 turns on a single date field. If it's not set after 4 attempts, switch to the search engine fallback above.
+3. NEVER spend more than 4 turns on a single date field.
 
 WHY: Complex forms with date pickers, calendar widgets, and multi-step dropdowns consume many turns and often time out. A single "navigate" action replaces 5-10 form interaction turns. But only use this on sites that support it.`;
 
@@ -287,12 +280,7 @@ RULES:
 11. DATE PICKER STRATEGY: When a calendar popup opens over a date field:
   a. Press Escape to dismiss, then type the date directly (e.g., "Jan 25, 2026").
   b. If typing doesn't stick, use runScript to find clickable dates: document.querySelectorAll('[data-iso],[aria-label*="25"]').
-  c. NEVER spend more than 4 turns on a single date field. Switch to search fallback after 4 attempts.
-12. SEARCH ENGINE FALLBACK: When BOTH form interaction AND URL construction have failed (3+ turns stuck):
-  a. Navigate to https://duckduckgo.com/?q={goal rephrased as a search query}
-  b. Read search results or click through to comparison sites (Kayak, Skyscanner) for the data.
-  c. IMPORTANT: Do NOT use google.com/search — it blocks automated browsers with CAPTCHAs. Always use duckduckgo.com.
-  d. This is a LAST RESORT — do not use it as a first approach.`;
+  c. NEVER spend more than 4 turns on a single date field.`;
 
 /** Pattern for detecting data-extraction keywords in goal text */
 const DATA_EXTRACTION_PATTERN = /\b(extract|list|find|data|price|pric|names?|rating|cost|count)\b/i;
