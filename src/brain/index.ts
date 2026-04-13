@@ -1465,12 +1465,10 @@ Title: ${state.title}`;
       { role: 'user', content: userContent },
     ];
 
-    // Gen 27: model cascade for vision turns. Same-page non-error turns
-    // use the cheap nav model (gpt-4.1-mini) since they're just following
-    // instructions, not reasoning about new pages.
-    const useNavModel = this.shouldUseNavigationModel(state, extraContext, turnInfo);
-    const effectiveModel = useNavModel ? (this.navModelName || this.modelName) : this.modelName;
-    const modelOpts = { provider: this.provider, model: effectiveModel };
+    // REVERTED: vision model cascade to gpt-4.1-mini caused 14x token
+    // inflation (99k/turn vs 6.8k/turn). gpt-4.1-mini counts image tokens
+    // differently, hitting cost cap in 3 turns. Vision turns stay on main model.
+    const modelOpts = { provider: this.provider, model: this.modelName };
     const nearingEnd = turnInfo && turnInfo.current >= turnInfo.max - 3;
     const maxTokens = nearingEnd ? 1200 : 600;
     // Gen 15: hybrid uses the unified prompt with both action vocabularies

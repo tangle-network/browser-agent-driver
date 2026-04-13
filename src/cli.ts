@@ -952,7 +952,7 @@ async function main(): Promise<void> {
 
     const persistentLaunchStartedAt = Date.now();
     persistentContext = await chromium.launchPersistentContext(userDataDir, {
-      channel: 'chrome',
+      channel: isStealthProfile ? 'chrome' : 'chromium',
       headless: launchPlan.headless,
       args: launchPlan.browserArgs,
       viewport,
@@ -1085,10 +1085,11 @@ async function main(): Promise<void> {
     browser = await browserType.launch({
       headless: launchPlan.headless,
       ...(browserName === 'chromium' ? { args: launchPlan.browserArgs } : {}),
-      // Use system Chrome for all Chromium runs — real TLS/JA3 fingerprint
-      // vs bundled Chromium. Bundled Chromium's TLS handshake is detectably
-      // different from real Chrome, causing 403s on Cloudflare/Akamai sites.
-      ...(browserName === 'chromium' ? { channel: 'chrome' } : {}),
+      // System Chrome for stealth profiles only — real TLS/JA3 fingerprint
+      // fixes anti-bot blocking. But system Chrome renders differently than
+      // bundled Chromium on some sites (Allrecipes click timeouts, Amazon
+      // layout shifts), so only enable when anti-bot evasion is needed.
+      ...(isStealthProfile && browserName === 'chromium' ? { channel: 'chrome' } : {}),
       // Residential/SOCKS5/HTTP proxy — routes all traffic through the proxy
       ...(launchPlan.proxyServer ? { proxy: { server: launchPlan.proxyServer } } : {}),
     })
