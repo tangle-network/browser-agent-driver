@@ -103,6 +103,7 @@ async function main(): Promise<void> {
       goal: { type: 'string', short: 'g' },
       url: { type: 'string', short: 'u' },
       cases: { type: 'string', short: 'c' },
+      'cases-json': { type: 'string' },
       'allowed-domains': { type: 'string' },
 
       // LLM configuration
@@ -399,8 +400,8 @@ async function main(): Promise<void> {
   }
 
   // Validate inputs
-  if (!values.goal && !values.cases && !values['resume-run'] && !values['fork-run']) {
-    cliError('provide --goal "..." --url "..." for a single task, --cases ./cases.json for a suite, or --resume-run / --fork-run <runId>.');
+  if (!values.goal && !values.cases && !values['cases-json'] && !values['resume-run'] && !values['fork-run']) {
+    cliError('provide --goal "..." --url "..." for a single task, --cases ./cases.json (or --cases-json \'[...]\') for a suite, or --resume-run / --fork-run <runId>.');
     process.exit(1);
   }
 
@@ -809,8 +810,8 @@ async function main(): Promise<void> {
       sessionId: scenario.sessionId,
       parentRunId: scenario.parentRunId,
     }]
-  } else if (values.cases) {
-    const raw = fs.readFileSync(path.resolve(values.cases), 'utf-8');
+  } else if (values['cases-json'] || values.cases) {
+    const raw = values['cases-json'] || fs.readFileSync(path.resolve(values.cases!), 'utf-8');
     const parsed = JSON.parse(raw);
     const rawCases: Record<string, unknown>[] = Array.isArray(parsed) ? parsed : [parsed];
     // Ensure required fields — spread raw case first so explicit fields become defaults
