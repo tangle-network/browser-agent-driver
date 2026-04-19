@@ -325,7 +325,24 @@ function renderComparisonTable(name, comparison, verdict) {
   lines.push(row('turnsUsed', b.turnsUsed.mean, t.turnsUsed.mean, comparison.deltas.turnsMean, t.reps, `${t.turnsUsed.min}/${t.turnsUsed.max}`))
   lines.push(row('costUsd', b.costUsd.mean, t.costUsd.mean, comparison.deltas.costMean, t.reps, `$${t.costUsd.min.toFixed(4)}/${t.costUsd.max.toFixed(4)}`))
   lines.push(row('durationMs', b.durationMs.mean, t.durationMs.mean, comparison.deltas.durationMeanMs, t.reps, `${t.durationMs.min}/${t.durationMs.max}`))
+
+  // Gen 30: surface the bootstrap CI + Cohen's d that drove the verdict so
+  // the rejection/promotion record carries the statistics, not just means.
+  if (comparison.stats) {
+    lines.push('')
+    lines.push('## Bootstrap CI + effect size (Gen 30)')
+    lines.push('')
+    lines.push('| metric | 95% CI of Δ (treatment−baseline) | Cohen\'s d | magnitude |')
+    lines.push('|---|---|---|---|')
+    lines.push(statsRow('turnsUsed', comparison.stats.turns))
+    lines.push(statsRow('costUsd', comparison.stats.cost))
+  }
   return lines.join('\n')
+}
+
+function statsRow(label, stat) {
+  const ci = stat.ci95
+  return `| ${label} | [${fmt(ci[0])}, ${fmt(ci[1])}] | ${fmt(stat.d)} | ${stat.dMagnitude} |`
 }
 
 function row(label, baseline, treatment, delta, reps, minMax) {

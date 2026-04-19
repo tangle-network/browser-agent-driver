@@ -74,6 +74,14 @@ function seedWorktree(tmp: string) {
     path.join(repoRoot, 'scripts', 'lib', 'macro-promotion.mjs'),
     path.join(tmp, 'scripts', 'lib', 'macro-promotion.mjs'),
   )
+  // Gen 30: macro-promotion.mjs now imports from ./stats.mjs so the test
+  // worktree needs a sibling copy. Without this, Node's resolver fails
+  // with ERR_MODULE_NOT_FOUND and the promotion script exits non-zero
+  // before any candidate is processed.
+  fs.cpSync(
+    path.join(repoRoot, 'scripts', 'lib', 'stats.mjs'),
+    path.join(tmp, 'scripts', 'lib', 'stats.mjs'),
+  )
   // A dummy bench case the candidate's `benchCase` can point at. Content
   // doesn't matter for the stubbed multi-rep.
   fs.writeFileSync(path.join(tmp, 'bench', 'scenarios', 'cases', 'fake.json'), JSON.stringify([

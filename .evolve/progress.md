@@ -1,5 +1,32 @@
 # Evolve Progress
 
+## Generation 30 Round 1 — Bootstrap CI verdict for macro promotion — 2026-04-19
+
+Goal: Ship the audit-flagged B-H2 proper fix. Replace `scripts/lib/macro-promotion.mjs` first-order spread-dominance with bootstrap CI + Cohen's d on per-rep raw values, using `scripts/lib/stats.mjs` primitives that were already shipped. Pure logic, no LLM dependency — which made it the only Gen 30 task I could execute against an exhausted OpenAI quota.
+
+### Metric → product-value claim
+**Macro promotion verdict correctness**. *If the gate is statistically valid, the eval-gated capability-growth flywheel produces real compounding — skills in `skills/macros/` are demonstrably improvements. If it false-promotes, the flywheel ships noise as capability and the corpus decays.*
+
+### Shipped
+- `scripts/lib/macro-promotion.mjs`: `compare()` now emits `comparison.stats` when both sides carry `rawRuns`. `decideVerdict` routes through `decideFromBootstrap()` when stats are present (requires `bootstrapDiff95` upper bound < 0 on turns OR cost AND `|cohenD| ≥ 0.5`). Falls back to `decideFromSpread()` for legacy summaries without rawRuns — strictly more conservative, never false-promotes.
+- `scripts/run-macro-promotion.mjs`: rejection/promotion markdown now includes a bootstrap CI + effect size table alongside the raw mean table so the captured record carries the statistics that drove the verdict.
+- `tests/macro-promotion-logic.test.ts`: +6 new tests. Clean bootstrap promotion, CI-straddles-zero rejection, trivial-effect-despite-negative-CI rejection, legacy spread fallback, pass-rate regression outranks efficiency win.
+
+### Verdict: KEEP — ADVANCE
+- 1093 → 1099 tests (+6)
+- Typecheck + boundaries clean
+- Zero regressions across the 85 test files
+
+### What Round 1 did NOT ship (blocked/descoped)
+- **Funded-key multi-rep of local-smoke + curated-30** — blocked on OpenAI quota exhaustion on this machine. Queued for Round 2 when a fresh key is available.
+- **Domain-skill smoke fixture** — needs a local HTML fixture + an in-browser test run, i.e. LLM-dependent. Queued for Round 2.
+- **cli.ts session-skill extraction** — cosmetic, no measurement value. Will stay deferred unless the file grows further.
+
+### Hand-off for Round 2
+Run `/evolve` with a funded API key. First task: 3-rep multi-rep baseline of `bench/scenarios/cases/local-smoke.json` on main vs this branch to prove no regression from the Gen 29 prompt-block additions. Second task: a local cookie-banner fixture + seeded domain skill + A/B run to measure domain-skill-on vs domain-skill-off.
+
+---
+
 ## Generation 29 — Browser-Harness Integration — 2026-04-18
 
 Pursuit: `.evolve/pursuits/2026-04-18-browser-harness-integration-gen29.md`

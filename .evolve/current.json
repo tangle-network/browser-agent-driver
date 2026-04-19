@@ -1,12 +1,17 @@
 {
   "mode": "evolve",
   "goal": "#1 on WebVoyager + employee-grade agent",
-  "status": "gen29-infra-shipped-awaiting-funded-key-measurement",
-  "generation": 29,
+  "status": "gen30-r1-shipped-bootstrap-CI-verdict",
+  "generation": 30,
+  "round": 1,
   "branch": "gen29-browser-harness-integration",
   "npmVersion": "0.24.1",
   "activePursuit": null,
+  "metricClaims": {
+    "macroPromotionVerdictCorrectness": "If the gate is statistically valid, the eval-gated capability-growth flywheel produces real compounding — skills in skills/macros/ are demonstrably improvements. False-promotion ships noise as capability and the corpus decays."
+  },
   "shipped": {
+    "gen30r1": "bootstrap CI + Cohen's d verdict in scripts/lib/macro-promotion.mjs — addresses audit B-H2 properly, replaces Gen 29 first-order spread-dominance",
     "gen29": "browser-harness integration — attach to real Chrome, portable domain-skill loader, custom action macros, eval-gated promotion",
     "gen28": "per-role model orchestration",
     "gen27": "stealth, anti-bot, form intelligence, CAPTCHA, card dedup, system Chrome",
@@ -16,11 +21,14 @@
     "datadome": "behavioral timing bypass",
     "compression": "aggressive context window pruning"
   },
-  "gen29Metrics": {
-    "testsBefore": 1015,
-    "testsAfter": 1093,
-    "netNewTests": 78,
-    "llmMeasurement": "blocked by OpenAI quota exhaustion on this machine; carries to Gen 30"
+  "gen30Metrics": {
+    "r1TestsBefore": 1093,
+    "r1TestsAfter": 1099,
+    "r1NetNewTests": 6,
+    "r1DescoperedForR2": [
+      "domain-skill smoke fixture (needs local HTML + in-browser test)",
+      "funded-key multi-rep baseline (blocked on OpenAI quota)"
+    ]
   },
   "heldOutResults": {
     "competitive": "10/10 (100%)",
@@ -32,6 +40,6 @@
     "gen25_full_run": "539/590 (91.3%) at $54",
     "gen27_estimated": "93-96% (NEVER MEASURED)"
   },
-  "criticalGap": "No full WebVoyager 590 run since Gen 25; 9 generations of improvements now pending measurement. Gen 30's first task.",
-  "updatedAt": "2026-04-18T23:45:00Z"
+  "criticalGap": "No full WebVoyager 590 run since Gen 25; 9 generations pending measurement. Blocked on funded API key.",
+  "updatedAt": "2026-04-19T00:05:00Z"
 }
