@@ -189,6 +189,25 @@ export interface TypeLabelAction {
   text: string;
 }
 
+/**
+ * Gen 29: invoke a named macro defined in `skills/macros/<name>.json`. The
+ * macro expands into a sequence of existing primitive actions. The driver
+ * executes each step in order; the first failure aborts the macro and its
+ * error is surfaced as the macro's ActionResult error.
+ *
+ * Macros are flat (cannot call other macros) to keep dispatch bounded and
+ * to avoid cycles. They receive arguments via `args`, which is substituted
+ * into `${paramName}` placeholders in each step's string fields.
+ */
+export interface MacroAction {
+  action: 'macro';
+  /** Macro name, matches a registered MacroDefinition */
+  name: string;
+  /** Arguments to interpolate into the macro's steps. Optional when the
+   *  macro has no declared parameters. */
+  args?: Record<string, string>;
+}
+
 export type Action =
   | ClickAction
   | TypeAction
@@ -209,7 +228,8 @@ export type Action =
   | ClickAtAction
   | TypeAtAction
   | ClickLabelAction
-  | TypeLabelAction;
+  | TypeLabelAction
+  | MacroAction;
 
 // ============================================================================
 // Plan - Structured action sequence (Gen 7)

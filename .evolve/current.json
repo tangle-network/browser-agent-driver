@@ -1,30 +1,37 @@
 {
-  "mode": "pursue",
-  "goal": "#1 on WebVoyager",
-  "status": "all-gens-shipped-need-measurement",
-  "generation": 27,
-  "branch": "main",
-  "npmVersion": "0.24.0",
+  "mode": "evolve",
+  "goal": "#1 on WebVoyager + employee-grade agent",
+  "status": "gen29-infra-shipped-awaiting-funded-key-measurement",
+  "generation": 29,
+  "branch": "gen29-browser-harness-integration",
+  "npmVersion": "0.24.1",
+  "activePursuit": null,
   "shipped": {
-    "gen27": "stealth, anti-bot, form intelligence, CAPTCHA, card dedup, system Chrome",
-    "gen21": "parallel tab execution",
-    "gen26b": "site pattern learning from successful runs",
+    "gen29": "browser-harness integration — attach to real Chrome, portable domain-skill loader, custom action macros, eval-gated promotion",
     "gen28": "per-role model orchestration",
+    "gen27": "stealth, anti-bot, form intelligence, CAPTCHA, card dedup, system Chrome",
+    "gen26b": "site pattern learning from successful runs",
     "gen24b": "checkpoint replay on wrong-path failures",
-    "datadome": "behavioral timing bypass (page warm-up, micro-movements)",
-    "compression": "aggressive context window pruning (30-60k → 8-12k)"
+    "gen21": "parallel tab execution",
+    "datadome": "behavioral timing bypass",
+    "compression": "aggressive context window pruning"
   },
-  "unpublished": "71195a9 (checkpoint + DataDome + compression) → needs v0.25.0",
+  "gen29Metrics": {
+    "testsBefore": 1015,
+    "testsAfter": 1093,
+    "netNewTests": 78,
+    "llmMeasurement": "blocked by OpenAI quota exhaustion on this machine; carries to Gen 30"
+  },
   "heldOutResults": {
     "competitive": "10/10 (100%)",
     "webbench50_raw": "44/50 (88%)",
-    "webbench50_excl_datadome": "44/46 (95.7%) — DataDome bypass now shipped, untested",
+    "webbench50_excl_datadome": "44/46 (95.7%)",
     "systemChromeUnblocked": "9/13 previously-blocked sites"
   },
   "webvoyagerBaseline": {
     "gen25_full_run": "539/590 (91.3%) at $54",
-    "gen27_estimated": "93-96% (NEVER MEASURED — all improvements untested at scale)"
+    "gen27_estimated": "93-96% (NEVER MEASURED)"
   },
-  "criticalGap": "No full WebVoyager 590 run since Gen 25. We've shipped 8 generations of improvements but the real number is unknown.",
-  "updatedAt": "2026-04-11T23:20:00Z"
+  "criticalGap": "No full WebVoyager 590 run since Gen 25; 9 generations of improvements now pending measurement. Gen 30's first task.",
+  "updatedAt": "2026-04-18T23:45:00Z"
 }

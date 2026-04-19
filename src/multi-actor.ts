@@ -150,6 +150,10 @@ export class MultiActorSession {
         const context = await browser.newContext(contextOptions);
         createdContexts.push(context);
         const page = await context.newPage();
+        // Gen 29 caveat: multi-actor flows do NOT receive the shared macro
+        // registry. The caller is expected to pass macros via
+        // actorCfg.driverOptions.macros if a given actor should see them.
+        // Domain skills + extensions propagate via the normal AgentConfig path.
         const driver = new PlaywrightDriver(page, actorCfg.driverOptions);
 
         // Wire onTurn to prefix with actor name

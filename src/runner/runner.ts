@@ -192,6 +192,12 @@ export interface BrowserAgentOptions {
    * the brain's system prompt composer.
    */
   extensions?: ResolvedExtensions;
+  /**
+   * Gen 29: macro registry loaded from skills/macros/*.json. When provided,
+   * the rendered promptBlock is injected into the system prompt so the agent
+   * knows which macros exist; macro dispatch happens in the driver.
+   */
+  macroPromptBlock?: string;
 }
 
 /**
@@ -298,6 +304,8 @@ export class BrowserAgent {
   // persists, never crosses runs.
   private decisionCache?: DecisionCache;
   private extensions?: ResolvedExtensions;
+  /** Gen 29: cached so compound-goal sub-tabs inherit the macro catalog. */
+  private macroPromptBlock?: string;
 
   constructor(options: BrowserAgentOptions) {
     this.driver = options.driver;
@@ -319,6 +327,10 @@ export class BrowserAgent {
       // Subscribe extensions to the event bus so onTurnEvent fires for
       // every emitted event without callers having to wire it up.
       this.bus.subscribe(this.extensions.fanOutTurnEvent, false);
+    }
+    if (options.macroPromptBlock) {
+      this.brain.setMacroPromptBlock(options.macroPromptBlock);
+      this.macroPromptBlock = options.macroPromptBlock;
     }
     this.projectStore = options.projectStore;
     this.runRegistry = options.runRegistry;
@@ -342,6 +354,13 @@ export class BrowserAgent {
         );
         if (decomposition.type === 'compound' && decomposition.subGoals) {
           const { runParallel } = await import('./parallel-runner.js');
+          // Inherit the top-level macro catalog + driver's macro registry so
+          // sub-tab agents see the same capability surface. Without this the
+          // sub-agents emit macro actions (their brain still has the block)
+          // into a driver that rejects them — a silent failure mode.
+          const topDriverOptions = this.driver.getDriverOptions?.() as
+            | import('../drivers/playwright.js').PlaywrightDriverOptions
+            | undefined;
           const result = await runParallel({
             context,
             config: this.config,
@@ -350,6 +369,8 @@ export class BrowserAgent {
             scenario,
             onTurn: this.onTurn ? (_label: string, turn: Turn) => this.onTurn!(turn) : undefined,
             projectStore: this.projectStore,
+            ...(topDriverOptions ? { driverOptions: topDriverOptions } : {}),
+            ...(this.macroPromptBlock ? { macroPromptBlock: this.macroPromptBlock } : {}),
           });
           return {
             success: result.success,

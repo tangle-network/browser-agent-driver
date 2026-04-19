@@ -1,5 +1,77 @@
 # Evolve Progress
 
+## Generation 29 — Browser-Harness Integration — 2026-04-18
+
+Pursuit: `.evolve/pursuits/2026-04-18-browser-harness-integration-gen29.md`
+Branch: `gen29-browser-harness-integration`
+
+**Thesis:** eval-gated capability growth. Take the three primitives browser-use/browser-harness shipped (attach to real Chrome, shared skill corpus, mutable tool surface) and wire them into our measurement harness so every new capability earns promotion through reps.
+
+### Shipped (4 pillars)
+
+1. **`bad --attach` + `bad chrome-debug`** (`src/cli-attach.ts` + `src/cli.ts`)
+   - CDP attach to the user's real Chrome via `/json/version` probe
+   - `chrome-debug` launcher for system Chrome with `--remote-debugging-port=9222` against the user's real profile
+   - Hard errors (not silent fallbacks) on wallet/extension/profile-dir conflicts
+   - 28 tests incl. a real `http.Server` probe + real spawn/poll/exit-code paths
+
+2. **Portable domain-skill loader** (`src/skills/domain-loader.ts` + `skills/domain/`)
+   - `skills/domain/<host>/SKILL.md` with YAML frontmatter (host + aliases)
+   - Pipes through the existing `resolveExtensions → setExtensionRules → matchDomainRules` path at `brain/index.ts:865`
+   - 5 seeded skills: amazon, linkedin, github, stackoverflow, wikipedia (~70 lines each)
+   - Alias dedupe: don't double-emit bodies when alias is substring-reachable from primary host
+   - 18 tests
+
+3. **Custom action macros (Stage A)** (`src/types.ts`, `src/skills/macro-loader.ts`, `src/drivers/playwright.ts`, `src/brain/index.ts`)
+   - New `MacroAction = { action:'macro', name, args? }` primitive
+   - Macros = composition of safe primitives (whitelist at load time, nesting rejected)
+   - `MAX_MACRO_STEPS=8` cap bounds wall-time against the action-timeout budget
+   - Unresolved `${param}` placeholders fail the macro at dispatch, not silently type into the DOM
+   - Seed corpus: `skills/macros/{dismiss-cookie-banner,search-and-submit}.json`
+   - 24 unit + 7 driver integration + 4 brain-prompt tests
+
+4. **Eval-gated promotion (Stage B)** (`scripts/run-macro-promotion.mjs` + `scripts/lib/macro-promotion.mjs`)
+   - Candidate JSON at `.evolve/candidates/macros/<name>.json`
+   - Stages the macro in a tmpdir (`BAD_MACROS_DIR` env override), runs multi-rep baseline vs treatment, compares via the shared `decideVerdict` helper
+   - **Spread-dominance rule per CLAUDE.md §Measurement Rigor:** auto-promote only when the delta exceeds observed min/max spread on either side — noise doesn't promote
+   - SIGINT/SIGTERM handler cleans staging dirs; rejection report written before candidate unlink
+   - Macro-name regex re-validated at candidate level to block `../etc/passwd` path traversal in auto-promote file writes
+   - 15 pure-logic + 3 end-to-end tests with stubbed multi-rep
+
+### Test count
+- Before Gen 29: 1015 tests
+- After Gen 29: **1093 tests** (+78 net new)
+- Tier1 deterministic gate: **blocked by OpenAI quota exhaustion on this machine**; carries forward to Gen 30's first task with a fresh key
+
+### Honest measurement status (CLAUDE.md §Measurement Rigor)
+- Unit + integration coverage: 1093/1093 passing
+- Real-TCP-listener probe test for `cli-attach` — the feature isn't a fabricated fetch
+- Zero single-run speed/turn/cost claims in this changeset. The LLM-dependent bench harness could not run due to API quota; no numbers are claimed, per §Measurement Rigor rule 1
+
+### Phase 3.5 critical audit
+Dispatched via `/critical-audit --diff-only` with three serial reviewers. CRITICAL + HIGH findings addressed in the same PR:
+
+- A-C1 — promotion script `rootDir` Windows/spaces bug (`fileURLToPath` fix)
+- A-C2 — macro-name path traversal in candidate JSON (regex validation pre-write)
+- B-C1 — macros not reaching compound-goal parallel sub-tabs (thread `driverOptions` + `macroPromptBlock` through `runParallel`)
+- A-H1 — probe body-read hang (single AbortController spans connect+body per fetch spec)
+- A-H2 — Chrome zombie on spawn+timeout (SIGTERM child, capture exit code for diagnostics)
+- A-H3 — promotion script orphans on SIGINT (handler + write-rejection-before-unlink ordering)
+- B-H2 — promotion thresholds not statistically valid (spread-dominance rule added)
+- B-H3 — macros had no wall-time cap (MAX_MACRO_STEPS=8 at load time)
+- B-H4 — `validateAttachConflicts` silent fallback on profile flags (hard errors)
+- C-C1/H1/H2/H3 — test coverage gaps closed: real-TCP-listener probe, real spawn/poll/exit, promotion-script end-to-end, Brain.setMacroPromptBlock reset
+
+Deferred to Gen 30: cli.ts extraction (cosmetic), domain-skill smoke fixture, domain-skill promotion (mirror of macro promotion), real multi-rep baseline with a funded API key.
+
+### Verdict
+**ADVANCE — infrastructure ships green; LLM-dependent measurement carries to Gen 30 per honest descoping.** 78 net new tests including real-infra probe + real spawn/poll for attach, end-to-end promotion-script test, nested-macro dispatch-guard test. All audit CRITICALs and merge-blocker HIGHs resolved in-PR.
+
+### Hand-off
+Run `/evolve` targeting (a) Gen 30's first task: funded-key multi-rep of attach + skills + macros against `local-smoke` and `curated-30` to prove non-regression, (b) domain-skill Tier-1 fixture case so the eval-gated domain-skill promotion mirror can ship, (c) integrate `scripts/lib/stats.mjs` bootstrap CI into the macro promotion verdict (current spread-dominance is first-order, not a full bootstrap).
+
+---
+
 ## Generation 9 — CLOSED WITHOUT MERGE — 2026-04-08
 
 **Approach:** runtime two-pass extraction. When planner-emitted runScript returned null/empty, fall through to per-action loop with `[REPLAN]` context.

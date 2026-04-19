@@ -177,6 +177,8 @@ async function main(): Promise<void> {
       'user-data-dir': { type: 'string' },
       'profile-dir': { type: 'string' },
       'cdp-url': { type: 'string' },
+      attach: { type: 'boolean' },
+      'attach-port': { type: 'string' },
       wallet: { type: 'boolean' },
       'wallet-auto-approve': { type: 'boolean' },
       'wallet-password': { type: 'string' },
@@ -357,6 +359,17 @@ async function main(): Promise<void> {
       quality: values['quality-threshold'] ? parseInt(values['quality-threshold']) : undefined,
     });
     process.exit(0);
+  }
+
+  if (command === 'chrome-debug') {
+    const { runChromeDebugCommand } = await import('./cli-attach.js')
+    const port = values['attach-port'] ? parseInt(values['attach-port'], 10) : undefined
+    const rc = await runChromeDebugCommand({
+      port,
+      userDataDir: values['user-data-dir'],
+      quiet: values.quiet,
+    })
+    process.exit(rc)
   }
 
   if (command === 'auth') {
@@ -544,6 +557,39 @@ async function main(): Promise<void> {
   if (values['profile-dir']) cliOverrides.profileDir = values['profile-dir']
   if (values['cdp-url']) cliOverrides.cdpUrl = values['cdp-url']
 
+  // --attach resolves to cdpUrl by probing a running Chrome's DevTools
+  // endpoint. Done here (pre-config-merge) so the existing cdpUrl path at
+  // cli.ts:916 takes over unchanged. Conflicts with wallet/extension/profile
+  // flags are surfaced up-front rather than silently ignored.
+  if (values.attach) {
+    if (values['cdp-url']) {
+      cliError('--attach and --cdp-url are mutually exclusive (both select a CDP endpoint). Use one.')
+      process.exit(1)
+    }
+    const { resolveAttachEndpoint, validateAttachConflicts } = await import('./cli-attach.js')
+    const conflicts = validateAttachConflicts({
+      walletEnabled: Boolean(cliOverrides.wallet?.enabled) || Boolean(values.extension?.length),
+      profileDir: values['profile-dir'],
+      extensionPaths: values.extension,
+      userDataDir: values['user-data-dir'],
+    })
+    if (!conflicts.ok) {
+      for (const err of conflicts.errors) cliError(err)
+      process.exit(1)
+    }
+    const port = values['attach-port'] ? parseInt(values['attach-port'], 10) : undefined
+    if (port !== undefined && !Number.isFinite(port)) {
+      cliError(`Invalid --attach-port value: ${values['attach-port']}`)
+      process.exit(1)
+    }
+    const info = await resolveAttachEndpoint({ port }).catch((err) => {
+      cliError(err instanceof Error ? err.message : String(err))
+      process.exit(1)
+    })
+    cliOverrides.cdpUrl = info.webSocketDebuggerUrl
+    if (!values.quiet) cliLog('attach', `connected to ${info.browser ?? 'Chrome'}`)
+  }
+
   if (values.memory !== undefined || values['memory-dir']) {
     cliOverrides.memory = {
       ...(cliOverrides.memory ?? {}),
@@ -710,6 +756,28 @@ async function main(): Promise<void> {
     : explicitExtPaths
       ? [explicitExtPaths]
       : []
+  // Domain skills: markdown-based per-host rule libraries under
+  // skills/domain/<host>/SKILL.md. They plumb into the same BadExtension
+  // pipeline as user `bad.config.mjs` files via addRulesForDomain, so the
+  // existing setExtensionRules injection at brain/index.ts:899 picks them up
+  // with no second injection site. Gated by BAD_DOMAIN_SKILLS_DISABLED=1.
+  const domainSkillsDisabled = process.env.BAD_DOMAIN_SKILLS_DISABLED === '1'
+  let domainSkillExtension: import('./extensions/types.js').BadExtension | undefined
+  let domainSkillsLoadedCount = 0
+  if (!domainSkillsDisabled) {
+    const { loadDomainSkills, buildDomainSkillExtension } = await import('./skills/domain-loader.js')
+    const domainLoad = await loadDomainSkills()
+    if (domainLoad.skills.length > 0) {
+      domainSkillExtension = buildDomainSkillExtension(domainLoad.skills)
+      domainSkillsLoadedCount = domainLoad.skills.length
+    }
+    if (domainLoad.errors.length > 0 && !values.json) {
+      for (const err of domainLoad.errors) {
+        cliWarn(`domain-skill load failed: ${err.path} — ${err.error}`)
+      }
+    }
+  }
+
   const extensionLoad = await loadExtensions({ explicitPaths: explicitExtArr });
   if (extensionLoad.loadedFrom.length > 0 && !values.json) {
     cliLog('extensions', `loaded ${extensionLoad.loadedFrom.length}: ${extensionLoad.loadedFrom.join(', ')}`);
@@ -717,6 +785,34 @@ async function main(): Promise<void> {
   if (extensionLoad.errors.length > 0 && !values.json) {
     for (const err of extensionLoad.errors) {
       cliWarn(`extension load failed: ${err.path} — ${err.error}`);
+    }
+  }
+  if (domainSkillExtension && domainSkillsLoadedCount > 0) {
+    // Re-resolve the bundle with the domain-skill synthetic extension
+    // merged in. Resolving twice is cheap (the list is short) and keeps
+    // domainSkillExtension from having to plumb through a separate wire.
+    const { resolveExtensions } = await import('./extensions/types.js')
+    const combined = resolveExtensions([...extensionLoad.resolved.extensions, domainSkillExtension])
+    extensionLoad.resolved = combined
+    if (!values.json) cliLog('skills', `domain: ${domainSkillsLoadedCount} loaded`)
+  }
+
+  // Gen 29: macros. Loaded alongside domain skills; gated by
+  // BAD_MACROS_DISABLED=1. The registry is passed to PlaywrightDriver
+  // (dispatch) and its promptBlock to the BrowserAgent (visibility).
+  const macrosDisabled = process.env.BAD_MACROS_DISABLED === '1'
+  let macroRegistry: import('./skills/macro-loader.js').MacroRegistry | undefined
+  if (!macrosDisabled) {
+    const { loadMacros, buildMacroRegistry } = await import('./skills/macro-loader.js')
+    const macroLoad = await loadMacros()
+    if (macroLoad.errors.length > 0 && !values.json) {
+      for (const err of macroLoad.errors) {
+        cliWarn(`macro load failed: ${err.path} — ${err.error}`)
+      }
+    }
+    if (macroLoad.macros.length > 0) {
+      macroRegistry = buildMacroRegistry(macroLoad.macros)
+      if (!values.json) cliLog('skills', `macros: ${macroLoad.macros.length} loaded`)
     }
   }
 
@@ -1278,6 +1374,7 @@ async function main(): Promise<void> {
       visionStrategy: config.visionStrategy,
       screenshotInterval,
       showCursor: values['show-cursor'],
+      ...(macroRegistry ? { macros: macroRegistry } : {}),
     });
     // Apply resource blocking if configured
     const resourceBlockingStartedAt = Date.now();
@@ -1337,6 +1434,7 @@ async function main(): Promise<void> {
     screenshotInterval,
     artifactSink: sink,
     extensions: extensionLoad.resolved,
+    ...(macroRegistry ? { macroPromptBlock: macroRegistry.promptBlock } : {}),
     ...(liveBus ? { eventBus: liveBus } : {}),
     onProgress: (event) => {
       if (values.json) {

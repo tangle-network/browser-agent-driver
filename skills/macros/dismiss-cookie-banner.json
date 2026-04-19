@@ -1,0 +1,11 @@
+{
+  "name": "dismiss-cookie-banner",
+  "description": "Accept/dismiss a standard cookie consent banner by clicking the 'Accept' button, then give the page 500ms to settle so the next snapshot sees the dismissed layout. Use when the snapshot contains a role=dialog with cookie/consent text and a visible Accept button ref.",
+  "params": [
+    { "name": "acceptRef", "description": "The ref of the Accept/Accept all/OK button inside the banner", "required": true }
+  ],
+  "steps": [
+    { "action": "click", "selector": "${acceptRef}" },
+    { "action": "wait", "ms": 500 }
+  ]
+}

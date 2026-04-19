@@ -20,6 +20,8 @@ import { CURSOR_OVERLAY_INIT_SCRIPT } from './cursor-overlay.js';
 import { runExtractWithIndex, formatExtractWithIndexResult } from './extract-with-index.js';
 import { SOM_INJECT_SCRIPT, SOM_REMOVE_SCRIPT } from './som-overlay.js';
 import type { SomElement } from './som-overlay.js';
+import type { MacroRegistry } from '../skills/macro-loader.js';
+import { interpolateStep } from '../skills/macro-loader.js';
 
 function isPointerInterceptError(error: string): boolean {
   return /intercepts pointer events|subtree intercepts pointer events|not receiving pointer events/i.test(error);
@@ -145,6 +147,10 @@ export interface PlaywrightDriverOptions {
    * screenshot lands wherever the transition has reached by then.
    */
   showCursor?: boolean;
+  /** Gen 29: registry of user-defined macros the agent can invoke via
+   * `{action:"macro", name:..., args:...}`. When omitted, macro calls fail
+   * with an error message referencing the missing name. */
+  macros?: MacroRegistry;
 }
 
 export class PlaywrightDriver implements Driver {
@@ -544,6 +550,12 @@ export class PlaywrightDriver implements Driver {
     }
   }
 
+  /** Expose construction options so runners can clone this driver's config
+   * onto a sub-driver (compound-goal parallel tabs). */
+  getDriverOptions(): PlaywrightDriverOptions {
+    return this.options;
+  }
+
   /**
    * Execute an action first. If it fails and a blocking overlay is detected,
    * dismiss it and retry once.
@@ -930,6 +942,52 @@ export class PlaywrightDriver implements Driver {
           await this.page.waitForTimeout(100);
           await this.page.keyboard.type(action.text);
           return { success: true, bounds: { x: el.x, y: el.y, width: el.width, height: el.height } };
+        }
+
+        case 'macro': {
+          // Gen 29: expand a named macro into its composed safe-primitive
+          // steps and execute each via this.execute. Flat-only (the loader
+          // forbids macro-in-macro), so recursion depth is bounded at 1.
+          // A step failure short-circuits the macro with a contextual error.
+          const registry = this.options.macros;
+          if (!registry) {
+            return { success: false, error: `No macro registry loaded; cannot invoke "${action.name}"` };
+          }
+          const macro = registry.macros.get(action.name);
+          if (!macro) {
+            const known = [...registry.macros.keys()].join(', ') || '(none)';
+            return { success: false, error: `Unknown macro "${action.name}". Known: ${known}` };
+          }
+          const args = action.args ?? {};
+          for (const spec of macro.params) {
+            if (spec.required !== false && !(spec.name in args)) {
+              return { success: false, error: `macro "${macro.name}" missing required arg "${spec.name}"` };
+            }
+          }
+          let lastBounds: ActionResult['bounds'];
+          for (let i = 0; i < macro.steps.length; i++) {
+            const { step, unresolved } = interpolateStep(macro.steps[i], args);
+            if (unresolved.length > 0) {
+              return {
+                success: false,
+                error: `macro "${macro.name}" step ${i + 1} has unresolved params: ${unresolved.join(', ')} (pass them in args or mark required:false when you mean "optional")`,
+              };
+            }
+            // Defensive: the loader rejected nested macros, but a malicious
+            // on-disk file could still put one in; dispatch refuses anyway.
+            if (step.action === 'macro') {
+              return { success: false, error: `macro "${macro.name}" tried to invoke another macro (nesting disallowed)` };
+            }
+            const result = await this.execute(step);
+            if (!result.success) {
+              return {
+                success: false,
+                error: `macro "${macro.name}" failed at step ${i + 1}/${macro.steps.length} (${step.action}): ${result.error ?? 'unknown'}`,
+              };
+            }
+            if (result.bounds) lastBounds = result.bounds;
+          }
+          return { success: true, ...(lastBounds ? { bounds: lastBounds } : {}) };
         }
 
         default:
