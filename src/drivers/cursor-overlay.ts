@@ -241,6 +241,56 @@ export const CURSOR_OVERLAY_INIT_SCRIPT = `
     overflow: 'hidden',
   });
 
+  // ── Gen 34 Hydra View — fan-out grid (live thumbnails of sub-tabs) ─────
+  // Full-viewport dim overlay + grid of live sub-tab screenshot cells.
+  // Cells lay out based on count: 1→1, 2→1x2, 3-4→2x2, 5-6→2x3, 7-8→2x4.
+  // Each cell background updates via updateFanOutCell(i, dataUrl, meta).
+  const hydra = document.createElement('div');
+  hydra.id = '__bad_overlay_hydra';
+  Object.assign(hydra.style, {
+    position: 'fixed',
+    inset: '0',
+    display: 'none',
+    background: 'radial-gradient(ellipse at center, rgba(11,18,32,0.80) 0%, rgba(11,18,32,0.95) 100%)',
+    backdropFilter: 'blur(6px)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'column',
+    gap: '20px',
+    transition: 'opacity 400ms ease',
+    opacity: '0',
+    pointerEvents: 'none',
+  });
+  const hydraTitle = document.createElement('div');
+  Object.assign(hydraTitle.style, {
+    fontSize: '11px',
+    fontWeight: '700',
+    letterSpacing: '0.16em',
+    textTransform: 'uppercase',
+    color: '#7aa2ff',
+    textAlign: 'center',
+  });
+  hydraTitle.textContent = 'Fan-out · investigating branches in parallel';
+  const hydraGrid = document.createElement('div');
+  hydraGrid.id = '__bad_overlay_hydra_grid';
+  Object.assign(hydraGrid.style, {
+    display: 'grid',
+    gap: '16px',
+    maxWidth: '1200px',
+    maxHeight: '70vh',
+    padding: '0 40px',
+  });
+  const hydraCounter = document.createElement('div');
+  Object.assign(hydraCounter.style, {
+    fontSize: '13px',
+    color: '#e6ebf5',
+    fontWeight: '600',
+    textAlign: 'center',
+  });
+  hydra.appendChild(hydraTitle);
+  hydra.appendChild(hydraGrid);
+  hydra.appendChild(hydraCounter);
+
   // Append to documentElement (not body) so the overlay is not affected by
   // body's stacking context — many modern sites apply transform/will-change
   // to body which would clip a max-z-index child appended to body.
@@ -263,6 +313,7 @@ export const CURSOR_OVERLAY_INIT_SCRIPT = `
     root.appendChild(ring);
     root.appendChild(cursor);
     root.appendChild(label);
+    root.appendChild(hydra);
   }
   attach();
 
@@ -416,6 +467,219 @@ export const CURSOR_OVERLAY_INIT_SCRIPT = `
     clearBadges() {
       try {
         while (badges.firstChild) badges.removeChild(badges.firstChild);
+      } catch { /* cosmetic */ }
+    },
+
+    // ── Gen 34 Hydra API ─────────────────────────────────────────────
+    /**
+     * Begin a fan-out: render the dim overlay + grid of N labeled cells.
+     * Cells start in "queued" state (empty). Call updateFanOutCell(i, ...)
+     * as sub-agent screenshots stream in.
+     *
+     * labels: human-readable label per cell, one per sub-agent.
+     * originX/originY: optional viewport coord where the fan-out was
+     *   initiated — cells burst outward from this point (default: center).
+     */
+    fanOutStart(labels, originX, originY) {
+      try {
+        const n = Math.max(1, Math.min(8, labels.length));
+        // Layout: 1→1, 2→1x2, 3-4→2x2, 5-6→3x2, 7-8→4x2
+        const cols = n === 1 ? 1 : n === 2 ? 2 : n <= 4 ? 2 : n <= 6 ? 3 : 4;
+        const rows = Math.ceil(n / cols);
+        hydraGrid.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
+        hydraGrid.style.gridTemplateRows = 'repeat(' + rows + ', 1fr)';
+        // Cell size: scale to fit. For a 1200x600 viewport budget:
+        const cellW = Math.floor(1120 / cols) - 10;
+        const cellH = Math.floor(Math.min(520 / rows, cellW * 0.7));
+        // Clear prior cells
+        while (hydraGrid.firstChild) hydraGrid.removeChild(hydraGrid.firstChild);
+        const originPx = typeof originX === 'number' && typeof originY === 'number'
+          ? { x: originX, y: originY }
+          : { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+        for (let i = 0; i < n; i++) {
+          const cell = document.createElement('div');
+          cell.className = '__bad_hydra_cell';
+          cell.dataset.index = String(i);
+          Object.assign(cell.style, {
+            position: 'relative',
+            width: cellW + 'px',
+            height: cellH + 'px',
+            background: '#0b1220',
+            backgroundSize: 'cover',
+            backgroundPosition: 'center top',
+            border: '2px solid rgba(122,162,255,0.55)',
+            borderRadius: '10px',
+            overflow: 'hidden',
+            boxShadow: '0 10px 30px rgba(0,0,0,0.55), inset 0 0 0 1px rgba(122,162,255,0.2)',
+            opacity: '0',
+            transform: 'translate(' + (originPx.x - window.innerWidth / 2) + 'px, ' + (originPx.y - window.innerHeight / 2) + 'px) scale(0.15)',
+            transition: 'transform 480ms cubic-bezier(0.34, 1.56, 0.64, 1), opacity 300ms ease, border-color 300ms ease, box-shadow 300ms ease',
+          });
+          // Header strip: label + live elapsed
+          const header = document.createElement('div');
+          Object.assign(header.style, {
+            position: 'absolute',
+            top: '0', left: '0', right: '0',
+            padding: '6px 10px',
+            background: 'linear-gradient(180deg, rgba(11,18,32,0.95) 0%, rgba(11,18,32,0.0) 100%)',
+            color: '#e6ebf5',
+            fontSize: '11px',
+            fontWeight: '700',
+            letterSpacing: '0.04em',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          });
+          const headerLabel = document.createElement('span');
+          headerLabel.textContent = labels[i] || ('branch-' + (i + 1));
+          const headerTimer = document.createElement('span');
+          headerTimer.className = '__bad_hydra_timer';
+          headerTimer.style.cssText = 'font-family:SF Mono,Menlo,monospace;font-size:10px;color:#9aa3b8;font-weight:500;';
+          headerTimer.textContent = '0.0s';
+          header.appendChild(headerLabel);
+          header.appendChild(headerTimer);
+          cell.appendChild(header);
+          // Verdict chip (hidden until complete)
+          const chip = document.createElement('div');
+          chip.className = '__bad_hydra_chip';
+          Object.assign(chip.style, {
+            position: 'absolute',
+            bottom: '8px',
+            left: '8px',
+            padding: '3px 10px',
+            background: 'rgba(11,18,32,0.92)',
+            color: '#ffffff',
+            fontSize: '10px',
+            fontWeight: '700',
+            letterSpacing: '0.05em',
+            textTransform: 'uppercase',
+            borderRadius: '6px',
+            opacity: '0',
+            transition: 'opacity 220ms ease',
+          });
+          cell.appendChild(chip);
+          hydraGrid.appendChild(cell);
+        }
+        hydra.style.display = 'flex';
+        hydraCounter.textContent = '0 / ' + n + ' branches complete';
+        // Next frame: fade in + animate cells to their grid positions
+        requestAnimationFrame(() => {
+          hydra.style.opacity = '1';
+          const cells = hydraGrid.children;
+          for (let i = 0; i < cells.length; i++) {
+            const c = cells[i];
+            // Staggered burst: 0ms, 60ms, 120ms, ...
+            setTimeout(function () {
+              c.style.opacity = '1';
+              c.style.transform = 'translate(0, 0) scale(1)';
+            }, i * 60);
+          }
+        });
+        // Start the elapsed-time ticker
+        hydra.__tickerStart = Date.now();
+        if (hydra.__ticker) clearInterval(hydra.__ticker);
+        hydra.__ticker = setInterval(function () {
+          const elapsed = (Date.now() - hydra.__tickerStart) / 1000;
+          const cells = hydraGrid.children;
+          for (let i = 0; i < cells.length; i++) {
+            const cell = cells[i];
+            if (cell.__completedAt) continue;
+            const timer = cell.querySelector('.__bad_hydra_timer');
+            if (timer) timer.textContent = elapsed.toFixed(1) + 's';
+          }
+        }, 100);
+      } catch { /* cosmetic */ }
+    },
+
+    /**
+     * Update cell N with a fresh screenshot (data URL) and/or metadata.
+     * Call this at 2-5 FPS from the runner's screenshot streamer.
+     *   meta: { action?: string, turn?: number }
+     */
+    fanOutUpdateCell(index, dataUrl, meta) {
+      try {
+        const cell = hydraGrid.children[index];
+        if (!cell) return;
+        if (dataUrl) {
+          cell.style.backgroundImage = 'url("' + dataUrl + '")';
+        }
+        // eslint-disable-next-line no-empty
+        if (meta) { /* reserved for future overlays inside the cell */ }
+      } catch { /* cosmetic */ }
+    },
+
+    /**
+     * Mark cell N as complete with a verdict. kind is one of
+     * 'positive' | 'cleared' | 'review' | 'info'. Final state: border
+     * recolors, chip fades in, timer freezes.
+     */
+    fanOutCompleteCell(index, kind, verdictText) {
+      try {
+        const cell = hydraGrid.children[index];
+        if (!cell) return;
+        cell.__completedAt = Date.now();
+        const palette = (kind === 'positive' ? { c: '#fb7185', bg: 'rgba(251,113,133,0.25)' }
+          : kind === 'cleared' ? { c: '#4ade80', bg: 'rgba(74,222,128,0.25)' }
+            : kind === 'review' ? { c: '#fbbf24', bg: 'rgba(251,191,36,0.25)' }
+              : { c: '#7aa2ff', bg: 'rgba(122,162,255,0.25)' });
+        cell.style.borderColor = palette.c;
+        cell.style.boxShadow = '0 10px 30px rgba(0,0,0,0.55), inset 0 0 0 1px ' + palette.c + ', 0 0 24px ' + palette.bg;
+        const chip = cell.querySelector('.__bad_hydra_chip');
+        if (chip) {
+          chip.style.background = palette.bg;
+          chip.style.color = palette.c;
+          chip.style.border = '1px solid ' + palette.c;
+          chip.textContent = (verdictText || kind).slice(0, 32);
+          chip.style.opacity = '1';
+        }
+        // Update global counter
+        const total = hydraGrid.children.length;
+        let done = 0;
+        for (let i = 0; i < total; i++) if (hydraGrid.children[i].__completedAt) done++;
+        hydraCounter.textContent = done + ' / ' + total + ' branches complete';
+      } catch { /* cosmetic */ }
+    },
+
+    /**
+     * Collapse the grid: cells fly inward to center, merge into a result
+     * tile, then dissolve. Returns after ~800ms when the animation is
+     * done (but does NOT hide the overlay — caller invokes fanOutDismiss).
+     */
+    fanOutCollapse() {
+      try {
+        if (hydra.__ticker) { clearInterval(hydra.__ticker); hydra.__ticker = null; }
+        const cells = hydraGrid.children;
+        const cx = window.innerWidth / 2;
+        const cy = window.innerHeight / 2;
+        for (let i = 0; i < cells.length; i++) {
+          const c = cells[i];
+          const rect = c.getBoundingClientRect();
+          const dx = cx - (rect.left + rect.width / 2);
+          const dy = cy - (rect.top + rect.height / 2);
+          c.style.transition = 'transform 520ms cubic-bezier(0.6, 0, 0.4, 1), opacity 400ms ease';
+          c.style.transform = 'translate(' + dx + 'px, ' + dy + 'px) scale(0.2)';
+          c.style.opacity = '0';
+        }
+        hydraTitle.style.transition = 'opacity 400ms ease';
+        hydraCounter.style.transition = 'opacity 400ms ease';
+        setTimeout(function () { hydraTitle.style.opacity = '0'; hydraCounter.style.opacity = '0'; }, 200);
+      } catch { /* cosmetic */ }
+    },
+
+    /**
+     * Hide the Hydra overlay entirely. Call after fanOutCollapse has
+     * finished + the parent agent has resumed.
+     */
+    fanOutDismiss() {
+      try {
+        hydra.style.opacity = '0';
+        setTimeout(function () {
+          hydra.style.display = 'none';
+          hydraTitle.style.opacity = '1';
+          hydraCounter.style.opacity = '1';
+          while (hydraGrid.firstChild) hydraGrid.removeChild(hydraGrid.firstChild);
+          if (hydra.__ticker) { clearInterval(hydra.__ticker); hydra.__ticker = null; }
+        }, 400);
       } catch { /* cosmetic */ }
     },
 

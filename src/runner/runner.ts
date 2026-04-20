@@ -1751,6 +1751,11 @@ export class BrowserAgent {
             context,
             config: this.config,
             currentUrl: state.url,
+            // Gen 34 — give the executor a handle on the parent driver so
+            // it can drive the Hydra overlay (grid init, live thumbnail
+            // streaming, verdict chips, collapse animation) on the
+            // parent page for the whole fan-out duration.
+            parentDriver: this.driver,
             ...(topDriverOptions
               ? { driverOptions: (() => { const { showCursor: _sc, ...rest } = topDriverOptions; return rest; })() }
               : {}),

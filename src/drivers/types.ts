@@ -72,4 +72,18 @@ export interface Driver {
   setOverlayReasoning?(text: string): Promise<void>;
   setOverlayProgress?(current: number, total: number, label?: string): Promise<void>;
   pushOverlayBadge?(kind: 'positive' | 'cleared' | 'review' | 'info', text: string): Promise<void>;
+
+  /**
+   * Gen 34 — Hydra view for mid-run fanOut. Optional; drivers without a
+   * cursor overlay can omit. All cosmetic — errors swallowed.
+   */
+  fanOutStart?(labels: string[]): Promise<void>;
+  fanOutUpdateCell?(index: number, dataUrl?: string): Promise<void>;
+  fanOutCompleteCell?(
+    index: number,
+    kind: 'positive' | 'cleared' | 'review' | 'info',
+    verdictText?: string,
+  ): Promise<void>;
+  fanOutCollapse?(): Promise<void>;
+  fanOutDismiss?(): Promise<void>;
 }
