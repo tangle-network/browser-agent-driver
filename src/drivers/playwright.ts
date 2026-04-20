@@ -17,6 +17,7 @@ import { ANALYTICS_PATTERNS, IMAGE_PATTERNS, MEDIA_PATTERNS } from './block-patt
 import { buildCdpSnapshot } from './cdp-snapshot.js';
 import { getPageMetadata } from './cdp-page-state.js';
 import { CURSOR_OVERLAY_INIT_SCRIPT } from './cursor-overlay.js';
+import { formatOverlayLabel } from './overlay-label.js';
 import { runExtractWithIndex, formatExtractWithIndexResult } from './extract-with-index.js';
 import { SOM_INJECT_SCRIPT, SOM_REMOVE_SCRIPT } from './som-overlay.js';
 import type { SomElement } from './som-overlay.js';
@@ -237,7 +238,7 @@ export class PlaywrightDriver implements Driver {
    */
   private async animateCursorToSelector(
     selector: string,
-    actionLabel: string,
+    actionOrVerb: Action | string,
   ): Promise<void> {
     if (!this.options.showCursor) return;
     // Make sure the install promise (fired in the constructor) has resolved
@@ -254,6 +255,15 @@ export class PlaywrightDriver implements Driver {
       const cx = box.x + box.width / 2;
       const cy = box.y + box.height / 2;
 
+      // Build a rich label from the structured action when available. Falls
+      // back to the bare verb (back-compat) for callers that haven't been
+      // migrated yet (e.g., clickAt/typeAt paths that only have raw coords).
+      const isAction = typeof actionOrVerb === 'object' && actionOrVerb !== null && 'action' in actionOrVerb;
+      const ref = this.snapshot.lookupRef(selector);
+      const actionLabel = isAction
+        ? formatOverlayLabel(actionOrVerb as Action, { targetName: ref?.name, targetRole: ref?.role })
+        : (actionOrVerb as string);
+
       // Schedule highlight + cursor move + click pulse in a SINGLE page.evaluate
       // round trip. The CSS transition runs asynchronously (no waitForTimeout)
       // — the actual click fires immediately after, and the next observe() picks
@@ -262,7 +272,8 @@ export class PlaywrightDriver implements Driver {
       // Previously this slept 240ms after the moveTo to let the transition
       // land before the click — pure dead time on every interactive action.
       // Over a 50-turn session that was ~12s of zero-information waiting.
-      const isClickLike = actionLabel === 'click' || actionLabel === 'type' || actionLabel === 'press';
+      const verb = isAction ? (actionOrVerb as Action).action : (actionOrVerb as string);
+      const isClickLike = verb === 'click' || verb === 'type' || verb === 'press';
       const debug = process.env.BAD_DEBUG_CURSOR === '1';
       const result = await this.page.evaluate(
         ({ x, y, w, h, label, cx: cxArg, cy: cyArg, pulse }: { x: number; y: number; w: number; h: number; label: string; cx: number; cy: number; pulse: boolean }) => {
@@ -639,7 +650,7 @@ export class PlaywrightDriver implements Driver {
         case 'click': {
           const locator = this.snapshot.resolveLocator(this.page, action.selector);
           const bounds = await this.captureBounds(locator);
-          await this.animateCursorToSelector(action.selector, 'click');
+          await this.animateCursorToSelector(action.selector, action);
           // Human-like mouse movement to the target before clicking
           if (bounds) {
             const targetX = bounds.x + bounds.width / 2 + gaussianOffset(bounds.width);
@@ -677,7 +688,7 @@ export class PlaywrightDriver implements Driver {
         case 'type': {
           const locator = this.snapshot.resolveLocator(this.page, action.selector);
           const bounds = await this.captureBounds(locator);
-          await this.animateCursorToSelector(action.selector, 'type');
+          await this.animateCursorToSelector(action.selector, action);
           try {
             await this.withOverlayRecovery(async () => {
               await locator.click({ timeout });
@@ -703,7 +714,7 @@ export class PlaywrightDriver implements Driver {
         case 'press': {
           const locator = this.snapshot.resolveLocator(this.page, action.selector);
           const bounds = await this.captureBounds(locator);
-          await this.animateCursorToSelector(action.selector, 'press');
+          await this.animateCursorToSelector(action.selector, action);
           await this.withOverlayRecovery(async () => {
             await locator.press(action.key, { timeout });
           });
@@ -713,7 +724,7 @@ export class PlaywrightDriver implements Driver {
         case 'hover': {
           const locator = this.snapshot.resolveLocator(this.page, action.selector);
           const bounds = await this.captureBounds(locator);
-          await this.animateCursorToSelector(action.selector, 'hover');
+          await this.animateCursorToSelector(action.selector, action);
           await locator.hover({ timeout });
           return { success: true, bounds };
         }
@@ -721,7 +732,7 @@ export class PlaywrightDriver implements Driver {
         case 'select': {
           const locator = this.snapshot.resolveLocator(this.page, action.selector);
           const bounds = await this.captureBounds(locator);
-          await this.animateCursorToSelector(action.selector, 'select');
+          await this.animateCursorToSelector(action.selector, action);
           await locator.selectOption(action.value, { timeout });
           return { success: true, bounds };
         }
@@ -814,7 +825,8 @@ export class PlaywrightDriver implements Driver {
           // sees something move on screen. The actual fills happen below.
           const firstSelector = fieldEntries[0]?.[0] ?? selectEntries[0]?.[0] ?? checkEntries[0];
           if (firstSelector) {
-            await this.animateCursorToSelector(firstSelector, 'type');
+            const firstText = fieldEntries[0]?.[1] ?? '';
+            await this.animateCursorToSelector(firstSelector, { action: 'type', selector: firstSelector, text: firstText });
           }
           for (let fi = 0; fi < fieldEntries.length; fi++) {
             const [ref, text] = fieldEntries[fi]!;
@@ -937,7 +949,7 @@ export class PlaywrightDriver implements Driver {
               const locator = this.snapshot.resolveLocator(this.page, ref);
               const bounds = await this.captureBounds(locator);
               if (bounds) lastBounds = bounds;
-              await this.animateCursorToSelector(ref, 'click');
+              await this.animateCursorToSelector(ref, { action: 'click', selector: ref });
               await this.withOverlayRecovery(async () => {
                 await locator.click({ timeout: sequenceClickTimeout });
               });

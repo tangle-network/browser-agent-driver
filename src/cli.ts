@@ -407,8 +407,18 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  if (command !== 'run') {
-    cliError(`Unknown command: ${command}. Use "run", "runs", "design-audit", "view", "showcase", or "auth".`);
+  // `bad attach` is a top-level alias for `bad run --attach`. Every other
+  // flag on `run` (--goal, --url, --model, --provider, --base-url,
+  // --api-key, --show-cursor, --mode, --max-turns, --timeout, --no-memory,
+  // --attach-port) works identically. Attach's mental model is "drive my
+  // real Chrome," which is distinct enough from "spawn a fresh browser"
+  // to deserve its own command name.
+  if (command === 'attach') {
+    values.attach = true;
+  }
+
+  if (command !== 'run' && command !== 'attach') {
+    cliError(`Unknown command: ${command}. Use "run", "attach", "runs", "view", "chrome-debug", "design-audit", "showcase", or "auth".`);
     process.exit(1);
   }
 
