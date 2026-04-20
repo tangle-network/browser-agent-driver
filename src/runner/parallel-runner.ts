@@ -13,8 +13,31 @@
 import type { BrowserContext } from 'playwright'
 import { PlaywrightDriver } from '../drivers/playwright.js'
 import type { PlaywrightDriverOptions } from '../drivers/playwright.js'
-import { BrowserAgent } from './runner.js'
 import type { Scenario, AgentConfig, AgentResult, Turn } from '../types.js'
+
+// Dynamic-import BrowserAgent to break the runner.ts <-> parallel-runner.ts
+// cycle. runner.ts dynamic-imports this module; a static back-import
+// (even `import type`) makes madge flag a graph cycle.
+interface SubAgentRunner {
+  run(scenario: Scenario): Promise<AgentResult>
+}
+interface BrowserAgentCtor {
+  new (opts: {
+    driver: import('../drivers/types.js').Driver
+    config: AgentConfig
+    onTurn?: (turn: Turn) => void
+    projectStore?: ProjectStore
+    macroPromptBlock?: string
+  }): SubAgentRunner
+}
+let _BrowserAgentCtor: BrowserAgentCtor | undefined
+async function getBrowserAgent(): Promise<BrowserAgentCtor> {
+  if (!_BrowserAgentCtor) {
+    const mod = await import('./runner.js')
+    _BrowserAgentCtor = mod.BrowserAgent as unknown as BrowserAgentCtor
+  }
+  return _BrowserAgentCtor
+}
 import type { SubGoal } from './goal-decomposer.js'
 import type { ProjectStore } from '../memory/project-store.js'
 
@@ -102,6 +125,7 @@ export async function runParallel(options: ParallelRunOptions): Promise<Parallel
           : undefined,
       }
 
+      const BrowserAgent = await getBrowserAgent()
       const agent = new BrowserAgent({
         driver,
         config: subConfig,

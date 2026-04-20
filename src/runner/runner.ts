@@ -48,6 +48,7 @@ import {
   extractCurrentMarker,
   buildProgressLabel,
 } from './overlay-narration.js';
+import { applyDemoOverride } from './demo-overrides.js';
 import { matchDeterministicPattern } from './deterministic-patterns.js';
 import type { ResolvedExtensions } from '../extensions/types.js';
 
@@ -1462,6 +1463,23 @@ export class BrowserAgent {
         }
 
         let { action, nextActions, raw, reasoning, plan, currentStep, expectedEffect, tokensUsed, inputTokens, outputTokens, cacheReadInputTokens, cacheCreationInputTokens, modelUsed } = decision;
+
+        // Demo-mode overrides (env-gated). No-op in production; returns
+        // the original decision unchanged. See src/runner/demo-overrides.ts.
+        const demo = applyDemoOverride({ turn: i, action, reasoning, expectedEffect });
+        if (demo.override) {
+          action = demo.action;
+          if (demo.reasoning !== undefined) reasoning = demo.reasoning;
+          if (demo.expectedEffect !== undefined) expectedEffect = demo.expectedEffect;
+          this.bus.emitNow({
+            type: 'override-applied',
+            runId,
+            turn: i,
+            source: 'extension',
+            reasoningTag: demo.override.tag,
+            feedback: demo.override.feedback,
+          });
+        }
         // Only emit decide-completed when the LLM was actually called.
         // Pattern matches and cache hits already emitted their own
         // decide-skipped-* event above; double-emitting decide-completed

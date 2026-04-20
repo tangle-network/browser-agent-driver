@@ -1,0 +1,35 @@
+{
+  "timestamp": "2026-04-20T17:30:00Z",
+  "git": {
+    "branch": "main",
+    "head": "0ea68bf6ae2719540631828bdfd63017bb464ad0",
+    "headSubject": "feat(gen34): Hydra View — live sub-tab grid + human labels + fanOut fires (#67)"
+  },
+  "typeErrors": 0,
+  "weakTypes": 64,
+  "weakTypesTopFiles": [
+    { "file": "src/drivers/playwright.ts", "count": 10 },
+    { "file": "src/wallet/automation.ts", "count": 8 },
+    { "file": "src/brain/index.ts", "count": 6 },
+    { "file": "src/cli-view.ts", "count": 5 },
+    { "file": "src/test-runner.ts", "count": 4 },
+    { "file": "src/cli-design-audit.ts", "count": 4 }
+  ],
+  "circularDeps": 2,
+  "circularDepList": [
+    "runner/runner.ts -> runner/fan-out.ts",
+    "runner/runner.ts -> runner/parallel-runner.ts"
+  ],
+  "tryCatchBlocks": 240,
+  "cosmeticCatches": {
+    "src/drivers/playwright.ts": 10,
+    "src/drivers/cursor-overlay.ts": 10,
+    "src/runner/fan-out.ts": 8,
+    "total": 28,
+    "note": "All three files contain near-identical 'overlay page.evaluate with cosmetic swallow' pattern. Prime candidate for a single helper."
+  },
+  "debtMarkers": 5,
+  "sourceFiles": 101,
+  "testFiles": 92,
+  "testSuite": "1181/1181 (Gen 34 baseline)"
+}
