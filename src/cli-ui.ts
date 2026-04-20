@@ -290,8 +290,9 @@ ${chalk.bold('bad')} ${D('— LLM-driven browser automation CLI')}
 ${H('USAGE')}
   bad run [options]
   bad attach [--attach-port <n>] --goal "..."    ${D('# drive your already-running Chrome')}
+  bad preview --goal "..." --url <url>           ${D('# plan-only dry run (no execution)')}
   bad chrome-debug [--attach-port <n>]           ${D('# launch system Chrome on :9222')}
-  bad view <run-dir>                             ${D('# replay a completed run')}
+  bad view <run-dir>                             ${D('# replay with frame-synced timeline')}
   bad share <run-id>                             ${D('# create share link, copy to clipboard')}
   bad runs [--session-id <id>] [--json]          ${D('# list recent runs')}
   bad design-audit --url <url>

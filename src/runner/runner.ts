@@ -173,6 +173,14 @@ export interface BrowserAgentOptions {
   config?: AgentConfig;
   /** Called after each turn */
   onTurn?: (turn: Turn) => void;
+  /**
+   * Gen 32 — called at the top of every turn BEFORE observe().
+   * Used by the interrupt controller to block the loop while the user
+   * has the run paused (`p` keypress in an interactive attach). The
+   * promise resolves on resume or rejects with an abort signal to
+   * bail out cleanly.
+   */
+  beforeTurn?: (turn: number) => Promise<void>;
   /** Called when a first-time phase timing is observed */
   onPhaseTiming?: (phase: 'navigate' | 'observe' | 'decide' | 'execute', durationMs: number) => void;
   /** Reference trajectory to inject into brain context */
@@ -294,6 +302,7 @@ export class BrowserAgent {
   private brain: Brain;
   private config: AgentConfig;
   private onTurn?: (turn: Turn) => void;
+  private beforeTurn?: (turn: number) => Promise<void>;
   private onPhaseTiming?: (phase: 'navigate' | 'observe' | 'decide' | 'execute', durationMs: number) => void;
   private referenceTrajectory?: string;
   private projectStore?: ProjectStore;
@@ -317,6 +326,7 @@ export class BrowserAgent {
     this.config = options.config || {};
     this.brain = new Brain(this.config);
     this.onTurn = options.onTurn;
+    this.beforeTurn = options.beforeTurn;
     this.onPhaseTiming = options.onPhaseTiming;
     this.referenceTrajectory = options.referenceTrajectory;
     this.bus = ensureBus(options.eventBus);
@@ -762,6 +772,21 @@ export class BrowserAgent {
     const verdictTracker = new VerdictTracker();
 
     for (let i = 1 + plannerStartTurn; i <= maxTurns; i++) {
+      // Gen 32 — honor user-driven pause from the interrupt controller.
+      // Blocks until `r` is pressed (resume) or `q` is pressed (abort).
+      // A rejected beforeTurn is treated as an abort.
+      if (this.beforeTurn) {
+        try {
+          await this.beforeTurn(i);
+        } catch (err) {
+          return buildResult({
+            success: false,
+            reason: err instanceof Error ? err.message : 'aborted',
+            turns,
+            totalMs: Date.now() - startTime,
+          });
+        }
+      }
       if (scenario.signal?.aborted) {
         return buildResult({
           success: false,

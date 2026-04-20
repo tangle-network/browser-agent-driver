@@ -220,6 +220,13 @@ async function main(): Promise<void> {
       'bad-app-url': { type: 'string' },
       'no-copy': { type: 'boolean' },
 
+      // Gen 32 — preview / stream / interrupt
+      'max-steps': { type: 'string' },
+      headed: { type: 'boolean' },
+      stream: { type: 'string' },
+      'stream-token': { type: 'string' },
+      interrupt: { type: 'boolean' },
+
       help: { type: 'boolean', short: 'h', default: false },
       version: { type: 'boolean', short: 'v', default: false },
     },
@@ -422,6 +429,38 @@ async function main(): Promise<void> {
     values.attach = true;
   }
 
+  // `bad preview` — plan-only dry-run. Observe the URL once, ask the
+  // planner to emit a structured plan, render it, exit. No execution.
+  // terraform plan for browser agents.
+  if (command === 'preview') {
+    if (!values.goal || !values.url) {
+      cliError('usage: bad preview --goal "..." --url <url> [--max-steps 12] [--headed] [--json] [--out plan.json]');
+      process.exit(1);
+    }
+    const { handlePreviewCommand, PreviewError } = await import('./cli-preview.js');
+    try {
+      const result = await handlePreviewCommand({
+        goal: values.goal,
+        url: values.url,
+        model: values.model,
+        provider: values.provider,
+        apiKey: values['api-key'],
+        baseUrl: values['base-url'],
+        output: values.sink,
+        json: values.json,
+        maxSteps: values['max-steps'] ? parseInt(values['max-steps'], 10) : undefined,
+        headed: values.headed,
+      });
+      process.exit(result.plan ? 0 : 1);
+    } catch (err) {
+      if (err instanceof PreviewError) {
+        cliError(err.message);
+        process.exit(1);
+      }
+      throw err;
+    }
+  }
+
   // `bad share <run-id>` — create a bad-app share link, copy to clipboard.
   if (command === 'share') {
     const runId = positionals[1];
@@ -454,7 +493,7 @@ async function main(): Promise<void> {
   }
 
   if (command !== 'run' && command !== 'attach') {
-    cliError(`Unknown command: ${command}. Use "run", "attach", "runs", "view", "share", "chrome-debug", "design-audit", "showcase", or "auth".`);
+    cliError(`Unknown command: ${command}. Use "run", "attach", "preview", "runs", "view", "share", "chrome-debug", "design-audit", "showcase", or "auth".`);
     process.exit(1);
   }
 
@@ -778,9 +817,13 @@ async function main(): Promise<void> {
   // Optional live event bus + SSE viewer. Constructed only when `--live` is
   // passed; otherwise the runner uses an internal no-op bus and pays nothing.
   // The bus is shared across the entire suite so a single SSE connection
-  // observes all turns of all test cases.
+  // observes all turns of all test cases. Gen 32: when `--stream <url>` is
+  // passed the bus is always created (even without --live) so the webhook
+  // streamer has something to subscribe to.
   const liveEnabled = values.live === true;
-  const liveBus = liveEnabled ? new TurnEventBus() : undefined;
+  const streamUrl = typeof values.stream === 'string' && values.stream.length > 0 ? values.stream : undefined;
+  const needsBus = liveEnabled || !!streamUrl;
+  const liveBus = needsBus ? new TurnEventBus() : undefined;
   const liveCancelController = liveEnabled ? new AbortController() : undefined;
   let liveViewHandle: { url: string; close: () => Promise<void> } | undefined;
   if (liveEnabled && liveBus) {
@@ -791,6 +834,38 @@ async function main(): Promise<void> {
       port: values.port ? parseInt(values.port as string, 10) : undefined,
       noOpen: values['no-open'] === true,
     });
+  }
+
+  // Gen 32 — webhook streamer. When `--stream <url>` is passed, subscribe
+  // to the bus and POST every event to <url> as it fires. Auth via
+  // `--stream-token` or $BAD_STREAM_TOKEN. Non-fatal on failure — the
+  // canonical record is always events.jsonl on disk.
+  let webhookStreamer: import('./runner/stream-webhook.js').WebhookStreamer | undefined;
+  if (streamUrl && liveBus) {
+    const { WebhookStreamer } = await import('./runner/stream-webhook.js');
+    const token = (values['stream-token'] as string | undefined) || process.env.BAD_STREAM_TOKEN;
+    const streamId = `stream_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    webhookStreamer = new WebhookStreamer({
+      url: streamUrl,
+      authToken: token,
+      streamId,
+      onError: (err, dropped) => {
+        if (!values.json) cliWarn(`stream: ${err.message} (dropped ${dropped} event${dropped === 1 ? '' : 's'})`);
+      },
+    }).attach(liveBus);
+    if (!values.json) cliLog('stream', `POST → ${streamUrl} (id ${streamId})`);
+  }
+
+  // Gen 32 — interrupt controller. `--interrupt` enables keyboard pause/
+  // resume/abort during a run. No-op in non-TTY (CI, piped output).
+  let interruptController: import('./runner/interrupt-controller.js').InterruptController | undefined;
+  let detachInterrupt: (() => void) | undefined;
+  if (values.interrupt === true && process.stdin.isTTY) {
+    const { InterruptController } = await import('./runner/interrupt-controller.js');
+    interruptController = new InterruptController({
+      onStatus: (msg) => { if (!values.json) cliLog('interrupt', msg); },
+    });
+    detachInterrupt = interruptController.attach();
   }
 
   // Auto-discover bad.config.{ts,mjs,js,...} from cwd plus any explicit
@@ -1482,6 +1557,9 @@ async function main(): Promise<void> {
     extensions: extensionLoad.resolved,
     ...(macroRegistry ? { macroPromptBlock: macroRegistry.promptBlock } : {}),
     ...(liveBus ? { eventBus: liveBus } : {}),
+    ...(interruptController
+      ? { beforeTurn: async () => { await interruptController.waitIfPaused(); } }
+      : {}),
     onProgress: (event) => {
       if (values.json) {
         console.log(JSON.stringify(event));
@@ -1512,9 +1590,24 @@ async function main(): Promise<void> {
   let runError: unknown;
 
   try {
+    // Gen 32 — wire interrupt controller. When the user presses `q`,
+    // abort() fires which the runner observes via the suite-level
+    // signal. Runs a check before the runner starts so pressing `q`
+    // BEFORE the first turn still aborts cleanly.
+    const interruptSignal = interruptController
+      ? (() => {
+        const ac = new AbortController();
+        interruptController.on('abort', () => ac.abort('interrupted by user'));
+        if (interruptController.isAborted) ac.abort('interrupted by user');
+        return ac.signal;
+      })()
+      : undefined;
+    // If --live already provided a signal, merge both. Prefer the user
+    // interrupt signal so `q` wins even when --live is set.
+    const mergedSignal = interruptSignal ?? liveCancelController?.signal;
     result = await runner.runSuite(
       cases,
-      liveCancelController ? { signal: liveCancelController.signal } : undefined,
+      mergedSignal ? { signal: mergedSignal } : undefined,
     );
 
     // Write reports for each configured format
@@ -1551,6 +1644,14 @@ async function main(): Promise<void> {
     runError = err;
   } finally {
     renderer?.destroy();
+    // Gen 32 — detach interrupt controller first so stdin leaves raw mode
+    // BEFORE we try to write any shutdown logs. Otherwise the user's TTY
+    // stays in raw mode after the run ends and Ctrl-C, arrow keys, etc.
+    // come through as garbage bytes.
+    if (detachInterrupt) detachInterrupt();
+    // Flush and close the stream webhook so the final events (run-completed,
+    // suite-complete) reach the endpoint before the CLI exits.
+    if (webhookStreamer) await webhookStreamer.close().catch(() => {});
     await singleDriver?.close?.().catch(() => {});
     stopWalletAutoApprover?.();
     await persistentContext?.close().catch(() => {});

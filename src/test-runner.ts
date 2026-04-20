@@ -82,6 +82,12 @@ export interface TestRunnerOptions {
   onTestComplete?: (result: TestResult) => void;
   /** Called after each agent turn */
   onTurn?: (tc: TestCase, turn: Turn) => void;
+  /**
+   * Gen 32 — called at the top of every turn before observe(). Returns
+   * a promise the runner awaits; used by the interrupt controller to
+   * block while paused. Rejection triggers a clean abort.
+   */
+  beforeTurn?: (turn: number) => Promise<void>;
 
   /** Pluggable artifact storage — screenshots, video, reports flow through this */
   artifactSink?: ArtifactSink;
@@ -158,6 +164,7 @@ export class TestRunner {
   private onTestStart?: (tc: TestCase) => void;
   private onTestComplete?: (result: TestResult) => void;
   private onTurn?: (tc: TestCase, turn: Turn) => void;
+  private beforeTurn?: (turn: number) => Promise<void>;
   private artifactSink?: ArtifactSink;
   private onProgress?: (event: ProgressEvent) => void;
   private workerTimeoutMs?: number;
@@ -193,6 +200,7 @@ export class TestRunner {
     this.onTestStart = options.onTestStart;
     this.onTestComplete = options.onTestComplete;
     this.onTurn = options.onTurn;
+    this.beforeTurn = options.beforeTurn;
     this.artifactSink = options.artifactSink;
     this.onProgress = options.onProgress;
     this.workerTimeoutMs = options.workerTimeoutMs;
@@ -274,6 +282,7 @@ export class TestRunner {
         ...(this.extensions ? { extensions: this.extensions } : {}),
         ...(this.macroPromptBlock ? { macroPromptBlock: this.macroPromptBlock } : {}),
         eventBus: perTestBus,
+        ...(this.beforeTurn ? { beforeTurn: this.beforeTurn } : {}),
         onTurn: (turn) => {
           if (timeToFirstTurnMs === undefined) {
             timeToFirstTurnMs = Math.max(0, Date.now() - runStartedAtMs);
