@@ -44,6 +44,12 @@ const site = getArg('site')
 const maxTasks = getArg('max-tasks', '0')
 const concurrency = getArg('concurrency', '3')
 const scenarioConcurrency = getArg('scenario-concurrency', '2')
+// Gen 30 R3: let callers route LLM calls through a custom endpoint
+// (e.g. router.tangle.tools) with a non-OpenAI model id. These flags pass
+// straight through to scenario-track → bad run.
+const providerArg = getArg('provider')
+const baseUrlArg = getArg('base-url')
+const apiKeyArg = getArg('api-key')
 const noEval = hasFlag('no-eval')
 const evalOnly = hasFlag('eval-only')
 const evalResults = getArg('results')
@@ -112,6 +118,9 @@ function runAgent() {
       '--memory',
       '--memory-isolation', 'per-run',
     ]
+    if (providerArg) args.push('--provider', providerArg)
+    if (baseUrlArg) args.push('--base-url', baseUrlArg)
+    if (apiKeyArg) args.push('--api-key', apiKeyArg)
 
     console.log(`\nRunning agent: node ${args.join(' ')}`)
     const proc = spawn('node', args, { cwd: rootDir, stdio: 'inherit' })
