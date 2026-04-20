@@ -23,3 +23,9 @@ mm-*.png
 # Python venv for the browser-use competitive adapter (see docs/COMPETITIVE-EVAL.md)
 .venv-browseruse/
 .claude/scheduled_tasks.lock
+
+# FDE / GTM customer demo material lives in a PRIVATE repo (tangle-network/bad-app
+# under demos/). This is a PUBLIC repo — never commit demo scripts, fixtures,
+# recordings, or case data here. Engine-level test scenarios belong under
+# bench/ and tests/, not demos/.
+demos/
