@@ -31,6 +31,7 @@
 import type { BrowserContext, Page } from 'playwright'
 import type { AgentConfig, FanOutAction, Scenario } from '../types.js'
 import type { ProjectStore } from '../memory/project-store.js'
+import type { Driver } from '../drivers/types.js'
 import { PlaywrightDriver, type PlaywrightDriverOptions } from '../drivers/playwright.js'
 import { BrowserAgent } from './runner.js'
 import type { AgentResult } from '../types.js'
@@ -57,6 +58,13 @@ export interface FanOutExecutorOptions {
   macroPromptBlock?: string
   /** Parent's currentURL — used as a default for any sub-goal that didn't set one. */
   currentUrl?: string
+  /**
+   * Gen 34 — the parent's driver. When present, the executor drives the
+   * Hydra overlay on the parent page: grid init, live screenshot
+   * streaming per branch, verdict chips, final collapse animation.
+   * Pass undefined to skip Hydra (no cursor / headless / etc.).
+   */
+  parentDriver?: Driver
   /**
    * Called when a sub-agent starts / finishes. Useful for the overlay's
    * progress bar (shows "branch 3/10 done") during a fan-out.
@@ -92,6 +100,12 @@ export interface FanOutExecutionResult {
 /**
  * Run a fanOut action. Returns structured per-branch results + a
  * human-readable feedback string.
+ *
+ * When `parentDriver` is provided (i.e., the parent run has the cursor
+ * overlay enabled), the executor also drives the Hydra View: initializes
+ * the grid, streams live screenshots from each sub-tab at ~2.5 FPS,
+ * completes each cell with a verdict chip, then runs the collapse/merge
+ * animation before returning.
  */
 export async function executeFanOut(
   action: FanOutAction,
@@ -106,6 +120,14 @@ export async function executeFanOut(
       totalMs: 0,
       tokensUsed: 0,
     }
+  }
+
+  // Gen 34 — kick off the Hydra overlay on the parent page. All driver
+  // methods are optional; absence of any is a no-op (headless / no
+  // cursor). Errors never propagate — overlay is cosmetic.
+  const labels = subGoals.map((sg, i) => sg.label ?? `branch-${i + 1}`)
+  if (opts.parentDriver?.fanOutStart) {
+    await opts.parentDriver.fanOutStart(labels).catch(() => { /* cosmetic */ })
   }
 
   // Run all sub-agents concurrently. Every branch captures its own
@@ -128,6 +150,22 @@ export async function executeFanOut(
       durationMs: 0,
     }))
   })
+
+  // Gen 34 — choreography: minimum 3s visible floor so fast fan-outs
+  // don't flash past the viewer, then collapse (~520ms) + dismiss
+  // (~400ms). Total ≤ 4s of overlay time beyond actual work.
+  if (opts.parentDriver?.fanOutCollapse) {
+    const elapsed = Date.now() - startedAt
+    if (elapsed < 3000) {
+      await new Promise((r) => setTimeout(r, 3000 - elapsed))
+    }
+    await opts.parentDriver.fanOutCollapse().catch(() => { /* cosmetic */ })
+    await new Promise((r) => setTimeout(r, 520))
+  }
+  if (opts.parentDriver?.fanOutDismiss) {
+    await opts.parentDriver.fanOutDismiss().catch(() => { /* cosmetic */ })
+    await new Promise((r) => setTimeout(r, 400))
+  }
 
   const totalMs = Date.now() - startedAt
   const tokensUsed = branches.reduce((s, b) => s + (b.tokensUsed ?? 0), 0)
@@ -153,16 +191,52 @@ async function runBranch(
   opts.onBranchStart?.(index, label)
 
   let page: Page | undefined
+  // Gen 34 — Hydra screenshot streamer. Fires at 2.5 FPS while this
+  // branch is running; stops on completion/error/page-close. Each tick
+  // pushes a base64 JPEG into the parent's overlay cell. Fire-and-forget;
+  // late frames after completion are dropped by the cell dedup logic.
+  let streamer: ReturnType<typeof setInterval> | undefined
+  const startStreamer = (pageRef: Page): void => {
+    if (!opts.parentDriver?.fanOutUpdateCell) return
+    const tick = async (): Promise<void> => {
+      if (!pageRef || pageRef.isClosed()) return
+      try {
+        const buf = await pageRef.screenshot({
+          type: 'jpeg',
+          quality: 45,
+          timeout: 800,
+          // Smaller viewport-style capture keeps the data URL under 40kB
+          // so the per-tick page.evaluate round-trip stays fast.
+          fullPage: false,
+        })
+        const dataUrl = `data:image/jpeg;base64,${buf.toString('base64')}`
+        await opts.parentDriver!.fanOutUpdateCell!(index, dataUrl).catch(() => { /* cosmetic */ })
+      } catch { /* cosmetic — screenshot failures are expected during navigation */ }
+    }
+    // Kick off immediately so the cell isn't blank for 400ms, then
+    // continue at 2.5 FPS. The streamer never blocks the agent loop —
+    // failures are swallowed.
+    void tick()
+    streamer = setInterval(() => void tick(), 400)
+  }
+
   try {
     page = await opts.context.newPage()
 
     const driver = new PlaywrightDriver(page, {
       ...(opts.driverOptions ?? {}),
-      // Sub-tabs never show the cursor — the parent tab's overlay is
-      // the one the viewer sees. We don't want a phantom cursor fighting
-      // over which mouse position is "canonical" in the recording.
-      showCursor: false,
+      // Sub-tabs render their OWN cursor overlay so the thumbnail
+      // streamed to the parent's Hydra cell shows a labeled cursor
+      // pointing at what the sub-agent is doing. That cursor never
+      // reaches the parent page — it's inside the sub-tab's DOM and
+      // only becomes visible via screenshot-streaming.
+      showCursor: true,
     })
+
+    // Start streaming AFTER the driver is constructed (cursor install
+    // is kicked off in the constructor) so the first thumbnail carries
+    // the overlay.
+    startStreamer(page)
 
     const subAgent = new BrowserAgent({
       driver,
@@ -197,11 +271,21 @@ async function runBranch(
       durationMs: Date.now() - startedAt,
       ...(typeof maybeTokens === 'number' ? { tokensUsed: maybeTokens } : {}),
     }
+
+    // Complete the cell with a verdict chip. Kind is derived from the
+    // verdict text via the same classifier used by the main overlay's
+    // progress-ledger badges.
+    if (opts.parentDriver?.fanOutCompleteCell) {
+      const kind = classifyVerdict(branchResult.verdict, branchResult.success)
+      const chipText = verdictChipText(branchResult.verdict, branchResult.success)
+      await opts.parentDriver.fanOutCompleteCell(index, kind, chipText).catch(() => { /* cosmetic */ })
+    }
+
     opts.onBranchComplete?.(index, label, result)
     return branchResult
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
-    return {
+    const branchResult: FanOutBranchResult = {
       index,
       label,
       url,
@@ -211,11 +295,41 @@ async function runBranch(
       turnsUsed: 0,
       durationMs: Date.now() - startedAt,
     }
+    if (opts.parentDriver?.fanOutCompleteCell) {
+      await opts.parentDriver.fanOutCompleteCell(index, 'review', 'error').catch(() => { /* cosmetic */ })
+    }
+    return branchResult
   } finally {
+    if (streamer) clearInterval(streamer)
     if (page && !page.isClosed()) {
       await page.close().catch(() => { /* best-effort */ })
     }
   }
+}
+
+/**
+ * Classify a branch verdict into an overlay kind so the chip color
+ * matches the narrative. Mirrors src/runner/overlay-narration.ts.
+ */
+function classifyVerdict(verdict: string, success: boolean): 'positive' | 'cleared' | 'review' | 'info' {
+  if (!success) return 'review'
+  if (/POSITIVE\s+MATCH/i.test(verdict)) return 'positive'
+  if (/\bCLEARED\b/i.test(verdict)) return 'cleared'
+  if (/NEEDS\s+REVIEW/i.test(verdict)) return 'review'
+  return 'info'
+}
+
+/**
+ * Extract a short chip text (≤32 chars) from the verdict. Prefers
+ * an explicit status word (POSITIVE / CLEARED / REVIEW) if present;
+ * otherwise the first few words.
+ */
+function verdictChipText(verdict: string, success: boolean): string {
+  if (!success) return 'error'
+  const m = verdict.match(/(POSITIVE\s+MATCH|CLEARED|NEEDS\s+REVIEW)/i)
+  if (m) return m[1].toUpperCase().replace(/\s+/g, ' ')
+  const first = verdict.replace(/\s+/g, ' ').trim().slice(0, 32)
+  return first || 'done'
 }
 
 /**

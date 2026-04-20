@@ -1,110 +1,126 @@
 /**
- * Cursor-overlay label builder. The overlay renders ONE short label next
- * to the animated cursor; it's the primary signal in every demo video for
- * what the agent is actually doing. These tests pin the format so
- * regressions ("label shows bare `type` instead of the typed string") get
- * caught at CI time, not when someone reviews a recorded demo.
+ * Cursor-overlay label builder. These tests pin the human-readable
+ * format so regressions (verbose labels like `type JOHN SMITH · last
+ * name insert criteria, required *`) get caught at CI time.
+ *
+ * Gen 34 rewrite: natural-English sentences, aggressive suffix cleanup.
  */
 import { describe, it, expect } from 'vitest'
 import { formatOverlayLabel } from '../src/drivers/overlay-label.js'
 import type { Action } from '../src/types.js'
 
 describe('formatOverlayLabel', () => {
-  it('click with accessible name → "click · <name>"', () => {
+  it('click with accessible name reads as a sentence', () => {
     const a: Action = { action: 'click', selector: '@b1' }
-    expect(formatOverlayLabel(a, { targetName: 'Search' })).toBe('click · Search')
+    expect(formatOverlayLabel(a, { targetName: 'Search' })).toBe('Clicking Search')
   })
 
-  it('click without name → bare "click"', () => {
+  it('click without name', () => {
     const a: Action = { action: 'click', selector: '@b1' }
-    expect(formatOverlayLabel(a)).toBe('click')
+    expect(formatOverlayLabel(a)).toBe('Clicking')
   })
 
-  it('click with generic name ("button") drops the name — no info added', () => {
+  it('click with generic role name drops the name', () => {
     const a: Action = { action: 'click', selector: '@b1' }
-    expect(formatOverlayLabel(a, { targetName: 'button' })).toBe('click')
+    expect(formatOverlayLabel(a, { targetName: 'button' })).toBe('Clicking')
+    expect(formatOverlayLabel(a, { targetName: 'textbox' })).toBe('Clicking')
   })
 
-  it('type with text and target name → `type "<text>" · <name>`', () => {
+  it('type into a named field', () => {
     const a: Action = { action: 'type', selector: '@t1', text: 'IVANOV ALEKSANDR' }
-    expect(formatOverlayLabel(a, { targetName: 'Last Name' })).toBe('type "IVANOV ALEKSANDR" · Last Name')
+    expect(formatOverlayLabel(a, { targetName: 'Last Name' })).toBe('Typing “IVANOV ALEKSANDR” into Last Name')
   })
 
-  it('type with text but no name → `type · "<text>"`', () => {
+  it('type strips verbose ARIA suffixes — the Drew regression', () => {
+    const a: Action = { action: 'type', selector: '@t1', text: 'JOHN SMITH' }
+    // OFAC-style aria labels
+    expect(formatOverlayLabel(a, { targetName: 'Last Name: insert criteria' })).toBe('Typing “JOHN SMITH” into Last Name')
+    expect(formatOverlayLabel(a, { targetName: 'Search keyword, search input' })).toBe('Typing “JOHN SMITH” into Search keyword')
+    expect(formatOverlayLabel(a, { targetName: 'Email, required *' })).toBe('Typing “JOHN SMITH” into Email')
+    expect(formatOverlayLabel(a, { targetName: 'Last name*' })).toBe('Typing “JOHN SMITH” into Last name')
+  })
+
+  it('type without name', () => {
     const a: Action = { action: 'type', selector: '@t1', text: 'PUTIN VLADIMIR' }
-    expect(formatOverlayLabel(a)).toBe('type · "PUTIN VLADIMIR"')
+    expect(formatOverlayLabel(a)).toBe('Typing “PUTIN VLADIMIR”')
   })
 
-  it('type truncates long text with ellipsis', () => {
+  it('type truncates long text with ellipsis, cap respected', () => {
     const a: Action = {
       action: 'type',
       selector: '@t1',
       text: 'a very long string of text that should be truncated for overlay display',
     }
     const label = formatOverlayLabel(a)
-    expect(label.length).toBeLessThanOrEqual(48)
+    expect(label.length).toBeLessThanOrEqual(56)
     expect(label).toContain('…')
-    expect(label.startsWith('type')).toBe(true)
+    expect(label.startsWith('Typing')).toBe(true)
   })
 
-  it('press with a key → "press · <key>"', () => {
+  it('press with a friendly key name', () => {
+    expect(formatOverlayLabel({ action: 'press', selector: '@t1', key: 'Enter' })).toBe('Pressing Enter')
+    expect(formatOverlayLabel({ action: 'press', selector: '@t1', key: 'Return' })).toBe('Pressing Enter')
+    expect(formatOverlayLabel({ action: 'press', selector: '@t1', key: 'Tab' })).toBe('Pressing Tab')
+    expect(formatOverlayLabel({ action: 'press', selector: '@t1', key: 'Escape' })).toBe('Pressing Esc')
+  })
+
+  it('press with arrow key glyph', () => {
+    expect(formatOverlayLabel({ action: 'press', selector: '@t1', key: 'ArrowDown' })).toBe('Pressing ↓')
+    expect(formatOverlayLabel({ action: 'press', selector: '@t1', key: 'ArrowRight' })).toBe('Pressing →')
+  })
+
+  it('press with key + target name reads cleanly', () => {
     const a: Action = { action: 'press', selector: '@t1', key: 'Enter' }
-    expect(formatOverlayLabel(a)).toBe('press · Enter')
+    expect(formatOverlayLabel(a, { targetName: 'Last Name' })).toBe('Pressing Enter in Last Name')
   })
 
-  it('press with key + target name → "press <key> · <name>"', () => {
-    const a: Action = { action: 'press', selector: '@t1', key: 'Enter' }
-    expect(formatOverlayLabel(a, { targetName: 'Last Name' })).toBe('press Enter · Last Name')
-  })
-
-  it('hover → "hover · <name>" when name present', () => {
+  it('hover', () => {
     const a: Action = { action: 'hover', selector: '@b1' }
-    expect(formatOverlayLabel(a, { targetName: 'More options' })).toBe('hover · More options')
-    expect(formatOverlayLabel(a)).toBe('hover')
+    expect(formatOverlayLabel(a, { targetName: 'More options' })).toBe('Hovering More options')
+    expect(formatOverlayLabel(a)).toBe('Hovering')
   })
 
-  it('select → includes both value and target name when available', () => {
+  it('select', () => {
     const a: Action = { action: 'select', selector: '@s1', value: 'CA' }
-    expect(formatOverlayLabel(a, { targetName: 'State' })).toBe('select CA · State')
-    expect(formatOverlayLabel(a)).toBe('select · CA')
+    expect(formatOverlayLabel(a, { targetName: 'State' })).toBe('Selecting “CA” in State')
+    expect(formatOverlayLabel(a)).toBe('Selecting “CA”')
   })
 
-  it('scroll → "scroll <direction>"', () => {
-    expect(formatOverlayLabel({ action: 'scroll', direction: 'down' })).toBe('scroll down')
-    expect(formatOverlayLabel({ action: 'scroll', direction: 'up' })).toBe('scroll up')
+  it('scroll', () => {
+    expect(formatOverlayLabel({ action: 'scroll', direction: 'down' })).toBe('Scrolling down')
+    expect(formatOverlayLabel({ action: 'scroll', direction: 'up' })).toBe('Scrolling up')
   })
 
-  it('navigate → "nav · <host>" (strips protocol and path)', () => {
+  it('navigate strips protocol and path', () => {
     const a: Action = { action: 'navigate', url: 'https://sanctionssearch.ofac.treas.gov/some/path?query=1' }
-    expect(formatOverlayLabel(a)).toBe('nav · sanctionssearch.ofac.treas.gov')
+    expect(formatOverlayLabel(a)).toBe('Navigating to sanctionssearch.ofac.treas.gov')
   })
 
-  it('navigate with a malformed URL falls back to a best-effort slice', () => {
+  it('navigate with malformed URL falls back to best-effort', () => {
     const a: Action = { action: 'navigate', url: 'not-a-url-at-all' }
-    expect(formatOverlayLabel(a)).toBe('nav · not-a-url-at-all')
+    expect(formatOverlayLabel(a)).toBe('Navigating to not-a-url-at-all')
   })
 
-  it('wait → "wait Xms"', () => {
-    expect(formatOverlayLabel({ action: 'wait', ms: 250 })).toBe('wait 250ms')
+  it('wait', () => {
+    expect(formatOverlayLabel({ action: 'wait', ms: 250 })).toBe('Waiting 250ms')
   })
 
-  it('label never exceeds MAX_LABEL_LEN (48) regardless of input', () => {
+  it('label never exceeds MAX_LABEL_LEN (56) regardless of input', () => {
     const a: Action = {
       action: 'type',
       selector: '@t1',
       text: 'a'.repeat(200),
     }
     const label = formatOverlayLabel(a, { targetName: 'b'.repeat(200) })
-    expect(label.length).toBeLessThanOrEqual(48)
+    expect(label.length).toBeLessThanOrEqual(56)
   })
 
-  it('whitespace in target name is collapsed (newlines, tabs, doubled spaces)', () => {
+  it('whitespace in target name is collapsed', () => {
     const a: Action = { action: 'click', selector: '@b1' }
-    expect(formatOverlayLabel(a, { targetName: '  Search\n\nnow  ' })).toBe('click · Search now')
+    expect(formatOverlayLabel(a, { targetName: '  Search\n\nnow  ' })).toBe('Clicking Search now')
   })
 
-  it('unknown action type falls back to the action verb (never throws)', () => {
-    // Cast to Action to exercise the default branch
+  it('unknown action falls back to the action verb', () => {
     const a = { action: 'complete', result: 'done' } as unknown as Action
     expect(formatOverlayLabel(a)).toBe('complete')
   })

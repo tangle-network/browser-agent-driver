@@ -397,6 +397,84 @@ export class PlaywrightDriver implements Driver {
     } catch { /* cosmetic */ }
   }
 
+  // ── Gen 34 Hydra API ───────────────────────────────────────────────
+  /** Start the fan-out overlay. Renders the dim + grid of N labeled cells. */
+  async fanOutStart(labels: string[]): Promise<void> {
+    if (!this.options.showCursor) return;
+    if (this.cursorInstallPromise) await this.cursorInstallPromise.catch(() => undefined);
+    try {
+      const ls = labels.slice(0, 8);
+      await this.page.evaluate(
+        (l: string[]) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const ov = (window as { __bad_overlay?: any }).__bad_overlay;
+          if (ov && typeof ov.fanOutStart === 'function') ov.fanOutStart(l);
+        },
+        ls,
+      ).catch(() => {});
+    } catch { /* cosmetic */ }
+  }
+
+  /** Stream a JPEG dataURL into cell N. Call at 2-5 FPS during fan-out. */
+  async fanOutUpdateCell(index: number, dataUrl?: string): Promise<void> {
+    if (!this.options.showCursor) return;
+    if (this.cursorInstallPromise) await this.cursorInstallPromise.catch(() => undefined);
+    try {
+      await this.page.evaluate(
+        ({ i, d }: { i: number; d?: string }) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const ov = (window as { __bad_overlay?: any }).__bad_overlay;
+          if (ov && typeof ov.fanOutUpdateCell === 'function') ov.fanOutUpdateCell(i, d);
+        },
+        { i: index, ...(dataUrl ? { d: dataUrl } : {}) },
+      ).catch(() => {});
+    } catch { /* cosmetic */ }
+  }
+
+  /** Mark cell N complete with a verdict kind + chip text. */
+  async fanOutCompleteCell(
+    index: number,
+    kind: 'positive' | 'cleared' | 'review' | 'info',
+    verdictText?: string,
+  ): Promise<void> {
+    if (!this.options.showCursor) return;
+    if (this.cursorInstallPromise) await this.cursorInstallPromise.catch(() => undefined);
+    try {
+      await this.page.evaluate(
+        ({ i, k, t }: { i: number; k: string; t?: string }) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const ov = (window as { __bad_overlay?: any }).__bad_overlay;
+          if (ov && typeof ov.fanOutCompleteCell === 'function') ov.fanOutCompleteCell(i, k, t);
+        },
+        { i: index, k: kind, ...(verdictText ? { t: verdictText } : {}) },
+      ).catch(() => {});
+    } catch { /* cosmetic */ }
+  }
+
+  /** Collapse the grid (cells fly to center, merge). ~500ms animation. */
+  async fanOutCollapse(): Promise<void> {
+    if (!this.options.showCursor) return;
+    try {
+      await this.page.evaluate(() => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const ov = (window as { __bad_overlay?: any }).__bad_overlay;
+        if (ov && typeof ov.fanOutCollapse === 'function') ov.fanOutCollapse();
+      }).catch(() => {});
+    } catch { /* cosmetic */ }
+  }
+
+  /** Dismiss the fan-out overlay (fade out). Call after collapse finishes. */
+  async fanOutDismiss(): Promise<void> {
+    if (!this.options.showCursor) return;
+    try {
+      await this.page.evaluate(() => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const ov = (window as { __bad_overlay?: any }).__bad_overlay;
+        if (ov && typeof ov.fanOutDismiss === 'function') ov.fanOutDismiss();
+      }).catch(() => {});
+    } catch { /* cosmetic */ }
+  }
+
   getPage(): Page {
     return this.page;
   }

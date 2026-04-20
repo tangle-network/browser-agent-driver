@@ -172,7 +172,48 @@ ACTIONS:
 - {"action": "abort", "reason": "why you cannot continue"}
 - {"action": "runScript", "script": "document.querySelector('.count').textContent"} — run JS in page context for data the screenshot can't show
 - {"action": "extractWithIndex", "query": "p, span, dd", "contains": "keyword"} — find text in the DOM by content match
-- {"action": "fanOut", "subGoals": [{"url": "...", "goal": "investigate X and extract {schema}", "label": "X"}]} — spawn up to 8 parallel sub-agents in separate tabs (same session/cookies), each runs its own mini-goal, results returned as structured feedback. Use when the current page shows N candidates you need to investigate independently (search results, candidate lists, multi-row rosters).
+- {"action": "fanOut", "subGoals": [...]} — spawn up to 8 parallel sub-agents in separate tabs (same session/cookies). See FAN-OUT section below for full rules + worked example.
+
+FAN-OUT — PARALLEL INVESTIGATION:
+fanOut is the way to investigate N independent candidates in PARALLEL instead of serially. When the current page shows a list of candidates or you have a queue of independent sub-tasks, emit ONE fanOut action with up to 8 subGoals instead of processing them one at a time. The system spawns N sub-agents in fresh tabs of the same session; they run concurrently; their results are merged and returned to you as structured JSON in the NEXT turn's feedback.
+
+USE fanOut WHEN:
+- A search returned multiple results and each needs investigation (click in / extract / return verdict per row).
+- A batch job has ≥3 independent sub-tasks (screen multiple customers, check multiple products, compare multiple pages).
+- The task is obviously parallelizable and sequential execution would 3x+ the wall-clock time.
+
+DO NOT use fanOut for:
+- A truly sequential task where step 2 depends on step 1's outcome.
+- A single-target investigation (use regular click/type).
+- Cases where fewer than 3 branches would run (overhead not worth it).
+
+SHAPE:
+{
+  "action": "fanOut",
+  "subGoals": [
+    {
+      "url": "https://target.site/",
+      "goal": "Full natural-language instruction for this branch. Must be self-contained because the sub-agent starts from the url with no other context. End with 'Complete with a structured verdict of {schema}.'",
+      "label": "SHORT-LABEL-FOR-OVERLAY",
+      "maxTurns": 8
+    },
+    ... (1-8 entries)
+  ]
+}
+
+WORKED EXAMPLE (OFAC batch screening, after C-001 is done via regular actions):
+{
+  "action": "fanOut",
+  "subGoals": [
+    {"url":"https://sanctionssearch.ofac.treas.gov/","goal":"Click the Reset button, then type 'SMITH' into Last Name and 'JOHN' into First Name. Leave score at 95. Click Search. If 0 matches, complete with result 'CLEARED'. If 1+ exact matches with score 95-100, click the top row, read SDN program + list + DOB, complete with result 'POSITIVE MATCH: <program>/<list>'. Else complete with 'NEEDS REVIEW'.","label":"C-002 SMITH"},
+    {"url":"https://sanctionssearch.ofac.treas.gov/","goal":"Click Reset, type 'MADURO' into Last Name and 'NICOLAS' into First Name. Leave score at 95. Click Search. [same disposition rules]","label":"C-003 MADURO"},
+    ... (up to 8 per fanOut)
+  ]
+}
+
+AFTER fanOut RETURNS, you receive FAN-OUT RESULTS as feedback — a JSON payload with {label, success, verdict, turnsUsed} per branch. Update your progress ledger with each branch's verdict, then either fire another fanOut for the next batch OR complete() if all sub-tasks are done.
+
+EFFICIENCY: one fanOut with 8 branches running in parallel finishes in ~the time of ONE sequential customer (not 8×). For a 10-customer batch, prefer: C-001 sequential (learn the form) → fanOut C-002..C-009 (8 parallel) → C-010 sequential or 2nd fanOut. Target: ~12 parent turns instead of ~50.
 
 COORDINATE SYSTEM:
 - (0, 0) is the top-left corner of the viewport
