@@ -24,22 +24,21 @@
     "compression": "aggressive context window pruning"
   },
   "gen30r3Metrics": {
-    "reps": 1,
+    "reps": 2,
     "scope": "curated-30",
-    "passRate": 0.533,
-    "passNumerator": 16,
-    "passDenominator": 30,
+    "runA": {"label": "b9u942fk7", "pass": 16, "total": 30, "rate": 0.533, "costUsd": 7.67, "tokens": 2328248},
+    "runB": {"label": "bzu03njah", "pass": 15, "total": 30, "rate": 0.500, "costUsd": 8.08, "tokens": 2474606},
+    "n2Mean": 0.517,
+    "passRateRange": [0.500, 0.533],
     "gen11BaselineRate": 0.40,
-    "deltaPctPoints": 13.3,
-    "costUsd": 7.67,
-    "tokensUsed": 2328248,
+    "deltaPctPointsVsBaseline": 11.7,
     "model": "claude-sonnet-4-6",
     "routedVia": "router.tangle.tools",
-    "failureBreakdown": {
-      "costCapExceeded100k": 12,
-      "timeout120s": 1,
-      "agentCrashNoMetrics": 2
-    }
+    "dominantFailureMode": "cost_cap_exceeded at 100k tokens (26-28 of ~29 cumulative failures)",
+    "stableSolvedSites": ["Cambridge Dictionary", "GitHub"],
+    "noiseFlippedSites": ["BBC News", "Coursera", "Google Map", "Google Search", "Apple", "Wolfram Alpha"],
+    "consistentFailureSites": ["Booking", "Huggingface", "Google Flights"],
+    "mixedSites": ["Allrecipes", "ArXiv", "ESPN", "Amazon"]
   },
   "heldOutResults": {
     "competitive": "10/10 (100%)",
@@ -49,7 +48,7 @@
   },
   "webvoyagerBaseline": {
     "gen25_full_run": "539/590 (91.3%) at $54 on gpt-5.4",
-    "gen30r3_curated30": "16/30 (53.3%) at $7.67 on claude-sonnet-4-6 via Tangle router — BUT cost-cap-dominated, not capability-dominated"
+    "gen30r3_curated30": "n=2 same-day: Run A 16/30 (53.3%) + Run B 15/30 (50.0%), mean 31/60 (51.7%), +11.7pp vs Gen 11 gpt-5.4 baseline — cost-cap-dominated, ~26-28 of ~29 cumulative failures are cost_cap_exceeded at 100k"
   },
   "criticalGap": "Full WebVoyager 590 still pending. R3 found the blocker isn't the router (fixed) or the agent capability (6 sites at 2/2) but the cost cap interaction with claude-sonnet-4-6's verbosity. Next round: raise cap to 150k and re-run curated-30 to get a fair same-model pass rate before committing to full-590 budget.",
   "updatedAt": "2026-04-20T06:35:00Z"

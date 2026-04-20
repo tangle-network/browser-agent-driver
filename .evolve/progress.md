@@ -10,38 +10,49 @@ Scope reduced from full 590 to curated-30 because the pre-flight 3-task smoke sh
 
 Phase 1.5 audit caught a third instance of the same plumbing pattern Gen 30 R2 thought it had closed: `scripts/run-scenario-track.mjs` and `bench/external/webvoyager/run.mjs` didn't forward `--provider` / `--base-url` / `--api-key`. Patched in commit `f25a3d2`. This is the THIRD time the same class of bug has appeared — Gen 30 R2 fixed multi-rep + mode-baseline, R3 had to fix scenario-track + webvoyager. The `scripts/provider-compat-smoke.mjs` proposed in the gen27-30 reflection would have surfaced all three plumbing sites in one sweep; still the highest-ROI unship.
 
-### Results (30 scenarios, 1 rep, concurrency 3)
+### Correction: n=2 data, not n=1
 
-**Headline: 16/30 pass rate (53.3%).** +13.3pp vs Gen 11's 40% baseline AT FACE VALUE.
+After the initial write-up I discovered two background processes (b9u942fk7 and bzu03njah) had both completed full curated-30 runs against the same stack — the first I'd thought I killed but hadn't, the second a clean relaunch. Result: two independent same-day runs on the same main-HEAD via Tangle router + claude-sonnet-4-6.
 
-| site | pass/2 | failure mode on misses |
-|---|---|---|
-| BBC News | 2/2 | — |
-| Cambridge Dictionary | 2/2 | — |
-| Coursera | 2/2 | — |
-| GitHub | 2/2 | — |
-| Google Map | 2/2 | — |
-| Google Search | 2/2 | — |
-| Amazon | 1/2 | 1 timeout (120s) |
-| Apple | 1/2 | 1 cost_cap (127k tokens) |
-| ArXiv | 1/2 | 1 cost_cap (117k) |
-| Wolfram Alpha | 1/2 | 1 cost_cap (110k) |
-| Allrecipes | 0/2 | 2 cost_cap (108k, 107k) |
-| Booking | 0/2 | 2 cost_cap (106k, 115k) |
-| ESPN | 0/2 | 2 cost_cap (122k, 105k) |
-| Huggingface | 0/2 | 2 cost_cap (100k, 112k) |
-| Google Flights | 0/2 | 2 agent crashes (exit 1, no metrics) |
+**Run A (b9u942fk7):** 16/30 = 53.3%, $7.67, 2.33M tokens
+**Run B (bzu03njah):** 15/30 = 50.0%, $8.08, 2.47M tokens
 
-Total cost: $7.67 on 30 tasks = $0.26/task. Total tokens: 2.3M.
-Mean on passed tasks: 5.4 turns, $0.21.
+**Mean: 31/60 = 51.7%.** Both clear the 40% Gen 11 baseline. +10-13pp face value with the cost-cap confound unchanged.
+
+Per-site variance between runs is informative: sites like BBC/Coursera/Google Map/Google Search flipped 2/2 → 1/2 between runs, while Apple/Wolfram flipped 1/2 → 2/2. That's run-to-run noise dominated by which tasks happened to hit the 100k cap in which run — confirming the failure pattern is "model verbosity × cap" not "site difficulty."
+
+### Results (per-site, n=2)
+
+| site | Run A (b9u942fk7) | Run B (bzu03njah) | stable across runs? |
+|---|---|---|---|
+| Cambridge Dictionary | 2/2 | 2/2 | ✓ |
+| GitHub | 2/2 | 2/2 | ✓ |
+| BBC News | 2/2 | 1/2 | noise-flipped |
+| Coursera | 2/2 | 1/2 | noise-flipped |
+| Google Map | 2/2 | 1/2 | noise-flipped |
+| Google Search | 2/2 | 1/2 | noise-flipped |
+| Apple | 1/2 | 2/2 | noise-flipped |
+| Wolfram Alpha | 1/2 | 2/2 | noise-flipped |
+| Amazon | 1/2 | 1/2 | ~stable (1 timeout in both) |
+| Allrecipes | 0/2 | 1/2 | Run B got one pass |
+| ArXiv | 1/2 | 0/2 | Run B both capped |
+| ESPN | 0/2 | 1/2 | Run B got one pass |
+| Booking | 0/2 | 0/2 | ✓ consistently cap-failed |
+| Huggingface | 0/2 | 0/2 | ✓ consistently cap-failed |
+| Google Flights | 0/2 | 0/2 | ✓ consistently failed (Run A = crash, Run B = cap) |
+
+Total cost across both runs: $15.75 on 60 task-attempts = $0.26/task mean. Tokens: 4.80M cumulative. Mean on passed tasks: ~5.4 turns, ~$0.21.
 
 ### The honest read
 
-**12 of 14 failures are cost_cap_exceeded at the 100k-token budget.** That budget was set in Gen 10 when gpt-5.4 was the working model. claude-sonnet-4-6 is more verbose — it blows the cap on tasks gpt-5.4 would have finished. Claiming this as "Gen 29+30 capability regression" would be wrong; the more honest read is:
+Across both runs, ~25-28 of ~29 failures are cost_cap_exceeded at the 100k-token budget. That budget was set in Gen 10 when gpt-5.4 was the working model. claude-sonnet-4-6 is more verbose — it blows the cap on tasks gpt-5.4 would have finished. Claiming this as "Gen 29+30 capability regression" would be wrong; the more honest read is:
 
-1. **6 sites (12 tasks) are SOLVED on the current branch via this model+router: BBC, Cambridge, Coursera, GitHub, Google Map, Google Search.** All 2/2 pass.
-2. **4 sites (8 tasks) are budget-capped — cost cap prevents what looks like eventual success.** If the cap were raised to 150k, the per-failure trace pattern (agent still making progress when cap hit) suggests most would complete.
-3. **2 sites (3 tasks) are true capability failures: Amazon timeout (1), Google Flights crashes (2).** Google Flights was the hardest site in Gen 25 too (0% in Gen 11) — stealth or anti-bot specific.
+1. **2 sites consistently solved (2/2 in BOTH runs):** Cambridge Dictionary, GitHub.
+2. **6 sites noise-flipped between 1/2 and 2/2:** BBC, Coursera, Google Map, Google Search, Apple, Wolfram Alpha. Run-to-run variance driven by which tasks happened to cross the 100k cap that run.
+3. **3 sites consistently failed in both runs:** Booking, Huggingface, Google Flights. These are the true capability-or-blocker candidates that won't flip on a cap bump alone.
+4. **Mixed sites (Allrecipes, ArXiv, ESPN, Amazon):** one side got one pass, the other zero. Cap-dominated with some variance.
+
+The true non-cap failures: Amazon timeout (consistent), Google Flights (Run A crash + Run B cap). Google Flights was the hardest site in Gen 25 too (0% in Gen 11) — stealth or anti-bot specific.
 
 ### Verdict: ITERATE, not KEEP
 
