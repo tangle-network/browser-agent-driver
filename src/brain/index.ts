@@ -672,6 +672,13 @@ export class Brain {
         const provider = createOpenAI({
           apiKey: apiKey || '',
           ...(this.baseUrl ? { baseURL: this.baseUrl } : {}),
+          // Gen 30: some OpenAI-compatible routers (notably router.tangle.tools)
+          // default to SSE streaming when the client omits `stream`. The AI SDK's
+          // generateText expects non-streaming responses and errors out with
+          // "Invalid JSON response" on SSE. Force `stream: false` on every
+          // chat-completions body the provider sends, but only when a custom
+          // baseUrl is set — the real OpenAI endpoint defaults correctly.
+          ...(this.baseUrl ? { fetch: createForceNonStreamingFetch() } : {}),
         });
         model = provider.chat(modelName) as LanguageModel;
         break;
@@ -2577,4 +2584,33 @@ function isStringRecord(value: unknown): value is Record<string, string> {
     if (typeof v !== 'string') return false;
   }
   return true;
+}
+
+/**
+ * Gen 30: build a fetch-replacement that forces `"stream": false` on every
+ * /chat/completions body. Necessary for OpenAI-compatible gateways that
+ * default to SSE streaming when the client omits the field (observed on
+ * router.tangle.tools). The AI SDK's generateText path does not handle
+ * SSE, and we can't rely on the gateway respecting the absence of `stream`.
+ */
+function createForceNonStreamingFetch(): typeof fetch {
+  return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    if (init?.body && typeof init.body === 'string') {
+      const body = init.body
+      // Cheap content-sniff so we only rewrite chat-completions shaped bodies,
+      // not arbitrary POSTs the caller might make (embeddings, etc.).
+      if (body.includes('"messages"') && body.includes('"model"')) {
+        try {
+          const parsed = JSON.parse(body) as Record<string, unknown>
+          if (parsed.stream === undefined || parsed.stream === true) {
+            parsed.stream = false
+            init = { ...init, body: JSON.stringify(parsed) }
+          }
+        } catch {
+          // Non-JSON body — pass through unchanged.
+        }
+      }
+    }
+    return fetch(input, init)
+  }
 }

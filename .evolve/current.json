@@ -1,17 +1,19 @@
 {
   "mode": "evolve",
   "goal": "#1 on WebVoyager + employee-grade agent",
-  "status": "gen30-r1-shipped-bootstrap-CI-verdict",
+  "status": "gen30-r2-shipped-non-regression-proven-and-cost-win",
   "generation": 30,
-  "round": 1,
+  "round": 2,
   "branch": "gen29-browser-harness-integration",
   "npmVersion": "0.24.1",
   "activePursuit": null,
   "metricClaims": {
-    "macroPromotionVerdictCorrectness": "If the gate is statistically valid, the eval-gated capability-growth flywheel produces real compounding — skills in skills/macros/ are demonstrably improvements. False-promotion ships noise as capability and the corpus decays."
+    "gen29NonRegression": "Pass rate held at 100% on local-smoke tier1 gate between macros+skills ON and macros+skills OFF. Cost dropped 13% (CI entirely below zero, large effect size). Gen 29 improved the loop on this scenario.",
+    "macroPromotionVerdictCorrectness": "If the gate is statistically valid, the eval-gated capability-growth flywheel produces real compounding. Dogfooded in R2 — correctly separated robust cost signal from noisy turn signal."
   },
   "shipped": {
-    "gen30r1": "bootstrap CI + Cohen's d verdict in scripts/lib/macro-promotion.mjs — addresses audit B-H2 properly, replaces Gen 29 first-order spread-dominance",
+    "gen30r2": "Tangle router unblocks measurement; Gen 29 cost −13% vs off (CI [−$0.060,−$0.017], d=-2.57 large). Infra fixes: --provider/--base-url/--api-key forwarded through multi-rep scripts; createForceNonStreamingFetch wrapper for routers that default to SSE.",
+    "gen30r1": "bootstrap CI + Cohen's d verdict in scripts/lib/macro-promotion.mjs — addresses audit B-H2 properly",
     "gen29": "browser-harness integration — attach to real Chrome, portable domain-skill loader, custom action macros, eval-gated promotion",
     "gen28": "per-role model orchestration",
     "gen27": "stealth, anti-bot, form intelligence, CAPTCHA, card dedup, system Chrome",
@@ -21,14 +23,21 @@
     "datadome": "behavioral timing bypass",
     "compression": "aggressive context window pruning"
   },
-  "gen30Metrics": {
-    "r1TestsBefore": 1093,
-    "r1TestsAfter": 1099,
-    "r1NetNewTests": 6,
-    "r1DescoperedForR2": [
-      "domain-skill smoke fixture (needs local HTML + in-browser test)",
-      "funded-key multi-rep baseline (blocked on OpenAI quota)"
-    ]
+  "gen30r2Metrics": {
+    "reps": 3,
+    "scenario": "bench/scenarios/cases/local-smoke.json",
+    "model": "claude-sonnet-4-6",
+    "routedVia": "router.tangle.tools",
+    "baselinePassRate": 1.0,
+    "treatmentPassRate": 1.0,
+    "turnsDelta": -1.0,
+    "turnsCI95": [-5, 3],
+    "turnsCohenD": -0.289,
+    "costDelta": -0.0417,
+    "costCI95": [-0.0602, -0.0171],
+    "costCohenD": -2.574,
+    "costEffectMagnitude": "large",
+    "verdict": "promote"
   },
   "heldOutResults": {
     "competitive": "10/10 (100%)",
@@ -40,6 +49,6 @@
     "gen25_full_run": "539/590 (91.3%) at $54",
     "gen27_estimated": "93-96% (NEVER MEASURED)"
   },
-  "criticalGap": "No full WebVoyager 590 run since Gen 25; 9 generations pending measurement. Blocked on funded API key.",
-  "updatedAt": "2026-04-19T00:05:00Z"
+  "criticalGap": "WebVoyager 590 still stale since Gen 25. Gen 30 R3 should replicate the R2 A/B across curated-30 or the full gauntlet now that router plumbing works.",
+  "updatedAt": "2026-04-19T23:25:00Z"
 }

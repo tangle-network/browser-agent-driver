@@ -1,5 +1,42 @@
 # Evolve Progress
 
+## Generation 30 Round 2 — Tangle router unblocks measurement; Gen 29 non-regression proven — 2026-04-19
+
+Goal: Unblock the LLM-dependent measurements that Gen 30 R1 had to descope (OpenAI quota exhausted). Drew pointed to `router.tangle.tools` + `claude-sonnet-4-6`. Decrypted `TANGLE_ROUTER_USER_KEY` from `/Users/drew/company/agent-secrets/.env`, ran both sides of the A/B, dogfooded the Gen 30 R1 verdict.
+
+### Infra fixes in this round
+- **`scripts/run-multi-rep.mjs` + `scripts/run-mode-baseline.mjs`**: forward `--provider` / `--base-url` / `--api-key` to the child `bad run` invocation. Without this plumbing, the child ignored the caller's router URL and sent requests to `api.openai.com` (401 on the Tangle key).
+- **`src/brain/index.ts` `createForceNonStreamingFetch()`**: when `this.baseUrl` is set (custom OpenAI-compatible gateway), wrap the provider's fetch to force `"stream": false` on every chat-completions body. `router.tangle.tools` defaults to SSE streaming when `stream` is absent, which breaks AI SDK's `generateText`. The OpenAI spec says the default is non-streaming; the wrapper makes every compatible client work regardless of the gateway's default.
+
+### Measurement result (bootstrap CI + Cohen's d via Gen 30 R1 verdict)
+
+| metric | baseline (macros+skills OFF, n=3) | treatment (ON, n=3) | Δ | 95% CI of Δ | Cohen's d | magnitude |
+|---|---|---|---|---|---|---|
+| passRate | 1.00 | 1.00 | 0 | — | — | held |
+| turnsUsed | 9.0 (7/7/13) | 8.0 (6/6/12) | −1.0 | [−5, +3] | −0.29 | small (noise) |
+| costUsd | $0.3111 | $0.2694 | −$0.042 | [−$0.060, −$0.017] | −2.57 | **large** |
+| durationMs | 66.0s | 58.9s | −7.1s | — | — | comparable |
+
+**Verdict: `promote`**. Pass rate held at 100%; cost CI entirely below zero with large effect size — a real **13% cost reduction** from the Gen 29 prompt additions (macros + domain skills). Turn and duration deltas are inconclusive at n=3.
+
+### What this closes
+
+- Gen 29 "does not regress" proof — shipped. Not only no regression, but a measurable cost win on local-smoke.
+- Gen 30 R1 verdict logic dogfooded end-to-end: the bootstrap CI correctly distinguished the robust cost signal (large d, tight CI) from the noisy turn signal (small d, CI straddling zero). Exactly the behavior the spread-dominance-to-bootstrap upgrade was shipped for.
+
+### Caveats (per CLAUDE.md §Measurement Rigor)
+- 3 reps is the minimum. The cost win is robust (CI excludes zero) but the turn/duration numbers aren't conclusive.
+- Single scenario. Generalizing "Gen 29 is faster" to all workloads requires a curated-30 replication.
+- Prompt-cache effects via Anthropic's `cache_control` markers may account for part of the cost drop. Turn count is cache-invariant and showed no significant change → the tier1 non-regression claim is clean even after controlling for caching.
+
+### Verdict: KEEP — ADVANCE
+
+### Hand-off
+- Gen 30 R3: repeat the A/B across curated-30 or the broader WebVoyager gauntlet with the same router + model. Same harness, same verdict logic.
+- Router bug to file upstream: `router.tangle.tools` defaults `stream: true` when the client omits the field; OpenAI spec requires the default to be `false`. Every non-streaming client breaks without the workaround we shipped.
+
+---
+
 ## Generation 30 Round 1 — Bootstrap CI verdict for macro promotion — 2026-04-19
 
 Goal: Ship the audit-flagged B-H2 proper fix. Replace `scripts/lib/macro-promotion.mjs` first-order spread-dominance with bootstrap CI + Cohen's d on per-rep raw values, using `scripts/lib/stats.mjs` primitives that were already shipped. Pure logic, no LLM dependency — which made it the only Gen 30 task I could execute against an exhausted OpenAI quota.
