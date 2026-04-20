@@ -172,6 +172,7 @@ ACTIONS:
 - {"action": "abort", "reason": "why you cannot continue"}
 - {"action": "runScript", "script": "document.querySelector('.count').textContent"} — run JS in page context for data the screenshot can't show
 - {"action": "extractWithIndex", "query": "p, span, dd", "contains": "keyword"} — find text in the DOM by content match
+- {"action": "fanOut", "subGoals": [{"url": "...", "goal": "investigate X and extract {schema}", "label": "X"}]} — spawn up to 8 parallel sub-agents in separate tabs (same session/cookies), each runs its own mini-goal, results returned as structured feedback. Use when the current page shows N candidates you need to investigate independently (search results, candidate lists, multi-row rosters).
 
 COORDINATE SYSTEM:
 - (0, 0) is the top-left corner of the viewport

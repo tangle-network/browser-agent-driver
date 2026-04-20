@@ -158,5 +158,16 @@ function actionSignature(action: Action): string {
         .join('|');
       return `macro:${action.name}:${argSig}`;
     }
+    case 'fanOut': {
+      // Signature: the set of labels + goal hashes. Sort so re-ordering
+      // sub-goals doesn't trigger the stuck detector. Including goals
+      // (not just labels) means the agent can legitimately retry a
+      // fan-out by narrowing each sub-goal without being flagged.
+      const sig = (action.subGoals ?? [])
+        .map((sg) => `${sg.label ?? sg.url}:${sg.goal.slice(0, 40)}`)
+        .sort()
+        .join('|');
+      return `fanOut:${sig}`;
+    }
   }
 }

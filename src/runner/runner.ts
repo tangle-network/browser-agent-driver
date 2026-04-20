@@ -1726,6 +1726,63 @@ export class BrowserAgent {
           continue;
         }
 
+        // -- Gen 33: mid-run parallel fan-out. Agent picked N candidates
+        // from the current page and wants to explore each in its own tab.
+        // We spawn sub-agents in the same BrowserContext, collect their
+        // verdicts, and inject the merged result as feedback for the next
+        // turn. Parent page state is untouched.
+        if (action.action === 'fanOut') {
+          const page = this.driver.getPage?.();
+          const context = page?.context();
+          if (!context) {
+            this.brain.injectFeedback(
+              'FAN-OUT ERROR: driver does not expose a BrowserContext — fanOut only works with the Playwright driver.',
+            );
+            turn.durationMs = Date.now() - turnStart;
+            turns.push(turn);
+            this.onTurn?.(turn);
+            continue;
+          }
+          const { executeFanOut } = await import('./fan-out.js');
+          const topDriverOptions = this.driver.getDriverOptions?.() as
+            | import('../drivers/playwright.js').PlaywrightDriverOptions
+            | undefined;
+          const fanOutResult = await executeFanOut(action, {
+            context,
+            config: this.config,
+            currentUrl: state.url,
+            ...(topDriverOptions
+              ? { driverOptions: (() => { const { showCursor: _sc, ...rest } = topDriverOptions; return rest; })() }
+              : {}),
+            ...(this.projectStore ? { projectStore: this.projectStore } : {}),
+            ...(this.macroPromptBlock ? { macroPromptBlock: this.macroPromptBlock } : {}),
+            onBranchStart: (_idx, label) => {
+              // Fire and forget — this is purely cosmetic narration on
+              // the overlay. Errors are swallowed by the driver.
+              if (this.driver.setOverlayReasoning) {
+                void this.driver.setOverlayReasoning(`Fan-out: launching ${label}…`);
+              }
+            },
+          });
+
+          // Nice-to-have: surface fan-out completion as a badge moment so
+          // the viewer sees the parallel exploration punctuated clearly.
+          if (this.driver.pushOverlayBadge) {
+            const ok = fanOutResult.branches.filter((b) => b.success).length;
+            const total = fanOutResult.branches.length;
+            void this.driver.pushOverlayBadge(
+              ok === total ? 'cleared' : ok === 0 ? 'review' : 'info',
+              `Fan-out · ${ok}/${total} branches ok`,
+            );
+          }
+
+          this.brain.injectFeedback(fanOutResult.feedback);
+          turn.durationMs = Date.now() - turnStart;
+          turns.push(turn);
+          this.onTurn?.(turn);
+          continue;
+        }
+
         // -- 6. Check for terminal actions --
         if (action.action === 'complete') {
           // Step 1: Goal verification — did the agent actually achieve the goal?
