@@ -685,34 +685,60 @@
       const durationSec = Math.max(1, Math.round((totalMs || 1) / 1000));
       const stepCount = turns.length;
 
+      // Gen 33: two-column layout — video + timeline + reasoning on the
+      // left, decision-list sidebar on the right. The decision list is
+      // the primary scrub interface: each row shows the turn number,
+      // the verb, the target, a status chip, and (on click) fork-from-
+      // this-turn affordance. Click any row = video seek + reasoning update.
       main.innerHTML = `
-        <div style="width: 100%; max-width: 1200px;">
-          <div style="margin-bottom: 16px;">
-            <h2 style="margin: 0; font-size: 18px;">${escapeHtml(test.name || test.id)} — Recording</h2>
-            <div style="color: var(--text-muted); font-size: 12px; margin-top: 4px;">
-              ${stepCount} turns · ${durationSec}s · click a marker below to scrub the video to that moment.
+        <div style="width: 100%; max-width: 1200px; display: grid; grid-template-columns: 1fr 340px; gap: 20px; align-items: start;">
+          <div>
+            <div style="margin-bottom: 16px;">
+              <h2 style="margin: 0; font-size: 18px;">${escapeHtml(test.name || test.id)} — Recording</h2>
+              <div style="color: var(--text-muted); font-size: 12px; margin-top: 4px;">
+                ${stepCount} turns · ${durationSec}s · click any decision on the right to scrub the video to that moment.
+              </div>
+            </div>
+            <div class="screenshot-wrap" style="background: #000; position: relative;">
+              <video id="rec-video" controls autoplay muted loop style="max-width: 100%; max-height: calc(100vh - 340px); display: block;" src="${escapeHtml(test.recording)}">
+                Your browser doesn't support inline video playback.
+              </video>
+            </div>
+            <!-- Timeline scrubber: thin track with a marker per turn -->
+            <div id="rec-timeline" style="margin-top: 14px; position: relative; height: 46px; padding: 0 4px;">
+              <div style="position: absolute; top: 18px; left: 4px; right: 4px; height: 6px; background: var(--border); border-radius: 3px;"></div>
+              <div id="rec-playhead" style="position: absolute; top: 15px; left: 4px; width: 2px; height: 12px; background: var(--accent, #7aa2ff); border-radius: 1px; box-shadow: 0 0 4px var(--accent, #7aa2ff); pointer-events: none;"></div>
+              <div id="rec-markers" style="position: relative; height: 46px;"></div>
+            </div>
+            <!-- Reasoning panel synced to the playhead -->
+            <div id="rec-reasoning" style="margin-top: 14px; padding: 14px 16px; background: var(--bg-panel, #141927); border: 1px solid var(--border, #2a3145); border-radius: 8px; min-height: 84px;">
+              <div style="font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent, #7aa2ff); margin-bottom: 8px;">
+                Agent reasoning · <span id="rec-turn-label">turn —</span>
+              </div>
+              <div id="rec-reasoning-body" style="font-size: 13px; line-height: 1.55; color: var(--text, #e6ebf5); white-space: pre-wrap;">
+                Press play to follow the agent's reasoning turn-by-turn.
+              </div>
+              <div id="rec-fork-panel" style="margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border, #2a3145); display: none;">
+                <div style="font-size: 10px; color: var(--text-muted); margin-bottom: 4px;">
+                  Fork a new run from this decision with a different goal:
+                </div>
+                <div style="display: flex; gap: 6px; align-items: center;">
+                  <input id="rec-fork-goal" type="text" placeholder="new goal…" style="flex: 1; padding: 6px 10px; background: var(--bg, #0b0f19); border: 1px solid var(--border, #2a3145); border-radius: 4px; color: var(--text, #e6ebf5); font-family: inherit; font-size: 12px;" />
+                  <button id="rec-fork-button" type="button" style="padding: 6px 14px; background: var(--accent, #7aa2ff); color: #0b1220; border: none; border-radius: 4px; font-size: 12px; font-weight: 700; cursor: pointer;">
+                    Copy fork cmd
+                  </button>
+                </div>
+                <div id="rec-fork-hint" style="margin-top: 6px; font-size: 11px; color: var(--text-muted); font-family: 'SF Mono', Menlo, monospace; word-break: break-all;"></div>
+              </div>
             </div>
           </div>
-          <div class="screenshot-wrap" style="background: #000; position: relative;">
-            <video id="rec-video" controls autoplay muted loop style="max-width: 100%; max-height: calc(100vh - 340px); display: block;" src="${escapeHtml(test.recording)}">
-              Your browser doesn't support inline video playback.
-            </video>
-          </div>
-          <!-- Timeline scrubber: thin track with a marker per turn -->
-          <div id="rec-timeline" style="margin-top: 14px; position: relative; height: 46px; padding: 0 4px;">
-            <div style="position: absolute; top: 18px; left: 4px; right: 4px; height: 6px; background: var(--border); border-radius: 3px;"></div>
-            <div id="rec-playhead" style="position: absolute; top: 15px; left: 4px; width: 2px; height: 12px; background: var(--accent, #7aa2ff); border-radius: 1px; box-shadow: 0 0 4px var(--accent, #7aa2ff); pointer-events: none;"></div>
-            <div id="rec-markers" style="position: relative; height: 46px;"></div>
-          </div>
-          <!-- Reasoning panel synced to the playhead -->
-          <div id="rec-reasoning" style="margin-top: 14px; padding: 14px 16px; background: var(--bg-panel, #141927); border: 1px solid var(--border, #2a3145); border-radius: 8px; min-height: 84px;">
-            <div style="font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent, #7aa2ff); margin-bottom: 8px;">
-              Agent reasoning · <span id="rec-turn-label">turn —</span>
+          <!-- Decision sidebar -->
+          <aside id="rec-sidebar" style="background: var(--bg-panel, #141927); border: 1px solid var(--border, #2a3145); border-radius: 8px; padding: 12px; max-height: calc(100vh - 220px); overflow-y: auto;">
+            <div style="font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent, #7aa2ff); margin-bottom: 10px;">
+              ${stepCount} decisions
             </div>
-            <div id="rec-reasoning-body" style="font-size: 13px; line-height: 1.55; color: var(--text, #e6ebf5); white-space: pre-wrap;">
-              Press play to follow the agent's reasoning turn-by-turn.
-            </div>
-          </div>
+            <div id="rec-decision-list"></div>
+          </aside>
         </div>
       `;
 
@@ -721,6 +747,11 @@
       const playhead = document.getElementById('rec-playhead');
       const reasoningBody = document.getElementById('rec-reasoning-body');
       const turnLabel = document.getElementById('rec-turn-label');
+      const decisionList = document.getElementById('rec-decision-list');
+      const forkPanel = document.getElementById('rec-fork-panel');
+      const forkGoalInput = document.getElementById('rec-fork-goal');
+      const forkButton = document.getElementById('rec-fork-button');
+      const forkHint = document.getElementById('rec-fork-hint');
 
       // Render markers. Each marker is an absolutely-positioned dot with
       // a thin stem so the viewer sees segment boundaries without clutter.
@@ -759,6 +790,66 @@
         markers.appendChild(el);
       });
 
+      // Verdict classifier mirrors the overlay narration logic — keep in
+      // sync with src/runner/overlay-narration.ts so the sidebar shows
+      // the same verdict colors as the video's baked-in badges.
+      function classifyTurn(t) {
+        const r = (t.reasoning || '') + ' ' + (t.action?.result || '');
+        if (/POSITIVE\s+MATCH/i.test(r)) return 'positive';
+        if (/\bCLEARED\b/i.test(r)) return 'cleared';
+        if (/NEEDS\s+REVIEW/i.test(r)) return 'review';
+        if (t.result?.success === false || t.verificationFailure) return 'error';
+        return 'neutral';
+      }
+
+      const VERDICT_COLOR = {
+        positive: '#fb7185', cleared: '#4ade80', review: '#fbbf24',
+        error: '#ef4444', neutral: 'var(--accent, #7aa2ff)'
+      };
+
+      // Build the decision sidebar. Each row carries turn index, action
+      // verb, target preview, a verdict chip, and a one-line reasoning
+      // summary. Click = seek video + update active state.
+      turns.forEach((t, i) => {
+        const act = t.action?.action || '?';
+        const targetRaw = t.action?.selector ?? t.action?.text ?? t.action?.key ?? t.action?.url ?? '';
+        const target = String(targetRaw).slice(0, 48);
+        const verdict = classifyTurn(t);
+        const color = VERDICT_COLOR[verdict] || VERDICT_COLOR.neutral;
+        const summary = (t.reasoning || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.className = 'rec-decision';
+        row.dataset.index = String(i);
+        Object.assign(row.style, {
+          display: 'block', width: '100%', textAlign: 'left',
+          padding: '10px 12px', margin: '0 0 6px 0',
+          background: 'transparent',
+          border: '1px solid var(--border, #2a3145)', borderLeft: `3px solid ${color}`,
+          borderRadius: '6px', color: 'var(--text, #e6ebf5)',
+          cursor: 'pointer', fontFamily: 'inherit',
+          transition: 'background 120ms ease, border-color 120ms ease',
+        });
+        row.innerHTML = `
+          <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 12px;">
+            <div>
+              <span style="color: var(--text-muted); font-family: 'SF Mono', Menlo, monospace;">${i + 1}.</span>
+              <span style="color: ${color}; font-weight: 600; margin-left: 4px;">${escapeHtml(act)}</span>
+              ${target ? `<span style="color: var(--text-muted); margin-left: 6px;">${escapeHtml(target)}</span>` : ''}
+            </div>
+          </div>
+          ${summary ? `<div style="margin-top: 4px; font-size: 11px; color: var(--text-muted); line-height: 1.4;">${escapeHtml(summary)}</div>` : ''}
+        `;
+        row.addEventListener('mouseenter', () => { row.style.background = 'rgba(122,162,255,0.04)'; });
+        row.addEventListener('mouseleave', () => { if (!row.classList.contains('active')) row.style.background = 'transparent'; });
+        row.addEventListener('click', () => {
+          const m = turnMarkers[i];
+          if (m) video.currentTime = m.start / 1000;
+          selectTurn(i);
+        });
+        decisionList.appendChild(row);
+      });
+
       function selectTurn(i) {
         const t = turns[i];
         if (!t) return;
@@ -773,6 +864,49 @@
           if (!dot) return;
           dot.style.background = j === i ? 'var(--accent, #7aa2ff)' : 'var(--bg-panel, #141927)';
         });
+        // Highlight the active sidebar row
+        decisionList.querySelectorAll('.rec-decision').forEach((n, j) => {
+          if (j === i) {
+            n.classList.add('active');
+            n.style.background = 'rgba(122,162,255,0.10)';
+            n.style.borderColor = 'var(--accent, #7aa2ff)';
+            // Keep the active row visible when auto-advanced by video time
+            n.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+          } else {
+            n.classList.remove('active');
+            n.style.background = 'transparent';
+            n.style.borderColor = 'var(--border, #2a3145)';
+          }
+        });
+        // Show the fork panel. Pre-fill a templated goal the user can edit.
+        const runId = test.id || test.runId || '';
+        const defaultGoal = (t.reasoning || '').split(/\.\s/)[0].slice(0, 80).replace(/^\s*["']?/, '').replace(/["']?\s*$/, '');
+        forkPanel.style.display = 'block';
+        forkGoalInput.value = defaultGoal;
+        const updateHint = () => {
+          const g = forkGoalInput.value.trim() || '<new goal>';
+          forkHint.textContent = runId
+            ? `bad run --fork-run ${runId} --goal "${g.replace(/"/g, '\\"')}"`
+            : '(no run id available — fork requires memory-enabled runs)';
+        };
+        updateHint();
+        forkGoalInput.oninput = updateHint;
+        forkButton.onclick = async () => {
+          const cmd = forkHint.textContent;
+          try {
+            await navigator.clipboard.writeText(cmd);
+            const prev = forkButton.textContent;
+            forkButton.textContent = 'Copied ✓';
+            setTimeout(() => { forkButton.textContent = prev; }, 1800);
+          } catch {
+            // Clipboard blocked — select the hint text so the user can Cmd-C.
+            const range = document.createRange();
+            range.selectNodeContents(forkHint);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+          }
+        };
       }
 
       function findTurnAt(timeMs) {

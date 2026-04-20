@@ -208,6 +208,42 @@ export interface MacroAction {
   args?: Record<string, string>;
 }
 
+/**
+ * Gen 33 — mid-run parallel fan-out. Spawns N sub-agents in fresh tabs,
+ * each with its own URL + goal, collects the results as structured
+ * feedback. Used when the agent sees "10 candidates, investigate each
+ * in parallel" — search result fan-out, roster screening, N-way
+ * comparison shopping, etc.
+ *
+ * Each sub-goal runs in an isolated tab sharing the parent context
+ * (cookies, localStorage) but not the parent page's live state. Results
+ * are merged and injected back as agent feedback so the outer goal
+ * continues with the enriched data.
+ */
+export interface FanOutAction {
+  action: 'fanOut';
+  /**
+   * Sub-goals to execute in parallel. Each fires an independent
+   * sub-agent with its own timeout + token budget derived from the
+   * parent. Limit: 8 concurrent (hard-capped in the runner).
+   */
+  subGoals: Array<{
+    /** Starting URL for this branch. Usually the parent's current URL. */
+    url: string;
+    /** Natural-language goal for this branch. */
+    goal: string;
+    /** Human-readable label rendered in the overlay + feedback. */
+    label?: string;
+    /** Max turns for this sub-agent. Default: 8. */
+    maxTurns?: number;
+  }>;
+  /**
+   * Optional guidance on how to combine sub-results when they return.
+   * Default: serialize as a JSON array with {label, verdict} entries.
+   */
+  summarize?: string;
+}
+
 export type Action =
   | ClickAction
   | TypeAction
@@ -229,7 +265,8 @@ export type Action =
   | TypeAtAction
   | ClickLabelAction
   | TypeLabelAction
-  | MacroAction;
+  | MacroAction
+  | FanOutAction;
 
 // ============================================================================
 // Plan - Structured action sequence (Gen 7)
