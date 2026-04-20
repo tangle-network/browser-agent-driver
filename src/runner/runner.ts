@@ -43,6 +43,11 @@ import type { Session } from '../memory/knowledge.js';
 import { RunRegistry } from '../memory/run-registry.js';
 import { TurnEventBus, ensureBus } from './events.js';
 import { DecisionCache } from './decision-cache.js';
+import {
+  VerdictTracker,
+  extractCurrentMarker,
+  buildProgressLabel,
+} from './overlay-narration.js';
 import { matchDeterministicPattern } from './deterministic-patterns.js';
 import type { ResolvedExtensions } from '../extensions/types.js';
 
@@ -752,6 +757,10 @@ export class BrowserAgent {
       }
     }
 
+    // Gen 32 — overlay narration tracker. Per-session; accumulates verdict
+    // markers so a ledger the agent keeps re-emitting doesn't spam badges.
+    const verdictTracker = new VerdictTracker();
+
     for (let i = 1 + plannerStartTurn; i <= maxTurns; i++) {
       if (scenario.signal?.aborted) {
         return buildResult({
@@ -1446,6 +1455,29 @@ export class BrowserAgent {
             durationMs: decideDurationMs,
           });
         }
+
+        // -- 4a. Gen 32 — narrate to the cursor overlay. Fire-and-forget.
+        // Four signals pushed to the page-context overlay so a viewer of
+        // the recorded video can READ the agent's work, not just watch it:
+        //   1. Reasoning panel (top-right) — the agent's own text
+        //   2. Progress bar + chip (top) — turn N with optional ledger marker
+        //   3. Verdict badges (bottom-left) — POSITIVE/CLEARED/REVIEW events
+        // All methods are no-ops when the overlay is disabled, and all page
+        // calls are wrapped by the driver so a navigation race here can
+        // never bubble up and break the run.
+        try {
+          if (this.driver.setOverlayReasoning) {
+            void this.driver.setOverlayReasoning(reasoning ?? '');
+          }
+          if (this.driver.setOverlayProgress) {
+            const marker = extractCurrentMarker(reasoning);
+            void this.driver.setOverlayProgress(i, maxTurns, buildProgressLabel(i, maxTurns, marker));
+          }
+          if (this.driver.pushOverlayBadge) {
+            const fresh = verdictTracker.accept(reasoning);
+            for (const v of fresh) void this.driver.pushOverlayBadge(v.kind, v.text);
+          }
+        } catch { /* overlay narration is cosmetic; never let it break a run */ }
 
         // -- 4b. Override pipeline — scored selection of post-decision overrides --
         const overrideCtx: OverrideContext = {

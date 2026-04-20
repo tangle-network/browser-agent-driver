@@ -215,6 +215,11 @@ async function main(): Promise<void> {
       'wait-for': { type: 'string' },
       'wait-timeout': { type: 'string' },
 
+      // Gen 32 — `bad share` flags
+      visibility: { type: 'string' },
+      'bad-app-url': { type: 'string' },
+      'no-copy': { type: 'boolean' },
+
       help: { type: 'boolean', short: 'h', default: false },
       version: { type: 'boolean', short: 'v', default: false },
     },
@@ -417,8 +422,39 @@ async function main(): Promise<void> {
     values.attach = true;
   }
 
+  // `bad share <run-id>` — create a bad-app share link, copy to clipboard.
+  if (command === 'share') {
+    const runId = positionals[1];
+    if (!runId) {
+      cliError('usage: bad share <run-id> [--visibility metadata|full|artifacts] [--json]');
+      process.exit(1);
+    }
+    const { handleShareCommand, ShareError } = await import('./cli-share.js');
+    const visArg = values.visibility;
+    const visibility = visArg === 'full' || visArg === 'artifacts' || visArg === 'metadata'
+      ? visArg
+      : undefined;
+    try {
+      await handleShareCommand({
+        runId,
+        visibility,
+        baseUrl: values['bad-app-url'],
+        apiKey: values['api-key'],
+        noCopy: values['no-copy'],
+        json: values.json,
+      });
+      process.exit(0);
+    } catch (err) {
+      if (err instanceof ShareError) {
+        cliError(err.message);
+        process.exit(1);
+      }
+      throw err;
+    }
+  }
+
   if (command !== 'run' && command !== 'attach') {
-    cliError(`Unknown command: ${command}. Use "run", "attach", "runs", "view", "chrome-debug", "design-audit", "showcase", or "auth".`);
+    cliError(`Unknown command: ${command}. Use "run", "attach", "runs", "view", "share", "chrome-debug", "design-audit", "showcase", or "auth".`);
     process.exit(1);
   }
 

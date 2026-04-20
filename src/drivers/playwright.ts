@@ -330,6 +330,73 @@ export class PlaywrightDriver implements Driver {
     return this.lastTiming;
   }
 
+  /**
+   * Set the reasoning panel (top-right) to the agent's current-turn
+   * reasoning. No-op when the overlay is disabled.
+   *
+   * Defensive: wraps page.evaluate with try/catch so navigation races,
+   * closed contexts, or a missing overlay (XML / PDF viewer / chrome://
+   * pages) never crash a run — the overlay is strictly cosmetic.
+   */
+  async setOverlayReasoning(text: string): Promise<void> {
+    if (!this.options.showCursor) return;
+    if (this.cursorInstallPromise) {
+      await this.cursorInstallPromise.catch(() => undefined);
+    }
+    try {
+      await this.page.evaluate((t: string) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const ov = (window as { __bad_overlay?: any }).__bad_overlay;
+        if (ov && typeof ov.setReasoning === 'function') ov.setReasoning(t);
+      }, text).catch(() => {});
+    } catch { /* cosmetic — never break a run */ }
+  }
+
+  /**
+   * Update the progress bar + turn counter at the top of the overlay.
+   * `total` is the max-turns budget; `label` is a short status string
+   * (e.g., "Turn 27 · C-003").
+   */
+  async setOverlayProgress(current: number, total: number, label?: string): Promise<void> {
+    if (!this.options.showCursor) return;
+    if (this.cursorInstallPromise) {
+      await this.cursorInstallPromise.catch(() => undefined);
+    }
+    try {
+      await this.page.evaluate(
+        ({ c, t, l }: { c: number; t: number; l?: string }) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const ov = (window as { __bad_overlay?: any }).__bad_overlay;
+          if (ov && typeof ov.setProgress === 'function') ov.setProgress(c, t, l);
+        },
+        { c: current, t: total, l: label },
+      ).catch(() => {});
+    } catch { /* cosmetic */ }
+  }
+
+  /**
+   * Push a verdict badge to the bottom-left stack. Used when the agent's
+   * reasoning indicates a conclusion ("POSITIVE MATCH", "CLEARED",
+   * "NEEDS REVIEW") — the driver runner parses reasoning + emits these
+   * to celebrate the moment.
+   */
+  async pushOverlayBadge(kind: 'positive' | 'cleared' | 'review' | 'info', text: string): Promise<void> {
+    if (!this.options.showCursor) return;
+    if (this.cursorInstallPromise) {
+      await this.cursorInstallPromise.catch(() => undefined);
+    }
+    try {
+      await this.page.evaluate(
+        ({ k, t }: { k: string; t: string }) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const ov = (window as { __bad_overlay?: any }).__bad_overlay;
+          if (ov && typeof ov.pushBadge === 'function') ov.pushBadge(k, t);
+        },
+        { k: kind, t: text },
+      ).catch(() => {});
+    } catch { /* cosmetic */ }
+  }
+
   getPage(): Page {
     return this.page;
   }

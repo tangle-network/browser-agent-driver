@@ -292,6 +292,7 @@ ${H('USAGE')}
   bad attach [--attach-port <n>] --goal "..."    ${D('# drive your already-running Chrome')}
   bad chrome-debug [--attach-port <n>]           ${D('# launch system Chrome on :9222')}
   bad view <run-dir>                             ${D('# replay a completed run')}
+  bad share <run-id>                             ${D('# create share link, copy to clipboard')}
   bad runs [--session-id <id>] [--json]          ${D('# list recent runs')}
   bad design-audit --url <url>
   bad auth save [--url <url>] [--storage-state <path>]
