@@ -43,6 +43,7 @@
     "bench:master": "node ./scripts/run-master-comparison.mjs",
     "ab:experiment": "node ./scripts/run-ab-experiment.mjs",
     "research:pipeline": "node ./scripts/run-research-pipeline.mjs",
+    "macro:promote": "node ./scripts/run-macro-promotion.mjs",
     "research:cycle": "node ./scripts/run-research-cycle.mjs",
     "bench:tier1:gate": "node ./scripts/run-tier1-gate.mjs",
     "bench:tier2:gate": "node ./scripts/run-tier2-gate.mjs",

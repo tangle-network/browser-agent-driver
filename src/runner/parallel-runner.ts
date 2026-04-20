@@ -35,6 +35,10 @@ export interface ParallelRunOptions {
   driverOptions?: PlaywrightDriverOptions
   /** Project store for memory */
   projectStore?: ProjectStore
+  /** Gen 29: rendered macro catalog forwarded to each sub-agent's brain so
+   * the LLM sees the available macros in parallel tabs, matching the
+   * top-level agent's capability surface. */
+  macroPromptBlock?: string
   /** Total timeout in ms (default: 600000) */
   timeoutMs?: number
   /** Total token budget (will be split across sub-agents) */
@@ -104,6 +108,7 @@ export async function runParallel(options: ParallelRunOptions): Promise<Parallel
         onTurn: onTurn ? (turn: Turn) => onTurn(label, turn) : undefined,
         projectStore: options.projectStore,
         // extensions passed through if available
+        ...(options.macroPromptBlock ? { macroPromptBlock: options.macroPromptBlock } : {}),
       })
 
       const subScenario: Scenario = {

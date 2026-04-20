@@ -451,6 +451,8 @@ export class Brain {
   // when no extensions are loaded (default).
   private extensionRules?: { global?: string; search?: string; dataExtraction?: string; heavy?: string };
   private extensionDomainRules?: Record<string, { extraRules?: string }>;
+  /** Rendered macro prompt block; set via setMacroPromptBlock(). Empty string when no macros loaded. */
+  private macroPromptBlock = '';
 
   constructor(config: AgentConfig = {}) {
     this.llmTimeoutMs = config.llmTimeoutMs ?? 60_000;
@@ -670,6 +672,13 @@ export class Brain {
         const provider = createOpenAI({
           apiKey: apiKey || '',
           ...(this.baseUrl ? { baseURL: this.baseUrl } : {}),
+          // Gen 30: some OpenAI-compatible routers (notably router.tangle.tools)
+          // default to SSE streaming when the client omits `stream`. The AI SDK's
+          // generateText expects non-streaming responses and errors out with
+          // "Invalid JSON response" on SSE. Force `stream: false` on every
+          // chat-completions body the provider sends, but only when a custom
+          // baseUrl is set — the real OpenAI endpoint defaults correctly.
+          ...(this.baseUrl ? { fetch: createForceNonStreamingFetch() } : {}),
         });
         model = provider.chat(modelName) as LanguageModel;
         break;
@@ -868,6 +877,11 @@ export class Brain {
         parts.push(`\n\nUSER RULES (domain match):\n${domainRules}`)
       }
     }
+    // Macros live AFTER the cached prefix so registering new macros
+    // doesn't bust the Anthropic cache.
+    if (this.macroPromptBlock) {
+      parts.push(`\n\n${this.macroPromptBlock}`)
+    }
     return parts
   }
 
@@ -902,6 +916,12 @@ export class Brain {
   ): void {
     this.extensionRules = sectionRules
     this.extensionDomainRules = domainRules
+  }
+
+  /** Inject the rendered macro catalog (from macro-loader.renderMacroPromptBlock)
+   *  so the agent knows which macros exist. Pass empty string to clear. */
+  setMacroPromptBlock(block: string): void {
+    this.macroPromptBlock = block ?? ''
   }
 
   /**
@@ -2171,6 +2191,9 @@ Only include facts that are genuinely useful. Quality over quantity. Max 10 fact
       'fill', 'clickSequence',
       'clickAt', 'typeAt',
       'clickLabel', 'typeLabel',
+      // Gen 29: macro dispatch. The driver validates the macro name at
+      // execute time; here we just accept the shape.
+      'macro',
     ]);
 
     try {
@@ -2533,6 +2556,22 @@ function validateAction(actionType: string, data: Record<string, unknown>): Acti
       return { action: 'clickLabel', label: num(data.label, 0) };
     case 'typeLabel':
       return { action: 'typeLabel', label: num(data.label, 0), text: optStr('text') };
+    // Gen 29: macro invocation. The driver validates the name + required
+    // args at execute time. We only require `name` here because args may
+    // legitimately be omitted for macros that declare no params.
+    case 'macro': {
+      const args: Record<string, string> = {};
+      if (data.args && typeof data.args === 'object' && !Array.isArray(data.args)) {
+        for (const [k, v] of Object.entries(data.args as Record<string, unknown>)) {
+          if (typeof v === 'string') args[k] = v;
+        }
+      }
+      return {
+        action: 'macro',
+        name: requireStr('name'),
+        ...(Object.keys(args).length > 0 ? { args } : {}),
+      };
+    }
     default:
       throw new Error(`Unknown action type: ${actionType}`);
   }
@@ -2545,4 +2584,33 @@ function isStringRecord(value: unknown): value is Record<string, string> {
     if (typeof v !== 'string') return false;
   }
   return true;
+}
+
+/**
+ * Gen 30: build a fetch-replacement that forces `"stream": false` on every
+ * /chat/completions body. Necessary for OpenAI-compatible gateways that
+ * default to SSE streaming when the client omits the field (observed on
+ * router.tangle.tools). The AI SDK's generateText path does not handle
+ * SSE, and we can't rely on the gateway respecting the absence of `stream`.
+ */
+function createForceNonStreamingFetch(): typeof fetch {
+  return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    if (init?.body && typeof init.body === 'string') {
+      const body = init.body
+      // Cheap content-sniff so we only rewrite chat-completions shaped bodies,
+      // not arbitrary POSTs the caller might make (embeddings, etc.).
+      if (body.includes('"messages"') && body.includes('"model"')) {
+        try {
+          const parsed = JSON.parse(body) as Record<string, unknown>
+          if (parsed.stream === undefined || parsed.stream === true) {
+            parsed.stream = false
+            init = { ...init, body: JSON.stringify(parsed) }
+          }
+        } catch {
+          // Non-JSON body — pass through unchanged.
+        }
+      }
+    }
+    return fetch(input, init)
+  }
 }

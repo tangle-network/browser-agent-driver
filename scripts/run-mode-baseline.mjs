@@ -25,6 +25,9 @@ const explicitGoal = getArg('goal');
 const explicitUrl = getArg('url');
 const casesPathArg = getArg('cases');
 const fixtureBaseUrl = getArg('fixture-base-url');
+const providerOverride = getArg('provider');
+const baseUrlOverride = getArg('base-url');
+const apiKeyOverride = getArg('api-key');
 const fallbackGoal = 'Navigate to /partner/coinbase and verify Coinbase templates are visible.';
 const fallbackUrl = 'https://ai.tangle.tools';
 let goal = explicitGoal ?? fallbackGoal;
@@ -160,6 +163,13 @@ function runMode(mode) {
   if (traceTtlDays) args.push('--trace-ttl-days', traceTtlDays);
   if (headless) args.push('--headless');
   if (debug) args.push('--debug');
+  // Gen 30 R2: forward provider/base-url/api-key so multi-rep can route
+  // through a custom LLM endpoint (e.g. router.tangle.tools). Without
+  // this, the child uses OPENAI_API_KEY against api.openai.com and
+  // ignores the caller's --base-url.
+  if (providerOverride) args.push('--provider', providerOverride);
+  if (baseUrlOverride) args.push('--base-url', baseUrlOverride);
+  if (apiKeyOverride) args.push('--api-key', apiKeyOverride);
 
   const startedAt = new Date().toISOString();
   const proc = spawnSync('node', args, {

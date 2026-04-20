@@ -52,6 +52,9 @@ const url = getArg('url');
 const planner = hasFlag('planner');
 const memoryIsolation = getArg('memory-isolation', 'per-run');
 const fixtureBaseUrlArg = getArg('fixture-base-url');
+const providerOverride = getArg('provider');
+const baseUrlOverride = getArg('base-url');
+const apiKeyOverride = getArg('api-key');
 let fixtureBaseUrl = fixtureBaseUrlArg;
 let fixtureServer = null;
 
@@ -111,6 +114,12 @@ for (let rep = 1; rep <= reps; rep++) {
   if (configPath) args.push('--config', path.resolve(configPath));
   if (planner) args.push('--planner');
   if (fixtureBaseUrl) args.push('--fixture-base-url', fixtureBaseUrl);
+  // Gen 30 R2: forward provider/base-url/api-key to the per-rep baseline
+  // so custom LLM endpoints (router.tangle.tools, LiteLLM, local models)
+  // reach the child bad run.
+  if (providerOverride) args.push('--provider', providerOverride);
+  if (baseUrlOverride) args.push('--base-url', baseUrlOverride);
+  if (apiKeyOverride) args.push('--api-key', apiKeyOverride);
 
   // CRITICAL: must be async spawn (not spawnSync). The fixture server lives
   // in this same process — spawnSync would block the event loop and the

@@ -55,6 +55,12 @@ export interface Driver {
   /** Optional run-time diagnostics for startup and browser/session setup */
   getDiagnostics?(): Record<string, unknown>;
 
+  /** Gen 29: expose the driver's construction options so the runner can
+   * hand them to sub-drivers (compound-goal parallel tabs). Drivers that
+   * don't support compound goals can omit this. Return shape is driver-
+   * specific (cast at the caller). */
+  getDriverOptions?(): unknown;
+
   /** Close/cleanup the driver */
   close?(): Promise<void>;
 }

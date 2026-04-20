@@ -151,5 +151,12 @@ function actionSignature(action: Action): string {
       return `clickLabel:${action.label}`;
     case 'typeLabel':
       return `typeLabel:${action.label}:${action.text.slice(0, 32)}`;
+    case 'macro': {
+      const argSig = Object.entries(action.args ?? {})
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([k, v]) => `${k}=${v.slice(0, 32)}`)
+        .join('|');
+      return `macro:${action.name}:${argSig}`;
+    }
   }
 }

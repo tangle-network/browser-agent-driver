@@ -1,0 +1,13 @@
+{
+  "name": "search-and-submit",
+  "description": "Focus a searchbox, type the query, and press Enter to submit. Use on pages with a top-level search affordance — avoids clicking a 'Go' button whose ref may shift under the keyboard.",
+  "params": [
+    { "name": "searchRef", "description": "Ref of the searchbox/combobox to type into", "required": true },
+    { "name": "query", "description": "Query text to type", "required": true }
+  ],
+  "steps": [
+    { "action": "click", "selector": "${searchRef}" },
+    { "action": "type", "selector": "${searchRef}", "text": "${query}" },
+    { "action": "press", "selector": "${searchRef}", "key": "Enter" }
+  ]
+}

@@ -31,6 +31,9 @@ const persona = getArg('persona', 'auto');
 const modelAdaptive = argv.includes('--model-adaptive');
 const navModel = getArg('nav-model');
 const navProvider = getArg('nav-provider');
+const providerOverride = getArg('provider');
+const baseUrlOverride = getArg('base-url');
+const apiKeyOverride = getArg('api-key');
 const memory = argv.includes('--memory');
 const memoryDir = getArg('memory-dir');
 const memoryRoot = getArg('memory-root');
@@ -118,6 +121,12 @@ const results = await runPool(jobs, concurrency, async (job) => {
   if (traceScoring) args.push('--trace-scoring');
   if (traceTtlDays) args.push('--trace-ttl-days', traceTtlDays);
   if (headless) args.push('--headless');
+  // Gen 30 R3: forward provider/base-url/api-key so scenario-track can route
+  // through a custom LLM endpoint (router.tangle.tools, LiteLLM, etc.).
+  // Mirrors the fix Gen 30 R2 shipped to run-multi-rep and run-mode-baseline.
+  if (providerOverride) args.push('--provider', providerOverride);
+  if (baseUrlOverride) args.push('--base-url', baseUrlOverride);
+  if (apiKeyOverride) args.push('--api-key', apiKeyOverride);
   if (Array.isArray(scenario.allowedDomains) && scenario.allowedDomains.length > 0) {
     args.push('--allowed-domains', scenario.allowedDomains.join(','));
   }

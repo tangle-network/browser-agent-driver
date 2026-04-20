@@ -289,11 +289,21 @@ ${chalk.bold('bad')} ${D('— LLM-driven browser automation CLI')}
 
 ${H('USAGE')}
   bad run [options]
+  bad run --attach [--attach-port <n>] --goal "..."
+  bad chrome-debug [--attach-port <n>]
   bad runs [--session-id <id>] [--json]
   bad design-audit --url <url>
   bad auth save [--url <url>] [--storage-state <path>]
   bad auth login --url <url> --fill "field=value" [--wait-for <signal>]
   bad auth check [--storage-state <path>] [origin]
+
+${H('ATTACH MODE')}
+  ${D('$')} bad chrome-debug                              ${D('# launch system Chrome on :9222 with your real profile')}
+  ${D('$')} bad run ${C('--attach')} ${C('-g')} "Post to TikTok"           ${D('# drive the already-logged-in Chrome')}
+
+  Attach mode connects to your real Chrome via CDP so your login state,
+  cookies, and extensions are preserved. Incompatible with ${C('--wallet')}
+  and ${C('--extension')} (both require launching a fresh Chromium).
 
 ${H('SINGLE TASK')}
   ${D('$')} bad run ${C('--goal')} "Sign up for account" ${C('--url')} http://localhost:3000

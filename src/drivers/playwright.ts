@@ -20,6 +20,8 @@ import { CURSOR_OVERLAY_INIT_SCRIPT } from './cursor-overlay.js';
 import { runExtractWithIndex, formatExtractWithIndexResult } from './extract-with-index.js';
 import { SOM_INJECT_SCRIPT, SOM_REMOVE_SCRIPT } from './som-overlay.js';
 import type { SomElement } from './som-overlay.js';
+import type { MacroRegistry } from '../skills/macro-loader.js';
+import { interpolateStep } from '../skills/macro-loader.js';
 
 function isPointerInterceptError(error: string): boolean {
   return /intercepts pointer events|subtree intercepts pointer events|not receiving pointer events/i.test(error);
@@ -145,6 +147,10 @@ export interface PlaywrightDriverOptions {
    * screenshot lands wherever the transition has reached by then.
    */
   showCursor?: boolean;
+  /** Gen 29: registry of user-defined macros the agent can invoke via
+   * `{action:"macro", name:..., args:...}`. When omitted, macro calls fail
+   * with an error message referencing the missing name. */
+  macros?: MacroRegistry;
 }
 
 export class PlaywrightDriver implements Driver {
@@ -179,13 +185,45 @@ export class PlaywrightDriver implements Driver {
    * browser context, so it survives navigations and applies to popups.
    */
   private async installCursorOverlay(): Promise<void> {
+    const debug = process.env.BAD_DEBUG_CURSOR === '1';
+    if (debug) {
+      this.page.on('console', (msg) => {
+        const text = msg.text();
+        if (text.includes('[bad-cursor]') || text.includes('bad_overlay')) {
+          console.error('[cursor/page-console]', msg.type(), text.slice(0, 200));
+        }
+      });
+      this.page.on('pageerror', (err) => {
+        if (err.message.includes('overlay') || err.message.includes('bad_')) {
+          console.error('[cursor/page-error]', err.message.slice(0, 200));
+        }
+      });
+    }
+    // Re-inject on every frame navigation. addInitScript at context/page level
+    // is SUPPOSED to fire on every new document, but in practice we observed it
+    // missing on navigations kicked off from `bad run --url` (empirically
+    // verified via flag/api/rootAttached all false post-navigate). This handler
+    // is the belt: every time the main frame hits a new URL, we evaluate the
+    // init script directly. Idempotent via the __bad_overlay_installed guard.
+    this.page.on('framenavigated', async (frame) => {
+      if (frame !== this.page.mainFrame()) return;
+      try {
+        await frame.evaluate(CURSOR_OVERLAY_INIT_SCRIPT);
+        if (debug) console.error('[cursor] framenavigated reinject ok for', frame.url().slice(0, 80));
+      } catch (err) {
+        if (debug) console.error('[cursor] framenavigated reinject failed:', (err as Error).message?.slice(0, 120));
+      }
+    });
     try {
       // Context-level: applies to all current and future pages
       await this.page.context().addInitScript({ content: CURSOR_OVERLAY_INIT_SCRIPT });
+      if (debug) console.error('[cursor] addInitScript ok');
       // Page-level: ensure the current page has it now (addInitScript is for new docs)
-      await this.page.evaluate(CURSOR_OVERLAY_INIT_SCRIPT).catch(() => { /* may already exist or CSP-blocked */ });
-    } catch {
-      // Strict CSP can block evaluate; init script via context still works on next nav
+      await this.page.evaluate(CURSOR_OVERLAY_INIT_SCRIPT).catch((err) => {
+        if (debug) console.error('[cursor] page.evaluate(init) failed:', err.message?.slice(0, 200));
+      });
+    } catch (err) {
+      if (debug) console.error('[cursor] installCursorOverlay threw:', (err as Error).message?.slice(0, 200));
     }
   }
 
@@ -225,17 +263,27 @@ export class PlaywrightDriver implements Driver {
       // land before the click — pure dead time on every interactive action.
       // Over a 50-turn session that was ~12s of zero-information waiting.
       const isClickLike = actionLabel === 'click' || actionLabel === 'type' || actionLabel === 'press';
-      await this.page.evaluate(
+      const debug = process.env.BAD_DEBUG_CURSOR === '1';
+      const result = await this.page.evaluate(
         ({ x, y, w, h, label, cx: cxArg, cy: cyArg, pulse }: { x: number; y: number; w: number; h: number; label: string; cx: number; cy: number; pulse: boolean }) => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const ov = (window as any).__bad_overlay;
-          if (!ov) return;
+          const w_ = window as any;
+          const state = {
+            flag: Boolean(w_.__bad_overlay_installed),
+            api: Boolean(w_.__bad_overlay),
+            rootAttached: Boolean(document.getElementById('__bad_overlay_root')),
+            url: location.href.slice(0, 80),
+          };
+          const ov = w_.__bad_overlay;
+          if (!ov) return { found: false, state };
           ov.highlightRect(x, y, w, h);
           ov.moveTo(cxArg, cyArg, label);
           if (pulse) ov.pulseClick(cxArg, cyArg);
+          return { found: true, label, state };
         },
         { x: box.x, y: box.y, w: box.width, h: box.height, label: actionLabel, cx, cy, pulse: isClickLike },
-      ).catch(() => { /* CSP or page closed */ });
+      ).catch((err) => ({ error: err.message?.slice(0, 150) }));
+      if (debug) console.error('[cursor] animate result:', JSON.stringify(result));
     } catch {
       // Overlay is purely cosmetic — never let it break the action
     }
@@ -544,6 +592,12 @@ export class PlaywrightDriver implements Driver {
     }
   }
 
+  /** Expose construction options so runners can clone this driver's config
+   * onto a sub-driver (compound-goal parallel tabs). */
+  getDriverOptions(): PlaywrightDriverOptions {
+    return this.options;
+  }
+
   /**
    * Execute an action first. If it fails and a blocking overlay is detected,
    * dismiss it and retry once.
@@ -570,6 +624,15 @@ export class PlaywrightDriver implements Driver {
 
   async execute(action: Action): Promise<ActionResult> {
     const timeout = this.options.timeout ?? 30000;
+
+    // The cursor overlay install is fire-and-forget from the constructor.
+    // Await it here so addInitScript is registered on the context BEFORE
+    // the first navigate fires — otherwise the init script races the nav
+    // and doesn't apply to the target page, which means window.__bad_overlay
+    // is undefined when animateCursorToSelector tries to drive it.
+    if (this.cursorInstallPromise) {
+      await this.cursorInstallPromise.catch(() => undefined);
+    }
 
     try {
       switch (action.action) {
@@ -930,6 +993,52 @@ export class PlaywrightDriver implements Driver {
           await this.page.waitForTimeout(100);
           await this.page.keyboard.type(action.text);
           return { success: true, bounds: { x: el.x, y: el.y, width: el.width, height: el.height } };
+        }
+
+        case 'macro': {
+          // Gen 29: expand a named macro into its composed safe-primitive
+          // steps and execute each via this.execute. Flat-only (the loader
+          // forbids macro-in-macro), so recursion depth is bounded at 1.
+          // A step failure short-circuits the macro with a contextual error.
+          const registry = this.options.macros;
+          if (!registry) {
+            return { success: false, error: `No macro registry loaded; cannot invoke "${action.name}"` };
+          }
+          const macro = registry.macros.get(action.name);
+          if (!macro) {
+            const known = [...registry.macros.keys()].join(', ') || '(none)';
+            return { success: false, error: `Unknown macro "${action.name}". Known: ${known}` };
+          }
+          const args = action.args ?? {};
+          for (const spec of macro.params) {
+            if (spec.required !== false && !(spec.name in args)) {
+              return { success: false, error: `macro "${macro.name}" missing required arg "${spec.name}"` };
+            }
+          }
+          let lastBounds: ActionResult['bounds'];
+          for (let i = 0; i < macro.steps.length; i++) {
+            const { step, unresolved } = interpolateStep(macro.steps[i], args);
+            if (unresolved.length > 0) {
+              return {
+                success: false,
+                error: `macro "${macro.name}" step ${i + 1} has unresolved params: ${unresolved.join(', ')} (pass them in args or mark required:false when you mean "optional")`,
+              };
+            }
+            // Defensive: the loader rejected nested macros, but a malicious
+            // on-disk file could still put one in; dispatch refuses anyway.
+            if (step.action === 'macro') {
+              return { success: false, error: `macro "${macro.name}" tried to invoke another macro (nesting disallowed)` };
+            }
+            const result = await this.execute(step);
+            if (!result.success) {
+              return {
+                success: false,
+                error: `macro "${macro.name}" failed at step ${i + 1}/${macro.steps.length} (${step.action}): ${result.error ?? 'unknown'}`,
+              };
+            }
+            if (result.bounds) lastBounds = result.bounds;
+          }
+          return { success: true, ...(lastBounds ? { bounds: lastBounds } : {}) };
         }
 
         default:

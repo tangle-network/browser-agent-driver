@@ -109,10 +109,39 @@ describe('RunState', () => {
       }
     });
 
-    it('explicit budget arg wins over env var', () => {
+    it('Gen 30 R3: BAD_TOKEN_BUDGET env var wins over explicit budget arg', () => {
+      // Regression defense: before Gen 30 R3, the explicit arg shadowed the
+      // env var, which made BAD_TOKEN_BUDGET effectively dead (runner.ts
+      // always passes an explicit `Math.round(DEFAULT_TOKEN_BUDGET * vis)`).
+      // The fix inverts the precedence so operators can bump the cap at
+      // runtime without a code change — which the SAR / OFAC demos need
+      // because claude-sonnet-4-6 is more verbose than gpt-5.4.
       const original = process.env.BAD_TOKEN_BUDGET;
       try {
         process.env.BAD_TOKEN_BUDGET = '12345';
+        const state = new RunState(20, 5000);
+        expect(state.tokenBudget).toBe(12345);
+      } finally {
+        if (original === undefined) delete process.env.BAD_TOKEN_BUDGET;
+        else process.env.BAD_TOKEN_BUDGET = original;
+      }
+    });
+
+    it('Gen 30 R3: explicit budget arg used when BAD_TOKEN_BUDGET is unset', () => {
+      const original = process.env.BAD_TOKEN_BUDGET;
+      try {
+        delete process.env.BAD_TOKEN_BUDGET;
+        const state = new RunState(20, 5000);
+        expect(state.tokenBudget).toBe(5000);
+      } finally {
+        if (original !== undefined) process.env.BAD_TOKEN_BUDGET = original;
+      }
+    });
+
+    it('Gen 30 R3: explicit budget arg used when BAD_TOKEN_BUDGET is invalid', () => {
+      const original = process.env.BAD_TOKEN_BUDGET;
+      try {
+        process.env.BAD_TOKEN_BUDGET = 'nonsense';
         const state = new RunState(20, 5000);
         expect(state.tokenBudget).toBe(5000);
       } finally {

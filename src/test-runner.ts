@@ -96,6 +96,11 @@ export interface TestRunnerOptions {
    */
   extensions?: import('./extensions/types.js').ResolvedExtensions;
   /**
+   * Gen 29: rendered macro prompt block from skills/macros. Forwarded to
+   * every BrowserAgent so macros are visible in the system prompt.
+   */
+  macroPromptBlock?: string;
+  /**
    * Optional shared TurnEventBus. When set, every BrowserAgent uses the same
    * bus so a live SSE viewer or events.jsonl sink can observe an entire suite
    * from one subscription. When omitted, each agent gets its own no-op bus.
@@ -159,6 +164,7 @@ export class TestRunner {
   private defaultTimeoutMs?: number;
   private pendingArtifactOps: Set<Promise<unknown>> = new Set();
   private extensions?: import('./extensions/types.js').ResolvedExtensions;
+  private macroPromptBlock?: string;
   private eventBus?: import('./runner/events.js').TurnEventBus;
   /** Suite-level abort signal — wired up by runSuite, consumed by runTest */
   private suiteSignal?: AbortSignal;
@@ -194,6 +200,7 @@ export class TestRunner {
     this.defaultTimeoutMs = options.defaultTimeoutMs
       ?? ((options.config as AgentConfig & { timeoutMs?: number } | undefined)?.timeoutMs);
     this.extensions = options.extensions;
+    this.macroPromptBlock = options.macroPromptBlock;
     this.eventBus = options.eventBus;
   }
 
@@ -265,6 +272,7 @@ export class TestRunner {
         projectStore: this.projectStore,
         runRegistry: this.runRegistry,
         ...(this.extensions ? { extensions: this.extensions } : {}),
+        ...(this.macroPromptBlock ? { macroPromptBlock: this.macroPromptBlock } : {}),
         eventBus: perTestBus,
         onTurn: (turn) => {
           if (timeToFirstTurnMs === undefined) {
