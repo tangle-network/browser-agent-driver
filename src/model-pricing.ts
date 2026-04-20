@@ -148,10 +148,11 @@ export async function loadPricing(): Promise<Map<string, ModelPricing>> {
   return pricingCache;
 }
 
-/** Synchronous version — returns fallback if not yet loaded */
-export function getPricingSync(): Map<string, ModelPricing> {
+/**
+ * Synchronous version — returns fallback if not yet loaded. Internal only.
+ */
+function getPricingSync(): Map<string, ModelPricing> {
   if (pricingCache) return pricingCache;
-  // Try disk cache synchronously
   const diskCached = loadDiskCache();
   if (diskCached && diskCached.size > 50) {
     pricingCache = diskCached;

@@ -41,7 +41,7 @@ export type MacroStep = Action
  * CLI's budget cap meaningful. Raising this requires a measured reason —
  * a longer macro is usually a hint that the work should split into two.
  */
-export const MAX_MACRO_STEPS = 8
+const MAX_MACRO_STEPS = 8
 
 export const SAFE_MACRO_STEP_TYPES = new Set<Action['action']>([
   'click',

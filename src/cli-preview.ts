@@ -62,7 +62,7 @@ export interface PreviewResult {
  * Run the planner against a single observation of the URL. Never
  * executes an action. Returns the structured plan + raw model output.
  */
-export async function runPreview(opts: PreviewOptions): Promise<PreviewResult> {
+async function runPreview(opts: PreviewOptions): Promise<PreviewResult> {
   if (!opts.goal) throw new PreviewError('preview requires --goal "..."')
   if (!opts.url) throw new PreviewError('preview requires --url "..."')
 
@@ -106,7 +106,7 @@ export async function runPreview(opts: PreviewOptions): Promise<PreviewResult> {
 }
 
 /** Print a plan as a tree to stdout (human-readable). */
-export function renderPreview(result: PreviewResult): void {
+function renderPreview(result: PreviewResult): void {
   const G = chalk.green
   const D = chalk.dim
   const C = chalk.cyan

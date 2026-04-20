@@ -127,11 +127,3 @@ export async function auditOnePage(opts: AuditOnePageOptions): Promise<PageAudit
     }
   }
 }
-
-/**
- * Persist a `PageAuditResult` to JSON for downstream tooling.
- */
-export function writeResultJson(result: PageAuditResult, dir: string): void {
-  const slug = new URL(result.url).hostname.replace(/[^a-z0-9.-]/gi, '_')
-  fs.writeFileSync(path.join(dir, `${slug}-${Date.now()}.json`), JSON.stringify(result, null, 2))
-}
