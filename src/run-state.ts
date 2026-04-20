@@ -46,9 +46,18 @@ export class RunState {
 
   constructor(maxTurns: number, tokenBudget?: number) {
     this.maxTotalErrors = Math.max(3, Math.ceil(maxTurns / 3));
+    // Gen 30 R3: the env var overrides even when the caller passed an
+    // explicit tokenBudget. Reason: BAD_TOKEN_BUDGET is an operator dial
+    // (e.g., "bump the cap to 200k for this model") and should beat
+    // hard-coded caller defaults like runner.ts's visionBudgetMultiplier.
+    // Before this, the env fallback only fired when tokenBudget was
+    // undefined, which was never — the runner always passed a number.
     const envBudget = Number(process.env.BAD_TOKEN_BUDGET);
-    this.tokenBudget = tokenBudget
-      ?? (Number.isFinite(envBudget) && envBudget > 0 ? envBudget : DEFAULT_TOKEN_BUDGET);
+    if (Number.isFinite(envBudget) && envBudget > 0) {
+      this.tokenBudget = envBudget;
+    } else {
+      this.tokenBudget = tokenBudget ?? DEFAULT_TOKEN_BUDGET;
+    }
   }
 
   recordError(): void {
