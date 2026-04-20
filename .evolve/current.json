@@ -1,20 +1,20 @@
 {
   "mode": "evolve",
   "goal": "#1 on WebVoyager + employee-grade agent",
-  "status": "gen30-r2-shipped-non-regression-proven-and-cost-win",
+  "status": "gen30-r3-shipped-curated30-53pct-cost-cap-confound",
   "generation": 30,
-  "round": 2,
+  "round": 3,
   "branch": "gen29-browser-harness-integration",
   "npmVersion": "0.24.1",
   "activePursuit": null,
   "metricClaims": {
-    "gen29NonRegression": "Pass rate held at 100% on local-smoke tier1 gate between macros+skills ON and macros+skills OFF. Cost dropped 13% (CI entirely below zero, large effect size). Gen 29 improved the loop on this scenario.",
-    "macroPromotionVerdictCorrectness": "If the gate is statistically valid, the eval-gated capability-growth flywheel produces real compounding. Dogfooded in R2 — correctly separated robust cost signal from noisy turn signal."
+    "webvoyagerCurated30PassRate": "If this number exceeds 40% (Gen 11 gpt-5.4 baseline) with ≤3 true capability failures, the current stack is at least on par with the Gen 25 era on real-web tasks. If the cost-cap failures flip to pass on a cap bump, the current stack is materially stronger — that's the next round's test."
   },
   "shipped": {
-    "gen30r2": "Tangle router unblocks measurement; Gen 29 cost −13% vs off (CI [−$0.060,−$0.017], d=-2.57 large). Infra fixes: --provider/--base-url/--api-key forwarded through multi-rep scripts; createForceNonStreamingFetch wrapper for routers that default to SSE.",
-    "gen30r1": "bootstrap CI + Cohen's d verdict in scripts/lib/macro-promotion.mjs — addresses audit B-H2 properly",
-    "gen29": "browser-harness integration — attach to real Chrome, portable domain-skill loader, custom action macros, eval-gated promotion",
+    "gen30r3": "WebVoyager curated-30 via Tangle router + claude-sonnet-4-6: 16/30 = 53.3% (Gen 11 baseline 12/30 = 40%). 12 of 14 failures are cost_cap_exceeded at 100k tokens. True capability failures: 3 (Amazon timeout, Google Flights x2 crash). Infra fix: scenario-track + webvoyager/run.mjs --provider/--base-url/--api-key forwarding (f25a3d2).",
+    "gen30r2": "Tangle router unblocks measurement; Gen 29 cost −13% vs off (CI [−$0.060,−$0.017], d=-2.57 large). Infra fixes for multi-rep + mode-baseline.",
+    "gen30r1": "bootstrap CI + Cohen's d verdict in scripts/lib/macro-promotion.mjs — closes audit B-H2",
+    "gen29": "browser-harness integration — attach, portable domain-skill loader, custom macros, eval-gated promotion",
     "gen28": "per-role model orchestration",
     "gen27": "stealth, anti-bot, form intelligence, CAPTCHA, card dedup, system Chrome",
     "gen26b": "site pattern learning from successful runs",
@@ -23,21 +23,23 @@
     "datadome": "behavioral timing bypass",
     "compression": "aggressive context window pruning"
   },
-  "gen30r2Metrics": {
-    "reps": 3,
-    "scenario": "bench/scenarios/cases/local-smoke.json",
+  "gen30r3Metrics": {
+    "reps": 1,
+    "scope": "curated-30",
+    "passRate": 0.533,
+    "passNumerator": 16,
+    "passDenominator": 30,
+    "gen11BaselineRate": 0.40,
+    "deltaPctPoints": 13.3,
+    "costUsd": 7.67,
+    "tokensUsed": 2328248,
     "model": "claude-sonnet-4-6",
     "routedVia": "router.tangle.tools",
-    "baselinePassRate": 1.0,
-    "treatmentPassRate": 1.0,
-    "turnsDelta": -1.0,
-    "turnsCI95": [-5, 3],
-    "turnsCohenD": -0.289,
-    "costDelta": -0.0417,
-    "costCI95": [-0.0602, -0.0171],
-    "costCohenD": -2.574,
-    "costEffectMagnitude": "large",
-    "verdict": "promote"
+    "failureBreakdown": {
+      "costCapExceeded100k": 12,
+      "timeout120s": 1,
+      "agentCrashNoMetrics": 2
+    }
   },
   "heldOutResults": {
     "competitive": "10/10 (100%)",
@@ -46,9 +48,9 @@
     "systemChromeUnblocked": "9/13 previously-blocked sites"
   },
   "webvoyagerBaseline": {
-    "gen25_full_run": "539/590 (91.3%) at $54",
-    "gen27_estimated": "93-96% (NEVER MEASURED)"
+    "gen25_full_run": "539/590 (91.3%) at $54 on gpt-5.4",
+    "gen30r3_curated30": "16/30 (53.3%) at $7.67 on claude-sonnet-4-6 via Tangle router — BUT cost-cap-dominated, not capability-dominated"
   },
-  "criticalGap": "WebVoyager 590 still stale since Gen 25. Gen 30 R3 should replicate the R2 A/B across curated-30 or the full gauntlet now that router plumbing works.",
-  "updatedAt": "2026-04-19T23:25:00Z"
+  "criticalGap": "Full WebVoyager 590 still pending. R3 found the blocker isn't the router (fixed) or the agent capability (6 sites at 2/2) but the cost cap interaction with claude-sonnet-4-6's verbosity. Next round: raise cap to 150k and re-run curated-30 to get a fair same-model pass rate before committing to full-590 budget.",
+  "updatedAt": "2026-04-20T06:35:00Z"
 }

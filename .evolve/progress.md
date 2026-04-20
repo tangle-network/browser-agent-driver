@@ -1,5 +1,68 @@
 # Evolve Progress
 
+## Generation 30 Round 3 — WebVoyager curated-30 via Tangle router (scope-limited) — 2026-04-20
+
+Goal: measure current WebVoyager pass rate on main-HEAD (commit b55d5d8 + f25a3d2 = Gen 29 + 30 R1 + R2 + R3 infra fix) via the Tangle router + claude-sonnet-4-6 route that Gen 30 R2 validated. Compare against Gen 11's curated-30 baseline (12/30 = 40% on gpt-5.4 via OpenAI direct).
+
+Scope reduced from full 590 to curated-30 because the pre-flight 3-task smoke showed claude-sonnet-4-6 uses ~15-30% more tokens per task than gpt-5.4, which invalidated my earlier $47 full-590 cost estimate. Curated-30 at $8 gives directional signal before committing ~$150-190 on the full set.
+
+### Infra debt discovered + fixed
+
+Phase 1.5 audit caught a third instance of the same plumbing pattern Gen 30 R2 thought it had closed: `scripts/run-scenario-track.mjs` and `bench/external/webvoyager/run.mjs` didn't forward `--provider` / `--base-url` / `--api-key`. Patched in commit `f25a3d2`. This is the THIRD time the same class of bug has appeared — Gen 30 R2 fixed multi-rep + mode-baseline, R3 had to fix scenario-track + webvoyager. The `scripts/provider-compat-smoke.mjs` proposed in the gen27-30 reflection would have surfaced all three plumbing sites in one sweep; still the highest-ROI unship.
+
+### Results (30 scenarios, 1 rep, concurrency 3)
+
+**Headline: 16/30 pass rate (53.3%).** +13.3pp vs Gen 11's 40% baseline AT FACE VALUE.
+
+| site | pass/2 | failure mode on misses |
+|---|---|---|
+| BBC News | 2/2 | — |
+| Cambridge Dictionary | 2/2 | — |
+| Coursera | 2/2 | — |
+| GitHub | 2/2 | — |
+| Google Map | 2/2 | — |
+| Google Search | 2/2 | — |
+| Amazon | 1/2 | 1 timeout (120s) |
+| Apple | 1/2 | 1 cost_cap (127k tokens) |
+| ArXiv | 1/2 | 1 cost_cap (117k) |
+| Wolfram Alpha | 1/2 | 1 cost_cap (110k) |
+| Allrecipes | 0/2 | 2 cost_cap (108k, 107k) |
+| Booking | 0/2 | 2 cost_cap (106k, 115k) |
+| ESPN | 0/2 | 2 cost_cap (122k, 105k) |
+| Huggingface | 0/2 | 2 cost_cap (100k, 112k) |
+| Google Flights | 0/2 | 2 agent crashes (exit 1, no metrics) |
+
+Total cost: $7.67 on 30 tasks = $0.26/task. Total tokens: 2.3M.
+Mean on passed tasks: 5.4 turns, $0.21.
+
+### The honest read
+
+**12 of 14 failures are cost_cap_exceeded at the 100k-token budget.** That budget was set in Gen 10 when gpt-5.4 was the working model. claude-sonnet-4-6 is more verbose — it blows the cap on tasks gpt-5.4 would have finished. Claiming this as "Gen 29+30 capability regression" would be wrong; the more honest read is:
+
+1. **6 sites (12 tasks) are SOLVED on the current branch via this model+router: BBC, Cambridge, Coursera, GitHub, Google Map, Google Search.** All 2/2 pass.
+2. **4 sites (8 tasks) are budget-capped — cost cap prevents what looks like eventual success.** If the cap were raised to 150k, the per-failure trace pattern (agent still making progress when cap hit) suggests most would complete.
+3. **2 sites (3 tasks) are true capability failures: Amazon timeout (1), Google Flights crashes (2).** Google Flights was the hardest site in Gen 25 too (0% in Gen 11) — stealth or anti-bot specific.
+
+### Verdict: ITERATE, not KEEP
+
+Per the governor brief's threshold (≥50% → dispatch /evolve full 590 with cost cap bump), 53.3% clears the gate. But the cleaner result comes from running the same curated-30 with a bumped cost cap FIRST — that separates the model/cap interaction from the capability signal and gives a fair baseline before committing $150 on the full 590.
+
+### Next round — Gen 30 R4
+
+**Dispatch: `/evolve` targeting curated-30 pass rate with cost cap 150k.** Re-run curated-30 via the same Tangle router + claude-sonnet-4-6 stack but with `BAD_COST_CAP_TOKENS=150000` (or whatever the env var is — audit needed). Expected: 12/14 cost-capped failures flip to passes, target 25-27/30 = 83-90%. That becomes the "fair" same-model baseline.
+
+If R4 confirms the cost-cap hypothesis → dispatch R5 full 590 at the higher cap, ~$150 expected. Gets us the first current WebVoyager 590 number since Gen 25.
+
+If R4 shows the cost-cap bump doesn't flip most of them (capability plateau, not cap constraint) → dispatch `/diagnose` on the failure traces before another /evolve.
+
+### Infra to-dos surfaced by this round (unchanged priority)
+
+1. `scripts/provider-compat-smoke.mjs` — now 3 instances of the plumbing bug prevented. Ship it before Gen 31.
+2. `scripts/update-scorecard.mjs` — scorecard.json still Gen 4. Every round writes to experiments.jsonl, scorecard stays stale. Process fix.
+3. Persist Gen 29 critical-audit findings to `.evolve/critical-audit/2026-04-18T...-gen29/`. Backfill.
+
+---
+
 ## Generation 30 Round 2 — Tangle router unblocks measurement; Gen 29 non-regression proven — 2026-04-19
 
 Goal: Unblock the LLM-dependent measurements that Gen 30 R1 had to descope (OpenAI quota exhausted). Drew pointed to `router.tangle.tools` + `claude-sonnet-4-6`. Decrypted `TANGLE_ROUTER_USER_KEY` from `/Users/drew/company/agent-secrets/.env`, ran both sides of the A/B, dogfooded the Gen 30 R1 verdict.
