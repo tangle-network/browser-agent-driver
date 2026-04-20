@@ -178,8 +178,3 @@ const MATCHERS: Matcher[] = [
   singleButtonModalMatcher,
 ]
 
-/** Exported for tests so individual matchers can be exercised in isolation. */
-export const __test = {
-  cookieBannerMatcher,
-  singleButtonModalMatcher,
-}

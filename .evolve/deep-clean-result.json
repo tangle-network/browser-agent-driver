@@ -1,72 +1,60 @@
 {
-  "timestamp": "2026-04-20T17:27:00Z",
+  "timestamp": "2026-04-20T17:50:00Z",
   "git": {
-    "baseline": "0ea68bf6ae2719540631828bdfd63017bb464ad0",
-    "baselineSubject": "feat(gen34): Hydra View — live sub-tab grid + human labels + fanOut fires (#67)"
+    "baseline": "5925f8a",
+    "baselineSubject": "Gen 35: deep-clean — overlay helper, label phrasing, demo scaffolding isolation (#68)",
+    "branch": "gen36-s-tier"
   },
   "summary": {
-    "typeErrors":     { "before": 0,   "after": 0,   "delta": 0 },
-    "weakTypes":      { "before": 64,  "after": 58,  "delta": -6 },
-    "tryCatchBlocks": { "before": 240, "after": 229, "delta": -11 },
-    "cosmeticCatchesInOverlayTrio": { "before": 28, "after": 21, "delta": -7,
-      "note": "Consolidated into single callOverlay helper in playwright.ts. Remaining 21 are in cursor-overlay.ts (11 needed for in-page DOM script) + fan-out.ts (10 — page.screenshot streamer + page.close + await call paths are each legitimate failure surfaces)." },
-    "debtMarkers":    { "before": 5,   "after": 5,   "delta": 0 },
-    "sourceFiles":    { "before": 101, "after": 102, "delta": 1, "note": "new: demo-overrides.ts (extracted inline demo hack)" },
-    "testFiles":      { "before": 92,  "after": 93,  "delta": 1, "note": "new: demo-overrides.test.ts" },
-    "testsPassed":    { "before": 1181, "after": 1189, "delta": 8, "note": "+8 new (demo-overrides + label regression)" },
+    "filesDeleted": 15,
+    "linesDeleted": 1188,
+    "unusedExportsDemoted": 9,
+    "testsPassed":    { "before": 1181, "after": 1189, "delta": 8 },
+    "typeErrors":     { "before": 0, "after": 0, "delta": 0 },
     "boundaries":     { "before": "clean", "after": "clean" }
   },
-  "structuralFindings": {
-    "circularDeps": {
-      "madgeReports": 2,
-      "realCycles": 0,
-      "note": "madge flags runner.ts<->fan-out.ts and runner.ts<->parallel-runner.ts as cycles, but the back-edges are `await import(...)` dynamic references (runtime-resolved, not module-load cycles). Refactored to structural ctor types + inline `await import` so there is no static type cycle either. Remaining madge warning is a false positive."
-    }
-  },
-  "applied": [
-    {
-      "phase": "1a",
-      "change": "Dynamic-import BrowserAgent in fan-out.ts and parallel-runner.ts",
-      "files": ["src/runner/fan-out.ts", "src/runner/parallel-runner.ts"],
-      "rationale": "Break the runner.ts <-> sub-agent-spawn cycle statically. runner.ts already dynamic-imports these modules; making the back-edge dynamic aligns both sides."
-    },
-    {
-      "phase": "2c",
-      "change": "Extract `callOverlay` helper on PlaywrightDriver",
-      "files": ["src/drivers/playwright.ts"],
-      "linesRemoved": 95,
-      "linesAdded": 30,
-      "rationale": "8 overlay methods each carried 10 lines of identical defensive boilerplate (install-await + try/catch + method-existence guard + page.evaluate catch). Consolidated to one helper + 8 one-liners. Single source of truth for the 'never break a run' defensive pattern."
-    },
-    {
-      "phase": "3a",
-      "change": "Extract demo-mode override to its own module",
-      "files": ["src/runner/demo-overrides.ts", "src/runner/runner.ts"],
-      "rationale": "BAD_FORCE_FANOUT_* env-var override was inline in runner.ts main loop. Demo scaffolding in production-path code. Moved to src/runner/demo-overrides.ts with a pure function API; runner.ts calls one function that returns unchanged in production. +8 test cases pin the behavior."
-    },
-    {
-      "phase": "3a",
-      "change": "Drop quote marks from overlay labels + handle leading ARIA prefixes",
-      "files": ["src/drivers/overlay-label.ts"],
-      "rationale": "Demo feedback: labels read like code (`Typing \"JOHN\" into Enter name as search crit...`) not prose. Dropped curly quotes; added leading-prefix strip (Enter/Type/Please/Fill in); drop label entirely when target name is a full sentence. +2 regression tests pin the OFAC 'Enter name as search criteria' case."
-    }
+  "filesDeleted": [
+    "bench/cache-hit-probe.ts",
+    "bench/gen4-microbench.ts",
+    "bench/perf-benchmark.ts",
+    "bench/competitive/adapters/stagehand.mjs",
+    "bench/scenarios/configs/scout-off.mjs",
+    "bench/scenarios/configs/scout-on.mjs",
+    "bench/scenarios/configs/scout-top2-branch-on.mjs",
+    "bench/scenarios/configs/supervisor-off-anthropic.mjs",
+    "bench/scenarios/configs/supervisor-on-anthropic.mjs",
+    "bench/scenarios/configs/vision-first.mjs",
+    "bench/scenarios/configs/vision-hybrid.mjs",
+    ".evolve/scripts/aggregate-runs.mjs",
+    ".evolve/scripts/compare-runs.mjs",
+    ".evolve/scripts/count-decide-events.mjs",
+    ".evolve/scripts/progress-summary.mjs"
+  ],
+  "exportsDemoted": [
+    { "file": "src/cli-preview.ts", "symbols": ["runPreview", "renderPreview"] },
+    { "file": "src/cli-view.ts", "symbols": ["runView"] },
+    { "file": "src/cli-view-live.ts", "symbols": ["LiveViewError"] },
+    { "file": "src/runner/deterministic-patterns.ts", "symbols": ["__test (deleted entirely)"] },
+    { "file": "src/skills/macro-loader.ts", "symbols": ["MAX_MACRO_STEPS"] },
+    { "file": "src/model-pricing.ts", "symbols": ["getPricingSync"] },
+    { "file": "src/design/audit/measure/index.ts", "symbols": ["measureContrast, measureA11y re-exports"] },
+    { "file": "src/design/audit/pipeline.ts", "symbols": ["writeResultJson (deleted entirely)"] }
+  ],
+  "verifiedRealUsage": [
+    { "dep": "axe-core", "location": "src/design/audit/measure/a11y.ts:21-31 — loaded dynamically from node_modules" },
+    { "files": "bench/scenarios/configs/*.mjs (remaining)", "location": "scripts/run-*.mjs --config args" },
+    { "files": "bench/wallet/wallet.config.ts", "location": "bench/wallet/run-wallet-validation.mjs:211 --config" },
+    { "files": "bench/external/webvoyager/convert-tasks.mjs", "location": "bench/external/webvoyager/run.mjs + package.json bench:webarena:convert" },
+    { "file": "bench/design/run-design-bench.ts", "location": "package.json design:bench script" }
   ],
   "deferred": [
     {
-      "finding": "unused files: 26",
-      "reason": "all under bench/ and .evolve/scripts/ — invoked dynamically by --config or CLI flags knip can't see. Low value, high risk of deleting something real."
+      "finding": "37 'unused exported types' (knip)",
+      "reason": "All CLI Option/Result types (PreviewOptions, ShareOptions, ViewOptions, LiveViewOptions, ChromeDebugOptions, etc). Users of the library's CLI entrypoints type-check against these. Deleting would be API churn, not signal."
     },
     {
-      "finding": "unused exports: 15 (types only)",
-      "reason": "Public-ish interfaces (LibOptions, *Result types) exported for future/external callers. Deleting them triggers API churn, not signal."
-    },
-    {
-      "finding": "weak types: 58",
-      "reason": "Most are `any` inside page.evaluate callbacks — required because page context doesn't have our types. Documented in callOverlay with a single eslint-disable."
-    },
-    {
-      "finding": "axe-core listed as unused",
-      "reason": "Loaded dynamically during design-audit runs. Verified before deleting."
+      "finding": "scripts/lib unused exports (min, max, seededRandom, etc)",
+      "reason": "scripts/lib is a utility namespace meant for ad-hoc analysis scripts, not library consumption. Knip's unused-export detection is not appropriate here."
     }
   ]
 }

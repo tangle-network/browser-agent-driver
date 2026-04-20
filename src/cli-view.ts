@@ -363,7 +363,7 @@ async function listenWithRetry(
   )
 }
 
-export async function runView(opts: ViewOptions): Promise<{
+async function runView(opts: ViewOptions): Promise<{
   url: string
   close: () => Promise<void>
 }> {
