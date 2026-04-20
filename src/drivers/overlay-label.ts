@@ -39,21 +39,40 @@ const GENERIC_NAMES = new Set([
 ])
 
 /**
- * Suffixes ARIA labels / placeholders often carry that bloat the label
- * without adding meaning. "Last Name: insert criteria" → "Last Name".
- * Matching is case-insensitive and trims any trailing punctuation.
+ * Noise ARIA labels / placeholders often carry. Stripped iteratively at
+ * both ends until the string stabilizes. Goal: recover the semantic
+ * noun ("Name", "Email", "Last Name") from verbose wrappers like
+ * "Enter name as search criteria" or "Last Name: insert criteria".
  */
 const NOISE_SUFFIXES = [
+  /\s+as search (?:criteria|input|query|keyword|term)s?\s*$/i,
+  /\s+for search(?:ing)?\s*$/i,
   /\s*[:,]?\s*insert (?:criteria|name|value|text)\s*$/i,
-  /\s*[:,]?\s*search input\s*$/i,
-  /\s*[:,]?\s*search field\s*$/i,
-  /\s*[:,]?\s*input field\s*$/i,
-  /\s*[:,]?\s*text input\s*$/i,
+  /\s*[:,]?\s*search (?:input|field|criteria)\s*$/i,
+  /\s*[:,]?\s*(?:input|text) (?:field|input)\s*$/i,
   /\s*[:,]?\s*enter (?:text|value|name|keyword|query)\s*$/i,
   /\s*[:,]?\s*type (?:here|name|text)\s*$/i,
   /\s*[:,]?\s*required\s*$/i,
-  /\s*[*]\s*$/, // trailing asterisks from "Required *" fields
-  /[:;,]\s*$/,  // any trailing punctuation
+  /\s*[*]\s*$/,   // trailing asterisks from "Required *" fields
+  /[:;,]\s*$/,    // any trailing punctuation
+]
+
+/**
+ * Leading imperative prefixes that tell the user what to do ("Enter
+ * name…", "Type your email…", "Fill in first name…"). Strip them so
+ * the NOUN that follows becomes the clean label. Applied AFTER suffix
+ * cleanup because suffixes may carry their own verbs.
+ */
+const NOISE_PREFIXES = [
+  /^\s*please\s+enter\s+(?:your\s+)?/i,
+  /^\s*please\s+provide\s+(?:your\s+)?/i,
+  /^\s*please\s+/i,
+  /^\s*enter\s+(?:your\s+|a\s+|the\s+)?/i,
+  /^\s*type\s+(?:your\s+|a\s+|the\s+)?/i,
+  /^\s*input\s+(?:your\s+|a\s+|the\s+)?/i,
+  /^\s*fill\s+in\s+(?:your\s+|a\s+|the\s+)?/i,
+  /^\s*fill\s+(?:your\s+|a\s+|the\s+)?/i,
+  /^\s*provide\s+(?:your\s+|a\s+|the\s+)?/i,
 ]
 
 function truncate(s: string, max: number): string {
@@ -66,12 +85,23 @@ function cleanName(name: string | undefined): string | undefined {
   if (!name) return undefined
   let c = name.replace(/\s+/g, ' ').trim()
   if (!c) return undefined
-  // Strip noise suffixes iteratively — an ARIA name like
-  // "Last Name: insert criteria, required *" has three layers to peel.
+  // Strip noise at both ends iteratively until stable. ARIA names
+  // like "Enter your last name as search criteria, required *" stack
+  // three or four independent noise pieces — single-pass regex won't
+  // peel them all.
   let changed = true
-  while (changed) {
+  let passes = 0
+  while (changed && passes < 8) {
     changed = false
+    passes++
     for (const re of NOISE_SUFFIXES) {
+      const stripped = c.replace(re, '').trim()
+      if (stripped !== c && stripped.length > 0) {
+        c = stripped
+        changed = true
+      }
+    }
+    for (const re of NOISE_PREFIXES) {
       const stripped = c.replace(re, '').trim()
       if (stripped !== c && stripped.length > 0) {
         c = stripped
@@ -81,7 +111,15 @@ function cleanName(name: string | undefined): string | undefined {
   }
   if (!c) return undefined
   if (GENERIC_NAMES.has(c.toLowerCase())) return undefined
-  return truncate(c, MAX_NAME_PREVIEW)
+  // Title-case the first word so "name" → "Name". ARIA labels often
+  // carry lowercase imperative nouns which read oddly in mid-sentence.
+  c = c.charAt(0).toUpperCase() + c.slice(1)
+  // If after all stripping the name is still > 4 words or > 28 chars,
+  // it was probably a full sentence not a field label. Drop it — the
+  // bare verb phrase is cleaner than a truncated mid-sentence fragment.
+  const wordCount = c.split(/\s+/).length
+  if (wordCount > 4 || c.length > MAX_NAME_PREVIEW) return undefined
+  return c
 }
 
 /** Host of a URL without protocol/trailing-slash. Never throws. */
@@ -134,8 +172,8 @@ export function formatOverlayLabel(action: Action, ctx: OverlayLabelContext = {}
     }
     case 'type': {
       const text = truncate(action.text ?? '', MAX_TEXT_PREVIEW)
-      if (text && name) return truncate(`Typing “${text}” into ${name}`, MAX_LABEL_LEN)
-      if (text) return truncate(`Typing “${text}”`, MAX_LABEL_LEN)
+      if (text && name) return truncate(`Typing ${text} into ${name}`, MAX_LABEL_LEN)
+      if (text) return truncate(`Typing ${text}`, MAX_LABEL_LEN)
       return name ? truncate(`Typing into ${name}`, MAX_LABEL_LEN) : 'Typing'
     }
     case 'press': {
@@ -148,8 +186,8 @@ export function formatOverlayLabel(action: Action, ctx: OverlayLabelContext = {}
     }
     case 'select': {
       const val = truncate(action.value ?? '', MAX_TEXT_PREVIEW)
-      if (val && name) return truncate(`Selecting “${val}” in ${name}`, MAX_LABEL_LEN)
-      if (val) return truncate(`Selecting “${val}”`, MAX_LABEL_LEN)
+      if (val && name) return truncate(`Selecting ${val} in ${name}`, MAX_LABEL_LEN)
+      if (val) return truncate(`Selecting ${val}`, MAX_LABEL_LEN)
       return name ? truncate(`Selecting in ${name}`, MAX_LABEL_LEN) : 'Selecting'
     }
     case 'scroll': {

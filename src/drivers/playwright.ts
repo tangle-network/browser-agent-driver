@@ -331,148 +331,77 @@ export class PlaywrightDriver implements Driver {
   }
 
   /**
-   * Set the reasoning panel (top-right) to the agent's current-turn
-   * reasoning. No-op when the overlay is disabled.
+   * Invoke a method on `window.__bad_overlay` in the page context. No-op
+   * when the overlay is disabled or the page doesn't carry the widget
+   * (XML docs, PDF viewer, chrome://, navigation-in-flight). All failures
+   * are swallowed — the overlay is strictly cosmetic, never break a run.
    *
-   * Defensive: wraps page.evaluate with try/catch so navigation races,
-   * closed contexts, or a missing overlay (XML / PDF viewer / chrome://
-   * pages) never crash a run — the overlay is strictly cosmetic.
+   * Centralizes the defensive pattern that previously lived in 8 copies
+   * across 3 files: install-await, try/catch, page.evaluate.catch, method
+   * existence guard. One place to fix, one place to audit.
    */
+  private async callOverlay(method: string, args: unknown[] = []): Promise<void> {
+    if (!this.options.showCursor) return
+    if (this.cursorInstallPromise) {
+      await this.cursorInstallPromise.catch(() => undefined)
+    }
+    try {
+      await this.page.evaluate(
+        ({ m, a }: { m: string; a: unknown[] }) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const ov = (window as { __bad_overlay?: any }).__bad_overlay
+          const fn = ov && ov[m]
+          if (typeof fn === 'function') fn.apply(ov, a)
+        },
+        { m: method, a: args },
+      ).catch(() => {})
+    } catch { /* cosmetic */ }
+  }
+
+  /** Agent reasoning panel (top-right). Pass empty to hide. */
   async setOverlayReasoning(text: string): Promise<void> {
-    if (!this.options.showCursor) return;
-    if (this.cursorInstallPromise) {
-      await this.cursorInstallPromise.catch(() => undefined);
-    }
-    try {
-      await this.page.evaluate((t: string) => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const ov = (window as { __bad_overlay?: any }).__bad_overlay;
-        if (ov && typeof ov.setReasoning === 'function') ov.setReasoning(t);
-      }, text).catch(() => {});
-    } catch { /* cosmetic — never break a run */ }
+    await this.callOverlay('setReasoning', [text])
   }
 
-  /**
-   * Update the progress bar + turn counter at the top of the overlay.
-   * `total` is the max-turns budget; `label` is a short status string
-   * (e.g., "Turn 27 · C-003").
-   */
+  /** Turn counter + progress bar (top). `label` is a short status chip. */
   async setOverlayProgress(current: number, total: number, label?: string): Promise<void> {
-    if (!this.options.showCursor) return;
-    if (this.cursorInstallPromise) {
-      await this.cursorInstallPromise.catch(() => undefined);
-    }
-    try {
-      await this.page.evaluate(
-        ({ c, t, l }: { c: number; t: number; l?: string }) => {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const ov = (window as { __bad_overlay?: any }).__bad_overlay;
-          if (ov && typeof ov.setProgress === 'function') ov.setProgress(c, t, l);
-        },
-        { c: current, t: total, l: label },
-      ).catch(() => {});
-    } catch { /* cosmetic */ }
+    await this.callOverlay('setProgress', [current, total, label])
   }
 
-  /**
-   * Push a verdict badge to the bottom-left stack. Used when the agent's
-   * reasoning indicates a conclusion ("POSITIVE MATCH", "CLEARED",
-   * "NEEDS REVIEW") — the driver runner parses reasoning + emits these
-   * to celebrate the moment.
-   */
+  /** Verdict badge (bottom-left, stacked). Kinds: positive/cleared/review/info. */
   async pushOverlayBadge(kind: 'positive' | 'cleared' | 'review' | 'info', text: string): Promise<void> {
-    if (!this.options.showCursor) return;
-    if (this.cursorInstallPromise) {
-      await this.cursorInstallPromise.catch(() => undefined);
-    }
-    try {
-      await this.page.evaluate(
-        ({ k, t }: { k: string; t: string }) => {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const ov = (window as { __bad_overlay?: any }).__bad_overlay;
-          if (ov && typeof ov.pushBadge === 'function') ov.pushBadge(k, t);
-        },
-        { k: kind, t: text },
-      ).catch(() => {});
-    } catch { /* cosmetic */ }
+    await this.callOverlay('pushBadge', [kind, text])
   }
 
   // ── Gen 34 Hydra API ───────────────────────────────────────────────
-  /** Start the fan-out overlay. Renders the dim + grid of N labeled cells. */
+
+  /** Start the fan-out overlay: dim backdrop + grid of N labeled cells. */
   async fanOutStart(labels: string[]): Promise<void> {
-    if (!this.options.showCursor) return;
-    if (this.cursorInstallPromise) await this.cursorInstallPromise.catch(() => undefined);
-    try {
-      const ls = labels.slice(0, 8);
-      await this.page.evaluate(
-        (l: string[]) => {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const ov = (window as { __bad_overlay?: any }).__bad_overlay;
-          if (ov && typeof ov.fanOutStart === 'function') ov.fanOutStart(l);
-        },
-        ls,
-      ).catch(() => {});
-    } catch { /* cosmetic */ }
+    await this.callOverlay('fanOutStart', [labels.slice(0, 8)])
   }
 
-  /** Stream a JPEG dataURL into cell N. Call at 2-5 FPS during fan-out. */
+  /** Stream a JPEG data URL into cell N. Call at 2-5 FPS during fan-out. */
   async fanOutUpdateCell(index: number, dataUrl?: string): Promise<void> {
-    if (!this.options.showCursor) return;
-    if (this.cursorInstallPromise) await this.cursorInstallPromise.catch(() => undefined);
-    try {
-      await this.page.evaluate(
-        ({ i, d }: { i: number; d?: string }) => {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const ov = (window as { __bad_overlay?: any }).__bad_overlay;
-          if (ov && typeof ov.fanOutUpdateCell === 'function') ov.fanOutUpdateCell(i, d);
-        },
-        { i: index, ...(dataUrl ? { d: dataUrl } : {}) },
-      ).catch(() => {});
-    } catch { /* cosmetic */ }
+    await this.callOverlay('fanOutUpdateCell', [index, dataUrl])
   }
 
-  /** Mark cell N complete with a verdict kind + chip text. */
+  /** Lock cell N to a verdict color + chip text. */
   async fanOutCompleteCell(
     index: number,
     kind: 'positive' | 'cleared' | 'review' | 'info',
     verdictText?: string,
   ): Promise<void> {
-    if (!this.options.showCursor) return;
-    if (this.cursorInstallPromise) await this.cursorInstallPromise.catch(() => undefined);
-    try {
-      await this.page.evaluate(
-        ({ i, k, t }: { i: number; k: string; t?: string }) => {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const ov = (window as { __bad_overlay?: any }).__bad_overlay;
-          if (ov && typeof ov.fanOutCompleteCell === 'function') ov.fanOutCompleteCell(i, k, t);
-        },
-        { i: index, k: kind, ...(verdictText ? { t: verdictText } : {}) },
-      ).catch(() => {});
-    } catch { /* cosmetic */ }
+    await this.callOverlay('fanOutCompleteCell', [index, kind, verdictText])
   }
 
-  /** Collapse the grid (cells fly to center, merge). ~500ms animation. */
+  /** Collapse the grid — cells fly to center (~500ms animation). */
   async fanOutCollapse(): Promise<void> {
-    if (!this.options.showCursor) return;
-    try {
-      await this.page.evaluate(() => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const ov = (window as { __bad_overlay?: any }).__bad_overlay;
-        if (ov && typeof ov.fanOutCollapse === 'function') ov.fanOutCollapse();
-      }).catch(() => {});
-    } catch { /* cosmetic */ }
+    await this.callOverlay('fanOutCollapse')
   }
 
-  /** Dismiss the fan-out overlay (fade out). Call after collapse finishes. */
+  /** Fade out the fan-out overlay. Call after collapse finishes. */
   async fanOutDismiss(): Promise<void> {
-    if (!this.options.showCursor) return;
-    try {
-      await this.page.evaluate(() => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const ov = (window as { __bad_overlay?: any }).__bad_overlay;
-        if (ov && typeof ov.fanOutDismiss === 'function') ov.fanOutDismiss();
-      }).catch(() => {});
-    } catch { /* cosmetic */ }
+    await this.callOverlay('fanOutDismiss')
   }
 
   getPage(): Page {

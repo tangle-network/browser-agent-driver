@@ -33,8 +33,34 @@ import type { AgentConfig, FanOutAction, Scenario } from '../types.js'
 import type { ProjectStore } from '../memory/project-store.js'
 import type { Driver } from '../drivers/types.js'
 import { PlaywrightDriver, type PlaywrightDriverOptions } from '../drivers/playwright.js'
-import { BrowserAgent } from './runner.js'
 import type { AgentResult } from '../types.js'
+
+// Dynamic import of BrowserAgent breaks the runner.ts <-> fan-out.ts
+// import cycle. runner.ts dynamic-imports this module; any static
+// back-import (even `import type`) makes madge flag a graph cycle.
+//
+// The return type is a minimal structural constructor — we only need
+// `new (opts)` and `.run(scenario)`. The full BrowserAgentOptions surface
+// is opaque here; fan-out passes through driver + config + optional fields.
+interface SubAgentRunner {
+  run(scenario: import('../types.js').Scenario): Promise<AgentResult>
+}
+interface BrowserAgentCtor {
+  new (opts: {
+    driver: Driver
+    config: AgentConfig
+    projectStore?: ProjectStore
+    macroPromptBlock?: string
+  }): SubAgentRunner
+}
+let _BrowserAgentCtor: BrowserAgentCtor | undefined
+async function getBrowserAgent(): Promise<BrowserAgentCtor> {
+  if (!_BrowserAgentCtor) {
+    const mod = await import('./runner.js')
+    _BrowserAgentCtor = mod.BrowserAgent as unknown as BrowserAgentCtor
+  }
+  return _BrowserAgentCtor
+}
 
 /** Hard cap on concurrent sub-agents. Beyond 8 is a footgun. */
 const MAX_CONCURRENT_SUBAGENTS = 8
@@ -238,6 +264,7 @@ async function runBranch(
     // the overlay.
     startStreamer(page)
 
+    const BrowserAgent = await getBrowserAgent()
     const subAgent = new BrowserAgent({
       driver,
       config: opts.config,

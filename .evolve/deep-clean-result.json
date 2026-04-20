@@ -1,0 +1,72 @@
+{
+  "timestamp": "2026-04-20T17:27:00Z",
+  "git": {
+    "baseline": "0ea68bf6ae2719540631828bdfd63017bb464ad0",
+    "baselineSubject": "feat(gen34): Hydra View — live sub-tab grid + human labels + fanOut fires (#67)"
+  },
+  "summary": {
+    "typeErrors":     { "before": 0,   "after": 0,   "delta": 0 },
+    "weakTypes":      { "before": 64,  "after": 58,  "delta": -6 },
+    "tryCatchBlocks": { "before": 240, "after": 229, "delta": -11 },
+    "cosmeticCatchesInOverlayTrio": { "before": 28, "after": 21, "delta": -7,
+      "note": "Consolidated into single callOverlay helper in playwright.ts. Remaining 21 are in cursor-overlay.ts (11 needed for in-page DOM script) + fan-out.ts (10 — page.screenshot streamer + page.close + await call paths are each legitimate failure surfaces)." },
+    "debtMarkers":    { "before": 5,   "after": 5,   "delta": 0 },
+    "sourceFiles":    { "before": 101, "after": 102, "delta": 1, "note": "new: demo-overrides.ts (extracted inline demo hack)" },
+    "testFiles":      { "before": 92,  "after": 93,  "delta": 1, "note": "new: demo-overrides.test.ts" },
+    "testsPassed":    { "before": 1181, "after": 1189, "delta": 8, "note": "+8 new (demo-overrides + label regression)" },
+    "boundaries":     { "before": "clean", "after": "clean" }
+  },
+  "structuralFindings": {
+    "circularDeps": {
+      "madgeReports": 2,
+      "realCycles": 0,
+      "note": "madge flags runner.ts<->fan-out.ts and runner.ts<->parallel-runner.ts as cycles, but the back-edges are `await import(...)` dynamic references (runtime-resolved, not module-load cycles). Refactored to structural ctor types + inline `await import` so there is no static type cycle either. Remaining madge warning is a false positive."
+    }
+  },
+  "applied": [
+    {
+      "phase": "1a",
+      "change": "Dynamic-import BrowserAgent in fan-out.ts and parallel-runner.ts",
+      "files": ["src/runner/fan-out.ts", "src/runner/parallel-runner.ts"],
+      "rationale": "Break the runner.ts <-> sub-agent-spawn cycle statically. runner.ts already dynamic-imports these modules; making the back-edge dynamic aligns both sides."
+    },
+    {
+      "phase": "2c",
+      "change": "Extract `callOverlay` helper on PlaywrightDriver",
+      "files": ["src/drivers/playwright.ts"],
+      "linesRemoved": 95,
+      "linesAdded": 30,
+      "rationale": "8 overlay methods each carried 10 lines of identical defensive boilerplate (install-await + try/catch + method-existence guard + page.evaluate catch). Consolidated to one helper + 8 one-liners. Single source of truth for the 'never break a run' defensive pattern."
+    },
+    {
+      "phase": "3a",
+      "change": "Extract demo-mode override to its own module",
+      "files": ["src/runner/demo-overrides.ts", "src/runner/runner.ts"],
+      "rationale": "BAD_FORCE_FANOUT_* env-var override was inline in runner.ts main loop. Demo scaffolding in production-path code. Moved to src/runner/demo-overrides.ts with a pure function API; runner.ts calls one function that returns unchanged in production. +8 test cases pin the behavior."
+    },
+    {
+      "phase": "3a",
+      "change": "Drop quote marks from overlay labels + handle leading ARIA prefixes",
+      "files": ["src/drivers/overlay-label.ts"],
+      "rationale": "Demo feedback: labels read like code (`Typing \"JOHN\" into Enter name as search crit...`) not prose. Dropped curly quotes; added leading-prefix strip (Enter/Type/Please/Fill in); drop label entirely when target name is a full sentence. +2 regression tests pin the OFAC 'Enter name as search criteria' case."
+    }
+  ],
+  "deferred": [
+    {
+      "finding": "unused files: 26",
+      "reason": "all under bench/ and .evolve/scripts/ — invoked dynamically by --config or CLI flags knip can't see. Low value, high risk of deleting something real."
+    },
+    {
+      "finding": "unused exports: 15 (types only)",
+      "reason": "Public-ish interfaces (LibOptions, *Result types) exported for future/external callers. Deleting them triggers API churn, not signal."
+    },
+    {
+      "finding": "weak types: 58",
+      "reason": "Most are `any` inside page.evaluate callbacks — required because page context doesn't have our types. Documented in callOverlay with a single eslint-disable."
+    },
+    {
+      "finding": "axe-core listed as unused",
+      "reason": "Loaded dynamically during design-audit runs. Verified before deleting."
+    }
+  ]
+}

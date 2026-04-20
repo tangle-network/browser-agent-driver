@@ -28,21 +28,30 @@ describe('formatOverlayLabel', () => {
 
   it('type into a named field', () => {
     const a: Action = { action: 'type', selector: '@t1', text: 'IVANOV ALEKSANDR' }
-    expect(formatOverlayLabel(a, { targetName: 'Last Name' })).toBe('Typing “IVANOV ALEKSANDR” into Last Name')
+    expect(formatOverlayLabel(a, { targetName: 'Last Name' })).toBe('Typing IVANOV ALEKSANDR into Last Name')
   })
 
   it('type strips verbose ARIA suffixes — the Drew regression', () => {
     const a: Action = { action: 'type', selector: '@t1', text: 'JOHN SMITH' }
-    // OFAC-style aria labels
-    expect(formatOverlayLabel(a, { targetName: 'Last Name: insert criteria' })).toBe('Typing “JOHN SMITH” into Last Name')
-    expect(formatOverlayLabel(a, { targetName: 'Search keyword, search input' })).toBe('Typing “JOHN SMITH” into Search keyword')
-    expect(formatOverlayLabel(a, { targetName: 'Email, required *' })).toBe('Typing “JOHN SMITH” into Email')
-    expect(formatOverlayLabel(a, { targetName: 'Last name*' })).toBe('Typing “JOHN SMITH” into Last name')
+    // OFAC-style aria labels — leading "Enter ..." and trailing noise
+    expect(formatOverlayLabel(a, { targetName: 'Enter name as search criteria' })).toBe('Typing JOHN SMITH into Name')
+    expect(formatOverlayLabel(a, { targetName: 'Last Name: insert criteria' })).toBe('Typing JOHN SMITH into Last Name')
+    expect(formatOverlayLabel(a, { targetName: 'Email, required *' })).toBe('Typing JOHN SMITH into Email')
+    expect(formatOverlayLabel(a, { targetName: 'Last name*' })).toBe('Typing JOHN SMITH into Last name')
+    expect(formatOverlayLabel(a, { targetName: 'Please enter your email address' })).toBe('Typing JOHN SMITH into Email address')
+  })
+
+  it('type drops name when it is a long sentence, not a field label', () => {
+    const a: Action = { action: 'type', selector: '@t1', text: 'JOHN SMITH' }
+    // When the ARIA text is an entire instruction rather than a noun,
+    // don't jam a truncated fragment into the label. Prefer the bare verb.
+    const longAria = 'Please fill in each of the following fields carefully before submitting'
+    expect(formatOverlayLabel(a, { targetName: longAria })).toBe('Typing JOHN SMITH')
   })
 
   it('type without name', () => {
     const a: Action = { action: 'type', selector: '@t1', text: 'PUTIN VLADIMIR' }
-    expect(formatOverlayLabel(a)).toBe('Typing “PUTIN VLADIMIR”')
+    expect(formatOverlayLabel(a)).toBe('Typing PUTIN VLADIMIR')
   })
 
   it('type truncates long text with ellipsis, cap respected', () => {
@@ -82,8 +91,8 @@ describe('formatOverlayLabel', () => {
 
   it('select', () => {
     const a: Action = { action: 'select', selector: '@s1', value: 'CA' }
-    expect(formatOverlayLabel(a, { targetName: 'State' })).toBe('Selecting “CA” in State')
-    expect(formatOverlayLabel(a)).toBe('Selecting “CA”')
+    expect(formatOverlayLabel(a, { targetName: 'State' })).toBe('Selecting CA in State')
+    expect(formatOverlayLabel(a)).toBe('Selecting CA')
   })
 
   it('scroll', () => {
