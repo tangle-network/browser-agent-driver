@@ -197,6 +197,22 @@ export class AriaSnapshotHelper {
   }
 
   /**
+   * Look up the role + accessible-name pair for a `@ref` selector. Returns
+   * `undefined` for non-ref selectors (CSS, role=, text=, etc.) because
+   * those don't carry a known accessible name without a round-trip.
+   *
+   * Used by the overlay label builder to surface target context in the
+   * cursor label (e.g., `click · Search` instead of bare `click`).
+   */
+  lookupRef(selector: string): { role: string; name: string } | undefined {
+    if (!selector.startsWith('@')) return undefined;
+    const refId = selector.slice(1);
+    const entry = this.refMap.get(refId);
+    if (!entry) return undefined;
+    return { role: entry.role, name: entry.name };
+  }
+
+  /**
    * Resolve a selector to a Playwright Locator.
    *
    * - `@b3f` -> resolved from ref map via getByRole()

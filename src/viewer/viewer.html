@@ -658,32 +658,146 @@
       });
     }
 
-    /** Render the recording.webm video player for an agent test. */
+    /** Render the recording.webm video player for an agent test.
+     *  Gen 32: frame-accurate timeline scrubber — video time is synced
+     *  with per-turn markers; clicking a turn jumps to that moment;
+     *  the agent's reasoning for the selected turn renders below the
+     *  video. Turn times are computed from cumulative turn.durationMs,
+     *  which is a close proxy for wall-clock video time because the
+     *  recording and the turn loop run on the same clock. */
     function showRecording(test) {
       const main = el('main-content');
       if (!test?.recording) {
         main.innerHTML = '<div class="empty-state"><h2>No recording</h2><p>This test did not produce a recording.webm.</p></div>';
         return;
       }
+      const turns = test.turns || [];
+      // Build cumulative start times per turn in seconds. The first turn
+      // starts at t=0; subsequent turns start at the sum of prior durations.
+      // Turns without durationMs (legacy runs) get evenly distributed.
+      const totalMs = test.durationMs || turns.reduce((s, t) => s + (t.durationMs || 0), 0);
+      let cursor = 0;
+      const turnMarkers = turns.map((t) => {
+        const start = cursor;
+        cursor += t.durationMs || (totalMs / Math.max(1, turns.length));
+        return { start, dur: t.durationMs || (totalMs / Math.max(1, turns.length)), turn: t };
+      });
+      const durationSec = Math.max(1, Math.round((totalMs || 1) / 1000));
+      const stepCount = turns.length;
+
       main.innerHTML = `
         <div style="width: 100%; max-width: 1200px;">
           <div style="margin-bottom: 16px;">
             <h2 style="margin: 0; font-size: 18px;">${escapeHtml(test.name || test.id)} — Recording</h2>
             <div style="color: var(--text-muted); font-size: 12px; margin-top: 4px;">
-              Frame-by-frame screencast of the agent session. Cursor + clicks are visible inline.
+              ${stepCount} turns · ${durationSec}s · click a marker below to scrub the video to that moment.
             </div>
           </div>
-          <div class="screenshot-wrap" style="background: #000;">
-            <video controls autoplay muted loop style="max-width: 100%; max-height: calc(100vh - 220px); display: block;" src="${escapeHtml(test.recording)}">
+          <div class="screenshot-wrap" style="background: #000; position: relative;">
+            <video id="rec-video" controls autoplay muted loop style="max-width: 100%; max-height: calc(100vh - 340px); display: block;" src="${escapeHtml(test.recording)}">
               Your browser doesn't support inline video playback.
             </video>
           </div>
-          <div style="margin-top: 12px; font-size: 12px; color: var(--text-muted);">
-            Tip: scrub the video to see the agent's cursor move to each click target.
-            Each click pulses a ring at the contact point when the run was captured with <code>--show-cursor</code>.
+          <!-- Timeline scrubber: thin track with a marker per turn -->
+          <div id="rec-timeline" style="margin-top: 14px; position: relative; height: 46px; padding: 0 4px;">
+            <div style="position: absolute; top: 18px; left: 4px; right: 4px; height: 6px; background: var(--border); border-radius: 3px;"></div>
+            <div id="rec-playhead" style="position: absolute; top: 15px; left: 4px; width: 2px; height: 12px; background: var(--accent, #7aa2ff); border-radius: 1px; box-shadow: 0 0 4px var(--accent, #7aa2ff); pointer-events: none;"></div>
+            <div id="rec-markers" style="position: relative; height: 46px;"></div>
+          </div>
+          <!-- Reasoning panel synced to the playhead -->
+          <div id="rec-reasoning" style="margin-top: 14px; padding: 14px 16px; background: var(--bg-panel, #141927); border: 1px solid var(--border, #2a3145); border-radius: 8px; min-height: 84px;">
+            <div style="font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent, #7aa2ff); margin-bottom: 8px;">
+              Agent reasoning · <span id="rec-turn-label">turn —</span>
+            </div>
+            <div id="rec-reasoning-body" style="font-size: 13px; line-height: 1.55; color: var(--text, #e6ebf5); white-space: pre-wrap;">
+              Press play to follow the agent's reasoning turn-by-turn.
+            </div>
           </div>
         </div>
       `;
+
+      const video = document.getElementById('rec-video');
+      const markers = document.getElementById('rec-markers');
+      const playhead = document.getElementById('rec-playhead');
+      const reasoningBody = document.getElementById('rec-reasoning-body');
+      const turnLabel = document.getElementById('rec-turn-label');
+
+      // Render markers. Each marker is an absolutely-positioned dot with
+      // a thin stem so the viewer sees segment boundaries without clutter.
+      turnMarkers.forEach((m, i) => {
+        const pct = (m.start / Math.max(1, totalMs)) * 100;
+        const action = m.turn.action?.action ?? '?';
+        const el = document.createElement('button');
+        el.type = 'button';
+        el.className = 'rec-marker';
+        el.dataset.index = String(i);
+        el.title = `Turn ${i + 1} — ${action}`;
+        Object.assign(el.style, {
+          position: 'absolute',
+          left: `calc(${pct}% + 4px)`,
+          top: '8px',
+          width: '12px',
+          height: '28px',
+          marginLeft: '-6px',
+          background: 'transparent',
+          border: 'none',
+          padding: '0',
+          cursor: 'pointer',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+        });
+        el.innerHTML = `
+          <div style="width: 10px; height: 10px; border-radius: 9999px; background: var(--bg-panel, #141927); border: 2px solid var(--accent, #7aa2ff); box-shadow: 0 0 4px rgba(122,162,255,0.5);"></div>
+          <div style="width: 1px; height: 10px; background: var(--border, #2a3145); margin-top: 2px;"></div>
+          <div style="font-size: 9px; color: var(--text-muted); margin-top: 1px;">${i + 1}</div>
+        `;
+        el.addEventListener('click', () => {
+          video.currentTime = m.start / 1000;
+          selectTurn(i);
+        });
+        markers.appendChild(el);
+      });
+
+      function selectTurn(i) {
+        const t = turns[i];
+        if (!t) return;
+        const action = t.action?.action ?? '?';
+        const target = t.action?.selector ?? t.action?.text ?? t.action?.key ?? t.action?.url ?? '';
+        turnLabel.textContent = `turn ${i + 1} / ${turns.length} · ${action}${target ? ' · ' + String(target).slice(0, 80) : ''}`;
+        const r = (t.reasoning || '').trim();
+        reasoningBody.textContent = r || '(no reasoning captured)';
+        // Highlight the active marker
+        markers.querySelectorAll('.rec-marker').forEach((n, j) => {
+          const dot = n.firstElementChild;
+          if (!dot) return;
+          dot.style.background = j === i ? 'var(--accent, #7aa2ff)' : 'var(--bg-panel, #141927)';
+        });
+      }
+
+      function findTurnAt(timeMs) {
+        // Binary-search not needed for typical N≤100
+        let idx = -1;
+        for (let i = 0; i < turnMarkers.length; i++) {
+          if (timeMs >= turnMarkers[i].start) idx = i;
+          else break;
+        }
+        return idx;
+      }
+
+      video.addEventListener('timeupdate', () => {
+        const timeMs = video.currentTime * 1000;
+        const pct = Math.min(100, (timeMs / Math.max(1, totalMs)) * 100);
+        playhead.style.left = `calc(${pct}% + 4px)`;
+        const idx = findTurnAt(timeMs);
+        if (idx >= 0 && idx !== selectTurn._lastIdx) {
+          selectTurn._lastIdx = idx;
+          selectTurn(idx);
+        }
+      });
+      // Initial selection
+      if (turns.length > 0) selectTurn(0);
+
       const aside = el('aside-panel');
       aside.innerHTML = `
         <div class="panel">
@@ -702,7 +816,7 @@
         <div class="panel">
           <h3>About this view</h3>
           <div class="panel-body" style="font-size: 12px;">
-            The recording is a Playwright screencast captured during the run. The cursor sprite, click pulses, and element highlights are baked into the video frames when <code>--show-cursor</code> was passed to <code>bad run</code>.
+            Click a timeline marker to jump to that turn. The reasoning panel below the video updates as the video plays — each timestamp maps to the agent's own words at that moment. Cursor, click pulses, and verdict badges are baked into the video frames when the run used <code>--show-cursor</code>.
           </div>
         </div>
       `;

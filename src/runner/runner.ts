@@ -43,6 +43,11 @@ import type { Session } from '../memory/knowledge.js';
 import { RunRegistry } from '../memory/run-registry.js';
 import { TurnEventBus, ensureBus } from './events.js';
 import { DecisionCache } from './decision-cache.js';
+import {
+  VerdictTracker,
+  extractCurrentMarker,
+  buildProgressLabel,
+} from './overlay-narration.js';
 import { matchDeterministicPattern } from './deterministic-patterns.js';
 import type { ResolvedExtensions } from '../extensions/types.js';
 
@@ -168,6 +173,14 @@ export interface BrowserAgentOptions {
   config?: AgentConfig;
   /** Called after each turn */
   onTurn?: (turn: Turn) => void;
+  /**
+   * Gen 32 — called at the top of every turn BEFORE observe().
+   * Used by the interrupt controller to block the loop while the user
+   * has the run paused (`p` keypress in an interactive attach). The
+   * promise resolves on resume or rejects with an abort signal to
+   * bail out cleanly.
+   */
+  beforeTurn?: (turn: number) => Promise<void>;
   /** Called when a first-time phase timing is observed */
   onPhaseTiming?: (phase: 'navigate' | 'observe' | 'decide' | 'execute', durationMs: number) => void;
   /** Reference trajectory to inject into brain context */
@@ -289,6 +302,7 @@ export class BrowserAgent {
   private brain: Brain;
   private config: AgentConfig;
   private onTurn?: (turn: Turn) => void;
+  private beforeTurn?: (turn: number) => Promise<void>;
   private onPhaseTiming?: (phase: 'navigate' | 'observe' | 'decide' | 'execute', durationMs: number) => void;
   private referenceTrajectory?: string;
   private projectStore?: ProjectStore;
@@ -312,6 +326,7 @@ export class BrowserAgent {
     this.config = options.config || {};
     this.brain = new Brain(this.config);
     this.onTurn = options.onTurn;
+    this.beforeTurn = options.beforeTurn;
     this.onPhaseTiming = options.onPhaseTiming;
     this.referenceTrajectory = options.referenceTrajectory;
     this.bus = ensureBus(options.eventBus);
@@ -752,7 +767,26 @@ export class BrowserAgent {
       }
     }
 
+    // Gen 32 — overlay narration tracker. Per-session; accumulates verdict
+    // markers so a ledger the agent keeps re-emitting doesn't spam badges.
+    const verdictTracker = new VerdictTracker();
+
     for (let i = 1 + plannerStartTurn; i <= maxTurns; i++) {
+      // Gen 32 — honor user-driven pause from the interrupt controller.
+      // Blocks until `r` is pressed (resume) or `q` is pressed (abort).
+      // A rejected beforeTurn is treated as an abort.
+      if (this.beforeTurn) {
+        try {
+          await this.beforeTurn(i);
+        } catch (err) {
+          return buildResult({
+            success: false,
+            reason: err instanceof Error ? err.message : 'aborted',
+            turns,
+            totalMs: Date.now() - startTime,
+          });
+        }
+      }
       if (scenario.signal?.aborted) {
         return buildResult({
           success: false,
@@ -1446,6 +1480,29 @@ export class BrowserAgent {
             durationMs: decideDurationMs,
           });
         }
+
+        // -- 4a. Gen 32 — narrate to the cursor overlay. Fire-and-forget.
+        // Four signals pushed to the page-context overlay so a viewer of
+        // the recorded video can READ the agent's work, not just watch it:
+        //   1. Reasoning panel (top-right) — the agent's own text
+        //   2. Progress bar + chip (top) — turn N with optional ledger marker
+        //   3. Verdict badges (bottom-left) — POSITIVE/CLEARED/REVIEW events
+        // All methods are no-ops when the overlay is disabled, and all page
+        // calls are wrapped by the driver so a navigation race here can
+        // never bubble up and break the run.
+        try {
+          if (this.driver.setOverlayReasoning) {
+            void this.driver.setOverlayReasoning(reasoning ?? '');
+          }
+          if (this.driver.setOverlayProgress) {
+            const marker = extractCurrentMarker(reasoning);
+            void this.driver.setOverlayProgress(i, maxTurns, buildProgressLabel(i, maxTurns, marker));
+          }
+          if (this.driver.pushOverlayBadge) {
+            const fresh = verdictTracker.accept(reasoning);
+            for (const v of fresh) void this.driver.pushOverlayBadge(v.kind, v.text);
+          }
+        } catch { /* overlay narration is cosmetic; never let it break a run */ }
 
         // -- 4b. Override pipeline — scored selection of post-decision overrides --
         const overrideCtx: OverrideContext = {

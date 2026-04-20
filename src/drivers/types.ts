@@ -63,4 +63,13 @@ export interface Driver {
 
   /** Close/cleanup the driver */
   close?(): Promise<void>;
+
+  /**
+   * Gen 32 — overlay narration hooks. No-op when the overlay is off.
+   * Drivers without a cursor overlay can omit these entirely; callers
+   * check for presence and skip when absent.
+   */
+  setOverlayReasoning?(text: string): Promise<void>;
+  setOverlayProgress?(current: number, total: number, label?: string): Promise<void>;
+  pushOverlayBadge?(kind: 'positive' | 'cleared' | 'review' | 'info', text: string): Promise<void>;
 }
