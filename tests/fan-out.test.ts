@@ -8,9 +8,11 @@
 import { describe, it, expect } from 'vitest'
 import {
   formatFeedback,
+  resolveSubGoals,
   FAN_OUT_MAX_CONCURRENT,
   type FanOutBranchResult,
 } from '../src/runner/fan-out.js'
+import type { FanOutAction } from '../src/types.js'
 
 function branch(overrides: Partial<FanOutBranchResult> = {}): FanOutBranchResult {
   return {
@@ -94,5 +96,64 @@ describe('FAN_OUT_MAX_CONCURRENT', () => {
     // refactor. Pin it with a test so a later "just bump it" lands
     // as an explicit change in the review.
     expect(FAN_OUT_MAX_CONCURRENT).toBe(8)
+  })
+})
+
+describe('resolveSubGoals — LLM-friendly shorthand', () => {
+  const a = (overrides: Partial<FanOutAction>): FanOutAction => ({
+    action: 'fanOut',
+    ...overrides,
+  })
+
+  it('passes explicit subGoals through unchanged when present', () => {
+    const explicit = [
+      { url: 'https://a.test/', goal: 'do A', label: 'A' },
+      { url: 'https://b.test/', goal: 'do B', label: 'B' },
+    ]
+    expect(resolveSubGoals(a({ subGoals: explicit }))).toBe(explicit)
+  })
+
+  it('expands baseUrl + goalTemplate + items → full subGoals', () => {
+    const expanded = resolveSubGoals(a({
+      baseUrl: 'https://sanctionssearch.ofac.treas.gov/',
+      goalTemplate: 'Screen {item} on OFAC SDN. Report disposition.',
+      items: ['SMITH JOHN', 'MADURO NICOLAS', 'AL-ASSAD BASHAR'],
+    }))
+    expect(expanded).toHaveLength(3)
+    expect(expanded![0]).toEqual({
+      url: 'https://sanctionssearch.ofac.treas.gov/',
+      goal: 'Screen SMITH JOHN on OFAC SDN. Report disposition.',
+      label: 'SMITH JOHN',
+    })
+    expect(expanded![2].label).toBe('AL-ASSAD BASHAR')
+  })
+
+  it('replaces all {item} occurrences in the template', () => {
+    const expanded = resolveSubGoals(a({
+      baseUrl: 'https://x/',
+      goalTemplate: 'Find {item}. Report {item} disposition.',
+      items: ['X'],
+    }))
+    expect(expanded![0].goal).toBe('Find X. Report X disposition.')
+  })
+
+  it('returns undefined when neither explicit subGoals nor shorthand is complete', () => {
+    expect(resolveSubGoals(a({}))).toBeUndefined()
+    expect(resolveSubGoals(a({ baseUrl: 'x', goalTemplate: 'y' }))).toBeUndefined()
+    expect(resolveSubGoals(a({ baseUrl: 'x', items: ['y'] }))).toBeUndefined()
+    expect(resolveSubGoals(a({ goalTemplate: 't', items: ['i'] }))).toBeUndefined()
+  })
+
+  it('returns undefined when items is empty', () => {
+    expect(resolveSubGoals(a({ baseUrl: 'x', goalTemplate: 't', items: [] }))).toBeUndefined()
+  })
+
+  it('explicit subGoals take precedence if both forms are set', () => {
+    const explicit = [{ url: 'https://a.test/', goal: 'X', label: 'A' }]
+    const out = resolveSubGoals(a({
+      subGoals: explicit,
+      baseUrl: 'x', goalTemplate: 'y', items: ['z'],
+    }))
+    expect(out).toBe(explicit)
   })
 })
