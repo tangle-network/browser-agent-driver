@@ -24,6 +24,10 @@ Bump rules: `patch` for bug fixes, `minor` for additive features, `major` for br
 
 Flow: PR merges to main → `.github/workflows/changesets.yml` opens a "Release: version packages" PR bumping `package.json` + `CHANGELOG.md` → merging that PR publishes to npm via OIDC.
 
+## Commit & PR hygiene
+
+**No AI attribution in commits or PRs.** Never add `Co-Authored-By: Claude ...` trailers to commit messages. Never add `🤖 Generated with [Claude Code]` footers (or any equivalent AI-generated-by line) to PR bodies, issue comments, changesets, or commit messages. Commits and PRs should read as the author's own authored work. This applies to every commit and PR made in this repo, without exception.
+
 ## Mission
 
 Reliable, performant completion of real user outcomes — for both persona-driven workflows and direct task inputs.
