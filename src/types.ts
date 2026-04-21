@@ -783,7 +783,22 @@ export interface TestResult {
   runtime?: RunRuntimeConfig;
 }
 
+/**
+ * Current on-disk schema version for `report.json` / `TestSuiteResult`.
+ *
+ * Consumers that parse `<sink>/report.json` should pin or range-check this.
+ * The contract: bump on any breaking shape change (removed fields, renamed
+ * fields, changed value semantics). Adding an optional field is non-breaking
+ * and does NOT bump the version.
+ */
+export const TEST_SUITE_SCHEMA_VERSION = '1' as const;
+
 export interface TestSuiteResult {
+  /**
+   * On-disk schema version. See {@link TEST_SUITE_SCHEMA_VERSION}. Consumers
+   * should verify this matches their expected version before destructuring.
+   */
+  schemaVersion: string;
   /** Model used */
   model: string;
   /** Runtime/backend configuration for the suite */

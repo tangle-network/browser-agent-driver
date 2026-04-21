@@ -57,6 +57,7 @@ function makeSuite(overrides: Partial<TestSuiteResult> = {}): TestSuiteResult {
   const skipped = results.filter((r) => r.skipped).length;
   const total = results.length;
   return {
+    schemaVersion: '1',
     model: 'gpt-5.4',
     timestamp: '2026-03-07T10:00:00Z',
     results,

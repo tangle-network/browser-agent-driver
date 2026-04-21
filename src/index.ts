@@ -62,6 +62,7 @@ export type {
   ImageAsset,
   VideoAsset,
 } from './types.js';
+export { TEST_SUITE_SCHEMA_VERSION } from './types.js';
 
 // Driver interface + implementations
 export type { Driver, ActionResult, ResourceBlockingOptions } from './drivers/types.js';
