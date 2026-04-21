@@ -163,11 +163,14 @@ function actionSignature(action: Action): string {
       // sub-goals doesn't trigger the stuck detector. Including goals
       // (not just labels) means the agent can legitimately retry a
       // fan-out by narrowing each sub-goal without being flagged.
-      const sig = (action.subGoals ?? [])
-        .map((sg) => `${sg.label ?? sg.url}:${sg.goal.slice(0, 40)}`)
-        .sort()
-        .join('|');
-      return `fanOut:${sig}`;
+      // Handle both the explicit subGoals form and the shorthand
+      // (baseUrl + goalTemplate + items).
+      const subSig = (action.subGoals ?? [])
+        .map((sg) => `${sg.label ?? sg.url}:${sg.goal.slice(0, 40)}`);
+      const itemSig = (action.items ?? []).map((it) => `item:${it}`);
+      const templateHash = action.goalTemplate ? action.goalTemplate.slice(0, 40) : '';
+      const combined = [...subSig, ...itemSig].sort().join('|');
+      return `fanOut:${templateHash}:${combined}`;
     }
   }
 }

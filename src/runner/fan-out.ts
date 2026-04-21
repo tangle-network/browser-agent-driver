@@ -133,16 +133,42 @@ export interface FanOutExecutionResult {
  * completes each cell with a verdict chip, then runs the collapse/merge
  * animation before returning.
  */
+/**
+ * Expand the (baseUrl, goalTemplate, items) shorthand into explicit
+ * subGoals. This is how a compact LLM-emitted fanOut (a few strings,
+ * minimal nesting, nearly impossible to malform as JSON) becomes the
+ * full subGoals[] the executor needs.
+ *
+ * Precedence: if `subGoals` is non-empty it wins. Otherwise, if the
+ * shorthand fields are present and coherent, we expand. Otherwise we
+ * return empty and the caller reports the error.
+ */
+export function resolveSubGoals(action: FanOutAction): FanOutAction['subGoals'] {
+  if (Array.isArray(action.subGoals) && action.subGoals.length > 0) {
+    return action.subGoals
+  }
+  const { baseUrl, goalTemplate, items } = action
+  if (!baseUrl || !goalTemplate || !Array.isArray(items) || items.length === 0) {
+    return undefined
+  }
+  return items.map((item) => ({
+    url: baseUrl,
+    goal: goalTemplate.replace(/\{item\}/g, item),
+    label: item,
+  }))
+}
+
 export async function executeFanOut(
   action: FanOutAction,
   opts: FanOutExecutorOptions,
 ): Promise<FanOutExecutionResult> {
   const startedAt = Date.now()
-  const subGoals = (action.subGoals ?? []).slice(0, MAX_CONCURRENT_SUBAGENTS)
+  const resolved = resolveSubGoals(action)
+  const subGoals = (resolved ?? []).slice(0, MAX_CONCURRENT_SUBAGENTS)
   if (subGoals.length === 0) {
     return {
       branches: [],
-      feedback: 'FAN-OUT ERROR: no subGoals specified.',
+      feedback: 'FAN-OUT ERROR: provide either `subGoals` array or the `baseUrl` + `goalTemplate` + `items` shorthand.',
       totalMs: 0,
       tokensUsed: 0,
     }
@@ -204,8 +230,10 @@ export async function executeFanOut(
   }
 }
 
+type ResolvedSubGoal = NonNullable<FanOutAction['subGoals']>[number]
+
 async function runBranch(
-  sg: FanOutAction['subGoals'][number],
+  sg: ResolvedSubGoal,
   index: number,
   opts: FanOutExecutorOptions,
 ): Promise<FanOutBranchResult> {

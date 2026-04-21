@@ -223,12 +223,12 @@ export interface MacroAction {
 export interface FanOutAction {
   action: 'fanOut';
   /**
-   * Sub-goals to execute in parallel. Each fires an independent
-   * sub-agent with its own timeout + token budget derived from the
-   * parent. Limit: 8 concurrent (hard-capped in the runner).
+   * Explicit sub-goals. Use when each branch needs a different URL
+   * or fundamentally different instruction. Mutually exclusive with
+   * the (baseUrl, goalTemplate, items) shorthand below.
    */
-  subGoals: Array<{
-    /** Starting URL for this branch. Usually the parent's current URL. */
+  subGoals?: Array<{
+    /** Starting URL for this branch. */
     url: string;
     /** Natural-language goal for this branch. */
     goal: string;
@@ -237,6 +237,35 @@ export interface FanOutAction {
     /** Max turns for this sub-agent. Default: 8. */
     maxTurns?: number;
   }>;
+  /**
+   * Shorthand for batch-shaped fanOuts. Lets the agent emit a tiny JSON
+   * object (one baseUrl, one template, an array of string items) that
+   * the runtime expands into full subGoals. This is the PREFERRED shape
+   * for N>3 branches — it keeps the LLM's JSON output minimal and
+   * escape-free, which meaningfully improves reliability (long nested
+   * subGoals arrays cause JSON parse failures in practice).
+   *
+   * Example:
+   *   {
+   *     "action": "fanOut",
+   *     "baseUrl": "https://sanctionssearch.ofac.treas.gov/",
+   *     "goalTemplate": "Screen {item} on OFAC SDN. Report CLEARED / POSITIVE MATCH with program / NEEDS REVIEW.",
+   *     "items": ["SMITH JOHN", "MADURO NICOLAS", "AL-ASSAD BASHAR"]
+   *   }
+   *
+   * Expanded to:
+   *   subGoals: [
+   *     { url: baseUrl, goal: "Screen SMITH JOHN on OFAC SDN. ...", label: "SMITH JOHN" },
+   *     { url: baseUrl, goal: "Screen MADURO NICOLAS on OFAC SDN. ...", label: "MADURO NICOLAS" },
+   *     ...
+   *   ]
+   *
+   * `{item}` in goalTemplate is replaced with each array entry verbatim.
+   * The label is the item itself.
+   */
+  baseUrl?: string;
+  goalTemplate?: string;
+  items?: string[];
   /**
    * Optional guidance on how to combine sub-results when they return.
    * Default: serialize as a JSON array with {label, verdict} entries.

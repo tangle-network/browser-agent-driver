@@ -175,7 +175,13 @@ ACTIONS:
 - {"action": "fanOut", "subGoals": [...]} — spawn up to 8 parallel sub-agents in separate tabs (same session/cookies). See FAN-OUT section below for full rules + worked example.
 
 FAN-OUT — PARALLEL INVESTIGATION:
-fanOut is the way to investigate N independent candidates in PARALLEL instead of serially. When the current page shows a list of candidates or you have a queue of independent sub-tasks, emit ONE fanOut action with up to 8 subGoals instead of processing them one at a time. The system spawns N sub-agents in fresh tabs of the same session; they run concurrently; their results are merged and returned to you as structured JSON in the NEXT turn's feedback.
+fanOut is the way to investigate N independent candidates in PARALLEL instead of serially. When the current page shows a list of candidates or you have a queue of independent sub-tasks, emit ONE fanOut action instead of processing them one at a time. The system spawns N sub-agents in fresh tabs of the same session; they run concurrently; their results are merged and returned to you as structured JSON in the NEXT turn's feedback.
+
+STRONGLY PREFER THE SHORTHAND FORM when every branch shares a URL + instruction template. It emits tiny JSON that can't malform:
+
+  {"action":"fanOut","baseUrl":"https://site.example/","goalTemplate":"Investigate {item} — report outcome","items":["X","Y","Z"]}
+
+The string {item} in goalTemplate is replaced with each array entry. Labels default to the item. This is the RIGHT shape for N>=3 branches.
 
 USE fanOut WHEN:
 - A search returned multiple results and each needs investigation (click in / extract / return verdict per row).
@@ -2236,6 +2242,9 @@ Only include facts that are genuinely useful. Quality over quantity. Max 10 fact
       // Gen 29: macro dispatch. The driver validates the macro name at
       // execute time; here we just accept the shape.
       'macro',
+      // Gen 33: parallel fan-out. Runner handles dispatch; validator
+      // only checks shape (subGoals[] or baseUrl+goalTemplate+items).
+      'fanOut',
     ]);
 
     try {
@@ -2612,6 +2621,38 @@ function validateAction(actionType: string, data: Record<string, unknown>): Acti
         action: 'macro',
         name: requireStr('name'),
         ...(Object.keys(args).length > 0 ? { args } : {}),
+      };
+    }
+    case 'fanOut': {
+      // Accept either explicit subGoals[] or the shorthand
+      // baseUrl+goalTemplate+items trio. resolveSubGoals() in
+      // runner/fan-out.ts expands shorthand → subGoals at execute time.
+      const subGoals = Array.isArray(data.subGoals)
+        ? (data.subGoals as Array<Record<string, unknown>>)
+            .filter((s) => s && typeof s === 'object')
+            .map((s) => ({
+              url: typeof s.url === 'string' ? s.url : '',
+              goal: typeof s.goal === 'string' ? s.goal : '',
+              ...(typeof s.label === 'string' ? { label: s.label } : {}),
+              ...(typeof s.maxTurns === 'number' ? { maxTurns: s.maxTurns } : {}),
+            }))
+            .filter((s) => s.url && s.goal)
+        : undefined;
+      const baseUrl = typeof data.baseUrl === 'string' ? data.baseUrl : undefined;
+      const goalTemplate = typeof data.goalTemplate === 'string' ? data.goalTemplate : undefined;
+      const items = Array.isArray(data.items) && data.items.every((i) => typeof i === 'string')
+        ? (data.items as string[])
+        : undefined;
+      const hasExplicit = subGoals && subGoals.length > 0;
+      const hasShorthand = baseUrl && goalTemplate && items && items.length > 0;
+      if (!hasExplicit && !hasShorthand) {
+        throw new Error('fanOut action requires either "subGoals" (array of {url,goal}) or the shorthand trio "baseUrl" + "goalTemplate" + "items" (non-empty string[])');
+      }
+      return {
+        action: 'fanOut',
+        ...(hasExplicit ? { subGoals } : {}),
+        ...(hasShorthand ? { baseUrl, goalTemplate, items } : {}),
+        ...(typeof data.summarize === 'string' ? { summarize: data.summarize } : {}),
       };
     }
     default:
