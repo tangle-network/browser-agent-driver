@@ -65,6 +65,32 @@ async function getBrowserAgent(): Promise<BrowserAgentCtor> {
 /** Hard cap on concurrent sub-agents. Beyond 8 is a footgun. */
 const MAX_CONCURRENT_SUBAGENTS = 8
 
+/**
+ * Resolve runtime concurrency. Env knob `BAD_FANOUT_CONCURRENCY` lets
+ * callers throttle below 8 for rate-limited targets (OFAC's per-IP
+ * anti-bot trips at ~3 concurrent sessions). Clamped to [1,8].
+ */
+export function resolveFanOutConcurrency(): number {
+  const raw = process.env.BAD_FANOUT_CONCURRENCY
+  const n = raw ? Number.parseInt(raw, 10) : MAX_CONCURRENT_SUBAGENTS
+  if (!Number.isFinite(n) || n < 1) return 1
+  if (n > MAX_CONCURRENT_SUBAGENTS) return MAX_CONCURRENT_SUBAGENTS
+  return n
+}
+
+/**
+ * Resolve runtime stagger (ms between sub-agent launches). Env knob
+ * `BAD_FANOUT_STAGGER_MS` defaults to 0 (launch all up-to-concurrency
+ * immediately). Non-zero lets rate-limited targets breathe between new
+ * sessions — typical useful values are 5_000–30_000 ms.
+ */
+export function resolveFanOutStaggerMs(): number {
+  const raw = process.env.BAD_FANOUT_STAGGER_MS
+  const n = raw ? Number.parseInt(raw, 10) : 0
+  if (!Number.isFinite(n) || n < 0) return 0
+  return n
+}
+
 /** Default max turns per sub-agent when the action doesn't specify. */
 const DEFAULT_SUB_MAX_TURNS = 8
 
@@ -164,7 +190,12 @@ export async function executeFanOut(
 ): Promise<FanOutExecutionResult> {
   const startedAt = Date.now()
   const resolved = resolveSubGoals(action)
+  // Hard cap at 8. Runtime concurrency (see resolveFanOutConcurrency)
+  // controls how many of those 8 run at once; the cap just bounds the
+  // queue size.
   const subGoals = (resolved ?? []).slice(0, MAX_CONCURRENT_SUBAGENTS)
+  const concurrency = resolveFanOutConcurrency()
+  const staggerMs = resolveFanOutStaggerMs()
   if (subGoals.length === 0) {
     return {
       branches: [],
@@ -182,16 +213,14 @@ export async function executeFanOut(
     await opts.parentDriver.fanOutStart(labels).catch(() => { /* cosmetic */ })
   }
 
-  // Run all sub-agents concurrently. Every branch captures its own
-  // errors into the result record so one bad branch can't poison the
-  // whole fan-out.
-  const branches = await Promise.all(
-    subGoals.map((sg, index) => runBranch(sg, index, opts)),
-  ).catch((err: Error) => {
-    // Shouldn't ever reach here — runBranch catches internally — but if
-    // Playwright throws a synchronous error from context.newPage we
-    // still want a structured shape back.
-    return subGoals.map((sg, index): FanOutBranchResult => ({
+  // Dispatch sub-agents through a concurrency pool with optional
+  // stagger between launches. Stagger lets rate-limited targets
+  // breathe — OFAC's DataDome trips at ~3 concurrent same-IP sessions
+  // started in a tight window, so `concurrency=2, stagger=30_000`
+  // lets a 10-item roster through where `concurrency=8, stagger=0`
+  // gets bot-walled.
+  const branches = await runPool(subGoals, concurrency, staggerMs, (sg, index) =>
+    runBranch(sg, index, opts).catch((err: Error): FanOutBranchResult => ({
       index,
       label: sg.label ?? `branch-${index + 1}`,
       url: sg.url,
@@ -200,8 +229,8 @@ export async function executeFanOut(
       verdict: `internal fan-out error: ${err.message}`,
       turnsUsed: 0,
       durationMs: 0,
-    }))
-  })
+    })),
+  )
 
   // Gen 34 — choreography: minimum 3s visible floor so fast fan-outs
   // don't flash past the viewer, then collapse (~520ms) + dismiss
@@ -426,3 +455,44 @@ function truncateOneLine(s: string, max: number): string {
 
 /** Exposed for tests to pin the concurrency cap. */
 export const FAN_OUT_MAX_CONCURRENT = MAX_CONCURRENT_SUBAGENTS
+
+/**
+ * Bounded-concurrency pool with optional stagger between launches.
+ * Result order matches `items` order (not completion order). Every
+ * worker is expected to catch its own errors and return a result
+ * object — the pool itself never swallows; a thrown worker surfaces.
+ */
+export async function runPool<T, R>(
+  items: readonly T[],
+  concurrency: number,
+  staggerMs: number,
+  worker: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  if (items.length === 0) return []
+  const results = new Array<R>(items.length)
+  let cursor = 0
+  // Earliest absolute time the NEXT launch is allowed. Workers reserve
+  // their slot synchronously (before awaiting the timer) so two workers
+  // never collide on the same slot.
+  let nextLaunchAt = 0
+
+  const launch = async (): Promise<void> => {
+    for (;;) {
+      const idx = cursor++
+      if (idx >= items.length) return
+      if (staggerMs > 0) {
+        const now = Date.now()
+        const slot = Math.max(now, nextLaunchAt)
+        nextLaunchAt = slot + staggerMs
+        if (slot > now) {
+          await new Promise((r) => setTimeout(r, slot - now))
+        }
+      }
+      results[idx] = await worker(items[idx]!, idx)
+    }
+  }
+
+  const workerCount = Math.max(1, Math.min(concurrency, items.length))
+  await Promise.all(Array.from({ length: workerCount }, () => launch()))
+  return results
+}
