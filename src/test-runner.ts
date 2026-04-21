@@ -19,6 +19,7 @@ import type {
   AgentResult,
   Turn,
 } from './types.js';
+import { TEST_SUITE_SCHEMA_VERSION } from './types.js';
 import type { Driver } from './drivers/types.js';
 import type { ArtifactSink, ProgressEvent } from './artifacts/types.js';
 import { FilesystemSink } from './artifacts/filesystem-sink.js';
@@ -1097,6 +1098,7 @@ export class TestRunner {
     const passed = nonSkipped.filter((r) => r.verified && r.agentSuccess).length;
 
     return {
+      schemaVersion: TEST_SUITE_SCHEMA_VERSION,
       model: this.config.model || 'unknown',
       runtime: this.buildRuntimeConfig(),
       timestamp: new Date().toISOString(),

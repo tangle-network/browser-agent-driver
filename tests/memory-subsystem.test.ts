@@ -56,6 +56,7 @@ function makeTestResult(overrides: Partial<TestResult> & { turns?: Turn[]; goal?
 function makeSuiteResult(results: TestResult[]): TestSuiteResult {
   const passed = results.filter((r) => r.verified).length;
   return {
+    schemaVersion: '1',
     model: 'gpt-5.2',
     timestamp: new Date().toISOString(),
     results,
