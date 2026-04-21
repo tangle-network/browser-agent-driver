@@ -278,10 +278,42 @@ See [Configuration Reference](./docs/guides/configuration.md) for all options.
 
 ```bash
 bad run [options]              # Run tasks
+bad snapshot --url <url>       # Headless accessibility-tree dump (no LLM)
 bad design-audit [options]     # Design quality analysis
 bad view <run-dir>             # Open session viewer
 bad competitive [options]      # Head-to-head framework comparison
 ```
+
+### `bad snapshot`
+
+Deterministic, no-LLM DOM dump. Loads a URL, dismisses consent dialogs, waits for
+the chosen network state, emits the accessibility-tree snapshot. Intended for CI
+and downstream quality pipelines where the agentic loop is overkill.
+
+```bash
+bad snapshot --url https://example.com --json --out snap.json
+bad snapshot --url http://localhost:3000 --wait domcontentloaded
+```
+
+| Flag | Description |
+|------|-------------|
+| `--url URL` | URL to snapshot (required) |
+| `--json` | Emit structured JSON instead of human-readable text |
+| `--out FILE` | Write to file instead of stdout |
+| `--wait load\|domcontentloaded\|networkidle\|commit` | Playwright waitUntil. Default `networkidle` |
+| `--timeout MS` | Per-action timeout. Default `15000` |
+| `--no-dismiss-modals` | Skip consent/cookie dialog dismissal |
+| `--headed` | Show the browser window (default headless) |
+
+JSON shape: `{ schemaVersion, url, finalUrl, title, snapshot, timing, dismissed, errors }`.
+Exits non-zero on navigation failure or aria-snapshot error.
+
+### Report schema
+
+`<sink>/report.json` carries a top-level `schemaVersion` field. The current
+version is `"1"`. Consumers should verify this before destructuring. Adding an
+optional field is non-breaking; the version bumps only on removed fields,
+renamed fields, or changed value semantics.
 
 ### Run options
 

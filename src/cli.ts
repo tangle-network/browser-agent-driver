@@ -227,6 +227,11 @@ async function main(): Promise<void> {
       'stream-token': { type: 'string' },
       interrupt: { type: 'boolean' },
 
+      // `bad snapshot` — headless, no-LLM accessibility dump
+      out: { type: 'string' },
+      wait: { type: 'string' },
+      'dismiss-modals': { type: 'boolean' },
+
       help: { type: 'boolean', short: 'h', default: false },
       version: { type: 'boolean', short: 'v', default: false },
     },
@@ -322,6 +327,29 @@ async function main(): Promise<void> {
       rubricsDir: values['rubrics-dir'],
     });
     process.exit(0);
+  }
+
+  if (command === 'snapshot') {
+    if (!values.url) {
+      cliError('usage: bad snapshot --url <url> [--json] [--out file.json] [--wait networkidle|load|domcontentloaded|commit] [--timeout <ms>] [--no-dismiss-modals] [--headed]');
+      process.exit(2);
+    }
+    const waitArg = values.wait;
+    const wait = waitArg === 'load' || waitArg === 'domcontentloaded' || waitArg === 'networkidle' || waitArg === 'commit'
+      ? waitArg
+      : undefined;
+    const { handleSnapshotCommand } = await import('./cli-snapshot.js');
+    const rc = await handleSnapshotCommand({
+      url: values.url,
+      json: values.json,
+      out: values.out,
+      timeout: values.timeout ? parseInt(values.timeout, 10) : undefined,
+      wait,
+      dismissModals: values['dismiss-modals'],
+      headed: values.headed,
+      debug: values.debug,
+    });
+    process.exit(rc);
   }
 
   if (command === 'runs') {
