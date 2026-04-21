@@ -11,6 +11,19 @@ Required before merge:
 - Tier1 deterministic gate on PRs and `main`
 - Tier2 staging gate when secrets available
 
+## Releases
+
+**Every PR with user-visible changes must include a changeset.** Releases are fully automated via Changesets + OIDC publish; without a changeset file the post-merge workflow sees nothing to version and nothing publishes. Do this before opening the PR:
+
+```bash
+pnpm changeset        # pick patch / minor / major, write the summary
+git add .changeset/*.md
+```
+
+Bump rules: `patch` for bug fixes, `minor` for additive features, `major` for breaking API/CLI changes. Changeset summaries land verbatim in `CHANGELOG.md` and must carry the same multi-rep numbers as the PR body (see Measurement Rigor #7). Chores, docs-only tweaks, internal refactors with no consumer impact don't need one.
+
+Flow: PR merges to main → `.github/workflows/changesets.yml` opens a "Release: version packages" PR bumping `package.json` + `CHANGELOG.md` → merging that PR publishes to npm via OIDC.
+
 ## Mission
 
 Reliable, performant completion of real user outcomes — for both persona-driven workflows and direct task inputs.
