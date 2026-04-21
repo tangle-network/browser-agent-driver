@@ -147,6 +147,31 @@ describe('resolveSubGoals — LLM-friendly shorthand', () => {
     expect(resolveSubGoals(a({ goalTemplate: 't', items: ['i'] }))).toBeUndefined()
   })
 
+  it('substitutes {item} in baseUrl too (Wikipedia article pattern)', () => {
+    const expanded = resolveSubGoals(a({
+      baseUrl: 'https://en.wikipedia.org/wiki/{item}',
+      goalTemplate: 'Read the intro of {item} and summarize.',
+      items: ['Claude Shannon', 'Ada Lovelace'],
+    }))
+    expect(expanded).toHaveLength(2)
+    // Spaces become underscores (Wikipedia convention)
+    expect(expanded![0].url).toBe('https://en.wikipedia.org/wiki/Claude_Shannon')
+    expect(expanded![1].url).toBe('https://en.wikipedia.org/wiki/Ada_Lovelace')
+    // goal keeps the original item text, not the URL-encoded form
+    expect(expanded![0].goal).toBe('Read the intro of Claude Shannon and summarize.')
+    expect(expanded![0].label).toBe('Claude Shannon')
+  })
+
+  it('URL-encodes unsafe characters in baseUrl substitution', () => {
+    const expanded = resolveSubGoals(a({
+      baseUrl: 'https://site.test/{item}',
+      goalTemplate: 'x',
+      items: ['Al-Assad Bashar', 'O\'Brien'],
+    }))
+    expect(expanded![0].url).toBe('https://site.test/Al-Assad_Bashar')
+    expect(expanded![1].url).toBe("https://site.test/O'Brien")
+  })
+
   it('returns undefined when items is empty', () => {
     expect(resolveSubGoals(a({ baseUrl: 'x', goalTemplate: 't', items: [] }))).toBeUndefined()
   })

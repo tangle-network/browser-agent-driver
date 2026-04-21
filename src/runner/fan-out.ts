@@ -177,11 +177,26 @@ export function resolveSubGoals(action: FanOutAction): FanOutAction['subGoals'] 
   if (!baseUrl || !goalTemplate || !Array.isArray(items) || items.length === 0) {
     return undefined
   }
+  // {item} substitution applies to both the goal AND the baseUrl. When
+  // the target is a per-item page (Wikipedia articles, product listings,
+  // customer records), letting the agent land directly on the entity
+  // eliminates 2-4 sub-agent turns of navigation and keeps each branch
+  // inside the default 8-turn budget.
   return items.map((item) => ({
-    url: baseUrl,
+    url: baseUrl.replace(/\{item\}/g, encodeForUrl(item)),
     goal: goalTemplate.replace(/\{item\}/g, item),
     label: item,
   }))
+}
+
+/**
+ * URL-safe encoding of an item string for use in `baseUrl` templates.
+ * Spaces become underscores (Wikipedia convention); remaining unsafe
+ * characters get percent-encoded. Round-tripping "Al-Assad Bashar"
+ * yields "Al-Assad_Bashar" which resolves correctly on en.wikipedia.org.
+ */
+function encodeForUrl(item: string): string {
+  return encodeURIComponent(item.replace(/\s+/g, '_')).replace(/%2F/gi, '/')
 }
 
 export async function executeFanOut(
