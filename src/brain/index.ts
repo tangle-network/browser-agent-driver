@@ -1393,6 +1393,16 @@ ${visibleSnapshot}`;
           if (!retryParsed.reasoning?.startsWith('Malformed LLM JSON response')) {
             raw = retryResult.text;
             parsed = retryParsed;
+          } else if (this.baseUrl) {
+            // Both the initial parse and the format-hint retry failed while a
+            // custom LLM_BASE_URL is set. Strong signal the gateway is
+            // returning a shape the scout can't consume (e.g. SSE streams,
+            // non-JSON wrappers). Surface the likely cause instead of
+            // burning silent retries turn after turn.
+            console.error(
+              `[Brain] scout_json_parse_failed: LLM_BASE_URL=${this.baseUrl} returned a response the scout could not parse even after a format-hint retry. ` +
+              `Suggestion: switch to an Anthropic-native endpoint, or verify the gateway supports non-streaming chat/completions with { "response_format": { "type": "json_object" } }.`
+            );
           }
           tokensUsed = (tokensUsed ?? 0) + (retryResult.tokensUsed ?? 0);
           inputTokens = (inputTokens ?? 0) + (retryResult.inputTokens ?? 0);
@@ -2247,11 +2257,39 @@ Only include facts that are genuinely useful. Quality over quantity. Max 10 fact
       'fanOut',
     ]);
 
+    // Parse strategy: exact → first-{/last-} extraction.
+    // Some OpenAI-compat gateways (router.tangle.tools, LiteLLM proxies, etc.)
+    // wrap model output in prose preambles ("Here's your response:\n{...}")
+    // that markdown-fence stripping doesn't catch. Fall back to extracting the
+    // outermost object literal before giving up.
+    let parsed: Record<string, unknown> | null = null;
+    let parseError = '';
     try {
-      const parsed = JSON.parse(text);
+      parsed = JSON.parse(text);
+    } catch (err) {
+      parseError = err instanceof Error ? err.message : String(err);
+      const firstBrace = text.indexOf('{');
+      const lastBrace = text.lastIndexOf('}');
+      if (firstBrace >= 0 && lastBrace > firstBrace) {
+        try {
+          parsed = JSON.parse(text.slice(firstBrace, lastBrace + 1));
+          parseError = '';
+        } catch { /* fall through to retry fallback */ }
+      }
+    }
 
-      const actionObj = parsed.action && typeof parsed.action === 'object' ? parsed.action : parsed;
-      const actionType = typeof parsed.action === 'string' ? parsed.action : actionObj?.action;
+    if (!parsed) {
+      return {
+        // Do not hard-abort the scenario on transient JSON formatting issues.
+        // Waiting one turn lets the loop continue and recover on the next model call.
+        action: { action: 'wait', ms: 1000 },
+        reasoning: `Malformed LLM JSON response (${parseError}). Retrying next turn.`,
+      };
+    }
+
+    try {
+      const actionObj = parsed.action && typeof parsed.action === 'object' ? parsed.action as Record<string, unknown> : parsed;
+      const actionType = typeof parsed.action === 'string' ? parsed.action : (actionObj as { action?: string })?.action;
 
       if (!actionType) {
         throw new Error('Missing action field');
@@ -2261,24 +2299,24 @@ Only include facts that are genuinely useful. Quality over quantity. Max 10 fact
         throw new Error(`Unknown action "${actionType}". Valid: ${[...VALID_ACTIONS].join(', ')}`);
       }
 
-      const actionData = typeof parsed.action === 'object' ? parsed.action : parsed;
+      const actionData: Record<string, unknown> = parsed.action && typeof parsed.action === 'object'
+        ? parsed.action as Record<string, unknown>
+        : parsed;
       const action = validateAction(actionType, actionData);
 
       return {
         action,
         nextActions: parseNextActions(parsed, VALID_ACTIONS),
-        reasoning: parsed.reasoning || parsed.thought || parsed.thinking,
-        plan: Array.isArray(parsed.plan) ? parsed.plan : undefined,
+        reasoning: (parsed.reasoning || parsed.thought || parsed.thinking) as string | undefined,
+        plan: Array.isArray(parsed.plan) ? parsed.plan as string[] : undefined,
         currentStep: typeof parsed.currentStep === 'number' ? parsed.currentStep : undefined,
-        expectedEffect: parsed.expectedEffect || parsed.expected_effect,
+        expectedEffect: (parsed.expectedEffect || parsed.expected_effect) as string | undefined,
       };
     } catch (err) {
-      const parseError = err instanceof Error ? err.message : String(err);
+      const validationError = err instanceof Error ? err.message : String(err);
       return {
-        // Do not hard-abort the scenario on transient JSON formatting issues.
-        // Waiting one turn lets the loop continue and recover on the next model call.
         action: { action: 'wait', ms: 1000 },
-        reasoning: `Malformed LLM JSON response (${parseError}). Retrying next turn.`,
+        reasoning: `Malformed LLM JSON response (${validationError}). Retrying next turn.`,
       };
     }
   }
