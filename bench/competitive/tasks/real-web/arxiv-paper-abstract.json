@@ -1,0 +1,19 @@
+{
+  "id": "arxiv-paper-abstract",
+  "name": "arXiv — Mistral 7B paper metadata + abstract",
+  "goal": "Open https://arxiv.org/abs/2310.06825 (the Mistral 7B paper) and extract metadata.\n\nReturn ONLY a JSON object with EXACTLY these three keys:\n  - \"title\": the paper title (string, must contain 'Mistral')\n  - \"first_author\": the name of the first author listed (string, e.g. 'Albert Q. Jiang')\n  - \"abstract_first_50_chars\": the first 50 characters of the abstract text exactly as displayed (string, NOT truncated by you — just the verbatim first 50 chars)\n\nExample correct output (the values will differ for the actual paper):\n  {\"title\": \"Mistral 7B\", \"first_author\": \"Albert Q. Jiang\", \"abstract_first_50_chars\": \"We introduce Mistral 7B, a 7-billion-parameter lan\"}\n\nDo not include any extra fields. Complete with EXACTLY this JSON object as your final result.",
+  "startUrl": "https://arxiv.org/abs/2310.06825",
+  "maxTurns": 6,
+  "timeoutMs": 180000,
+  "expectedDurationSec": 25,
+  "expectedTokenBudget": 18000,
+  "tags": ["extraction", "research"],
+  "oracle": {
+    "type": "json-shape-match",
+    "expectedShape": {
+      "title": "re:Mistral",
+      "first_author": "re:.{3,}",
+      "abstract_first_50_chars": "re:.{30,}"
+    }
+  }
+}

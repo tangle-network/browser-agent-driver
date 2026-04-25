@@ -1,0 +1,60 @@
+{
+  "timestamp": "2026-04-20T17:50:00Z",
+  "git": {
+    "baseline": "5925f8a",
+    "baselineSubject": "Gen 35: deep-clean — overlay helper, label phrasing, demo scaffolding isolation (#68)",
+    "branch": "gen36-s-tier"
+  },
+  "summary": {
+    "filesDeleted": 15,
+    "linesDeleted": 1188,
+    "unusedExportsDemoted": 9,
+    "testsPassed":    { "before": 1181, "after": 1189, "delta": 8 },
+    "typeErrors":     { "before": 0, "after": 0, "delta": 0 },
+    "boundaries":     { "before": "clean", "after": "clean" }
+  },
+  "filesDeleted": [
+    "bench/cache-hit-probe.ts",
+    "bench/gen4-microbench.ts",
+    "bench/perf-benchmark.ts",
+    "bench/competitive/adapters/stagehand.mjs",
+    "bench/scenarios/configs/scout-off.mjs",
+    "bench/scenarios/configs/scout-on.mjs",
+    "bench/scenarios/configs/scout-top2-branch-on.mjs",
+    "bench/scenarios/configs/supervisor-off-anthropic.mjs",
+    "bench/scenarios/configs/supervisor-on-anthropic.mjs",
+    "bench/scenarios/configs/vision-first.mjs",
+    "bench/scenarios/configs/vision-hybrid.mjs",
+    ".evolve/scripts/aggregate-runs.mjs",
+    ".evolve/scripts/compare-runs.mjs",
+    ".evolve/scripts/count-decide-events.mjs",
+    ".evolve/scripts/progress-summary.mjs"
+  ],
+  "exportsDemoted": [
+    { "file": "src/cli-preview.ts", "symbols": ["runPreview", "renderPreview"] },
+    { "file": "src/cli-view.ts", "symbols": ["runView"] },
+    { "file": "src/cli-view-live.ts", "symbols": ["LiveViewError"] },
+    { "file": "src/runner/deterministic-patterns.ts", "symbols": ["__test (deleted entirely)"] },
+    { "file": "src/skills/macro-loader.ts", "symbols": ["MAX_MACRO_STEPS"] },
+    { "file": "src/model-pricing.ts", "symbols": ["getPricingSync"] },
+    { "file": "src/design/audit/measure/index.ts", "symbols": ["measureContrast, measureA11y re-exports"] },
+    { "file": "src/design/audit/pipeline.ts", "symbols": ["writeResultJson (deleted entirely)"] }
+  ],
+  "verifiedRealUsage": [
+    { "dep": "axe-core", "location": "src/design/audit/measure/a11y.ts:21-31 — loaded dynamically from node_modules" },
+    { "files": "bench/scenarios/configs/*.mjs (remaining)", "location": "scripts/run-*.mjs --config args" },
+    { "files": "bench/wallet/wallet.config.ts", "location": "bench/wallet/run-wallet-validation.mjs:211 --config" },
+    { "files": "bench/external/webvoyager/convert-tasks.mjs", "location": "bench/external/webvoyager/run.mjs + package.json bench:webarena:convert" },
+    { "file": "bench/design/run-design-bench.ts", "location": "package.json design:bench script" }
+  ],
+  "deferred": [
+    {
+      "finding": "37 'unused exported types' (knip)",
+      "reason": "All CLI Option/Result types (PreviewOptions, ShareOptions, ViewOptions, LiveViewOptions, ChromeDebugOptions, etc). Users of the library's CLI entrypoints type-check against these. Deleting would be API churn, not signal."
+    },
+    {
+      "finding": "scripts/lib unused exports (min, max, seededRandom, etc)",
+      "reason": "scripts/lib is a utility namespace meant for ad-hoc analysis scripts, not library consumption. Knip's unused-export detection is not appropriate here."
+    }
+  ]
+}

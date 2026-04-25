@@ -38,5 +38,29 @@ describe('Brain.parse', () => {
     expect(parsed.action.action).toBe('click');
     expect(parsed.nextActions?.map((entry) => entry.action)).toEqual(['wait']);
   });
+
+  // OpenAI-compat gateways (router.tangle.tools, LiteLLM proxies) sometimes
+  // return JSON wrapped in prose ("Here's your response:\n{...}") that
+  // markdown-fence stripping doesn't catch. The parser must recover rather
+  // than burn a turn on an unparseable response.
+  it('extracts JSON object from prose preamble', () => {
+    const brain = new Brain();
+    const parsed = (brain as unknown as { parse: (raw: string) => unknown }).parse(
+      `Sure, here's my response:\n{"action":{"action":"click","selector":"@b1"},"reasoning":"found it"}\nLet me know if you need anything else.`,
+    ) as { action: { action: string }; reasoning?: string };
+
+    expect(parsed.action.action).toBe('click');
+    expect(parsed.reasoning).toBe('found it');
+  });
+
+  it('falls back to wait when no JSON object present', () => {
+    const brain = new Brain();
+    const parsed = (brain as unknown as { parse: (raw: string) => unknown }).parse(
+      `I cannot produce JSON right now, sorry about that.`,
+    ) as { action: { action: string; ms?: number }; reasoning?: string };
+
+    expect(parsed.action.action).toBe('wait');
+    expect(parsed.reasoning).toMatch(/Malformed LLM JSON response/);
+  });
 });
 

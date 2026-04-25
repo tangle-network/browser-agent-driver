@@ -115,6 +115,7 @@ async function main(): Promise<void> {
       goal: { type: 'string', short: 'g' },
       url: { type: 'string', short: 'u' },
       cases: { type: 'string', short: 'c' },
+      'cases-json': { type: 'string' },
       'allowed-domains': { type: 'string' },
 
       // LLM configuration
@@ -159,6 +160,9 @@ async function main(): Promise<void> {
       'show-cursor': { type: 'boolean' },
       // bad run --live (open SSE-streaming live viewer alongside the run)
       live: { type: 'boolean' },
+      // bad run --planner (Gen 7 plan-then-execute: one LLM call generates
+      // the full action sequence, runner executes deterministically)
+      planner: { type: 'boolean' },
       // showcase
       script: { type: 'string' },
       capture: { type: 'string' },
@@ -180,11 +184,14 @@ async function main(): Promise<void> {
       'scout-min-top-score': { type: 'string' },
       'scout-max-score-gap': { type: 'string' },
       headless: { type: 'boolean' },
+      proxy: { type: 'string' },
       timeout: { type: 'string' },
       extension: { type: 'string', multiple: true },
       'user-data-dir': { type: 'string' },
       'profile-dir': { type: 'string' },
       'cdp-url': { type: 'string' },
+      attach: { type: 'boolean' },
+      'attach-port': { type: 'string' },
       wallet: { type: 'boolean' },
       'wallet-auto-approve': { type: 'boolean' },
       'wallet-password': { type: 'string' },
@@ -207,6 +214,7 @@ async function main(): Promise<void> {
       'trace-ttl-days': { type: 'string' },
       vision: { type: 'boolean' },
       'vision-strategy': { type: 'string' },
+      'observation-mode': { type: 'string' },
       debug: { type: 'boolean', short: 'd', default: false },
 
       // Resource blocking
@@ -219,6 +227,23 @@ async function main(): Promise<void> {
       cookie: { type: 'string', multiple: true },
       'wait-for': { type: 'string' },
       'wait-timeout': { type: 'string' },
+
+      // Gen 32 — `bad share` flags
+      visibility: { type: 'string' },
+      'bad-app-url': { type: 'string' },
+      'no-copy': { type: 'boolean' },
+
+      // Gen 32 — preview / stream / interrupt
+      'max-steps': { type: 'string' },
+      headed: { type: 'boolean' },
+      stream: { type: 'string' },
+      'stream-token': { type: 'string' },
+      interrupt: { type: 'boolean' },
+
+      // `bad snapshot` — headless, no-LLM accessibility dump
+      out: { type: 'string' },
+      wait: { type: 'string' },
+      'dismiss-modals': { type: 'boolean' },
 
       help: { type: 'boolean', short: 'h', default: false },
       version: { type: 'boolean', short: 'v', default: false },
@@ -320,6 +345,29 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
+  if (command === 'snapshot') {
+    if (!values.url) {
+      cliError('usage: bad snapshot --url <url> [--json] [--out file.json] [--wait networkidle|load|domcontentloaded|commit] [--timeout <ms>] [--no-dismiss-modals] [--headed]');
+      process.exit(2);
+    }
+    const waitArg = values.wait;
+    const wait = waitArg === 'load' || waitArg === 'domcontentloaded' || waitArg === 'networkidle' || waitArg === 'commit'
+      ? waitArg
+      : undefined;
+    const { handleSnapshotCommand } = await import('./cli-snapshot.js');
+    const rc = await handleSnapshotCommand({
+      url: values.url,
+      json: values.json,
+      out: values.out,
+      timeout: values.timeout ? parseInt(values.timeout, 10) : undefined,
+      wait,
+      dismissModals: values['dismiss-modals'],
+      headed: values.headed,
+      debug: values.debug,
+    });
+    process.exit(rc);
+  }
+
   if (command === 'runs') {
     const store = new ProjectStore(values['memory-dir'])
     const registry = new RunRegistry(store.getRoot())
@@ -369,6 +417,17 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
+  if (command === 'chrome-debug') {
+    const { runChromeDebugCommand } = await import('./cli-attach.js')
+    const port = values['attach-port'] ? parseInt(values['attach-port'], 10) : undefined
+    const rc = await runChromeDebugCommand({
+      port,
+      userDataDir: values['user-data-dir'],
+      quiet: values.quiet,
+    })
+    process.exit(rc)
+  }
+
   if (command === 'auth') {
     const sub = positionals[1];
     if (sub === 'save') {
@@ -404,14 +463,87 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  if (command !== 'run') {
-    cliError(`Unknown command: ${command}. Use "run", "runs", "design-audit", "view", "showcase", or "auth".`);
+  // `bad attach` is a top-level alias for `bad run --attach`. Every other
+  // flag on `run` (--goal, --url, --model, --provider, --base-url,
+  // --api-key, --show-cursor, --mode, --max-turns, --timeout, --no-memory,
+  // --attach-port) works identically. Attach's mental model is "drive my
+  // real Chrome," which is distinct enough from "spawn a fresh browser"
+  // to deserve its own command name.
+  if (command === 'attach') {
+    values.attach = true;
+  }
+
+  // `bad preview` — plan-only dry-run. Observe the URL once, ask the
+  // planner to emit a structured plan, render it, exit. No execution.
+  // terraform plan for browser agents.
+  if (command === 'preview') {
+    if (!values.goal || !values.url) {
+      cliError('usage: bad preview --goal "..." --url <url> [--max-steps 12] [--headed] [--json] [--out plan.json]');
+      process.exit(1);
+    }
+    const { handlePreviewCommand, PreviewError } = await import('./cli-preview.js');
+    try {
+      const result = await handlePreviewCommand({
+        goal: values.goal,
+        url: values.url,
+        model: values.model,
+        provider: values.provider,
+        apiKey: values['api-key'],
+        baseUrl: values['base-url'],
+        output: values.sink,
+        json: values.json,
+        maxSteps: values['max-steps'] ? parseInt(values['max-steps'], 10) : undefined,
+        headed: values.headed,
+      });
+      process.exit(result.plan ? 0 : 1);
+    } catch (err) {
+      if (err instanceof PreviewError) {
+        cliError(err.message);
+        process.exit(1);
+      }
+      throw err;
+    }
+  }
+
+  // `bad share <run-id>` — create a bad-app share link, copy to clipboard.
+  if (command === 'share') {
+    const runId = positionals[1];
+    if (!runId) {
+      cliError('usage: bad share <run-id> [--visibility metadata|full|artifacts] [--json]');
+      process.exit(1);
+    }
+    const { handleShareCommand, ShareError } = await import('./cli-share.js');
+    const visArg = values.visibility;
+    const visibility = visArg === 'full' || visArg === 'artifacts' || visArg === 'metadata'
+      ? visArg
+      : undefined;
+    try {
+      await handleShareCommand({
+        runId,
+        visibility,
+        baseUrl: values['bad-app-url'],
+        apiKey: values['api-key'],
+        noCopy: values['no-copy'],
+        json: values.json,
+      });
+      process.exit(0);
+    } catch (err) {
+      if (err instanceof ShareError) {
+        cliError(err.message);
+        process.exit(1);
+      }
+      throw err;
+    }
+  }
+
+  if (command !== 'run' && command !== 'attach') {
+    cliError(`Unknown command: ${command}. Use "run", "attach", "preview", "runs", "view", "share", "chrome-debug", "design-audit", "showcase", or "auth".`);
     process.exit(1);
   }
 
   // Validate inputs
-  if (!values.goal && !values.cases && !values['resume-run'] && !values['fork-run']) {
-    cliError('provide --goal "..." --url "..." for a single task, --cases ./cases.json for a suite, or --resume-run / --fork-run <runId>.');
+  if (!values.goal && !values.cases && !values['cases-json'] && !values['resume-run'] && !values['fork-run']) {
+    cliError('provide --goal "..." --url "..." for a single task, --cases ./cases.json (or --cases-json \'[...]\') for a suite, or --resume-run / --fork-run <runId>.');
     process.exit(1);
   }
 
@@ -496,9 +628,12 @@ async function main(): Promise<void> {
   }
   if (values.sink) cliOverrides.outputDir = values.sink;
   if (values.headless !== undefined) cliOverrides.headless = values.headless;
+  if (values.proxy) cliOverrides.proxy = values.proxy as string;
   if (values.vision !== undefined) cliOverrides.vision = values.vision;
   if (values['vision-strategy']) cliOverrides.visionStrategy = values['vision-strategy'] as DriverConfig['visionStrategy'];
+  if (values['observation-mode']) cliOverrides.observationMode = values['observation-mode'] as DriverConfig['observationMode'];
   if (values['goal-verification'] !== undefined) cliOverrides.goalVerification = values['goal-verification'];
+  if (values.planner === true) cliOverrides.plannerEnabled = true;
   if (
     values.extension?.length ||
     values['user-data-dir'] ||
@@ -550,6 +685,39 @@ async function main(): Promise<void> {
   }
   if (values['profile-dir']) cliOverrides.profileDir = values['profile-dir']
   if (values['cdp-url']) cliOverrides.cdpUrl = values['cdp-url']
+
+  // --attach resolves to cdpUrl by probing a running Chrome's DevTools
+  // endpoint. Done here (pre-config-merge) so the existing cdpUrl path at
+  // cli.ts:916 takes over unchanged. Conflicts with wallet/extension/profile
+  // flags are surfaced up-front rather than silently ignored.
+  if (values.attach) {
+    if (values['cdp-url']) {
+      cliError('--attach and --cdp-url are mutually exclusive (both select a CDP endpoint). Use one.')
+      process.exit(1)
+    }
+    const { resolveAttachEndpoint, validateAttachConflicts } = await import('./cli-attach.js')
+    const conflicts = validateAttachConflicts({
+      walletEnabled: Boolean(cliOverrides.wallet?.enabled) || Boolean(values.extension?.length),
+      profileDir: values['profile-dir'],
+      extensionPaths: values.extension,
+      userDataDir: values['user-data-dir'],
+    })
+    if (!conflicts.ok) {
+      for (const err of conflicts.errors) cliError(err)
+      process.exit(1)
+    }
+    const port = values['attach-port'] ? parseInt(values['attach-port'], 10) : undefined
+    if (port !== undefined && !Number.isFinite(port)) {
+      cliError(`Invalid --attach-port value: ${values['attach-port']}`)
+      process.exit(1)
+    }
+    const info = await resolveAttachEndpoint({ port }).catch((err) => {
+      cliError(err instanceof Error ? err.message : String(err))
+      process.exit(1)
+    })
+    cliOverrides.cdpUrl = info.webSocketDebuggerUrl
+    if (!values.quiet) cliLog('attach', `connected to ${info.browser ?? 'Chrome'}`)
+  }
 
   if (values.memory !== undefined || values['memory-dir']) {
     cliOverrides.memory = {
@@ -618,10 +786,13 @@ async function main(): Promise<void> {
     };
   }
 
-  // Mode presets apply only when equivalent flags were not explicitly set.
+  // Mode presets apply only when equivalent flags were not explicitly set
+  // AND the profile didn't already set them. This lets benchmark profiles
+  // (e.g. benchmark-webvoyager) enable vision/screenshots without fast-explore
+  // clobbering those values.
   if (mode === 'fast-explore') {
-    if (values.vision === undefined) cliOverrides.vision = false;
-    if (!values['screenshot-interval']) cliOverrides.screenshotInterval = 0;
+    if (values.vision === undefined && cliOverrides.vision === undefined) cliOverrides.vision = false;
+    if (!values['screenshot-interval'] && cliOverrides.screenshotInterval === undefined) cliOverrides.screenshotInterval = 0;
     if (values['goal-verification'] === undefined) cliOverrides.goalVerification = true;
     if (values['quality-threshold'] === undefined) cliOverrides.qualityThreshold = 0;
     if (!values['block-analytics'] && !values['block-images'] && !values['block-media']) {
@@ -631,9 +802,23 @@ async function main(): Promise<void> {
       };
     }
   } else if (mode === 'full-evidence') {
-    if (values.vision === undefined) cliOverrides.vision = true;
-    if (!values['screenshot-interval']) cliOverrides.screenshotInterval = 3;
+    if (values.vision === undefined && cliOverrides.vision === undefined) cliOverrides.vision = true;
+    if (!values['screenshot-interval'] && cliOverrides.screenshotInterval === undefined) cliOverrides.screenshotInterval = 3;
     if (values['goal-verification'] === undefined) cliOverrides.goalVerification = true;
+  }
+
+  // Gen 13: vision/hybrid observation mode requires vision + screenshots.
+  // Viewport forced to 1024×768 to match Claude's computer-use training
+  // distribution — coordinates map 1:1 with no scaling needed.
+  if (cliOverrides.observationMode === 'vision' || cliOverrides.observationMode === 'hybrid') {
+    if (cliOverrides.vision === undefined) cliOverrides.vision = true;
+    if (cliOverrides.visionStrategy === undefined) cliOverrides.visionStrategy = 'always';
+    if (cliOverrides.screenshotInterval === undefined || cliOverrides.screenshotInterval === 0) {
+      cliOverrides.screenshotInterval = 1;
+    }
+    if (!cliOverrides.viewport) {
+      cliOverrides.viewport = { width: 1024, height: 768 };
+    }
   }
 
   const driverConfig = mergeConfig(fileConfig, cliOverrides);
@@ -654,13 +839,19 @@ async function main(): Promise<void> {
   }
 
   // Dynamic imports — keeps startup fast and allows tree-shaking.
-  // Use patchright (Playwright fork with CDP leak fixes) for stealth profiles
-  // to avoid Cloudflare/DataDome detection via Runtime.enable.
+  // Gen 27: use patchright (Playwright fork with CDP leak fixes) for ALL
+  // profiles. 13/50 WebbBench sites block standard Playwright via CDP
+  // protocol detection (Runtime.enable leak). Fallback to regular
+  // playwright if patchright isn't installed.
   const isStealthProfile = launchPlan.profile.includes('stealth');
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { chromium, firefox, webkit } = (isStealthProfile
-    ? await import('patchright')
-    : await import('playwright')) as any;
+  let browserLib: any;
+  try {
+    browserLib = await import('patchright');
+  } catch {
+    browserLib = await import('playwright');
+  }
+  const { chromium, firefox, webkit } = browserLib;
   const { PlaywrightDriver } = await import('./drivers/playwright.js');
   const { TestRunner } = await import('./test-runner.js');
   const { FilesystemSink } = await import('./artifacts/filesystem-sink.js');
@@ -670,9 +861,13 @@ async function main(): Promise<void> {
   // Optional live event bus + SSE viewer. Constructed only when `--live` is
   // passed; otherwise the runner uses an internal no-op bus and pays nothing.
   // The bus is shared across the entire suite so a single SSE connection
-  // observes all turns of all test cases.
+  // observes all turns of all test cases. Gen 32: when `--stream <url>` is
+  // passed the bus is always created (even without --live) so the webhook
+  // streamer has something to subscribe to.
   const liveEnabled = values.live === true;
-  const liveBus = liveEnabled ? new TurnEventBus() : undefined;
+  const streamUrl = typeof values.stream === 'string' && values.stream.length > 0 ? values.stream : undefined;
+  const needsBus = liveEnabled || !!streamUrl;
+  const liveBus = needsBus ? new TurnEventBus() : undefined;
   const liveCancelController = liveEnabled ? new AbortController() : undefined;
   let liveViewHandle: { url: string; close: () => Promise<void> } | undefined;
   if (liveEnabled && liveBus) {
@@ -685,6 +880,38 @@ async function main(): Promise<void> {
     });
   }
 
+  // Gen 32 — webhook streamer. When `--stream <url>` is passed, subscribe
+  // to the bus and POST every event to <url> as it fires. Auth via
+  // `--stream-token` or $BAD_STREAM_TOKEN. Non-fatal on failure — the
+  // canonical record is always events.jsonl on disk.
+  let webhookStreamer: import('./runner/stream-webhook.js').WebhookStreamer | undefined;
+  if (streamUrl && liveBus) {
+    const { WebhookStreamer } = await import('./runner/stream-webhook.js');
+    const token = (values['stream-token'] as string | undefined) || process.env.BAD_STREAM_TOKEN;
+    const streamId = `stream_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    webhookStreamer = new WebhookStreamer({
+      url: streamUrl,
+      authToken: token,
+      streamId,
+      onError: (err, dropped) => {
+        if (!values.json) cliWarn(`stream: ${err.message} (dropped ${dropped} event${dropped === 1 ? '' : 's'})`);
+      },
+    }).attach(liveBus);
+    if (!values.json) cliLog('stream', `POST → ${streamUrl} (id ${streamId})`);
+  }
+
+  // Gen 32 — interrupt controller. `--interrupt` enables keyboard pause/
+  // resume/abort during a run. No-op in non-TTY (CI, piped output).
+  let interruptController: import('./runner/interrupt-controller.js').InterruptController | undefined;
+  let detachInterrupt: (() => void) | undefined;
+  if (values.interrupt === true && process.stdin.isTTY) {
+    const { InterruptController } = await import('./runner/interrupt-controller.js');
+    interruptController = new InterruptController({
+      onStatus: (msg) => { if (!values.json) cliLog('interrupt', msg); },
+    });
+    detachInterrupt = interruptController.attach();
+  }
+
   // Auto-discover bad.config.{ts,mjs,js,...} from cwd plus any explicit
   // --extension paths. Failures are reported but never fatal: a broken user
   // config should warn, not abort the run.
@@ -694,6 +921,28 @@ async function main(): Promise<void> {
     : explicitExtPaths
       ? [explicitExtPaths]
       : []
+  // Domain skills: markdown-based per-host rule libraries under
+  // skills/domain/<host>/SKILL.md. They plumb into the same BadExtension
+  // pipeline as user `bad.config.mjs` files via addRulesForDomain, so the
+  // existing setExtensionRules injection at brain/index.ts:899 picks them up
+  // with no second injection site. Gated by BAD_DOMAIN_SKILLS_DISABLED=1.
+  const domainSkillsDisabled = process.env.BAD_DOMAIN_SKILLS_DISABLED === '1'
+  let domainSkillExtension: import('./extensions/types.js').BadExtension | undefined
+  let domainSkillsLoadedCount = 0
+  if (!domainSkillsDisabled) {
+    const { loadDomainSkills, buildDomainSkillExtension } = await import('./skills/domain-loader.js')
+    const domainLoad = await loadDomainSkills()
+    if (domainLoad.skills.length > 0) {
+      domainSkillExtension = buildDomainSkillExtension(domainLoad.skills)
+      domainSkillsLoadedCount = domainLoad.skills.length
+    }
+    if (domainLoad.errors.length > 0 && !values.json) {
+      for (const err of domainLoad.errors) {
+        cliWarn(`domain-skill load failed: ${err.path} — ${err.error}`)
+      }
+    }
+  }
+
   const extensionLoad = await loadExtensions({ explicitPaths: explicitExtArr });
   if (extensionLoad.loadedFrom.length > 0 && !values.json) {
     cliLog('extensions', `loaded ${extensionLoad.loadedFrom.length}: ${extensionLoad.loadedFrom.join(', ')}`);
@@ -701,6 +950,34 @@ async function main(): Promise<void> {
   if (extensionLoad.errors.length > 0 && !values.json) {
     for (const err of extensionLoad.errors) {
       cliWarn(`extension load failed: ${err.path} — ${err.error}`);
+    }
+  }
+  if (domainSkillExtension && domainSkillsLoadedCount > 0) {
+    // Re-resolve the bundle with the domain-skill synthetic extension
+    // merged in. Resolving twice is cheap (the list is short) and keeps
+    // domainSkillExtension from having to plumb through a separate wire.
+    const { resolveExtensions } = await import('./extensions/types.js')
+    const combined = resolveExtensions([...extensionLoad.resolved.extensions, domainSkillExtension])
+    extensionLoad.resolved = combined
+    if (!values.json) cliLog('skills', `domain: ${domainSkillsLoadedCount} loaded`)
+  }
+
+  // Gen 29: macros. Loaded alongside domain skills; gated by
+  // BAD_MACROS_DISABLED=1. The registry is passed to PlaywrightDriver
+  // (dispatch) and its promptBlock to the BrowserAgent (visibility).
+  const macrosDisabled = process.env.BAD_MACROS_DISABLED === '1'
+  let macroRegistry: import('./skills/macro-loader.js').MacroRegistry | undefined
+  if (!macrosDisabled) {
+    const { loadMacros, buildMacroRegistry } = await import('./skills/macro-loader.js')
+    const macroLoad = await loadMacros()
+    if (macroLoad.errors.length > 0 && !values.json) {
+      for (const err of macroLoad.errors) {
+        cliWarn(`macro load failed: ${err.path} — ${err.error}`)
+      }
+    }
+    if (macroLoad.macros.length > 0) {
+      macroRegistry = buildMacroRegistry(macroLoad.macros)
+      if (!values.json) cliLog('skills', `macros: ${macroLoad.macros.length} loaded`)
     }
   }
 
@@ -794,8 +1071,8 @@ async function main(): Promise<void> {
       sessionId: scenario.sessionId,
       parentRunId: scenario.parentRunId,
     }]
-  } else if (values.cases) {
-    const raw = fs.readFileSync(path.resolve(values.cases), 'utf-8');
+  } else if (values['cases-json'] || values.cases) {
+    const raw = values['cases-json'] || fs.readFileSync(path.resolve(values.cases!), 'utf-8');
     const parsed = JSON.parse(raw);
     const rawCases: Record<string, unknown>[] = Array.isArray(parsed) ? parsed : [parsed];
     // Ensure required fields — spread raw case first so explicit fields become defaults
@@ -942,6 +1219,7 @@ async function main(): Promise<void> {
       args: launchPlan.browserArgs,
       viewport,
       recordVideo: { dir: videoDir, size: viewport },
+      ...(launchPlan.proxyServer ? { proxy: { server: launchPlan.proxyServer } } : {}),
     });
     launchDiagnostics.browserLaunchMs = Date.now() - persistentLaunchStartedAt;
     await applyStorageStateToPersistentContext(persistentContext, storageStatePath);
@@ -1069,8 +1347,13 @@ async function main(): Promise<void> {
     browser = await browserType.launch({
       headless: launchPlan.headless,
       ...(browserName === 'chromium' ? { args: launchPlan.browserArgs } : {}),
-      // Use system Chrome for stealth profiles — real TLS/JA3 fingerprint vs bundled Chromium
+      // System Chrome for stealth profiles only — real TLS/JA3 fingerprint
+      // fixes anti-bot blocking. But system Chrome renders differently than
+      // bundled Chromium on some sites (Allrecipes click timeouts, Amazon
+      // layout shifts), so only enable when anti-bot evasion is needed.
       ...(isStealthProfile && browserName === 'chromium' ? { channel: 'chrome' } : {}),
+      // Residential/SOCKS5/HTTP proxy — routes all traffic through the proxy
+      ...(launchPlan.proxyServer ? { proxy: { server: launchPlan.proxyServer } } : {}),
     })
     launchDiagnostics.browserLaunchMs = Date.now() - browserLaunchStartedAt
   }
@@ -1219,6 +1502,26 @@ async function main(): Promise<void> {
             configurable: true,
           });
         } catch (_) {}
+        // navigator.connection — missing in headless, present in real Chrome
+        try {
+          if (!navigator.connection) {
+            Object.defineProperty(navigator, 'connection', {
+              get: () => ({
+                effectiveType: '4g',
+                rtt: 50,
+                downlink: 10,
+                saveData: false,
+                onchange: null,
+              }),
+            });
+          }
+        } catch (_) {}
+        // Notification.permission — default differs in headless
+        try {
+          if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+            Object.defineProperty(Notification, 'permission', { get: () => 'denied' });
+          }
+        } catch (_) {}
       `);
     }
     const contextCreateMs = Date.now() - contextStartedAt;
@@ -1236,6 +1539,7 @@ async function main(): Promise<void> {
       visionStrategy: config.visionStrategy,
       screenshotInterval,
       showCursor: values['show-cursor'],
+      ...(macroRegistry ? { macros: macroRegistry } : {}),
     });
     // Apply resource blocking if configured
     const resourceBlockingStartedAt = Date.now();
@@ -1295,7 +1599,11 @@ async function main(): Promise<void> {
     screenshotInterval,
     artifactSink: sink,
     extensions: extensionLoad.resolved,
+    ...(macroRegistry ? { macroPromptBlock: macroRegistry.promptBlock } : {}),
     ...(liveBus ? { eventBus: liveBus } : {}),
+    ...(interruptController
+      ? { beforeTurn: async () => { await interruptController.waitIfPaused(); } }
+      : {}),
     onProgress: (event) => {
       if (values.json) {
         console.log(JSON.stringify(event));
@@ -1326,9 +1634,24 @@ async function main(): Promise<void> {
   let runError: unknown;
 
   try {
+    // Gen 32 — wire interrupt controller. When the user presses `q`,
+    // abort() fires which the runner observes via the suite-level
+    // signal. Runs a check before the runner starts so pressing `q`
+    // BEFORE the first turn still aborts cleanly.
+    const interruptSignal = interruptController
+      ? (() => {
+        const ac = new AbortController();
+        interruptController.on('abort', () => ac.abort('interrupted by user'));
+        if (interruptController.isAborted) ac.abort('interrupted by user');
+        return ac.signal;
+      })()
+      : undefined;
+    // If --live already provided a signal, merge both. Prefer the user
+    // interrupt signal so `q` wins even when --live is set.
+    const mergedSignal = interruptSignal ?? liveCancelController?.signal;
     result = await runner.runSuite(
       cases,
-      liveCancelController ? { signal: liveCancelController.signal } : undefined,
+      mergedSignal ? { signal: mergedSignal } : undefined,
     );
 
     // Write reports for each configured format
@@ -1365,6 +1688,14 @@ async function main(): Promise<void> {
     runError = err;
   } finally {
     renderer?.destroy();
+    // Gen 32 — detach interrupt controller first so stdin leaves raw mode
+    // BEFORE we try to write any shutdown logs. Otherwise the user's TTY
+    // stays in raw mode after the run ends and Ctrl-C, arrow keys, etc.
+    // come through as garbage bytes.
+    if (detachInterrupt) detachInterrupt();
+    // Flush and close the stream webhook so the final events (run-completed,
+    // suite-complete) reach the endpoint before the CLI exits.
+    if (webhookStreamer) await webhookStreamer.close().catch(() => {});
     await singleDriver?.close?.().catch(() => {});
     stopWalletAutoApprover?.();
     await persistentContext?.close().catch(() => {});

@@ -57,7 +57,7 @@ export interface LiveViewHandle {
   close: () => Promise<void>
 }
 
-export class LiveViewError extends Error {
+class LiveViewError extends Error {
   constructor(message: string) {
     super(message)
     this.name = 'LiveViewError'

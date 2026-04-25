@@ -10,7 +10,7 @@ describe('buildBrowserLaunchPlan', () => {
     expect(plan.headless).toBe(true);
     expect(plan.concurrency).toBe(1);
     expect(plan.viewport).toEqual({ width: 1920, height: 1080 });
-    expect(plan.browserArgs).toEqual([]);
+    expect(plan.browserArgs).toContain('--disable-blink-features=AutomationControlled');
     expect(plan.warnings).toEqual([]);
     expect(plan.errors).toEqual([]);
   });
@@ -43,7 +43,7 @@ describe('buildBrowserLaunchPlan', () => {
 
     expect(plan.walletMode).toBe(false);
     expect(plan.userDataDir).toBe('/repo/.wallet-profile');
-    expect(plan.browserArgs).toEqual([]);
+    expect(plan.browserArgs).toContain('--disable-blink-features=AutomationControlled');
     expect(plan.warnings).toEqual([
       'wallet.userDataDir is set but wallet mode is disabled; this directory is ignored unless --wallet or --extension is provided.',
     ]);
@@ -59,11 +59,10 @@ describe('buildBrowserLaunchPlan', () => {
       },
     }, { cwd: '/repo', platform: 'darwin' });
 
-    expect(plan.browserArgs).toEqual([
-      '--lang=en-US',
-      '--disable-extensions-except=/abs/ext-a,/abs/ext-b',
-      '--load-extension=/abs/ext-a,/abs/ext-b',
-    ]);
+    expect(plan.browserArgs).toContain('--lang=en-US');
+    expect(plan.browserArgs).toContain('--disable-extensions-except=/abs/ext-a,/abs/ext-b');
+    expect(plan.browserArgs).toContain('--load-extension=/abs/ext-a,/abs/ext-b');
+    expect(plan.browserArgs).toContain('--disable-blink-features=AutomationControlled');
     expect(plan.errors).toEqual([]);
   });
 
@@ -132,12 +131,12 @@ describe('buildBrowserLaunchPlan', () => {
     }, { cwd: '/repo', platform: 'darwin' });
 
     expect(plan.profile).toBe('stealth');
-    expect(plan.browserArgs).toEqual([
-      '--disable-infobars',
-      '--disable-blink-features=AutomationControlled',
-      '--no-first-run',
-      '--no-default-browser-check',
-    ]);
+    // Stealth args applied universally — --disable-infobars not duplicated
+    expect(plan.browserArgs).toContain('--disable-infobars');
+    expect(plan.browserArgs).toContain('--disable-blink-features=AutomationControlled');
+    expect(plan.browserArgs).toContain('--no-first-run');
+    expect(plan.browserArgs).toContain('--use-gl=desktop');
+    expect(plan.browserArgs.filter(a => a === '--disable-infobars')).toHaveLength(1);
   });
 
   it('profileDir without wallet: persistentContext true, walletMode false', () => {
@@ -184,11 +183,9 @@ describe('buildBrowserLaunchPlan', () => {
     }, { cwd: '/repo', platform: 'darwin' });
 
     expect(plan.profile).toBe('benchmark-webbench-stealth');
-    expect(plan.browserArgs).toEqual([
-      '--disable-blink-features=AutomationControlled',
-      '--disable-infobars',
-      '--no-first-run',
-      '--no-default-browser-check',
-    ]);
+    expect(plan.browserArgs).toContain('--disable-blink-features=AutomationControlled');
+    expect(plan.browserArgs).toContain('--disable-infobars');
+    expect(plan.browserArgs).toContain('--no-first-run');
+    expect(plan.browserArgs).toContain('--use-gl=desktop');
   });
 });

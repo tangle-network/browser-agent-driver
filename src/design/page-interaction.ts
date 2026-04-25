@@ -124,7 +124,7 @@ export async function captureInteractionScreenshots(
 
 // ── Internals ──
 
-async function dismissModals(page: Page, stats: RevealStats): Promise<void> {
+export async function dismissModals(page: Page, stats: RevealStats): Promise<void> {
   // Cookie banners
   const cookieSelectors = [
     'button:has-text("Accept all")',

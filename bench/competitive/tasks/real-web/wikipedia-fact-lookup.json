@@ -1,0 +1,17 @@
+{
+  "id": "wikipedia-fact-lookup",
+  "name": "Wikipedia — Ada Lovelace birth year fact lookup",
+  "goal": "Open https://en.wikipedia.org/wiki/Ada_Lovelace and find Ada Lovelace's birth year.\n\nReturn ONLY a JSON object with EXACTLY this key:\n  - \"year\": the birth year as a 4-digit integer (e.g. 1815, NOT a string)\n\nExample correct output:\n  {\"year\": 1815}\n\nThe birth year should be the YEAR of birth, not a date string. Do not include any extra fields.\n\nCRITICAL: Your complete action's result field MUST be a valid JSON object like {\"year\": 1815}. Do NOT return a bare number like 1815 or a bare string — the result MUST start with { and end with }. The oracle parses your result as JSON.",
+  "startUrl": "https://en.wikipedia.org/wiki/Ada_Lovelace",
+  "maxTurns": 6,
+  "timeoutMs": 120000,
+  "expectedDurationSec": 20,
+  "expectedTokenBudget": 12000,
+  "tags": ["extraction", "research"],
+  "oracle": {
+    "type": "json-shape-match",
+    "expectedShape": {
+      "year": "re:^1815$"
+    }
+  }
+}

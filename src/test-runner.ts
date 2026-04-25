@@ -19,6 +19,7 @@ import type {
   AgentResult,
   Turn,
 } from './types.js';
+import { TEST_SUITE_SCHEMA_VERSION } from './types.js';
 import type { Driver } from './drivers/types.js';
 import type { ArtifactSink, ProgressEvent } from './artifacts/types.js';
 import { FilesystemSink } from './artifacts/filesystem-sink.js';
@@ -82,6 +83,12 @@ export interface TestRunnerOptions {
   onTestComplete?: (result: TestResult) => void;
   /** Called after each agent turn */
   onTurn?: (tc: TestCase, turn: Turn) => void;
+  /**
+   * Gen 32 — called at the top of every turn before observe(). Returns
+   * a promise the runner awaits; used by the interrupt controller to
+   * block while paused. Rejection triggers a clean abort.
+   */
+  beforeTurn?: (turn: number) => Promise<void>;
 
   /** Pluggable artifact storage — screenshots, video, reports flow through this */
   artifactSink?: ArtifactSink;
@@ -95,6 +102,11 @@ export interface TestRunnerOptions {
    * spawns so onTurnEvent / mutateDecision / addRules fire on every test.
    */
   extensions?: import('./extensions/types.js').ResolvedExtensions;
+  /**
+   * Gen 29: rendered macro prompt block from skills/macros. Forwarded to
+   * every BrowserAgent so macros are visible in the system prompt.
+   */
+  macroPromptBlock?: string;
   /**
    * Optional shared TurnEventBus. When set, every BrowserAgent uses the same
    * bus so a live SSE viewer or events.jsonl sink can observe an entire suite
@@ -153,12 +165,14 @@ export class TestRunner {
   private onTestStart?: (tc: TestCase) => void;
   private onTestComplete?: (result: TestResult) => void;
   private onTurn?: (tc: TestCase, turn: Turn) => void;
+  private beforeTurn?: (turn: number) => Promise<void>;
   private artifactSink?: ArtifactSink;
   private onProgress?: (event: ProgressEvent) => void;
   private workerTimeoutMs?: number;
   private defaultTimeoutMs?: number;
   private pendingArtifactOps: Set<Promise<unknown>> = new Set();
   private extensions?: import('./extensions/types.js').ResolvedExtensions;
+  private macroPromptBlock?: string;
   private eventBus?: import('./runner/events.js').TurnEventBus;
   /** Suite-level abort signal — wired up by runSuite, consumed by runTest */
   private suiteSignal?: AbortSignal;
@@ -187,6 +201,7 @@ export class TestRunner {
     this.onTestStart = options.onTestStart;
     this.onTestComplete = options.onTestComplete;
     this.onTurn = options.onTurn;
+    this.beforeTurn = options.beforeTurn;
     this.artifactSink = options.artifactSink;
     this.onProgress = options.onProgress;
     this.workerTimeoutMs = options.workerTimeoutMs;
@@ -194,6 +209,7 @@ export class TestRunner {
     this.defaultTimeoutMs = options.defaultTimeoutMs
       ?? ((options.config as AgentConfig & { timeoutMs?: number } | undefined)?.timeoutMs);
     this.extensions = options.extensions;
+    this.macroPromptBlock = options.macroPromptBlock;
     this.eventBus = options.eventBus;
   }
 
@@ -265,7 +281,9 @@ export class TestRunner {
         projectStore: this.projectStore,
         runRegistry: this.runRegistry,
         ...(this.extensions ? { extensions: this.extensions } : {}),
+        ...(this.macroPromptBlock ? { macroPromptBlock: this.macroPromptBlock } : {}),
         eventBus: perTestBus,
+        ...(this.beforeTurn ? { beforeTurn: this.beforeTurn } : {}),
         onTurn: (turn) => {
           if (timeToFirstTurnMs === undefined) {
             timeToFirstTurnMs = Math.max(0, Date.now() - runStartedAtMs);
@@ -972,8 +990,14 @@ export class TestRunner {
   }
 
   private resolveTimeoutMs(testCase: TestCase): number | undefined {
-    if (testCase.timeoutMs !== undefined) return testCase.timeoutMs;
-    return this.defaultTimeoutMs;
+    const base = testCase.timeoutMs ?? this.defaultTimeoutMs;
+    // Gen 26: vision mode gets 5× timeout (600s for 120s base cases).
+    // The cost cap (200k tokens) is the real safety net. Timeout was
+    // artificially killing 7 tasks that were making progress.
+    if (base && (this.config?.observationMode === 'vision' || this.config?.observationMode === 'hybrid')) {
+      return Math.round(base * 5);
+    }
+    return base;
   }
 
   private makeSkippedResult(tc: TestCase, reason: string): TestResult {
@@ -1074,6 +1098,7 @@ export class TestRunner {
     const passed = nonSkipped.filter((r) => r.verified && r.agentSuccess).length;
 
     return {
+      schemaVersion: TEST_SUITE_SCHEMA_VERSION,
       model: this.config.model || 'unknown',
       runtime: this.buildRuntimeConfig(),
       timestamp: new Date().toISOString(),

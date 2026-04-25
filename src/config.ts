@@ -37,6 +37,8 @@ export interface DriverConfig {
   headless?: boolean;
   viewport?: { width: number; height: number };
   browserArgs?: string[];
+  /** Residential/SOCKS5/HTTP proxy URL (e.g. http://user:pass@proxy:port). Also reads BAD_PROXY_URL env. */
+  proxy?: string;
   wallet?: {
     enabled?: boolean;
     /** Wallet address (hex with 0x prefix). Auto-detected from MetaMask if not set. Used for RPC interception. */
@@ -84,7 +86,16 @@ export interface DriverConfig {
   screenshotInterval?: number;
   vision?: boolean;
   visionStrategy?: 'always' | 'never' | 'auto';
+  /** Gen 13: observation mode — controls primary input to Brain.decide.
+   *  'dom' (default): ARIA snapshot primary, screenshot secondary
+   *  'vision': screenshot primary, minimal DOM context
+   *  'hybrid': both screenshot and DOM snapshot at full weight */
+  observationMode?: 'dom' | 'vision' | 'hybrid';
   goalVerification?: boolean;
+  /** Gen 7 plan-then-execute: single LLM call generates the full action sequence */
+  plannerEnabled?: boolean;
+  /** Gen 8: extra ms wait before the planner's first observe, for SPA settle */
+  initialObserveSettleMs?: number;
   qualityThreshold?: number;
   microPlan?: {
     enabled?: boolean;
@@ -296,7 +307,10 @@ export function toAgentConfig(config: DriverConfig): AgentConfig {
     retryDelayMs: config.retryDelayMs,
     vision: config.vision,
     visionStrategy: config.visionStrategy,
+    observationMode: config.observationMode,
     goalVerification: config.goalVerification,
+    plannerEnabled: config.plannerEnabled,
+    initialObserveSettleMs: config.initialObserveSettleMs,
     qualityThreshold: config.qualityThreshold,
     microPlan: config.microPlan
       ? {

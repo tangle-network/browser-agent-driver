@@ -7,7 +7,7 @@
 
 import { generateText, streamText } from 'ai';
 import type { ModelMessage, LanguageModel, SystemModelMessage } from 'ai';
-import type { Action, PageState, AgentConfig, DesignFinding, GoalVerification } from '../types.js';
+import type { Action, PageState, AgentConfig, DesignFinding, GoalVerification, Plan, PlanStep } from '../types.js';
 import { AriaSnapshotHelper } from '../drivers/snapshot.js';
 import {
   resolveProviderApiKey,
@@ -36,6 +36,7 @@ ACTIONS:
 - {"action": "wait", "ms": 1000}
 - {"action": "evaluate", "criteria": "Is the layout professional? Are colors consistent?"}
 - {"action": "runScript", "script": "document.querySelector('.count').textContent"} — run JS in page context and get the result. Use for reading content not in the a11y tree (canvas, computed styles, hidden state).
+- {"action": "extractWithIndex", "query": "p, span, dd, code", "contains": "downloads"} — return a NUMBERED list of every visible element matching \`query\`, with each element's tag, full textContent, key attributes, and a stable selector. PREFER THIS OVER runScript when you need to find data inside the page but don't know the exact selector. The wide query (e.g. \`'p, span, strong'\`) finds candidates and the response shows the actual text so you can pick by content match. Optional \`contains\` filters matches to those whose text contains a substring (case-insensitive). After this action, your next turn can complete with the picked element's text or click its selector.
 - {"action": "verifyPreview"} — after the app builds, inspect the preview iframe. Returns URL, title, a11y tree, and errors. Use this AFTER you see a preview iframe on the page.
 - {"action": "fill", "fields": {"@t1": "Jordan", "@t2": "Rivera"}, "selects": {"@s1": "WA"}, "checks": ["@c1", "@c2"]} — BATCH fill multiple form fields, dropdowns, and checkboxes in ONE turn. Use this whenever you can see 2+ form fields you need to fill — it's dramatically faster than per-field type/click. fields/selects/checks are all optional but at least one must be non-empty.
 - {"action": "clickSequence", "refs": ["@r1", "@r2", "@r3"]} — click a known sequence of refs in order. Use for multi-step UI navigation chains where the click order is obvious from the page structure.
@@ -84,18 +85,55 @@ const SEARCH_RULES = `
 16. CONTENT DISCOVERY: If the ELEMENTS list doesn't show the link/content you need (e.g., the page has many links but the a11y tree is truncated), use runScript to find it: document.querySelectorAll('a[href]') filtered by keyword. Navigate to the discovered URL directly instead of clicking blindly through menus
 17. EXTERNAL SEARCH REDIRECTS: If a site's search form redirects to an external search engine (e.g., search.usa.gov for .gov sites), the results still link back to the original site. Click a relevant search result link — it will take you to the target domain. Do NOT abandon search results to navigate the target site manually`;
 
-/** Data extraction rules (18, 21-23): injected when goal involves extracting data */
+/** Data extraction rules (18, 21-23, 25): injected when goal involves extracting data */
 const DATA_EXTRACTION_RULES = `
-18. DATA EXTRACTION: When the goal asks for specific data (prices, ratings, counts, names) from a list or search results page, use runScript to extract all needed data at once: e.g., document.querySelectorAll('.product-card').forEach(...). Do NOT click into each individual item when the data is visible on the list page. Extract first, then complete with the extracted data
-21. EFFICIENT COMPLETION: When you have enough data to answer the goal, complete immediately. Do not navigate to additional pages for "confirmation" if the data was already extracted via runScript or is visible in the current a11y tree. Include all extracted data in the completion result
-22. EXTRACT BEFORE NAVIGATING: On search results, directory listings, or any page showing multiple items, ALWAYS extract ALL needed data via runScript BEFORE clicking into individual items. This includes names, phone numbers, addresses, ratings, prices — anything visible on list cards. Use: document.querySelectorAll('.result-card, .listing, [class*="card"]') to grab everything at once. Many sites use anti-bot protection on detail pages but leave listing pages accessible. If you can answer the goal from list-level data, do so without navigating deeper. NEVER click into 3+ individual items when the data is on the list page
-23. FILTER vs SEARCH: When a goal asks to filter results (e.g., "under $50", "4+ stars"), look for filter controls (sliders, dropdowns, checkboxes in a sidebar or toolbar) rather than typing filter values into the search box. Search boxes are for keyword queries, not numeric filters. After applying a filter: (1) wait 2-3 seconds for results to update, (2) verify the filter took effect by checking the updated results, (3) extract the filtered data via runScript. Do NOT keep searching for more filter controls after one is applied — extract and complete`;
+18. DATA EXTRACTION: When the goal asks for specific data (prices, ratings, counts, names) from a list or search results page, prefer extractWithIndex with a wide query (e.g. \`'p, span, dd, code, strong'\`) over runScript when you don't already see the value in the snapshot. extractWithIndex returns the actual textContent of every match so you can pick the right one by content. Use runScript only when you need a transformation the LLM can't do from text alone.
+21. EFFICIENT COMPLETION: When you have enough data to answer the goal, complete immediately. Do not navigate to additional pages for "confirmation" if the data was already extracted or is visible in the current a11y tree. Include all extracted data in the completion result
+22. EXTRACT BEFORE NAVIGATING: On search results, directory listings, or any page showing multiple items, ALWAYS extract ALL needed data BEFORE clicking into individual items. Use extractWithIndex with a wide query for unknown structure, or runScript with document.querySelectorAll('.result-card') if the structure is well-known. Many sites use anti-bot protection on detail pages but leave listing pages accessible. If you can answer the goal from list-level data, do so without navigating deeper.
+23. FILTER vs SEARCH: When a goal asks to filter results (e.g., "under $50", "4+ stars"), look for filter controls (sliders, dropdowns, checkboxes in a sidebar or toolbar) rather than typing filter values into the search box. Search boxes are for keyword queries, not numeric filters. After applying a filter: (1) wait 2-3 seconds for results to update, (2) verify the filter took effect by checking the updated results, (3) extract the filtered data. Do NOT keep searching for more filter controls after one is applied — extract and complete
+25. EXTRACTWITHINDEX RECOVERY: If a previous runScript returned null/empty/{x:null} on an extraction task, the selector was wrong. DO NOT retry the same runScript or guess a similar selector — the LLM cannot guess CSS class names that aren't visible in the snapshot. Switch to extractWithIndex with a WIDE query: \`'p, span, dd, code, strong, em'\` plus a \`contains\` filter naming the expected text fragment (e.g. contains: "downloads" for npm download counts, contains: "callbackFn" for MDN method signatures). The response shows you the actual text per element so you can pick by content match. This is the Gen 10 recovery pattern — pick-by-content beats pick-by-selector on every page where the planner couldn't see the data at plan time.`;
 
 /** Heavy page rules (19-20, 24): injected when snapshot is large or turn count is high */
 const HEAVY_PAGE_RULES = `
 19. FORM FIELD TARGETING: Before typing, verify you are targeting the correct input field using its @ref from the ELEMENTS list. If multiple inputs are visible (e.g., search box + price filter), ensure you select the right one by checking its label or placeholder text in the a11y tree. Never assume focus — always specify the exact @ref
 20. SECTION NAVIGATION: When you need to find a specific section (e.g., rugby, sports, travel) and the nav links aren't in the truncated a11y tree, use runScript to discover navigation: JSON.stringify(Array.from(document.querySelectorAll('nav a, header a, [role="navigation"] a, .nav a')).slice(0, 30).map(a => ({text: a.textContent.trim(), href: a.href}))). Then navigate directly to the matching section URL
 24. HEAVY PAGE RECOVERY: If a page takes very long to load or seems stuck, do NOT wait — use runScript to check document.readyState and extract whatever content is already in the DOM. Partial data is better than a timeout. If the page is completely blank, try navigating to a simpler version (mobile site, search page) instead of waiting`;
+
+/** Gen 24: URL-first navigation — GENERAL PURPOSE, not site-specific.
+ * Teaches the agent to construct search/results URLs from goal text
+ * instead of fighting form UIs. Works on any site with URL parameters. */
+const URL_FIRST_RULES = `
+URL-FIRST NAVIGATION: When a search form is complex (date pickers, multi-step dropdowns, dynamic widgets), try constructing a results URL directly instead of interacting with the form.
+
+STRATEGY:
+1. Look at the current URL structure. Most search sites encode parameters: ?q=query, ?checkin=date, ?dest=city, etc.
+2. Construct a URL with the goal's parameters filled in. Use the site's own URL pattern.
+3. Navigate directly to that URL — skip the form entirely.
+4. If the URL doesn't work (wrong page, error), fall back to form interaction.
+
+HOW TO DISCOVER URL PATTERNS:
+- If you're on a search results page, the URL already shows the pattern. Modify the parameters for your goal.
+- Most sites accept ?q= or ?search= for keyword queries.
+- Travel sites typically use: checkin/checkout dates, destination/origin, adults count.
+- Use runScript to read window.location.href if the URL isn't visible in the snapshot.
+- ENCODED PARAMETERS: If a URL contains encoded parameters (base64, protobuf), you may be able to replicate them from a previous successful URL, but do NOT invent new encodings. If a navigate with encoded parameters lands on the wrong page, do not retry with a different encoding — it will waste turns.
+
+IMPORTANT EXCEPTIONS — some sites BLOCK direct URL navigation:
+- If a direct URL navigate lands on the homepage or an error page instead of results, the site blocks URL manipulation. STOP trying URLs and use the site's form/search UI instead.
+- After ONE failed URL attempt, switch to form interaction immediately. Do NOT retry different URL patterns — you will waste turns.
+
+FORM RESET DETECTION: Some sites (especially SPAs) silently reset form fields after filling. After batch-filling a form:
+1. Use runScript to verify values stuck: document.querySelector('[aria-label="From"]')?.value or similar.
+2. If fields reset to defaults (wrong city, blank dates), do NOT re-fill with the same approach — it will reset again.
+3. Instead, switch to keyboard-only interaction: click the field, type the value character by character, wait for autocomplete dropdown, press Enter to confirm. Then Tab to the next field.
+
+DATE PICKER STRATEGY: Calendar widgets often ignore programmatic fill/type. When a date field opens a calendar popup that blocks further input:
+1. Try typing the date directly into the field in the site's format (e.g., "Jan 25, 2026" or "01/25/2026"). Press Escape first if the calendar covers the input.
+2. If typing doesn't stick, use runScript to find clickable date elements: document.querySelectorAll('[data-iso],[aria-label*="January"],[aria-label*="25"]') and click the matching element.
+3. NEVER spend more than 4 turns on a single date field.
+
+WHY: Complex forms with date pickers, calendar widgets, and multi-step dropdowns consume many turns and often time out. A single "navigate" action replaces 5-10 form interaction turns. But only use this on sites that support it.`;
+
 
 /** Reasoning framework and examples (always appended after rules) */
 const REASONING_SUFFIX = `
@@ -118,6 +156,179 @@ EXAMPLE 3 — Batch fill a multi-field form (one turn instead of ten):
 
 /** Full static prompt (all rules) — used as default when config.systemPrompt is not set */
 const SYSTEM_PROMPT = CORE_RULES + SEARCH_RULES + DATA_EXTRACTION_RULES + HEAVY_PAGE_RULES + REASONING_SUFFIX;
+
+// Gen 13: Vision-first system prompt (pure coordinate actions).
+const VISION_FIRST_PROMPT = `You are a browser automation agent. You operate by looking at screenshots and clicking on elements using pixel coordinates.
+
+The screenshot shows the current page state at 1024×768 resolution. You identify elements visually and specify where to click using (x, y) coordinates in this coordinate space.
+
+ACTIONS:
+- {"action": "clickAt", "x": 512, "y": 384} — click at pixel coordinates (x, y) in 1024×768 space
+- {"action": "typeAt", "x": 300, "y": 200, "text": "search query"} — click at coordinates then type text
+- {"action": "scroll", "direction": "up" | "down", "amount": 500}
+- {"action": "navigate", "url": "https://..."}
+- {"action": "wait", "ms": 1000}
+- {"action": "complete", "result": "description of what was accomplished"}
+- {"action": "abort", "reason": "why you cannot continue"}
+- {"action": "runScript", "script": "document.querySelector('.count').textContent"} — run JS in page context for data the screenshot can't show
+- {"action": "extractWithIndex", "query": "p, span, dd", "contains": "keyword"} — find text in the DOM by content match
+- {"action": "fanOut", "subGoals": [...]} — spawn up to 8 parallel sub-agents in separate tabs (same session/cookies). See FAN-OUT section below for full rules + worked example.
+
+FAN-OUT — PARALLEL INVESTIGATION:
+fanOut is the way to investigate N independent candidates in PARALLEL instead of serially. When the current page shows a list of candidates or you have a queue of independent sub-tasks, emit ONE fanOut action instead of processing them one at a time. The system spawns N sub-agents in fresh tabs of the same session; they run concurrently; their results are merged and returned to you as structured JSON in the NEXT turn's feedback.
+
+STRONGLY PREFER THE SHORTHAND FORM when every branch shares a URL + instruction template. It emits tiny JSON that can't malform:
+
+  {"action":"fanOut","baseUrl":"https://site.example/","goalTemplate":"Investigate {item} — report outcome","items":["X","Y","Z"]}
+
+The string {item} in goalTemplate is replaced with each array entry. Labels default to the item. This is the RIGHT shape for N>=3 branches.
+
+USE fanOut WHEN:
+- A search returned multiple results and each needs investigation (click in / extract / return verdict per row).
+- A batch job has ≥3 independent sub-tasks (screen multiple customers, check multiple products, compare multiple pages).
+- The task is obviously parallelizable and sequential execution would 3x+ the wall-clock time.
+
+DO NOT use fanOut for:
+- A truly sequential task where step 2 depends on step 1's outcome.
+- A single-target investigation (use regular click/type).
+- Cases where fewer than 3 branches would run (overhead not worth it).
+
+SHAPE:
+{
+  "action": "fanOut",
+  "subGoals": [
+    {
+      "url": "https://target.site/",
+      "goal": "Full natural-language instruction for this branch. Must be self-contained because the sub-agent starts from the url with no other context. End with 'Complete with a structured verdict of {schema}.'",
+      "label": "SHORT-LABEL-FOR-OVERLAY",
+      "maxTurns": 8
+    },
+    ... (1-8 entries)
+  ]
+}
+
+WORKED EXAMPLE (OFAC batch screening, after C-001 is done via regular actions):
+{
+  "action": "fanOut",
+  "subGoals": [
+    {"url":"https://sanctionssearch.ofac.treas.gov/","goal":"Click the Reset button, then type 'SMITH' into Last Name and 'JOHN' into First Name. Leave score at 95. Click Search. If 0 matches, complete with result 'CLEARED'. If 1+ exact matches with score 95-100, click the top row, read SDN program + list + DOB, complete with result 'POSITIVE MATCH: <program>/<list>'. Else complete with 'NEEDS REVIEW'.","label":"C-002 SMITH"},
+    {"url":"https://sanctionssearch.ofac.treas.gov/","goal":"Click Reset, type 'MADURO' into Last Name and 'NICOLAS' into First Name. Leave score at 95. Click Search. [same disposition rules]","label":"C-003 MADURO"},
+    ... (up to 8 per fanOut)
+  ]
+}
+
+AFTER fanOut RETURNS, you receive FAN-OUT RESULTS as feedback — a JSON payload with {label, success, verdict, turnsUsed} per branch. Update your progress ledger with each branch's verdict, then either fire another fanOut for the next batch OR complete() if all sub-tasks are done.
+
+EFFICIENCY: one fanOut with 8 branches running in parallel finishes in ~the time of ONE sequential customer (not 8×). For a 10-customer batch, prefer: C-001 sequential (learn the form) → fanOut C-002..C-009 (8 parallel) → C-010 sequential or 2nd fanOut. Target: ~12 parent turns instead of ~50.
+
+COORDINATE SYSTEM:
+- (0, 0) is the top-left corner of the viewport
+- (1024, 768) is the bottom-right corner
+- Click the CENTER of the target element, not its edge
+- For text inputs, click the middle of the input field
+- For buttons, click the center of the button text or icon
+
+RESPONSE FORMAT — respond with ONLY a JSON object:
+{
+  "plan": ["step 1", "step 2", ...],
+  "currentStep": 0,
+  "action": { "action": "clickAt", "x": 512, "y": 384 },
+  "reasoning": "I see [element description] at approximately (x, y). Clicking it to [purpose].",
+  "expectedEffect": "What should change after this action"
+}
+
+RULES:
+1. Respond with ONLY valid JSON, no markdown or extra text
+2. LOOK at the screenshot carefully — it is your primary information source
+3. Include plan, currentStep, reasoning, and expectedEffect in every response
+4. When the goal is achieved, use "complete" with a detailed result description
+5. If stuck after multiple attempts, use "abort" — don't loop forever
+6. If an action failed, try a DIFFERENT approach (different location, different strategy)
+7. For search: click the search box, type your query, then press Enter
+8. For navigation: click visible links or use the "navigate" action for direct URLs
+9. BLOCKER-FIRST: if a modal, cookie banner, or error dialog blocks progress, dismiss it first
+10. Use runScript or extractWithIndex when you need to extract data that isn't clearly visible in the screenshot
+11. BATCH: when filling forms, you can type in one field, then immediately use clickAt on the next field. Plan multiple actions per turn when they are sequential and obvious.
+12. VERIFY BEFORE COMPLETING: Before using "complete", re-read the GOAL and check: does your result ACTUALLY answer what was asked? If the goal asks for "5 beauty salons with ratings > 4.8" and you only found 3, do NOT complete — keep searching. If the goal asks for a specific date/price/name and your result doesn't contain it, do NOT complete. Premature completion with wrong data is worse than using another turn.
+13. DATE PICKER BYPASS: If you encounter a complex date picker widget (calendar popup, date spinner) that is hard to interact with, DO NOT spend multiple turns clicking through calendar months. Instead, use "navigate" to construct a URL with the date parameters encoded. For Google Flights: navigate to google.com/travel/flights with search params. For Booking: navigate to booking.com/searchresults with checkin/checkout params. URL-based date setting is faster and more reliable than fighting date picker UIs.
+
+REASONING FRAMEWORK:
+1. What do I see in the screenshot? Describe the visual layout.
+2. Where is the element I need to interact with? Estimate its (x, y) coordinates.
+3. What is the smallest action that makes progress toward the goal?
+4. If my last action failed, WHY did it fail? Try a different location or strategy.`;
+
+// Gen 15: Unified vision+DOM prompt. The model sees BOTH the screenshot AND
+// the ARIA snapshot with @refs. It can use EITHER coordinate actions (clickAt/
+// typeAt for visual targets) OR ref actions (click/type/fill for DOM elements).
+// This lets it pick the best tool per interaction: vision for visual layout,
+// DOM for precise form interaction.
+const UNIFIED_VISION_DOM_PROMPT = `You are a browser automation agent with TWO input modalities: a screenshot showing the visual page state, and a structured ELEMENTS list with interactive element refs.
+
+Use BOTH together:
+- The screenshot shows layout, visual state, images, icons — what a human sees
+- The ELEMENTS list shows interactive elements with @ref IDs for precise targeting
+
+ACTIONS — pick the best tool for each interaction:
+
+LABEL ACTIONS (PREFERRED — use the [N] numbered labels visible on the screenshot):
+- {"action": "clickLabel", "label": 3} — click element labeled [3] in the screenshot
+- {"action": "typeLabel", "label": 5, "text": "query"} — click [5] then type text
+The screenshot has numbered red badges on interactive elements. Use these labels — they're MORE ACCURATE than coordinate guessing.
+
+REF ACTIONS (use for form fields, buttons, links with clear @refs from ELEMENTS):
+- {"action": "click", "selector": "@REF"}
+- {"action": "type", "selector": "@REF", "text": "text"}
+- {"action": "press", "selector": "@REF", "key": "Enter"}
+- {"action": "select", "selector": "@REF", "value": "option"}
+- {"action": "fill", "fields": {"@REF1": "val1", "@REF2": "val2"}} — batch fill multiple form fields
+
+COORDINATE ACTIONS (fallback when no label or ref is available):
+- {"action": "clickAt", "x": 512, "y": 384} — click at pixel (x, y) in 1024×768 space
+- {"action": "typeAt", "x": 300, "y": 200, "text": "query"} — click + type
+
+SHARED ACTIONS:
+- {"action": "scroll", "direction": "up" | "down", "amount": 500}
+- {"action": "navigate", "url": "https://..."}
+- {"action": "wait", "ms": 1000}
+- {"action": "runScript", "script": "..."} — run JS in page context
+- {"action": "extractWithIndex", "query": "p, span", "contains": "keyword"}
+- {"action": "complete", "result": "description"}
+- {"action": "abort", "reason": "why"}
+
+WHEN TO USE WHICH (priority order):
+1. Element has a [N] label in the screenshot → use clickLabel/typeLabel (most accurate)
+2. Element has an @ref in ELEMENTS → use click/type/fill (fast and precise)
+3. Element is visible but has no label or ref → use clickAt/typeAt (coordinate fallback)
+- Date pickers, dropdown items rendered dynamically → use clickLabel if labeled, else clickAt
+
+RESPONSE FORMAT — respond with ONLY a JSON object:
+{
+  "plan": ["step 1", "step 2", ...],
+  "currentStep": 0,
+  "action": { "action": "click", "selector": "@REF" },
+  "nextActions": [{ "action": "type", "selector": "@REF2", "text": "query" }],
+  "reasoning": "Why I chose this action",
+  "expectedEffect": "What should change"
+}
+
+NOTE: "nextActions" is optional — include up to 3 safe follow-up actions (click, type, press, clickAt, typeAt, scroll) that are DETERMINISTIC given the current state. For example: click a search box THEN type a query. This saves turns.
+
+RULES:
+1. Respond with ONLY valid JSON
+2. Use @ref selectors from ELEMENTS when available — they are stable and precise
+3. Fall back to clickAt coordinates when the target has no ref or is visual-only
+4. LOOK at the screenshot — it shows visual state the ELEMENTS list may miss
+5. When the goal is achieved, use "complete" with a detailed result
+6. BLOCKER-FIRST: dismiss modals, cookie banners, login walls before continuing
+7. BATCH FILL: when 2+ form fields are visible with refs, use a single "fill" action
+8. If stuck after multiple attempts, use "abort"
+9. VERIFY BEFORE COMPLETING: Before using "complete", re-read the GOAL and check: does your result ACTUALLY answer what was asked? If the goal asks for specific data (prices, names, ratings, counts) and your result doesn't contain ALL of them, keep going. Premature completion with partial data is worse than using another turn.
+10. FORM RESET DETECTION: After batch-filling a form, verify values stuck via runScript. If fields reset to defaults, switch to keyboard-only: click field → type value → wait for autocomplete → press Enter → Tab to next. Do NOT re-fill with the same approach if it reset once.
+11. DATE PICKER STRATEGY: When a calendar popup opens over a date field:
+  a. Press Escape to dismiss, then type the date directly (e.g., "Jan 25, 2026").
+  b. If typing doesn't stick, use runScript to find clickable dates: document.querySelectorAll('[data-iso],[aria-label*="25"]').
+  c. NEVER spend more than 4 turns on a single date field.`;
 
 /** Pattern for detecting data-extraction keywords in goal text */
 const DATA_EXTRACTION_PATTERN = /\b(extract|list|find|data|price|pric|names?|rating|cost|count)\b/i;
@@ -280,6 +491,7 @@ export class Brain {
   private maxHistoryTurns: number;
   private visionEnabled: boolean;
   private visionStrategy: 'always' | 'never' | 'auto';
+  private observationMode: 'dom' | 'vision' | 'hybrid';
   private llmTimeoutMs: number;
   private compactFirstTurn: boolean;
   private lastDecisionUrl?: string;
@@ -287,6 +499,13 @@ export class Brain {
   private scoutModelName?: string;
   private scoutProvider?: 'openai' | 'anthropic' | 'google' | 'cli-bridge' | 'codex-cli' | 'claude-code' | 'sandbox-backend' | 'zai-coding-plan';
   private scoutUseVision: boolean;
+  // Gen 28: per-role model overrides
+  private plannerModel?: string;
+  private plannerProvider?: string;
+  private verifierModel?: string;
+  private verifierProvider?: string;
+  private supervisorModel?: string;
+  private supervisorProvider?: string;
   private sandboxBackendType?: string;
   private sandboxBackendProfile?: string;
   private sandboxBackendProvider?: string;
@@ -294,6 +513,8 @@ export class Brain {
   // when no extensions are loaded (default).
   private extensionRules?: { global?: string; search?: string; dataExtraction?: string; heavy?: string };
   private extensionDomainRules?: Record<string, { extraRules?: string }>;
+  /** Rendered macro prompt block; set via setMacroPromptBlock(). Empty string when no macros loaded. */
+  private macroPromptBlock = '';
 
   constructor(config: AgentConfig = {}) {
     this.llmTimeoutMs = config.llmTimeoutMs ?? 60_000;
@@ -310,6 +531,7 @@ export class Brain {
     this.maxHistoryTurns = config.maxHistoryTurns || 10;
     this.visionEnabled = config.vision !== false;
     this.visionStrategy = config.visionStrategy ?? (this.visionEnabled ? 'always' : 'never');
+    this.observationMode = config.observationMode ?? 'dom';
     this.compactFirstTurn = config.compactFirstTurn === true;
     this.sandboxBackendType = config.sandboxBackendType;
     this.sandboxBackendProfile = config.sandboxBackendProfile;
@@ -317,6 +539,19 @@ export class Brain {
     this.scoutModelName = config.scout?.model;
     this.scoutProvider = config.scout?.provider;
     this.scoutUseVision = config.scout?.useVision === true;
+    // Gen 28: per-role model overrides
+    this.plannerModel = config.models?.planner?.model;
+    this.plannerProvider = config.models?.planner?.provider;
+    this.verifierModel = config.models?.verifier?.model;
+    this.verifierProvider = config.models?.verifier?.provider;
+    this.supervisorModel = config.models?.supervisor?.model;
+    this.supervisorProvider = config.models?.supervisor?.provider;
+    // executor uses navModel (already wired) — config.models.executor overrides it
+    if (config.models?.executor) {
+      this.navModelName = config.models.executor.model;
+      this.navProvider = (config.models.executor.provider as typeof this.navProvider) || this.navProvider;
+      this.adaptiveModelRouting = true; // enable routing when executor model is set
+    }
   }
 
   private resolveModelName(
@@ -524,6 +759,13 @@ export class Brain {
         const provider = createOpenAI({
           apiKey: apiKey || '',
           ...(this.baseUrl ? { baseURL: this.baseUrl } : {}),
+          // Gen 30: some OpenAI-compatible routers (notably router.tangle.tools)
+          // default to SSE streaming when the client omits `stream`. The AI SDK's
+          // generateText expects non-streaming responses and errors out with
+          // "Invalid JSON response" on SSE. Force `stream: false` on every
+          // chat-completions body the provider sends, but only when a custom
+          // baseUrl is set — the real OpenAI endpoint defaults correctly.
+          ...(this.baseUrl ? { fetch: createForceNonStreamingFetch() } : {}),
         });
         model = provider.chat(modelName) as LanguageModel;
         break;
@@ -664,13 +906,19 @@ export class Brain {
    * not for decide(). The flag is kept for future experiments with better routing signals.
    */
   private shouldUseNavigationModel(
-    _state: PageState,
-    _extraContext?: string,
-    _turnInfo?: { current: number; max: number },
+    state: PageState,
+    extraContext?: string,
+    turnInfo?: { current: number; max: number },
   ): boolean {
-    // Disabled for decide() — primary model is more cost-effective overall.
-    // Verification still routes to nav model (separate code path).
-    return false;
+    if (!this.adaptiveModelRouting || !this.navModelName) return false;
+    // Gen 22: use cheap model for DOM-only same-page turns (form filling,
+    // clicking known elements). Keep expensive model for first turn, new
+    // pages, and error recovery where reasoning matters.
+    const isFirstTurn = !turnInfo || turnInfo.current <= 1;
+    const samePageAsPrevious = this.lastDecisionUrl === state.url;
+    const hasError = extraContext?.includes('REJECTED') || extraContext?.includes('ERROR');
+    if (isFirstTurn || !samePageAsPrevious || hasError) return false;
+    return true;
   }
 
   /**
@@ -728,6 +976,11 @@ export class Brain {
         parts.push(`\n\nUSER RULES (domain match):\n${domainRules}`)
       }
     }
+    // Macros live AFTER the cached prefix so registering new macros
+    // doesn't bust the Anthropic cache.
+    if (this.macroPromptBlock) {
+      parts.push(`\n\n${this.macroPromptBlock}`)
+    }
     return parts
   }
 
@@ -762,6 +1015,12 @@ export class Brain {
   ): void {
     this.extensionRules = sectionRules
     this.extensionDomainRules = domainRules
+  }
+
+  /** Inject the rendered macro catalog (from macro-loader.renderMacroPromptBlock)
+   *  so the agent knows which macros exist. Pass empty string to clear. */
+  setMacroPromptBlock(block: string): void {
+    this.macroPromptBlock = block ?? ''
   }
 
   /**
@@ -903,6 +1162,8 @@ export class Brain {
     //   Zone 1 (intact):         last 2 turns — full content
     //   Zone 2 (standard):       turns 3-5 back — ELEMENTS stripped from user msgs
     //   Zone 3 (deep compact):   turns 6+ back — both user and assistant ultra-compacted
+    // REVERTED from aggressive 8/20 — the hard prune at 20 messages caused
+    // Google Flights to lose essential history on 30-turn runs.
     const deepCompactBefore = Math.max(0, this.history.length - 10);
 
     return this.history.map((msg, idx) => {
@@ -1034,6 +1295,11 @@ export class Brain {
     turnInfo?: { current: number; max: number },
     options?: { forceVision?: boolean }
   ): Promise<BrainDecision> {
+    // Gen 13: vision-first or hybrid mode — delegate to the vision path
+    if (this.observationMode === 'vision' || this.observationMode === 'hybrid') {
+      return this.decideVision(goal, state, extraContext, turnInfo);
+    }
+
     const useCompactFirstTurn = this.compactFirstTurn && turnInfo?.current === 1;
     const samePageAsPrevious = this.lastDecisionUrl === state.url;
     const isFirstTurn = !turnInfo || turnInfo.current <= 1;
@@ -1051,8 +1317,11 @@ export class Brain {
       && diffTotal > 0
       && diffChanges / diffTotal < 0.3;
 
-    // Tighter snapshot budget on same-page turns — agent already saw the full page
-    const snapshotBudget = samePageAsPrevious ? 8_000 : 16_000;
+    // Tighter snapshot budget on same-page turns — agent already saw the full page.
+    // Gen 10C: raised new-page budget from 16k to 24k so extraction tasks (MDN/Python
+    // docs/W3C spec) get the full <dl>/<code>/<pre> content the LLM needs to write
+    // a working runScript on the first try.
+    const snapshotBudget = samePageAsPrevious ? 8_000 : 24_000;
     let visibleSnapshot: string;
     let elementsHeader: string;
     if (useDiffOnly) {
@@ -1175,6 +1444,16 @@ ${visibleSnapshot}`;
           if (!retryParsed.reasoning?.startsWith('Malformed LLM JSON response')) {
             raw = retryResult.text;
             parsed = retryParsed;
+          } else if (this.baseUrl) {
+            // Both the initial parse and the format-hint retry failed while a
+            // custom LLM_BASE_URL is set. Strong signal the gateway is
+            // returning a shape the scout can't consume (e.g. SSE streams,
+            // non-JSON wrappers). Surface the likely cause instead of
+            // burning silent retries turn after turn.
+            console.error(
+              `[Brain] scout_json_parse_failed: LLM_BASE_URL=${this.baseUrl} returned a response the scout could not parse even after a format-hint retry. ` +
+              `Suggestion: switch to an Anthropic-native endpoint, or verify the gateway supports non-streaming chat/completions with { "response_format": { "type": "json_object" } }.`
+            );
           }
           tokensUsed = (tokensUsed ?? 0) + (retryResult.tokensUsed ?? 0);
           inputTokens = (inputTokens ?? 0) + (retryResult.inputTokens ?? 0);
@@ -1211,6 +1490,421 @@ ${visibleSnapshot}`;
       cacheCreationInputTokens,
       modelUsed: effectiveModel,
     };
+  }
+
+  /**
+   * Gen 13: Vision-first decision path. The screenshot is the primary
+   * observation; DOM snapshot is minimal context (URL, title only in pure
+   * vision mode, or compact DOM in hybrid mode). The LLM outputs
+   * coordinate-based actions (clickAt, typeAt) in 1024×768 virtual space.
+   */
+  private async decideVision(
+    goal: string,
+    state: PageState,
+    extraContext?: string,
+    turnInfo?: { current: number; max: number },
+  ): Promise<BrainDecision> {
+    this.lastDecisionUrl = state.url;
+
+    // Gen 18: adaptive observation — diff-focused on same-page turns.
+    // When the page changed slightly after an action (modal opened, dropdown
+    // expanded, content loaded), the DIFF is the signal. Send only what
+    // changed instead of the full snapshot. Saves 3-5k tokens per turn.
+    const isHybrid = this.observationMode === 'hybrid';
+    const samePageAsPrevious = this.lastDecisionUrl === state.url;
+    const isFirstTurn = !turnInfo || turnInfo.current <= 1;
+    const rawDiff = state.snapshotDiffRaw;
+    const diffChanges = rawDiff ? rawDiff.added.length + rawDiff.removed.length + rawDiff.changed.length : 0;
+    const diffTotal = rawDiff ? diffChanges + rawDiff.unchangedCount : 0;
+    const useDiffOnly = isHybrid && samePageAsPrevious && !isFirstTurn
+      && rawDiff !== undefined && diffChanges > 0 && diffTotal > 0
+      && diffChanges / diffTotal < 0.4;
+
+    let textContent = `GOAL: ${goal}
+
+CURRENT PAGE:
+URL: ${state.url}
+Title: ${state.title}`;
+
+    if (isHybrid && state.snapshot) {
+      if (useDiffOnly) {
+        // Diff-focused: only what changed since last turn
+        const lines: string[] = [];
+        if (rawDiff!.added.length) lines.push('ADDED:', ...rawDiff!.added);
+        if (rawDiff!.changed.length) lines.push('CHANGED:', ...rawDiff!.changed);
+        if (rawDiff!.removed.length) lines.push('REMOVED:', ...rawDiff!.removed);
+        lines.push(`(${rawDiff!.unchangedCount} elements unchanged — refs from previous turn still valid)`);
+        textContent += `\n\nPAGE CHANGES (what changed after your last action — this is the important part):\n${lines.join('\n')}`;
+      } else {
+        // Progressive budget reduction: more turns on same page = less snapshot
+        // needed (agent has already seen the full page, rely on screenshot + diff).
+        const sameTurnCount = samePageAsPrevious ? (turnInfo?.current || 0) : 0;
+        const snapshotBudget = samePageAsPrevious
+          ? (sameTurnCount >= 8 ? 2_500 : 4_000)  // aggressive after 8+ same-page turns
+          : 6_000;
+        const snap = budgetSnapshot(state.snapshot, snapshotBudget);
+        textContent += `\n\nELEMENTS:\n${snap}`;
+      }
+    }
+
+    if (turnInfo) {
+      const remaining = turnInfo.max - turnInfo.current;
+      textContent += `\n\nTURN: ${turnInfo.current}/${turnInfo.max} (${remaining} remaining)`;
+      if (remaining === 1) {
+        textContent += ` — FINAL TURN: return a terminal action only (complete or abort)`;
+      } else if (remaining <= 3) {
+        textContent += ` — RUNNING LOW, prioritize completing the goal or aborting`;
+      }
+    }
+
+    if (extraContext) {
+      textContent += `\n\n${extraContext}`;
+    }
+
+    textContent += '\n\nLook at the screenshot. What action should you take?';
+
+    // Screenshot is required for vision-first mode
+    if (!state.screenshot) {
+      return {
+        action: { action: 'wait', ms: 500 },
+        reasoning: 'No screenshot available for vision-first mode — waiting for page to render',
+        raw: '{"action":{"action":"wait","ms":500}}',
+      };
+    }
+
+    const userContent: UserContent = [
+      { type: 'text' as const, text: textContent },
+      { type: 'image' as const, image: state.screenshot, mediaType: 'image/jpeg' },
+    ];
+
+    // Gen 14: strip ALL screenshots from history. The current turn's
+    // screenshot is the only image the model needs — old screenshots are
+    // dead weight that pushes cumulative token count past the cost cap.
+    // This alone fixes 3/5 Gen 13 failures (cost_cap at 101-106k).
+    const compacted = this.compactHistory().map((msg) => {
+      if (msg.role !== 'user' || !Array.isArray(msg.content)) return msg;
+      const textOnly = (msg.content as Array<{ type: string }>)
+        .filter((part) => part.type === 'text');
+      if (textOnly.length === msg.content.length) return msg;
+      return { ...msg, content: textOnly } as ModelMessage;
+    });
+
+    const messages: ModelMessage[] = [
+      ...compacted,
+      { role: 'user', content: userContent },
+    ];
+
+    // REVERTED: vision model cascade to gpt-4.1-mini caused 14x token
+    // inflation (99k/turn vs 6.8k/turn). gpt-4.1-mini counts image tokens
+    // differently, hitting cost cap in 3 turns. Vision turns stay on main model.
+    const modelOpts = { provider: this.provider, model: this.modelName };
+    const nearingEnd = turnInfo && turnInfo.current >= turnInfo.max - 3;
+    const maxTokens = nearingEnd ? 1200 : 600;
+    // Gen 15: hybrid uses the unified prompt with both action vocabularies
+    const systemPrompt = isHybrid ? UNIFIED_VISION_DOM_PROMPT : VISION_FIRST_PROMPT;
+    const result = await this.generate(systemPrompt, messages, modelOpts, maxTokens);
+
+    const raw = result.text;
+    if (!raw) {
+      throw new Error('Brain.decideVision: LLM returned empty response');
+    }
+
+    if (this.debug) {
+      console.log('[Brain/Vision] Response:', raw.slice(0, 300));
+    }
+
+    const parsed = this.parse(raw);
+
+    this.history.push({ role: 'user', content: userContent });
+    this.history.push({ role: 'assistant', content: raw });
+
+    const maxMessages = this.maxHistoryTurns * 2;
+    if (this.history.length > maxMessages) {
+      this.history = this.history.slice(-maxMessages);
+    }
+
+    return {
+      ...parsed,
+      raw,
+      tokensUsed: result.tokensUsed,
+      inputTokens: result.inputTokens,
+      outputTokens: result.outputTokens,
+      cacheReadInputTokens: result.cacheReadInputTokens,
+      cacheCreationInputTokens: result.cacheCreationInputTokens,
+      modelUsed: this.modelName,
+    };
+  }
+
+  /**
+   * Gen 7: ONE LLM call generates a structured plan for the entire task.
+   *
+   * The runner executes the plan deterministically (no LLM between steps),
+   * falling back to per-action `decide()` only when verification fails.
+   * This is the architectural shift that breaks the "1 LLM call per
+   * action" assumption — a 9-action task becomes 1 plan call + 9
+   * deterministic executes instead of 9 LLM calls.
+   *
+   * Returns null when:
+   *   - the LLM response is unparseable JSON (fall through to per-action)
+   *   - the plan has zero steps
+   *   - any plan step has an invalid/unknown action shape
+   *
+   * The caller (BrowserAgent.run) treats null as "planner unavailable,
+   * use per-action loop".
+   */
+  async plan(
+    goal: string,
+    state: PageState,
+    options?: { maxSteps?: number; extraContext?: string },
+  ): Promise<{
+    plan: Plan | null
+    raw: string
+    durationMs: number
+    tokensUsed?: number
+    inputTokens?: number
+    outputTokens?: number
+    cacheReadInputTokens?: number
+    cacheCreationInputTokens?: number
+    parseError?: string
+  }> {
+    const startedAt = Date.now()
+    const maxSteps = options?.maxSteps ?? 12
+    const extraContext = options?.extraContext
+
+    // Snapshot budget for the planner: Gen 10C raised from 12k to 24k. The
+    // planner is the most important caller for extraction tasks because it
+    // writes the runScript that runs on the first observation. Without enough
+    // snapshot context (especially `<dl>/<dt>/<code>/<pre>` content lines that
+    // Gen 10C now preserves), the planner emits selectors that don't exist.
+    const snapshot = budgetSnapshot(state.snapshot, 24_000)
+
+    const planSystemPrompt = `You are a planning engine for a browser automation agent.
+
+Given a user goal and the current page state, your job is to generate a complete, ordered plan of actions that the agent will execute deterministically without re-entering you between steps. After each step, the runner verifies your stated post-condition. If verification fails the runner falls back to a per-action loop, so your job is to write a plan that requires the FEWEST steps and where every step's post-condition is reliably observable.
+
+KEY PRINCIPLES:
+
+1. PREFER BATCH VERBS. The driver supports batch \`fill\` (fill N text fields, set N selects, check N checkboxes in ONE action) and \`clickSequence\` (N sequential clicks). Use these aggressively. A 19-field form should be 2-4 fill steps, not 19 type steps.
+
+   CRITICAL EXCLUSION: DO NOT INCLUDE ANY SPINBUTTON OR DATE INPUT IN YOUR PLAN. AT ALL. Period. If you see \`spinbutton\` in the snapshot (year, month, day, hour, minute spinners) or any input that looks like a date/time picker, OMIT it from your plan completely. Playwright's locator.fill() and locator.click() both time out on these elements, and your plan will deviate and fall back to the per-action loop. The per-action fallback knows how to handle them. Just LEAVE THEM OUT. Your plan should silently skip those elements and continue with the rest of the task as if they don't exist. The runner WILL handle them after your plan completes — you do not need to plan a step for them.
+
+2. ASSUME THE SNAPSHOT IS COMPLETE. The agent will execute your plan deterministically — you only get to see the page state ONCE (now). All @refs you emit must come from the ELEMENTS list below. Do not invent refs. If you don't see an element you'd need, do NOT plan a step for it — leave a gap and the runner will recover.
+
+3. POST-CONDITIONS MUST BE OBSERVABLE. Each step's expectedEffect should describe a concrete change the runner can see in the next snapshot: a URL change, a new visible element, a status text update. Vague effects like "form is filled" are useless because verification can't check them. Use concrete strings: "Status text shows 'Account Created!'" or "URL contains /confirm/".
+
+4. NAVIGATION CHANGES THE PAGE. Once you emit a \`navigate\`, \`click\` on a Next button, or any action that loads a new page, the @refs from the current snapshot are NO LONGER VALID. After such an action, your subsequent steps cannot rely on the same refs — they must use natural-language post-conditions until the runner falls back to per-action mode and observes the new page.
+
+5. MAX ${maxSteps} STEPS. If the task genuinely requires more, plan the first ${maxSteps} and let the runner replan from the resulting state.
+
+6. ONLY EMIT \`complete\` IF THE FINAL POST-CONDITION IS GENUINELY VERIFIABLE FROM THE PRIOR STEP'S expectedEffect. Do NOT fabricate success. If you cannot reliably know from the initial state alone whether the task succeeded (e.g. you can't predict whether a server submission will succeed, you don't know what the success message will say, or the form has multi-step navigation past your visibility), simply STOP planning at the last step you're confident about. The runner will fall through to the per-action loop after your plan exhausts and that loop will continue toward completion. It is BETTER to plan 5 confident steps and let the per-action loop finish than to plan 12 speculative steps with a fabricated complete at the end.
+
+7. EXTRACTION TASKS: when the goal asks you to READ, EXTRACT, REPORT, or RETURN values from the page (numbers, text, lists, structured data), the LAST step of your plan MUST be \`runScript\`. Do NOT emit a \`complete\` step after the runScript with literal values in \`result\`, because at planning time you cannot know what runScript will return — any values you write would be fabricated. The runner has a deterministic substitution path: it will use the runScript output as the final result, OR fall through to per-action mode where the LLM can see the script output. Either way is fine. The wrong move is to put placeholder JSON like \`{"x":null,"y":null}\` or \`"<from prior step>"\` in the complete result; the runner detects and replaces those, but it's cleaner if you simply omit the complete step. RIGHT: \`[{action:runScript, script:"..."}]\`. WRONG: \`[{action:runScript,...}, {action:complete, result:"{x:null}"}]\`.
+
+ACTION VERBS (same as the per-action prompt):
+- {"action": "click", "selector": "@REF"} — use when the element has a ref in ELEMENTS
+- {"action": "type", "selector": "@REF", "text": "..."} — type into a ref element
+- {"action": "press", "selector": "@REF", "key": "Enter"}
+- {"action": "select", "selector": "@REF", "value": "..."}
+- {"action": "clickAt", "x": 512, "y": 384} — click at pixel coordinates (use when you can see the element in the screenshot but it has no ref)
+- {"action": "typeAt", "x": 300, "y": 200, "text": "..."} — click at coordinates then type
+- {"action": "scroll", "direction": "up"|"down", "amount": 500}
+- {"action": "navigate", "url": "..."}
+- {"action": "wait", "ms": 1000}
+- {"action": "fill", "fields": {"@a": "v1", "@b": "v2"}, "selects": {"@c": "v3"}, "checks": ["@d", "@e"]}
+- {"action": "clickSequence", "refs": ["@a", "@b", "@c"]}
+- {"action": "runScript", "script": "document.querySelector('.x').textContent"}
+- {"action": "extractWithIndex", "query": "p, span, dd, code", "contains": "downloads"} — return a NUMBERED list of visible elements matching the query with their full textContent. Use this for extraction tasks where the data lives in obscurely-classed wrappers (npm download counts, MDN \`<dl>/<dt>/<dd>\` content, Python docs \`<code>\` blocks, W3C spec content) and the planner cannot guarantee a precise selector. The next step (in plan or per-action mode) reads the result and picks the right index. STRONGLY PREFER THIS OVER runScript on ANY extraction task where the snapshot doesn't already show the value verbatim.
+- {"action": "complete", "result": "..."}
+- {"action": "abort", "reason": "..."}
+
+${URL_FIRST_RULES}
+
+RESPONSE FORMAT — respond with ONLY this JSON:
+{
+  "reasoning": "1-2 sentence strategy summary",
+  "steps": [
+    {
+      "action": { "action": "fill", "fields": { "@t1": "Jordan", "@t2": "Rivera" } },
+      "expectedEffect": "First name and last name fields are populated",
+      "rationale": "Step 1 of the multi-step form: batch-fill all visible Personal Info text fields"
+    },
+    ...
+  ],
+  "finalResult": "Account creation form completed and confirmation visible"
+}
+
+DO NOT include any prose outside the JSON. DO NOT use markdown code blocks. The runner parses your response with JSON.parse() and will fall through to the per-action loop on parse failure.`
+
+    // Replan path: when the runner re-enters plan() after a previous plan
+    // deviated, it injects a deviation summary. The system prompt is byte-
+    // stable so prompt cache still hits — only the user message changes.
+    const userText = `GOAL: ${goal}
+
+CURRENT PAGE:
+URL: ${state.url}
+Title: ${state.title}
+
+ELEMENTS:
+${snapshot}
+${extraContext ? `\n${extraContext}\n` : ''}
+What is the complete plan?`
+
+    // Gen 20: vision-aware planner. When hybrid mode is active AND a
+    // screenshot is available, send the screenshot alongside the DOM so
+    // the planner can see the visual layout. This helps on sites like
+    // Google Flights where the DOM doesn't convey form structure well.
+    const isVisionPlanner = (this.observationMode === 'hybrid' || this.observationMode === 'vision') && !!state.screenshot;
+    const userContent: UserContent = isVisionPlanner
+      ? [
+          { type: 'text' as const, text: userText },
+          { type: 'image' as const, image: state.screenshot!, mediaType: 'image/jpeg' },
+        ]
+      : userText;
+
+    // Gen 28: planner can use a different model (e.g., Claude Opus for reasoning)
+    const planModelOpts = this.plannerModel
+      ? { provider: (this.plannerProvider || this.provider) as typeof this.provider, model: this.plannerModel }
+      : { provider: this.provider, model: this.modelName };
+    const result = await this.generate(
+      planSystemPrompt,
+      [{ role: 'user', content: userContent }],
+      planModelOpts,
+      // Plans need more output tokens than decide() — a 10-step plan with
+      // batch fills + rationale per step is comfortably over 1000 tokens.
+      2_500,
+    ).catch((err) => ({
+      text: '',
+      tokensUsed: undefined,
+      inputTokens: undefined,
+      outputTokens: undefined,
+      cacheReadInputTokens: undefined,
+      cacheCreationInputTokens: undefined,
+      _error: err instanceof Error ? err.message : String(err),
+    }))
+
+    const durationMs = Date.now() - startedAt
+    const raw = (result as { text: string }).text
+
+    if (!raw) {
+      return {
+        plan: null,
+        raw: '',
+        durationMs,
+        parseError: (result as { _error?: string })._error ?? 'empty response',
+      }
+    }
+
+    // Reuse the same JSON tolerance as decide(): strip markdown fences,
+    // then JSON.parse. On parse failure, return null and let the runner
+    // fall through.
+    let body = raw.trim()
+    if (body.startsWith('```')) {
+      body = body.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
+    }
+
+    let parsed: { reasoning?: string; finalResult?: string; steps?: unknown[] }
+    try {
+      parsed = JSON.parse(body) as { reasoning?: string; finalResult?: string; steps?: unknown[] }
+    } catch (err) {
+      return {
+        plan: null,
+        raw,
+        durationMs,
+        tokensUsed: result.tokensUsed,
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+        cacheReadInputTokens: result.cacheReadInputTokens,
+        cacheCreationInputTokens: result.cacheCreationInputTokens,
+        parseError: err instanceof Error ? err.message : String(err),
+      }
+    }
+
+    if (!Array.isArray(parsed.steps) || parsed.steps.length === 0) {
+      return {
+        plan: null,
+        raw,
+        durationMs,
+        tokensUsed: result.tokensUsed,
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+        cacheReadInputTokens: result.cacheReadInputTokens,
+        cacheCreationInputTokens: result.cacheCreationInputTokens,
+        parseError: 'plan has zero steps',
+      }
+    }
+
+    // Validate each step. Each must have a parseable action and a non-empty
+    // expectedEffect string. We use the same validateAction helper that the
+    // per-action parser uses, so the action shapes stay consistent.
+    const steps: PlanStep[] = []
+    for (const [idx, rawStep] of parsed.steps.entries()) {
+      if (!rawStep || typeof rawStep !== 'object') {
+        return {
+          plan: null,
+          raw,
+          durationMs,
+          tokensUsed: result.tokensUsed,
+          inputTokens: result.inputTokens,
+          outputTokens: result.outputTokens,
+          cacheReadInputTokens: result.cacheReadInputTokens,
+          cacheCreationInputTokens: result.cacheCreationInputTokens,
+          parseError: `step ${idx + 1}: not an object`,
+        }
+      }
+      const stepObj = rawStep as Record<string, unknown>
+      const actionRaw = stepObj.action
+      if (!actionRaw || typeof actionRaw !== 'object') {
+        return {
+          plan: null,
+          raw,
+          durationMs,
+          parseError: `step ${idx + 1}: missing action`,
+        }
+      }
+      const actionData = actionRaw as Record<string, unknown>
+      const actionType = actionData.action
+      if (typeof actionType !== 'string') {
+        return {
+          plan: null,
+          raw,
+          durationMs,
+          parseError: `step ${idx + 1}: action.action must be a string`,
+        }
+      }
+      let action: Action
+      try {
+        action = validateAction(actionType, actionData)
+      } catch (err) {
+        return {
+          plan: null,
+          raw,
+          durationMs,
+          parseError: `step ${idx + 1}: ${err instanceof Error ? err.message : String(err)}`,
+        }
+      }
+      const expectedEffect = typeof stepObj.expectedEffect === 'string' && stepObj.expectedEffect.length > 0
+        ? stepObj.expectedEffect
+        : 'page state advances after this action'
+      const rationale = typeof stepObj.rationale === 'string' ? stepObj.rationale : undefined
+      steps.push({ action, expectedEffect, ...(rationale ? { rationale } : {}) })
+    }
+
+    const plan: Plan = {
+      steps: steps.slice(0, maxSteps),
+      ...(typeof parsed.finalResult === 'string' ? { finalResult: parsed.finalResult } : {}),
+      ...(typeof parsed.reasoning === 'string' ? { reasoning: parsed.reasoning } : {}),
+    }
+
+    return {
+      plan,
+      raw,
+      durationMs,
+      tokensUsed: result.tokensUsed,
+      inputTokens: result.inputTokens,
+      outputTokens: result.outputTokens,
+      cacheReadInputTokens: result.cacheReadInputTokens,
+      cacheCreationInputTokens: result.cacheCreationInputTokens,
+    }
   }
 
   /**
@@ -1373,13 +2067,12 @@ Was the goal actually achieved? Analyze the current page state carefully.`;
 
     const userContent = this.buildUserContent(textContent, state.screenshot, true);
 
-    // Verification is a structured yes/no task — use nav model if available
-    const verifyProvider = this.adaptiveModelRouting && this.navModelName
-      ? (this.navProvider || this.provider)
-      : undefined;
-    const verifyModel = this.adaptiveModelRouting && this.navModelName
-      ? this.navModelName
-      : undefined;
+    // Gen 28: verifier can use its own model, falls back to nav model, then main
+    const verifyProvider = this.verifierProvider
+      ? this.verifierProvider as typeof this.provider
+      : (this.adaptiveModelRouting && this.navModelName ? (this.navProvider || this.provider) : undefined);
+    const verifyModel = this.verifierModel
+      || (this.adaptiveModelRouting && this.navModelName ? this.navModelName : undefined);
 
     const result = await this.generate(
       `Verify whether the browser agent achieved its goal. Respond with ONLY JSON:
@@ -1624,15 +2317,52 @@ Only include facts that are genuinely useful. Quality over quantity. Max 10 fact
     const VALID_ACTIONS = new Set([
       'click', 'type', 'press', 'hover', 'select',
       'scroll', 'navigate', 'wait', 'evaluate', 'runScript',
+      'extractWithIndex',
       'verifyPreview', 'complete', 'abort',
       'fill', 'clickSequence',
+      'clickAt', 'typeAt',
+      'clickLabel', 'typeLabel',
+      // Gen 29: macro dispatch. The driver validates the macro name at
+      // execute time; here we just accept the shape.
+      'macro',
+      // Gen 33: parallel fan-out. Runner handles dispatch; validator
+      // only checks shape (subGoals[] or baseUrl+goalTemplate+items).
+      'fanOut',
     ]);
 
+    // Parse strategy: exact → first-{/last-} extraction.
+    // Some OpenAI-compat gateways (router.tangle.tools, LiteLLM proxies, etc.)
+    // wrap model output in prose preambles ("Here's your response:\n{...}")
+    // that markdown-fence stripping doesn't catch. Fall back to extracting the
+    // outermost object literal before giving up.
+    let parsed: Record<string, unknown> | null = null;
+    let parseError = '';
     try {
-      const parsed = JSON.parse(text);
+      parsed = JSON.parse(text);
+    } catch (err) {
+      parseError = err instanceof Error ? err.message : String(err);
+      const firstBrace = text.indexOf('{');
+      const lastBrace = text.lastIndexOf('}');
+      if (firstBrace >= 0 && lastBrace > firstBrace) {
+        try {
+          parsed = JSON.parse(text.slice(firstBrace, lastBrace + 1));
+          parseError = '';
+        } catch { /* fall through to retry fallback */ }
+      }
+    }
 
-      const actionObj = parsed.action && typeof parsed.action === 'object' ? parsed.action : parsed;
-      const actionType = typeof parsed.action === 'string' ? parsed.action : actionObj?.action;
+    if (!parsed) {
+      return {
+        // Do not hard-abort the scenario on transient JSON formatting issues.
+        // Waiting one turn lets the loop continue and recover on the next model call.
+        action: { action: 'wait', ms: 1000 },
+        reasoning: `Malformed LLM JSON response (${parseError}). Retrying next turn.`,
+      };
+    }
+
+    try {
+      const actionObj = parsed.action && typeof parsed.action === 'object' ? parsed.action as Record<string, unknown> : parsed;
+      const actionType = typeof parsed.action === 'string' ? parsed.action : (actionObj as { action?: string })?.action;
 
       if (!actionType) {
         throw new Error('Missing action field');
@@ -1642,24 +2372,24 @@ Only include facts that are genuinely useful. Quality over quantity. Max 10 fact
         throw new Error(`Unknown action "${actionType}". Valid: ${[...VALID_ACTIONS].join(', ')}`);
       }
 
-      const actionData = typeof parsed.action === 'object' ? parsed.action : parsed;
+      const actionData: Record<string, unknown> = parsed.action && typeof parsed.action === 'object'
+        ? parsed.action as Record<string, unknown>
+        : parsed;
       const action = validateAction(actionType, actionData);
 
       return {
         action,
         nextActions: parseNextActions(parsed, VALID_ACTIONS),
-        reasoning: parsed.reasoning || parsed.thought || parsed.thinking,
-        plan: Array.isArray(parsed.plan) ? parsed.plan : undefined,
+        reasoning: (parsed.reasoning || parsed.thought || parsed.thinking) as string | undefined,
+        plan: Array.isArray(parsed.plan) ? parsed.plan as string[] : undefined,
         currentStep: typeof parsed.currentStep === 'number' ? parsed.currentStep : undefined,
-        expectedEffect: parsed.expectedEffect || parsed.expected_effect,
+        expectedEffect: (parsed.expectedEffect || parsed.expected_effect) as string | undefined,
       };
     } catch (err) {
-      const parseError = err instanceof Error ? err.message : String(err);
+      const validationError = err instanceof Error ? err.message : String(err);
       return {
-        // Do not hard-abort the scenario on transient JSON formatting issues.
-        // Waiting one turn lets the loop continue and recover on the next model call.
         action: { action: 'wait', ms: 1000 },
-        reasoning: `Malformed LLM JSON response (${parseError}). Retrying next turn.`,
+        reasoning: `Malformed LLM JSON response (${validationError}). Retrying next turn.`,
       };
     }
   }
@@ -1689,6 +2419,23 @@ function deduplicateSnapshot(snapshot: string): string {
   const nameStem = (name: string): string =>
     name.replace(/\d+/g, '#')
 
+  // Structural fingerprint for a block of lines (element + its children).
+  // Used for card-level dedup: two hotel cards have different names but the
+  // same structure (listitem > link + img + text + text + button).
+  const structuralFingerprint = (startIdx: number, baseIndent: string): { fp: string; endIdx: number } => {
+    const roles: string[] = []
+    let j = startIdx
+    while (j < lines.length) {
+      const p = parseLine(lines[j])
+      if (!p) { j++; continue }
+      // Stop when we hit an element at the same or shallower indent (sibling or parent)
+      if (j > startIdx && p.indent.length <= baseIndent.length) break
+      roles.push(p.role)
+      j++
+    }
+    return { fp: roles.join(','), endIdx: j }
+  }
+
   let i = 0
   while (i < lines.length) {
     const parsed = parseLine(lines[i])
@@ -1700,7 +2447,41 @@ function deduplicateSnapshot(snapshot: string): string {
       continue
     }
 
-    // Collect a consecutive run of same (indent, role) with similar name stems
+    // Try block-level dedup first: look for consecutive sibling blocks
+    // with the same structural fingerprint (same child-role sequence).
+    // This catches card patterns like Booking hotel results, Allrecipes cards.
+    if (/\b(?:listitem|article|group|region)\b/i.test(parsed.role)) {
+      const { fp: firstFp, endIdx: firstEnd } = structuralFingerprint(i, parsed.indent)
+      if (firstEnd > i + 2 && firstFp.includes(',')) { // non-trivial block
+        const blocks: Array<{ start: number; end: number; firstLine: string }> = [
+          { start: i, end: firstEnd, firstLine: lines[i] },
+        ]
+        let scanIdx = firstEnd
+        while (scanIdx < lines.length) {
+          const nextParsed = parseLine(lines[scanIdx])
+          if (!nextParsed || nextParsed.indent !== parsed.indent || nextParsed.role !== parsed.role) break
+          const { fp: nextFp, endIdx: nextEnd } = structuralFingerprint(scanIdx, nextParsed.indent)
+          if (nextFp !== firstFp) break
+          blocks.push({ start: scanIdx, end: nextEnd, firstLine: lines[scanIdx] })
+          scanIdx = nextEnd
+        }
+
+        if (blocks.length >= 3) {
+          // Emit first 2 blocks fully, summarize the rest
+          for (let b = 0; b < Math.min(2, blocks.length); b++) {
+            for (let k = blocks[b].start; k < blocks[b].end; k++) {
+              out.push(lines[k])
+            }
+          }
+          const remaining = blocks.length - 2
+          out.push(`${parsed.indent}... [${remaining} more similar ${parsed.role} blocks with same structure]`)
+          i = blocks[blocks.length - 1].end
+          continue
+        }
+      }
+    }
+
+    // Line-level dedup: consecutive runs of same (indent, role, name stem)
     const group: NonNullable<ReturnType<typeof parseLine>>[] = [parsed]
     const stem = nameStem(parsed.name)
     let j = i + 1
@@ -1731,11 +2512,18 @@ function deduplicateSnapshot(snapshot: string): string {
 }
 
 /**
- * Cap snapshot size for non-first turns to control token cost on large pages.
- * Keeps the full snapshot when it fits within budget; otherwise truncates
- * non-interactive decorative lines first, then hard-caps with a notice.
+ * Cap snapshot size to control token cost on large pages.
+ * Keeps the full snapshot when it fits within budget; otherwise preserves:
+ *   1. Interactive elements with refs (buttons, inputs, links — for action targets)
+ *   2. Content lines: term/definition/code/pre/paragraph (for extraction tasks
+ *      like MDN, Python docs, W3C spec where the value the agent needs lives in
+ *      a `<dl>/<code>/<pre>` block, not in an interactive element)
+ *
+ * Gen 10C raised the default from 16k to 24k to give planners on extraction
+ * pages more room before truncation kicks in. The 8k same-page budget remains
+ * unchanged because by then the LLM has already seen the full snapshot once.
  */
-function budgetSnapshot(snapshot: string, maxChars = 16_000): string {
+export function budgetSnapshot(snapshot: string, maxChars = 24_000): string {
   // Skip dedup on small snapshots — not enough repetition to justify the O(n) scan
   if (snapshot.length > 6_000) {
     snapshot = deduplicateSnapshot(snapshot)
@@ -1743,29 +2531,35 @@ function budgetSnapshot(snapshot: string, maxChars = 16_000): string {
 
   if (snapshot.length <= maxChars) return snapshot;
 
-  // First pass: drop non-interactive lines (images, paragraphs, decorative text)
-  // to keep interactive elements (buttons, links, textboxes, headings).
+  // First pass: separate keep-set (interactive + content lines) from decorative.
+  // Content roles (term, definition, code, pre, paragraph) carry text the LLM
+  // needs for extraction tasks. They have no [ref=] but the text is the data.
   const lines = snapshot.split('\n');
   const interactive: string[] = [];
+  const content: string[] = [];
   const decorative: string[] = [];
   for (const line of lines) {
     if (/\b(?:button|link|textbox|combobox|menuitem|checkbox|radio|select|heading|dialog|alertdialog)\b/i.test(line) && /\[ref=/.test(line)) {
       interactive.push(line);
+    } else if (/^\s*-\s+(?:term|definition|code|pre|paragraph)\b/i.test(line)) {
+      content.push(line);
     } else {
       decorative.push(line);
     }
   }
 
-  // If interactive-only fits, use it with a truncation note
-  const interactiveText = interactive.join('\n');
-  if (interactiveText.length <= maxChars) {
-    return interactiveText + `\n... [${decorative.length} decorative elements omitted for brevity]`;
+  // If interactive + content fits, use both with a truncation note
+  const keepSet = interactive.concat(content);
+  const keepText = keepSet.join('\n');
+  if (keepText.length <= maxChars) {
+    return keepText + `\n... [${decorative.length} decorative elements omitted for brevity]`;
   }
 
-  // Second pass: when interactive elements still exceed budget, prioritize:
-  // 1. searchbox/textbox/combobox (inputs — essential for form tasks)
-  // 2. headings (structural navigation)
-  // 3. links/buttons (main content — keep all, trim from end as last resort)
+  // Second pass: when interactive + content still exceed budget, prioritize:
+  // 1. inputs (searchbox/textbox/combobox) — essential for form tasks
+  // 2. headings + dialogs — structural navigation
+  // 3. content lines (term/definition/code/pre) — extraction data
+  // 4. bulk links/buttons — main content
   const priority: string[] = [];
   const bulk: string[] = [];
   for (const line of interactive) {
@@ -1776,7 +2570,10 @@ function budgetSnapshot(snapshot: string, maxChars = 16_000): string {
     }
   }
 
-  const priorityText = priority.join('\n');
+  // Content lines come right after priority interactive (they're the extraction
+  // data) and before bulk links/buttons.
+  const priorityWithContent = priority.concat(content);
+  const priorityText = priorityWithContent.join('\n');
   const remaining = maxChars - priorityText.length - 80; // reserve space for note
   if (remaining > 0) {
     const bulkText = bulk.join('\n');
@@ -1863,6 +2660,15 @@ function validateAction(actionType: string, data: Record<string, unknown>): Acti
       return { action: 'evaluate', criteria: optStr('criteria') };
     case 'runScript':
       return { action: 'runScript', script: requireStr('script') };
+    case 'extractWithIndex': {
+      const query = requireStr('query');
+      const contains = typeof data.contains === 'string' ? data.contains : '';
+      return {
+        action: 'extractWithIndex',
+        query,
+        ...(contains ? { contains } : {}),
+      };
+    }
     case 'verifyPreview':
       return { action: 'verifyPreview' };
     case 'complete':
@@ -1902,6 +2708,64 @@ function validateAction(actionType: string, data: Record<string, unknown>): Acti
         ...(typeof data.intervalMs === 'number' ? { intervalMs: data.intervalMs } : {}),
       };
     }
+    // Gen 13: Vision-first coordinate actions
+    case 'clickAt':
+      return { action: 'clickAt', x: num(data.x, 0), y: num(data.y, 0) };
+    case 'typeAt':
+      return { action: 'typeAt', x: num(data.x, 0), y: num(data.y, 0), text: optStr('text') };
+    // Gen 23: SoM label-based actions
+    case 'clickLabel':
+      return { action: 'clickLabel', label: num(data.label, 0) };
+    case 'typeLabel':
+      return { action: 'typeLabel', label: num(data.label, 0), text: optStr('text') };
+    // Gen 29: macro invocation. The driver validates the name + required
+    // args at execute time. We only require `name` here because args may
+    // legitimately be omitted for macros that declare no params.
+    case 'macro': {
+      const args: Record<string, string> = {};
+      if (data.args && typeof data.args === 'object' && !Array.isArray(data.args)) {
+        for (const [k, v] of Object.entries(data.args as Record<string, unknown>)) {
+          if (typeof v === 'string') args[k] = v;
+        }
+      }
+      return {
+        action: 'macro',
+        name: requireStr('name'),
+        ...(Object.keys(args).length > 0 ? { args } : {}),
+      };
+    }
+    case 'fanOut': {
+      // Accept either explicit subGoals[] or the shorthand
+      // baseUrl+goalTemplate+items trio. resolveSubGoals() in
+      // runner/fan-out.ts expands shorthand → subGoals at execute time.
+      const subGoals = Array.isArray(data.subGoals)
+        ? (data.subGoals as Array<Record<string, unknown>>)
+            .filter((s) => s && typeof s === 'object')
+            .map((s) => ({
+              url: typeof s.url === 'string' ? s.url : '',
+              goal: typeof s.goal === 'string' ? s.goal : '',
+              ...(typeof s.label === 'string' ? { label: s.label } : {}),
+              ...(typeof s.maxTurns === 'number' ? { maxTurns: s.maxTurns } : {}),
+            }))
+            .filter((s) => s.url && s.goal)
+        : undefined;
+      const baseUrl = typeof data.baseUrl === 'string' ? data.baseUrl : undefined;
+      const goalTemplate = typeof data.goalTemplate === 'string' ? data.goalTemplate : undefined;
+      const items = Array.isArray(data.items) && data.items.every((i) => typeof i === 'string')
+        ? (data.items as string[])
+        : undefined;
+      const hasExplicit = subGoals && subGoals.length > 0;
+      const hasShorthand = baseUrl && goalTemplate && items && items.length > 0;
+      if (!hasExplicit && !hasShorthand) {
+        throw new Error('fanOut action requires either "subGoals" (array of {url,goal}) or the shorthand trio "baseUrl" + "goalTemplate" + "items" (non-empty string[])');
+      }
+      return {
+        action: 'fanOut',
+        ...(hasExplicit ? { subGoals } : {}),
+        ...(hasShorthand ? { baseUrl, goalTemplate, items } : {}),
+        ...(typeof data.summarize === 'string' ? { summarize: data.summarize } : {}),
+      };
+    }
     default:
       throw new Error(`Unknown action type: ${actionType}`);
   }
@@ -1914,4 +2778,33 @@ function isStringRecord(value: unknown): value is Record<string, string> {
     if (typeof v !== 'string') return false;
   }
   return true;
+}
+
+/**
+ * Gen 30: build a fetch-replacement that forces `"stream": false` on every
+ * /chat/completions body. Necessary for OpenAI-compatible gateways that
+ * default to SSE streaming when the client omits the field (observed on
+ * router.tangle.tools). The AI SDK's generateText path does not handle
+ * SSE, and we can't rely on the gateway respecting the absence of `stream`.
+ */
+function createForceNonStreamingFetch(): typeof fetch {
+  return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    if (init?.body && typeof init.body === 'string') {
+      const body = init.body
+      // Cheap content-sniff so we only rewrite chat-completions shaped bodies,
+      // not arbitrary POSTs the caller might make (embeddings, etc.).
+      if (body.includes('"messages"') && body.includes('"model"')) {
+        try {
+          const parsed = JSON.parse(body) as Record<string, unknown>
+          if (parsed.stream === undefined || parsed.stream === true) {
+            parsed.stream = false
+            init = { ...init, body: JSON.stringify(parsed) }
+          }
+        } catch {
+          // Non-JSON body — pass through unchanged.
+        }
+      }
+    }
+    return fetch(input, init)
+  }
 }

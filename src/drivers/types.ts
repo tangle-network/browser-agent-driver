@@ -16,6 +16,8 @@ export interface ActionResult {
   error?: string;
   /** Data returned by the action (e.g., runScript result) */
   data?: string;
+  /** Non-fatal warning (e.g., form fields didn't retain values after fill) */
+  warning?: string;
   /** Bounding box of the target element at action time (for replay overlays) */
   bounds?: ActionBounds;
 }
@@ -53,6 +55,35 @@ export interface Driver {
   /** Optional run-time diagnostics for startup and browser/session setup */
   getDiagnostics?(): Record<string, unknown>;
 
+  /** Gen 29: expose the driver's construction options so the runner can
+   * hand them to sub-drivers (compound-goal parallel tabs). Drivers that
+   * don't support compound goals can omit this. Return shape is driver-
+   * specific (cast at the caller). */
+  getDriverOptions?(): unknown;
+
   /** Close/cleanup the driver */
   close?(): Promise<void>;
+
+  /**
+   * Gen 32 — overlay narration hooks. No-op when the overlay is off.
+   * Drivers without a cursor overlay can omit these entirely; callers
+   * check for presence and skip when absent.
+   */
+  setOverlayReasoning?(text: string): Promise<void>;
+  setOverlayProgress?(current: number, total: number, label?: string): Promise<void>;
+  pushOverlayBadge?(kind: 'positive' | 'cleared' | 'review' | 'info', text: string): Promise<void>;
+
+  /**
+   * Gen 34 — Hydra view for mid-run fanOut. Optional; drivers without a
+   * cursor overlay can omit. All cosmetic — errors swallowed.
+   */
+  fanOutStart?(labels: string[]): Promise<void>;
+  fanOutUpdateCell?(index: number, dataUrl?: string): Promise<void>;
+  fanOutCompleteCell?(
+    index: number,
+    kind: 'positive' | 'cleared' | 'review' | 'info',
+    verdictText?: string,
+  ): Promise<void>;
+  fanOutCollapse?(): Promise<void>;
+  fanOutDismiss?(): Promise<void>;
 }

@@ -12,7 +12,7 @@
 
 import { Brain } from '../brain/index.js';
 import type { Driver } from '../drivers/types.js';
-import type { Scenario, AgentConfig, AgentResult, Turn, PageState, SupervisorConfig, Action } from '../types.js';
+import type { Scenario, AgentConfig, AgentResult, Turn, PageState, SupervisorConfig, Action, Plan } from '../types.js';
 import { analyzeRecovery, detectPersistentTerminalBlocker, detectTerminalBlocker } from '../recovery.js';
 import { solveCaptcha, canAttemptSolve } from '../captcha.js';
 import { StaleRefError, AriaSnapshotHelper } from '../drivers/snapshot.js';
@@ -24,12 +24,13 @@ import { detectSupervisorSignal, formatSupervisorSignal } from '../supervisor/po
 import { requestSupervisorDirective } from '../supervisor/critic.js';
 import { shouldAcceptFirstPartyBoundaryCompletion } from '../domain-policy.js';
 import { deriveWasteMetrics } from '../run-metrics.js';
-import { RunState } from '../run-state.js';
+import { RunState, DEFAULT_TOKEN_BUDGET } from '../run-state.js';
 import { ContextBudget } from '../context-budget.js';
 import { runOverridePipeline } from '../override-pipeline.js';
 import type { OverrideContext } from '../override-pipeline.js';
 
 import { withRetry, findElementForRef, safeHostname, pushGoalVerificationEvidence } from './utils.js';
+import { runExtractWithIndex, formatExtractWithIndexResult } from '../drivers/extract-with-index.js';
 import { buildSearchResultsGuidance, buildVisibleLinkRecommendation, getVisibleLinkRecommendation, getRankedVisibleLinkCandidates, rankSearchCandidates } from './search-guidance.js';
 import { buildGoalVerificationClaim, collectSearchWorkflowEvidence, shouldAcceptSearchWorkflowCompletion, shouldAcceptScriptBackedCompletion, detectCompletionContentTypeMismatch } from './goal-verification.js';
 import { verifyExpectedEffect } from './effect-verification.js';
@@ -42,8 +43,89 @@ import type { Session } from '../memory/knowledge.js';
 import { RunRegistry } from '../memory/run-registry.js';
 import { TurnEventBus, ensureBus } from './events.js';
 import { DecisionCache } from './decision-cache.js';
+import {
+  VerdictTracker,
+  extractCurrentMarker,
+  buildProgressLabel,
+} from './overlay-narration.js';
+import { applyDemoOverride } from './demo-overrides.js';
 import { matchDeterministicPattern } from './deterministic-patterns.js';
 import type { ResolvedExtensions } from '../extensions/types.js';
+
+/**
+ * Gen 6.1: detect that the agent is filling a multi-field form one input at
+ * a time and inject a hint that demands a `fill` batch on the next turn.
+ *
+ * Trigger conditions (all must hold):
+ *   1. The agent's most recent action was a single-step `type` on the
+ *      current URL
+ *   2. The current snapshot has 2+ unused fillable refs (textbox /
+ *      searchbox / combobox) that the agent hasn't typed into yet
+ *   3. We haven't already injected this hint in the last turn (to avoid
+ *      hint loops if the agent ignores it)
+ *
+ * Why threshold of 1 type + 2 unused (not 3 consecutive types):
+ *   Multi-step forms often have 2 fields per step before the user clicks
+ *   "Next". Waiting for 3 consecutive types means the detector never fires
+ *   on a typical 2-field-per-step form. Firing on the FIRST type action
+ *   when the form clearly has more fields catches every multi-field form
+ *   the moment the agent starts on it.
+ *
+ * The hint is high-priority (100) so it survives ctxBudget truncation, and
+ * it explicitly lists the unused @refs from the current snapshot so the LLM
+ * doesn't have to guess. The injection is gated by BAD_BATCH_HINT=0 for
+ * rollback.
+ */
+export function detectBatchFillOpportunity(turns: Turn[], state: PageState): string | null {
+  if (turns.length === 0) return null
+  const lastTurn = turns[turns.length - 1]
+
+  // Last action must be a single-step type on the current URL
+  if (lastTurn.action.action !== 'type') return null
+  if (lastTurn.state.url !== state.url) return null
+
+  // Collect the @refs the agent has typed into across the ENTIRE run on
+  // the same URL. The detector should never ask the agent to re-fill a
+  // field it already filled, even if the earlier fill happened many
+  // turns ago.
+  const usedRefs = new Set<string>()
+  for (const t of turns) {
+    if (t.state.url !== state.url) continue
+    const a = t.action
+    if (a.action === 'type' && 'selector' in a && typeof a.selector === 'string') {
+      usedRefs.add(a.selector)
+    }
+    if (a.action === 'fill') {
+      for (const k of Object.keys(a.fields ?? {})) usedRefs.add(k)
+      for (const k of Object.keys(a.selects ?? {})) usedRefs.add(k)
+      for (const k of a.checks ?? []) usedRefs.add(k)
+    }
+  }
+
+  // Find unused fillable refs in the current snapshot. We look for textbox,
+  // searchbox, combobox, and spinbutton roles — anything that takes text.
+  // Snapshot lines look like: `  - textbox "First name" [ref=t1f2a]`
+  const unusedRefs: Array<{ ref: string; name: string; role: string }> = []
+  for (const line of state.snapshot.split('\n')) {
+    const match = line.match(/\b(textbox|searchbox|combobox|spinbutton)\b[^"]*"([^"]*)"[^[]*\[ref=([^\]]+)\]/i)
+    if (!match) continue
+    const role = match[1].toLowerCase()
+    const name = match[2]
+    const ref = `@${match[3]}`
+    if (usedRefs.has(ref)) continue
+    unusedRefs.push({ ref, name, role })
+  }
+
+  // Need at least 2 unused fields to make batching worthwhile
+  if (unusedRefs.length < 2) return null
+
+  const refList = unusedRefs
+    .slice(0, 12) // cap so we don't explode the prompt
+    .map((u) => `  - ${u.ref} (${u.role}: "${u.name}")`)
+    .join('\n')
+
+  return `\n[BATCH FILL REQUIRED]\nYou just typed into a single field, but ${unusedRefs.length} more fillable fields are visible on this same form. STOP. Your NEXT action MUST be a \`fill\` action that batches ALL remaining unused fields on this page in one turn. Do not emit another single-step \`type\` — emit \`fill\` with multiple entries.\n\nUnused fillable @refs from the current snapshot (use these in your \`fill.fields\` map):\n${refList}\n\nExample:\n{\"action\":\"fill\",\"fields\":{\"${unusedRefs[0].ref}\":\"value1\",\"${unusedRefs[1].ref}\":\"value2\"}}\n`
+}
 
 /** Build a structured session record from a completed run */
 function buildSession(scenario: Scenario, result: AgentResult): Session {
@@ -64,7 +146,9 @@ const DEFAULT_MAX_TURNS = 20;
 const DEFAULT_RETRIES = 3;
 const DEFAULT_RETRY_DELAY_MS = 1000;
 const DEFAULT_MICRO_PLAN_ACTIONS = 2;
-const SAFE_MICRO_ACTIONS = new Set<Action['action']>(['click', 'type', 'press', 'hover', 'select', 'scroll', 'wait']);
+// Gen 18: clickAt/typeAt added so vision-mode can emit multi-action turns
+// Gen 23: clickLabel/typeLabel for SoM-based actions
+const SAFE_MICRO_ACTIONS = new Set<Action['action']>(['click', 'type', 'press', 'hover', 'select', 'scroll', 'wait', 'clickAt', 'typeAt', 'clickLabel', 'typeLabel']);
 const DEFAULT_SUPERVISOR: Required<Pick<SupervisorConfig, 'enabled' | 'useVision' | 'minTurnsBeforeInvoke' | 'cooldownTurns' | 'maxInterventions' | 'hardStallWindow'>> = {
   enabled: true,
   useVision: true,
@@ -90,6 +174,14 @@ export interface BrowserAgentOptions {
   config?: AgentConfig;
   /** Called after each turn */
   onTurn?: (turn: Turn) => void;
+  /**
+   * Gen 32 — called at the top of every turn BEFORE observe().
+   * Used by the interrupt controller to block the loop while the user
+   * has the run paused (`p` keypress in an interactive attach). The
+   * promise resolves on resume or rejects with an abort signal to
+   * bail out cleanly.
+   */
+  beforeTurn?: (turn: number) => Promise<void>;
   /** Called when a first-time phase timing is observed */
   onPhaseTiming?: (phase: 'navigate' | 'observe' | 'decide' | 'execute', durationMs: number) => void;
   /** Reference trajectory to inject into brain context */
@@ -114,6 +206,96 @@ export interface BrowserAgentOptions {
    * the brain's system prompt composer.
    */
   extensions?: ResolvedExtensions;
+  /**
+   * Gen 29: macro registry loaded from skills/macros/*.json. When provided,
+   * the rendered promptBlock is injected into the system prompt so the agent
+   * knows which macros exist; macro dispatch happens in the driver.
+   */
+  macroPromptBlock?: string;
+}
+
+/**
+ * Gen 7.2: detect placeholder patterns in a planner-generated complete.result.
+ *
+ * The planner has to commit to its `complete.result` text BEFORE any prior
+ * runScript step actually runs, so on extraction tasks it fabricates
+ * placeholders. We detect those patterns and substitute the runScript
+ * output (deterministic, no extra LLM call).
+ *
+ * Patterns we catch:
+ *   - JSON `null` literals (e.g. `{"x": null, "y": null}`)
+ *   - "<from prior step>", "<placeholder>", "<value from ...>", "<extracted ...>", "<observed ...>"
+ *   - "{{...}}" template markers
+ *
+ * Conservative on purpose — we only substitute when the planner clearly
+ * didn't know real values at planning time. A complete.result that contains
+ * actual data (no nulls, no placeholder markers) passes through unchanged.
+ */
+export function hasPlaceholderPattern(text: string): boolean {
+  if (typeof text !== 'string' || text.length === 0) return false
+  if (/<from prior step>|<placeholder>|<value from|<extracted|<observed|<previous step|<runscript output>/i.test(text)) {
+    return true
+  }
+  if (/\{\{[^}]+\}\}/.test(text)) {
+    return true
+  }
+  // JSON-shape detection: a result that parses as JSON and contains null
+  // values is almost always a planner-fabricated extraction shell. Pure
+  // strings with the word "null" elsewhere don't match because we look
+  // for the JSON null literal pattern (`: null` or `[null`).
+  if (/:\s*null\b|\[\s*null\b/.test(text)) {
+    return true
+  }
+  return false
+}
+
+/**
+ * Gen 9 — runtime two-pass extraction. When the planner emits a single
+ * runScript step (per Gen 7.2 rule #7) and that script returns null /
+ * empty / whitespace / `{x: null}` / a placeholder pattern, the auto-
+ * complete-from-runScript path should NOT fire. Instead the runner should
+ * mark the plan as deviated and fall through to the per-action loop where
+ * Brain.decide can re-observe the loaded page and emit a smarter action
+ * (different selector, click+wait, scroll, etc.).
+ *
+ * This addresses the failure mode the Gen 8 head-to-head gauntlet
+ * surfaced: bad's planner-only path lost to browser-use's per-action loop
+ * on tasks where the first runScript pick was wrong (npm, mdn signature,
+ * w3c, github, wikipedia variance). Two-pass gives bad's per-action loop
+ * the same recovery surface browser-use uses, with the planner's speed
+ * advantage on the cases where runScript succeeds first try.
+ *
+ * "Meaningful" means: not empty/whitespace, not the literal string `null`
+ * or `undefined`, and not matching `hasPlaceholderPattern` (which already
+ * detects JSON null fields, "<from prior step>" markers, etc.).
+ */
+export function isMeaningfulRunScriptOutput(output: string | null | undefined): boolean {
+  if (typeof output !== 'string') return false
+  const trimmed = output.trim()
+  if (trimmed.length === 0) return false
+  if (trimmed === 'null' || trimmed === 'undefined' || trimmed === '""' || trimmed === "''") return false
+  // Empty JSON shells: `{}`, `[]`, `{"x": null}`, `[null, null]`
+  if (trimmed === '{}' || trimmed === '[]') return false
+  if (hasPlaceholderPattern(trimmed)) return false
+  // If the output parses as JSON and EVERY top-level value is null/empty,
+  // treat it as not meaningful. This catches `{"x": null, "y": ""}` even
+  // though the placeholder regex would already catch the null one.
+  try {
+    const parsed = JSON.parse(trimmed)
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const values = Object.values(parsed)
+      if (values.length > 0) {
+        const allEmpty = values.every(
+          (v) => v === null || v === undefined || v === '' || v === 0,
+        )
+        if (allEmpty) return false
+      }
+    }
+    if (Array.isArray(parsed) && parsed.length === 0) return false
+  } catch {
+    // Not JSON, that's fine — fall through to "meaningful" if we got here.
+  }
+  return true
 }
 
 export class BrowserAgent {
@@ -121,6 +303,7 @@ export class BrowserAgent {
   private brain: Brain;
   private config: AgentConfig;
   private onTurn?: (turn: Turn) => void;
+  private beforeTurn?: (turn: number) => Promise<void>;
   private onPhaseTiming?: (phase: 'navigate' | 'observe' | 'decide' | 'execute', durationMs: number) => void;
   private referenceTrajectory?: string;
   private projectStore?: ProjectStore;
@@ -136,12 +319,15 @@ export class BrowserAgent {
   // persists, never crosses runs.
   private decisionCache?: DecisionCache;
   private extensions?: ResolvedExtensions;
+  /** Gen 29: cached so compound-goal sub-tabs inherit the macro catalog. */
+  private macroPromptBlock?: string;
 
   constructor(options: BrowserAgentOptions) {
     this.driver = options.driver;
     this.config = options.config || {};
     this.brain = new Brain(this.config);
     this.onTurn = options.onTurn;
+    this.beforeTurn = options.beforeTurn;
     this.onPhaseTiming = options.onPhaseTiming;
     this.referenceTrajectory = options.referenceTrajectory;
     this.bus = ensureBus(options.eventBus);
@@ -158,18 +344,78 @@ export class BrowserAgent {
       // every emitted event without callers having to wire it up.
       this.bus.subscribe(this.extensions.fanOutTurnEvent, false);
     }
+    if (options.macroPromptBlock) {
+      this.brain.setMacroPromptBlock(options.macroPromptBlock);
+      this.macroPromptBlock = options.macroPromptBlock;
+    }
     this.projectStore = options.projectStore;
     this.runRegistry = options.runRegistry;
   }
 
   async run(scenario: Scenario): Promise<AgentResult> {
-    const maxTurns = scenario.maxTurns || DEFAULT_MAX_TURNS;
+    // Gen 21: parallel tab execution for compound goals.
+    // Pre-flight: check if the goal should be decomposed into parallel sub-goals.
+    if (this.config.parallelTabs?.enabled && scenario.goal && scenario.startUrl) {
+      const context = this.driver.getPage?.()?.context();
+      if (context) {
+        const { decomposeGoal } = await import('./goal-decomposer.js');
+        const decomposition = await decomposeGoal(
+          scenario.goal,
+          scenario.startUrl,
+          {
+            provider: this.config.provider || 'openai',
+            model: this.config.navModel || 'gpt-4.1-mini',
+            apiKey: this.config.apiKey,
+          },
+        );
+        if (decomposition.type === 'compound' && decomposition.subGoals) {
+          const { runParallel } = await import('./parallel-runner.js');
+          // Inherit the top-level macro catalog + driver's macro registry so
+          // sub-tab agents see the same capability surface. Without this the
+          // sub-agents emit macro actions (their brain still has the block)
+          // into a driver that rejects them — a silent failure mode.
+          const topDriverOptions = this.driver.getDriverOptions?.() as
+            | import('../drivers/playwright.js').PlaywrightDriverOptions
+            | undefined;
+          const result = await runParallel({
+            context,
+            config: this.config,
+            originalGoal: scenario.goal,
+            subGoals: decomposition.subGoals,
+            scenario,
+            onTurn: this.onTurn ? (_label: string, turn: Turn) => this.onTurn!(turn) : undefined,
+            projectStore: this.projectStore,
+            ...(topDriverOptions ? { driverOptions: topDriverOptions } : {}),
+            ...(this.macroPromptBlock ? { macroPromptBlock: this.macroPromptBlock } : {}),
+          });
+          return {
+            success: result.success,
+            reason: result.mergedResult,
+            turns: [],
+            totalMs: result.totalMs,
+          } as AgentResult;
+        }
+      }
+    }
+
+    // Gen 14: vision mode gets more turns — each turn takes ~15s (screenshot
+    // encode + image tokens) vs ~5s for DOM-first. Without the boost, vision
+    // runs out of turns before completing multi-step tasks.
+    const isVisionMode = this.config.observationMode === 'vision' || this.config.observationMode === 'hybrid';
+    const baseMaxTurns = scenario.maxTurns || DEFAULT_MAX_TURNS;
+    // Gen 26: 30 turn minimum for vision. 15/51 failures were turn budget
+    // exhaustion at 20. The cost cap (200k tokens) is the real bound.
+    const maxTurns = isVisionMode ? Math.max(baseMaxTurns, 30) : baseMaxTurns;
     const retries = this.config.retries ?? DEFAULT_RETRIES;
     const retryDelayMs = this.config.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
     const turns: Turn[] = [];
     const startTime = Date.now();
     const phaseTimings: import('../types.js').RunPhaseTimings = {};
-    const runState = new RunState(maxTurns);
+    // Gen 27: vision+planner mode gets 3× token budget (300k). Gen 26 showed
+    // 4 cost_cap failures and 18 turn-exhausted tasks (now getting 30 turns
+    // but hitting 200k cap). The timeout (600s) is the real safety net.
+    const visionBudgetMultiplier = isVisionMode ? 3 : 1;
+    const runState = new RunState(maxTurns, Math.round(DEFAULT_TOKEN_BUDGET * visionBudgetMultiplier));
 
     const runId = scenario.sessionId
       ? `${scenario.sessionId}_${Date.now()}`
@@ -195,7 +441,7 @@ export class BrowserAgent {
         phaseTimings,
         wasteMetrics: deriveWasteMetrics(turns, runState.verificationRejectionCount, runState.firstSufficientEvidenceTurn),
       }
-      this.saveMemory(scenario, agentResult)
+      this.saveMemory(scenario, agentResult, turns)
       // Complete run manifest
       const lastTurn = agentResult.turns[agentResult.turns.length - 1]
       this.runRegistry?.completeRun(runId, {
@@ -220,10 +466,12 @@ export class BrowserAgent {
       return agentResult
     };
 
-    // Wrap onTurn to include mid-run manifest updates (every 3 turns)
+    // Wrap onTurn to include mid-run manifest updates (every 3 turns) and to
+    // accumulate per-turn token usage for the Gen 10 cost cap.
     const originalOnTurn = this.onTurn
     this.onTurn = (turn: Turn) => {
       originalOnTurn?.(turn)
+      runState.recordTokens(turn.tokensUsed)
       if (this.runRegistry && turns.length % 3 === 0) {
         try {
           this.runRegistry.updateRun(runId, {
@@ -283,6 +531,10 @@ export class BrowserAgent {
       await navPromise;
       phaseTimings.initialNavigateMs = Date.now() - navigateStartedAt;
       this.onPhaseTiming?.('navigate', phaseTimings.initialNavigateMs);
+
+      // REVERTED: page warm-up delay caused pre-first-turn timeouts on Google
+      // Flights (0-turn failures at 600s) and click timeouts on Allrecipes.
+      // DataDome bypass needs a different approach — not blocking the main loop.
     }
 
     // Don't wait on warmup before entering the loop — it races against the
@@ -301,8 +553,9 @@ export class BrowserAgent {
 
     const supervisorConfig = {
       enabled: this.config.supervisor?.enabled ?? DEFAULT_SUPERVISOR.enabled,
-      model: this.config.supervisor?.model || this.config.model || 'gpt-5.4',
-      provider: this.config.supervisor?.provider || this.config.provider || 'openai',
+      // Gen 28: models.supervisor overrides supervisor.model, falls back to main
+      model: this.config.models?.supervisor?.model || this.config.supervisor?.model || this.config.model || 'gpt-5.4',
+      provider: (this.config.models?.supervisor?.provider || this.config.supervisor?.provider || this.config.provider || 'openai') as 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend',
       useVision: this.config.supervisor?.useVision ?? DEFAULT_SUPERVISOR.useVision,
       minTurnsBeforeInvoke: this.config.supervisor?.minTurnsBeforeInvoke ?? DEFAULT_SUPERVISOR.minTurnsBeforeInvoke,
       cooldownTurns: this.config.supervisor?.cooldownTurns ?? DEFAULT_SUPERVISOR.cooldownTurns,
@@ -310,11 +563,248 @@ export class BrowserAgent {
       hardStallWindow: this.config.supervisor?.hardStallWindow ?? DEFAULT_SUPERVISOR.hardStallWindow,
     } as const;
 
-    for (let i = 1; i <= maxTurns; i++) {
+    // Gen 7 / 7.1: planner-first path. When `plannerEnabled: true` (and not
+    // disabled via BAD_PLANNER=0), make a single LLM call to generate a
+    // plan, then execute it deterministically.
+    //
+    // Gen 7.1 (replan-on-deviation): when a plan deviates, instead of
+    // immediately falling through to the per-action loop, call Brain.plan()
+    // AGAIN with the current page state and a deviation context. Cap at
+    // `maxReplans` total replan attempts (= initial plan + maxReplans
+    // additional plan calls). The system prompt is byte-stable so prompt
+    // cache still hits — only the user message carries the deviation
+    // history. On exhaustion, fall through to the per-action loop with a
+    // [REPLAN] hint, exactly like Gen 7 did.
+    //
+    // Plan execution writes to the same `turns` array, so post-run analysis
+    // sees a unified timeline regardless of which path completed the run.
+    let planFallbackContext = ''
+    let plannerStartTurn = 0
+    const plannerEnabled =
+      this.config.plannerEnabled === true && process.env.BAD_PLANNER !== '0'
+    const maxReplans = 3
+    if (plannerEnabled && scenario.startUrl) {
+      // Need an initial observe so the planner has something to look at.
+      // The runner's main loop also observes on every iteration; this one
+      // primes the planner. The result is also stashed as cachedPostState
+      // so the per-action fallback's first observe is short-circuited.
+      //
+      // Gen 8: on real-web tasks (planner-on-realweb config), wait for
+      // the page to settle BEFORE the planner observes. SPA pages like
+      // npmjs.com load their data via JS after DOMContentLoaded — without
+      // a settle wait the planner snapshots a half-loaded page and emits
+      // runScript queries against selectors that don't exist yet.
+      const settleMs = this.config.initialObserveSettleMs ?? 0
+      if (settleMs > 0) {
+        const page = this.driver.getPage?.()
+        if (page) {
+          await Promise.race([
+            page.waitForLoadState('networkidle').catch(() => {}),
+            new Promise<void>((resolve) => setTimeout(resolve, settleMs)),
+          ])
+        } else {
+          await new Promise<void>((resolve) => setTimeout(resolve, settleMs))
+        }
+        if (this.config.debug) {
+          console.log(`[Runner] Gen 8 initial settle: waited ${settleMs}ms (or networkidle) before planner observe`)
+        }
+      }
+      const initialState = await this.driver.observe().catch(() => undefined)
+      if (initialState) {
+        this.cachedPostState = initialState
+        let planLoopState: PageState = initialState
+        let cumulativeTurnsConsumed = 0
+        let attempt = 0
+        let lastDeviationReason = ''
+        let lastFailedStepIndex = 0
+        let lastTotalSteps = 0
+        let replanLoopDone = false
+        let replanLoopCompleted = false
+        let lastFinalResult: string | undefined
+        let lastCompletedState: PageState = initialState
+
+        while (!replanLoopDone && attempt <= maxReplans) {
+          // Re-observe before every replan (attempt > 0); the initial plan
+          // already has the freshly-observed state above.
+          if (attempt > 0) {
+            const reobserved = await this.driver.observe().catch(() => planLoopState)
+            planLoopState = reobserved
+            this.cachedPostState = reobserved
+            this.bus.emitNow({
+              type: 'plan-replan-started',
+              runId,
+              turn: turns.length,
+              replanIndex: attempt,
+              maxReplans,
+              reason: lastDeviationReason,
+            })
+            if (this.config.debug) {
+              console.log(`[Runner] Replan attempt ${attempt}/${maxReplans}: ${lastDeviationReason}`)
+            }
+          }
+
+          this.bus.emitNow({
+            type: 'plan-started',
+            runId,
+            turn: turns.length,
+            goal: scenario.goal,
+          })
+
+          const extraContext = attempt === 0
+            ? undefined
+            : `[REPLAN ${attempt}/${maxReplans}] The previous plan attempt failed at step ${lastFailedStepIndex + 1}/${lastTotalSteps}: ${lastDeviationReason}\nGenerate a FRESH plan from the current page state to complete the goal. Do NOT repeat the failed step verbatim — diagnose why it failed and route around it. Steps already executed in earlier attempts are persisted in the page state below; pick up from there.`
+
+          const planResult = await this.brain.plan(scenario.goal, planLoopState, {
+            extraContext,
+          }).catch((err) => ({
+            plan: null,
+            raw: '',
+            durationMs: 0,
+            parseError: err instanceof Error ? err.message : String(err),
+          }))
+
+          if (!planResult.plan || planResult.plan.steps.length === 0) {
+            // Planner unavailable / parse failure / zero steps. Fall through.
+            if (this.config.debug) {
+              console.log(`[Runner] Planner unavailable on attempt ${attempt}: ${(planResult as { parseError?: string }).parseError ?? 'no plan returned'}`)
+            }
+            replanLoopDone = true
+            break
+          }
+
+          this.bus.emitNow({
+            type: 'plan-completed',
+            runId,
+            turn: turns.length,
+            stepCount: planResult.plan.steps.length,
+            plan: planResult.plan,
+            durationMs: planResult.durationMs,
+            ...(planResult.inputTokens !== undefined ? { inputTokens: planResult.inputTokens } : {}),
+            ...(planResult.outputTokens !== undefined ? { outputTokens: planResult.outputTokens } : {}),
+            ...(planResult.cacheReadInputTokens !== undefined ? { cacheReadInputTokens: planResult.cacheReadInputTokens } : {}),
+          })
+
+          if (this.config.debug) {
+            console.log(`[Runner] Plan attempt ${attempt}: ${planResult.plan.steps.length} steps in ${planResult.durationMs}ms`)
+          }
+
+          const planResultRun = await this.executePlan(
+            planResult.plan,
+            scenario,
+            runId,
+            turns,
+            runState,
+            cumulativeTurnsConsumed,
+            {
+              tokensUsed: (planResult as { tokensUsed?: number }).tokensUsed,
+              inputTokens: (planResult as { inputTokens?: number }).inputTokens,
+              outputTokens: (planResult as { outputTokens?: number }).outputTokens,
+              cacheReadInputTokens: (planResult as { cacheReadInputTokens?: number }).cacheReadInputTokens,
+              cacheCreationInputTokens: (planResult as { cacheCreationInputTokens?: number }).cacheCreationInputTokens,
+            },
+          )
+          cumulativeTurnsConsumed += planResultRun.turnsConsumed
+
+          if (planResultRun.kind === 'completed') {
+            replanLoopCompleted = true
+            lastFinalResult = planResultRun.finalResult
+            lastCompletedState = planResultRun.lastState
+            replanLoopDone = true
+            break
+          }
+
+          // Deviated. Capture context, then either replan or fall through.
+          lastDeviationReason = planResultRun.reason
+          lastFailedStepIndex = planResultRun.failedStepIndex
+          lastTotalSteps = planResult.plan.steps.length
+          planLoopState = planResultRun.lastState
+          attempt++
+          // Loop continues; if attempt > maxReplans the while-cond exits
+          // and we fall through to the per-action loop below.
+        }
+
+        if (replanLoopCompleted) {
+          // Plan finished without deviation. Synthesize a complete turn if
+          // the plan didn't include one explicitly.
+          const lastTurn = turns[turns.length - 1]
+          if (!lastTurn || lastTurn.action.action !== 'complete') {
+            const completeTurn: Turn = {
+              turn: turns.length + 1,
+              state: lastCompletedState,
+              action: { action: 'complete', result: lastFinalResult ?? 'Plan executed successfully' },
+              reasoning: 'Plan execution completed',
+              durationMs: 0,
+            }
+            turns.push(completeTurn)
+            this.onTurn?.(completeTurn)
+          }
+          return buildResult({
+            success: true,
+            result: lastFinalResult ?? 'Plan executed successfully',
+            turns,
+            totalMs: Date.now() - startTime,
+          })
+        }
+
+        // All replan attempts (or initial plan) deviated. Fall through to
+        // the per-action loop with a [REPLAN] hint that names the final
+        // deviation. The per-action loop with Gen 6.1 batch detection will
+        // finish the work.
+        if (lastDeviationReason) {
+          plannerStartTurn = cumulativeTurnsConsumed
+          planFallbackContext = `\n[REPLAN] After ${attempt} planner attempt${attempt === 1 ? '' : 's'} (1 initial + ${attempt - 1} replan${attempt === 2 ? '' : 's'}), the planner could not produce a working plan. Final deviation: ${lastDeviationReason}\nThe runner has fallen back to per-action mode. Continue toward the original goal from the current page state.\n`
+          this.bus.emitNow({
+            type: 'plan-fallback-entered',
+            runId,
+            turn: turns.length,
+            stepsCompleted: lastFailedStepIndex,
+            totalSteps: lastTotalSteps,
+            fallbackContext: planFallbackContext,
+          })
+          if (this.config.debug) {
+            console.log(`[Runner] Falling back to per-action loop after ${attempt} planner attempts`)
+          }
+        }
+      }
+    }
+
+    // Gen 32 — overlay narration tracker. Per-session; accumulates verdict
+    // markers so a ledger the agent keeps re-emitting doesn't spam badges.
+    const verdictTracker = new VerdictTracker();
+
+    for (let i = 1 + plannerStartTurn; i <= maxTurns; i++) {
+      // Gen 32 — honor user-driven pause from the interrupt controller.
+      // Blocks until `r` is pressed (resume) or `q` is pressed (abort).
+      // A rejected beforeTurn is treated as an abort.
+      if (this.beforeTurn) {
+        try {
+          await this.beforeTurn(i);
+        } catch (err) {
+          return buildResult({
+            success: false,
+            reason: err instanceof Error ? err.message : 'aborted',
+            turns,
+            totalMs: Date.now() - startTime,
+          });
+        }
+      }
       if (scenario.signal?.aborted) {
         return buildResult({
           success: false,
           reason: scenario.signal.reason || 'Cancelled',
+          turns,
+          totalMs: Date.now() - startTime,
+        });
+      }
+
+      // Gen 10: hard cost cap. Stops the per-action loop from burning unbounded
+      // tokens on cases where recovery isn't converging (the Gen 9 death-spiral
+      // failure mode where reddit hit $0.32 / 173K tokens). The cap is enforced
+      // BEFORE the next LLM call so the case aborts cleanly with a reason.
+      if (runState.isTokenBudgetExhausted) {
+        return buildResult({
+          success: false,
+          reason: `cost_cap_exceeded: ${runState.totalTokensUsed} tokens used, budget ${runState.tokenBudget}`,
           turns,
           totalMs: Date.now() - startTime,
         });
@@ -482,7 +972,11 @@ export class BrowserAgent {
                 )
                 terminalBlocker = detectTerminalBlocker(state)
               }
-            } catch { /* CAPTCHA solve failed, fall through to abort */ }
+            } catch (captchaErr) {
+              if (this.config.debug) {
+                console.log('[Runner] CAPTCHA solve error:', captchaErr instanceof Error ? captchaErr.message : String(captchaErr));
+              }
+            }
           }
         }
         if (terminalBlocker) {
@@ -543,6 +1037,21 @@ export class BrowserAgent {
             ctxBudget.add('blocker-recovery',
               '\nDialog dismissed but URL unchanged — prior action may have been voided. Re-submit if needed.\n', 90);
           }
+        }
+
+        // Gen 6.1: Mandatory batch fill detection.
+        //
+        // If the agent has done 3+ consecutive single-step `type` actions on
+        // the same URL (i.e., it's filling a multi-field form one input at a
+        // time), inject a high-priority hint into extraContext that DEMANDS
+        // the next action be a `fill` covering the remaining fields.
+        //
+        // This is the runner-side enforcement layer for Gen 6 batch verbs.
+        // Prompt rules alone (Gen 6) didn't reliably steer the agent toward
+        // batch fill — runtime feedback does.
+        const batchFillHint = detectBatchFillOpportunity(turns, state);
+        if (batchFillHint && process.env.BAD_BATCH_HINT !== '0') {
+          ctxBudget.add('mandatory-batch-fill', batchFillHint, 100);
         }
 
         const turnsLeft = maxTurns - i + 1;
@@ -794,6 +1303,15 @@ export class BrowserAgent {
             '\nData extracted. If it answers the goal, complete now.\n', 80);
         }
 
+        // REVERTED: form stall → DDG/external search fallback. Caused the agent
+        // to navigate to Priceline, Expedia, DuckDuckGo which all block with
+        // anti-bot. Worse than staying on the original site and grinding.
+        // The stall detection idea is sound but the fallback destination is wrong.
+        // TODO: revisit with a same-site strategy (runScript extraction, URL
+        // construction from current state) instead of cross-site navigation.
+        {
+        }
+
         const extraContext = ctxBudget.build();
 
         const forceVision = shouldEscalateVision({
@@ -814,7 +1332,13 @@ export class BrowserAgent {
         const aiTangleOutputContext = aiTangleOutputCompletion
           ? `\nVERIFIED OUTPUT STATE DETECTED:\n${aiTangleOutputCompletion.feedback}\nReturn a terminal \`complete\` action now with concrete evidence.\n`
           : '';
-        const finalExtraContext = [extraContext, aiTanglePartnerContext, aiTangleOutputContext].filter(Boolean).join('');
+        // Gen 7: include the plan fallback hint on the FIRST per-action turn
+        // after a plan deviation. The hint tells the LLM what failed and from
+        // what point to recover. We only inject it once (consume it after
+        // first use) so it doesn't pollute every subsequent turn.
+        const planFallbackHint = planFallbackContext
+        if (planFallbackContext) planFallbackContext = ''
+        const finalExtraContext = [extraContext, aiTanglePartnerContext, aiTangleOutputContext, planFallbackHint].filter(Boolean).join('');
         const decisionState = forceVision
           ? await this.attachDecisionScreenshot(state)
           : state;
@@ -904,6 +1428,11 @@ export class BrowserAgent {
             console.log(`[Runner] Decision cache HIT (turn ${i}, key ${cached.hash.slice(0, 8)}…) — skipping LLM`);
           }
         } else {
+          // REVERTED: micro-movements during LLM thinking caused interference
+          // with page state on interactive sites. The mouse.move calls during
+          // decide() could trigger hover states, tooltips, or dismiss elements
+          // the agent was about to click.
+
           decision = await withRetry(
             () => this.brain.decide(
               scenario.goal,
@@ -934,6 +1463,23 @@ export class BrowserAgent {
         }
 
         let { action, nextActions, raw, reasoning, plan, currentStep, expectedEffect, tokensUsed, inputTokens, outputTokens, cacheReadInputTokens, cacheCreationInputTokens, modelUsed } = decision;
+
+        // Demo-mode overrides (env-gated). No-op in production; returns
+        // the original decision unchanged. See src/runner/demo-overrides.ts.
+        const demo = applyDemoOverride({ turn: i, action, reasoning, expectedEffect });
+        if (demo.override) {
+          action = demo.action;
+          if (demo.reasoning !== undefined) reasoning = demo.reasoning;
+          if (demo.expectedEffect !== undefined) expectedEffect = demo.expectedEffect;
+          this.bus.emitNow({
+            type: 'override-applied',
+            runId,
+            turn: i,
+            source: 'extension',
+            reasoningTag: demo.override.tag,
+            feedback: demo.override.feedback,
+          });
+        }
         // Only emit decide-completed when the LLM was actually called.
         // Pattern matches and cache hits already emitted their own
         // decide-skipped-* event above; double-emitting decide-completed
@@ -952,6 +1498,29 @@ export class BrowserAgent {
             durationMs: decideDurationMs,
           });
         }
+
+        // -- 4a. Gen 32 — narrate to the cursor overlay. Fire-and-forget.
+        // Four signals pushed to the page-context overlay so a viewer of
+        // the recorded video can READ the agent's work, not just watch it:
+        //   1. Reasoning panel (top-right) — the agent's own text
+        //   2. Progress bar + chip (top) — turn N with optional ledger marker
+        //   3. Verdict badges (bottom-left) — POSITIVE/CLEARED/REVIEW events
+        // All methods are no-ops when the overlay is disabled, and all page
+        // calls are wrapped by the driver so a navigation race here can
+        // never bubble up and break the run.
+        try {
+          if (this.driver.setOverlayReasoning) {
+            void this.driver.setOverlayReasoning(reasoning ?? '');
+          }
+          if (this.driver.setOverlayProgress) {
+            const marker = extractCurrentMarker(reasoning);
+            void this.driver.setOverlayProgress(i, maxTurns, buildProgressLabel(i, maxTurns, marker));
+          }
+          if (this.driver.pushOverlayBadge) {
+            const fresh = verdictTracker.accept(reasoning);
+            for (const v of fresh) void this.driver.pushOverlayBadge(v.kind, v.text);
+          }
+        } catch { /* overlay narration is cosmetic; never let it break a run */ }
 
         // -- 4b. Override pipeline — scored selection of post-decision overrides --
         const overrideCtx: OverrideContext = {
@@ -1109,6 +1678,9 @@ export class BrowserAgent {
                 : JSON.stringify(scriptResult, null, 2);
               runState.firstSufficientEvidenceTurn ??= i;
               pushGoalVerificationEvidence(runState.goalVerificationEvidence, `SCRIPT RESULT:\n${stringified ?? '(undefined)'}`);
+              if (typeof stringified === 'string' && stringified.length > 10) {
+                runState.recordEvidence(`EXTRACTED (turn ${i}): ${stringified.slice(0, 500)}`);
+              }
               this.brain.injectFeedback(
                 `SCRIPT RESULT:\n${stringified ?? '(undefined)'}`
               );
@@ -1130,6 +1702,110 @@ export class BrowserAgent {
           continue;
         }
 
+        // -- 5d. Handle extractWithIndex action (Gen 10) --
+        // Returns a numbered list of every visible element matching `query`,
+        // each with its tag, textContent, key attributes, and a stable
+        // selector. The agent picks elements by index in the next turn.
+        // This is the Gen 10 capability change: pick-by-content instead of
+        // pick-by-selector. Works on data the planner couldn't see at plan
+        // time (XHR-loaded content, dl/dt/dd, deeply-nested wrappers).
+        if (action.action === 'extractWithIndex') {
+          const page = this.driver.getPage?.();
+          if (page) {
+            try {
+              const matches = await runExtractWithIndex(page, action.query, action.contains);
+              const formatted = formatExtractWithIndexResult(matches, action.query, action.contains);
+              runState.firstSufficientEvidenceTurn ??= i;
+              pushGoalVerificationEvidence(
+                runState.goalVerificationEvidence,
+                `EXTRACT RESULT (${matches.length} matches):\n${formatted}`,
+              );
+              if (formatted.length > 10) {
+                runState.recordEvidence(`EXTRACTED (turn ${i}): ${formatted.slice(0, 500)}`);
+              }
+              this.brain.injectFeedback(
+                `EXTRACT RESULT (${matches.length} matches for query "${action.query}"${action.contains ? ` containing "${action.contains}"` : ''}):\n${formatted}`,
+              );
+            } catch (extractErr: unknown) {
+              const msg = extractErr instanceof Error ? extractErr.message : String(extractErr);
+              this.brain.injectFeedback(
+                `EXTRACT ERROR: ${msg}`,
+              );
+            }
+          } else {
+            this.brain.injectFeedback(
+              'EXTRACT ERROR: Cannot access page — driver does not expose a Playwright page.',
+            );
+          }
+
+          turn.durationMs = Date.now() - turnStart;
+          turns.push(turn);
+          this.onTurn?.(turn);
+          continue;
+        }
+
+        // -- Gen 33: mid-run parallel fan-out. Agent picked N candidates
+        // from the current page and wants to explore each in its own tab.
+        // We spawn sub-agents in the same BrowserContext, collect their
+        // verdicts, and inject the merged result as feedback for the next
+        // turn. Parent page state is untouched.
+        if (action.action === 'fanOut') {
+          const page = this.driver.getPage?.();
+          const context = page?.context();
+          if (!context) {
+            this.brain.injectFeedback(
+              'FAN-OUT ERROR: driver does not expose a BrowserContext — fanOut only works with the Playwright driver.',
+            );
+            turn.durationMs = Date.now() - turnStart;
+            turns.push(turn);
+            this.onTurn?.(turn);
+            continue;
+          }
+          const { executeFanOut } = await import('./fan-out.js');
+          const topDriverOptions = this.driver.getDriverOptions?.() as
+            | import('../drivers/playwright.js').PlaywrightDriverOptions
+            | undefined;
+          const fanOutResult = await executeFanOut(action, {
+            context,
+            config: this.config,
+            currentUrl: state.url,
+            // Gen 34 — give the executor a handle on the parent driver so
+            // it can drive the Hydra overlay (grid init, live thumbnail
+            // streaming, verdict chips, collapse animation) on the
+            // parent page for the whole fan-out duration.
+            parentDriver: this.driver,
+            ...(topDriverOptions
+              ? { driverOptions: (() => { const { showCursor: _sc, ...rest } = topDriverOptions; return rest; })() }
+              : {}),
+            ...(this.projectStore ? { projectStore: this.projectStore } : {}),
+            ...(this.macroPromptBlock ? { macroPromptBlock: this.macroPromptBlock } : {}),
+            onBranchStart: (_idx, label) => {
+              // Fire and forget — this is purely cosmetic narration on
+              // the overlay. Errors are swallowed by the driver.
+              if (this.driver.setOverlayReasoning) {
+                void this.driver.setOverlayReasoning(`Fan-out: launching ${label}…`);
+              }
+            },
+          });
+
+          // Nice-to-have: surface fan-out completion as a badge moment so
+          // the viewer sees the parallel exploration punctuated clearly.
+          if (this.driver.pushOverlayBadge) {
+            const ok = fanOutResult.branches.filter((b) => b.success).length;
+            const total = fanOutResult.branches.length;
+            void this.driver.pushOverlayBadge(
+              ok === total ? 'cleared' : ok === 0 ? 'review' : 'info',
+              `Fan-out · ${ok}/${total} branches ok`,
+            );
+          }
+
+          this.brain.injectFeedback(fanOutResult.feedback);
+          turn.durationMs = Date.now() - turnStart;
+          turns.push(turn);
+          this.onTurn?.(turn);
+          continue;
+        }
+
         // -- 6. Check for terminal actions --
         if (action.action === 'complete') {
           // Step 1: Goal verification — did the agent actually achieve the goal?
@@ -1142,6 +1818,7 @@ export class BrowserAgent {
           );
           const verificationEvidence = [
             ...runState.goalVerificationEvidence,
+            ...runState.extractedEvidence,
             ...persistentSearchEvidence,
           ];
 
@@ -1150,24 +1827,50 @@ export class BrowserAgent {
             // evidence and had no recent errors. The detailed result text
             // (>50 chars) combined with script-extracted evidence means the
             // verifier almost always agrees — save the round-trip.
+            //
+            // Gen 12: content-aware gate. gpt-5.4 writes verbose narratives
+            // that admit failure ("could not complete", "not visible", "did
+            // not take effect") yet marks success. The old heuristic (length
+            // + evidence + no errors) rubber-stamped these. Now we scan the
+            // result text for self-contradicting phrases and force LLM
+            // verification when found. This fixes the 6/8 judge disagreement
+            // cases from Gen 11 evolve R2.
             const agentResult = action.result || '';
             const recentErrors = turns.slice(-2).filter(t => t.error).length;
             const hasScriptEvidence = verificationEvidence.some(e => e.startsWith('SCRIPT RESULT:'));
+
+            // Content-aware gate: detect when the agent's own text admits
+            // failure despite claiming success. These phrases were found in
+            // 6 of 8 false-pass cases on WebVoyager with gpt-5.4.
+            const selfContradicting = /\b(?:could not (?:complete|find|fulfill|verify|confirm|locate|access|extract|retrieve)|not (?:visible|available|found|present|accessible|displayed|shown|confirmed|verified)|did not (?:take effect|work|succeed|load|return)|unable to (?:find|complete|verify|access|extract|retrieve)|no (?:visible (?:answer|result|data|content)|results? (?:found|returned|available))|(?:failed|failure) to (?:find|complete|set|select|navigate)|unfortunately|I (?:was|am) unable|(?:task|request|goal) (?:is|was) (?:not |in)complete)\b/i.test(agentResult);
             const fastPathEligible =
               agentResult.length > 50 &&
               recentErrors === 0 &&
-              hasScriptEvidence;
+              hasScriptEvidence &&
+              !selfContradicting;
 
             if (fastPathEligible) {
               goalResult = {
                 achieved: true,
                 confidence: 0.9,
-                evidence: ['Fast-path: agent provided detailed result with script-backed evidence and no recent errors.'],
+                evidence: ['Fast-path: agent provided detailed result with script-backed evidence, no recent errors, and no self-contradicting language.'],
                 missing: [],
               };
               if (this.config.debug) {
-                console.log('[Runner] Goal verification fast-path: skipped LLM call (strong evidence + no errors)');
+                console.log('[Runner] Goal verification fast-path: skipped LLM call (strong evidence + no errors + no self-contradiction)');
               }
+            } else if (selfContradicting) {
+              // Force LLM verification — the agent claims success but its
+              // own text suggests failure. The LLM verifier reads the actual
+              // content and makes the right call.
+              if (this.config.debug) {
+                console.log('[Runner] Gen 12: fast-path BLOCKED — agent result contains self-contradicting language, forcing LLM verification');
+              }
+              goalResult = await this.brain.verifyGoalCompletion(
+                state,
+                scenario.goal,
+                buildGoalVerificationClaim(agentResult, verificationEvidence),
+              );
             } else {
               goalResult = await this.brain.verifyGoalCompletion(
                 state,
@@ -1293,12 +1996,33 @@ export class BrowserAgent {
               runState.verificationRejectionCount++;
               turn.verificationFailure = goalResult.missing.join('; ') || 'Goal verification failed';
               runState.firstSufficientEvidenceTurn ??= i;
-              // Goal not met — reject completion and feed back what's missing
-              const escalation = runState.verificationRejectionCount >= 2
-                ? ' Use runScript to extract exact data and include in completion.'
-                : '';
+
+              // Gen 24b: checkpoint replay on 2nd rejection. Navigate back
+              // to a previous page where the agent had correct data, instead
+              // of continuing from the wrong-path state.
+              let replayNote = '';
+              if (runState.verificationRejectionCount === 2 && runState.checkpoints.length >= 2) {
+                // Go back to the second-to-last checkpoint (before the wrong path)
+                const target = runState.checkpoints[runState.checkpoints.length - 2];
+                if (target) {
+                  try {
+                    await this.driver.execute({ action: 'navigate', url: target.url });
+                    replayNote = ` ROLLED BACK to ${target.url} (checkpoint from turn ${target.turn}). You went down the wrong path — try a different approach from this known-good page.`;
+                  } catch { /* rollback failed, continue from current state */ }
+                }
+              }
+
+              // Gen 19: progressive strategy-shift escalation on rejection.
+              let escalation: string;
+              if (runState.verificationRejectionCount >= 3) {
+                escalation = ' STRATEGY SHIFT REQUIRED: Your previous approaches have failed 3 times. Try a COMPLETELY different method: use navigate to go to a different search engine or URL, try extractWithIndex instead of runScript, or scroll to look for the data in a different part of the page. Do NOT repeat what you just tried.';
+              } else if (runState.verificationRejectionCount >= 2) {
+                escalation = ' Use runScript or extractWithIndex to extract the exact data from the page and include ALL required values in your completion result.';
+              } else {
+                escalation = ' Re-read the GOAL carefully — your result is missing specific data the goal asked for. Find and include it before completing.';
+              }
               this.brain.injectFeedback(
-                `REJECTED (${goalResult.confidence.toFixed(2)}). Missing: ${goalResult.missing.join('; ')}.${escalation}`
+                `REJECTED (${goalResult.confidence.toFixed(2)}). Missing: ${goalResult.missing.join('; ')}.${escalation}${replayNote}`
               );
               turn.durationMs = Date.now() - turnStart;
               turns.push(turn);
@@ -1496,6 +2220,25 @@ export class BrowserAgent {
         } else {
           runState.clearConsecutiveErrors();
           executeTimeoutRecoveries = 0; // Reset on successful action
+
+          // Gen 27: surface form reset warnings from batch fill verification
+          if ('warning' in execResult && typeof (execResult as { warning?: string }).warning === 'string') {
+            const warning = (execResult as { warning: string }).warning;
+            this.brain.injectFeedback(warning);
+            if (this.config.debug) {
+              console.log(`[Runner] Fill warning: ${warning}`);
+            }
+          }
+
+          // Gen 24b: save checkpoint when URL changes after successful action.
+          // These are rollback points for wrong-path recovery.
+          const postUrl = this.driver.getPage?.()?.url() || '';
+          const lastCheckpointUrl = runState.checkpoints[runState.checkpoints.length - 1]?.url;
+          if (postUrl && postUrl !== 'about:blank' && postUrl !== lastCheckpointUrl) {
+            runState.checkpoints.push({ url: postUrl, turn: i });
+            // Keep max 5 checkpoints to avoid unbounded growth
+            if (runState.checkpoints.length > 5) runState.checkpoints.shift();
+          }
 
           // Capture element bounding box for replay overlays
           if (execResult.bounds) {
@@ -1713,10 +2456,30 @@ export class BrowserAgent {
   }
 
   /** Persist knowledge, selector cache, and session history to disk */
-  private saveMemory(scenario?: Scenario, result?: AgentResult): void {
+  private saveMemory(scenario?: Scenario, result?: AgentResult, turns?: Turn[]): void {
     try {
       if (this.knowledge && scenario && result) {
         this.knowledge.recordSession(buildSession(scenario, result))
+
+        // Gen 26b: extract reusable patterns from successful runs.
+        // Patterns gain confidence with repeated observation and auto-decay
+        // when contradicted. Low-confidence facts are pruned automatically.
+        if (result.success && turns && turns.length > 0) {
+          const domain = safeHostname(scenario.startUrl || '') || ''
+          if (domain) {
+            // Dynamic import to keep the module tree clean
+            import('./pattern-extractor.js').then(({ extractPatterns, recordPatterns }) => {
+              const patterns = extractPatterns(turns, domain, result.success)
+              if (patterns.length > 0) {
+                recordPatterns(this.knowledge!, patterns)
+                this.knowledge!.save()
+                if (this.config.debug) {
+                  console.log(`[Runner] Recorded ${patterns.length} patterns for ${domain}`)
+                }
+              }
+            }).catch(() => { /* pattern extraction is best-effort */ })
+          }
+        }
       }
       this.knowledge?.save();
       this.selectorCache?.save();
@@ -1740,6 +2503,526 @@ export class BrowserAgent {
    * - "text should appear" -> check snapshot
    * - Generic text match -> check if text appears in snapshot
    */
+  /**
+   * Gen 7: execute a Plan deterministically without re-entering the LLM
+   * between steps. Each step:
+   *   1. Drives the action via driver.execute (existing path, gets bus events)
+   *   2. Verifies the post-condition via verifyExpectedEffect
+   *   3. On success → advance to the next step
+   *   4. On failure → bail and return the deviation context for the
+   *      caller to inject into the per-action fallback loop
+   *
+   * Returns a structured summary so the caller can decide whether to
+   * complete the run, fall back, or replan. Plan execution emits these
+   * events on the bus:
+   *   - plan-step-executed (per step, success or failure)
+   *   - plan-deviated (on first failure)
+   *
+   * Plan steps are wrapped in Turn artifacts and pushed onto the same
+   * `turns` array the per-action loop uses, so post-run analysis sees a
+   * unified timeline. The Turn's `reasoning` field carries the plan
+   * step's rationale, and `verified` carries the verification result.
+   */
+  private async executePlan(
+    plan: Plan,
+    scenario: Scenario,
+    runId: string,
+    turns: Turn[],
+    runState: RunState,
+    startingTurnIndex: number,
+    /**
+     * Token usage from the Brain.plan() LLM call that produced this plan.
+     * The plan call's tokens are NOT attached to any per-step turn — there's
+     * one plan call per N steps. To make the run-level cost tally honest,
+     * we attribute the plan call to the FIRST step's Turn artifact so the
+     * downstream sum (in baseline-summary.json / report.json) reflects the
+     * real LLM spend. This was the metric bug that caused Gen 7.1 runs to
+     * report $0 cost while Gen 7 baseline runs reported $0.50.
+     */
+    planCallTokens?: {
+      tokensUsed?: number
+      inputTokens?: number
+      outputTokens?: number
+      cacheReadInputTokens?: number
+      cacheCreationInputTokens?: number
+    },
+  ): Promise<
+    | { kind: 'completed'; lastState: PageState; finalResult?: string; turnsConsumed: number }
+    | { kind: 'deviated'; lastState: PageState; failedStepIndex: number; reason: string; turnsConsumed: number }
+  > {
+    let currentTurnIndex = startingTurnIndex
+    let lastState: PageState = turns[turns.length - 1]?.state
+      ?? { url: '', title: '', snapshot: '' }
+
+    // Gen 7.2: track the last successful `runScript` output across plan steps
+    // so a downstream `complete` step with placeholder values (null,
+    // "<from prior step>", etc.) can be substituted with the real script
+    // output. The planner has to commit to its `complete.result` text BEFORE
+    // runScript runs, so on extraction tasks it fabricates placeholders.
+    // This deterministic substitution fixes that without an extra LLM call.
+    let lastRunScriptOutput: string | null = null
+
+    // Gen 10: track the last extractWithIndex match list. Unlike runScript,
+    // we do NOT auto-substitute this into a placeholder complete — the LLM
+    // must read the formatted match list and pick by index. When the plan
+    // ends with extractWithIndex (or runs out of valid steps), we fall
+    // through to the per-action loop with the match list as feedback.
+    let lastExtractOutput: string | null = null
+
+    for (let stepIdx = 0; stepIdx < plan.steps.length; stepIdx++) {
+      if (scenario.signal?.aborted) {
+        return {
+          kind: 'deviated',
+          lastState,
+          failedStepIndex: stepIdx,
+          reason: scenario.signal.reason || 'Cancelled',
+          turnsConsumed: stepIdx,
+        }
+      }
+
+      const step = plan.steps[stepIdx]
+      const stepStartedAt = Date.now()
+      const turnNumber = currentTurnIndex + 1
+      currentTurnIndex++
+
+      // Refresh the snapshot before EVERY step. The plan was built from a
+      // single observe() call at turn 1; later steps may target a different
+      // page entirely (after navigate / click "Next"). The first observe
+      // here is also what verify-against will eventually consume.
+      const preStepState = await this.driver.observe().catch(() => lastState)
+      lastState = preStepState
+
+      // Wrap each plan step in a Turn artifact so post-run analysis (the
+      // viewer, the events.jsonl persistence, the metrics) sees a unified
+      // timeline regardless of whether the runner used the planner or the
+      // per-action loop.
+      //
+      // Token attribution: the FIRST step of each plan carries the
+      // Brain.plan() LLM call's token usage. Without this, runs that stay
+      // in plan-mode (Gen 7.1) report $0 cost while their Brain.plan()
+      // calls actually spent real tokens.
+      const isFirstStep = stepIdx === 0
+      const turn: Turn = {
+        turn: turnNumber,
+        state: preStepState,
+        action: step.action,
+        reasoning: step.rationale ?? `Plan step ${stepIdx + 1}/${plan.steps.length}`,
+        expectedEffect: step.expectedEffect,
+        plan: plan.steps.map((s) => s.rationale ?? s.action.action),
+        currentStep: stepIdx,
+        durationMs: 0,
+        ...(isFirstStep && planCallTokens?.tokensUsed !== undefined ? { tokensUsed: planCallTokens.tokensUsed } : {}),
+        ...(isFirstStep && planCallTokens?.inputTokens !== undefined ? { inputTokens: planCallTokens.inputTokens } : {}),
+        ...(isFirstStep && planCallTokens?.outputTokens !== undefined ? { outputTokens: planCallTokens.outputTokens } : {}),
+        ...(isFirstStep && planCallTokens?.cacheReadInputTokens !== undefined ? { cacheReadInputTokens: planCallTokens.cacheReadInputTokens } : {}),
+        ...(isFirstStep && planCallTokens?.cacheCreationInputTokens !== undefined ? { cacheCreationInputTokens: planCallTokens.cacheCreationInputTokens } : {}),
+      }
+
+      // Terminal actions: complete and abort don't go through driver.execute
+      // — the runner handles them as the end of the plan.
+      if (step.action.action === 'complete') {
+        // Gen 7.2 placeholder substitution: if the planner emitted a complete
+        // with placeholder values AND we have a real runScript output from
+        // earlier in the plan, use the runScript output as the final result.
+        // Detection is conservative: only substitute when the planner clearly
+        // didn't know real values at planning time (null literals, "<from
+        // prior step>", "{{...}}" templates, "<placeholder>", etc.).
+        let resolvedResult = step.action.result
+        if (
+          lastRunScriptOutput
+          && typeof resolvedResult === 'string'
+          && hasPlaceholderPattern(resolvedResult)
+        ) {
+          if (this.config.debug) {
+            console.log(`[Runner] Gen 7.2: substituting placeholder complete.result with runScript output (${lastRunScriptOutput.length} chars)`)
+          }
+          resolvedResult = lastRunScriptOutput
+          turn.reasoning = `${turn.reasoning ?? ''} [Gen 7.2 substituted runScript output]`.trim()
+        }
+        turn.durationMs = Date.now() - stepStartedAt
+        turns.push(turn)
+        this.onTurn?.(turn)
+        this.bus.emitNow({
+          type: 'plan-step-executed',
+          runId,
+          turn: turnNumber,
+          stepIndex: stepIdx + 1,
+          totalSteps: plan.steps.length,
+          action: step.action,
+          executeSuccess: true,
+          verified: true,
+          durationMs: turn.durationMs,
+        })
+        return {
+          kind: 'completed',
+          lastState,
+          finalResult: resolvedResult,
+          turnsConsumed: stepIdx + 1,
+        }
+      }
+      if (step.action.action === 'abort') {
+        turn.durationMs = Date.now() - stepStartedAt
+        turns.push(turn)
+        this.onTurn?.(turn)
+        this.bus.emitNow({
+          type: 'plan-deviated',
+          runId,
+          turn: turnNumber,
+          stepIndex: stepIdx + 1,
+          totalSteps: plan.steps.length,
+          reason: `plan aborted: ${step.action.reason}`,
+        })
+        return {
+          kind: 'deviated',
+          lastState,
+          failedStepIndex: stepIdx,
+          reason: `plan aborted: ${step.action.reason}`,
+          turnsConsumed: stepIdx + 1,
+        }
+      }
+
+      // Execute the action via the existing driver path. This emits
+      // execute-started / execute-completed events on the bus exactly
+      // like the per-action loop does.
+      //
+      // CRITICAL: each plan step gets a 10s wall-clock cap (vs the driver's
+      // default 30s). Plan steps assume every selector was just observed in
+      // the snapshot at planning time — a missing element should fail
+      // FAST and trigger fallback to per-action mode, NOT block the run for
+      // 30s. Batch verbs already enforce a 5s per-field cap internally,
+      // but single-step type/click/press/select use the full 30s default.
+      this.bus.emitNow({ type: 'execute-started', runId, turn: turnNumber, action: step.action })
+      const execStartedAt = Date.now()
+      const planStepTimeoutMs = 10_000
+      let execResult: Awaited<ReturnType<Driver['execute']>>
+      try {
+        execResult = await Promise.race([
+          this.driver.execute(step.action),
+          new Promise<Awaited<ReturnType<Driver['execute']>>>((resolve) =>
+            setTimeout(
+              () => resolve({ success: false, error: `plan step wall-clock timeout after ${planStepTimeoutMs}ms` }),
+              planStepTimeoutMs,
+            ),
+          ),
+        ])
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        execResult = { success: false, error: message }
+      }
+      const execDurationMs = Date.now() - execStartedAt
+      this.bus.emitNow({
+        type: 'execute-completed',
+        runId,
+        turn: turnNumber,
+        action: step.action,
+        success: execResult.success,
+        ...(execResult.error ? { error: execResult.error } : {}),
+        ...(execResult.bounds ? { bounds: execResult.bounds } : {}),
+        durationMs: execDurationMs,
+      })
+
+      if (!execResult.success) {
+        turn.error = execResult.error
+        turn.durationMs = Date.now() - stepStartedAt
+        turn.verified = false
+        turn.verificationFailure = `execute failed: ${execResult.error}`
+        turns.push(turn)
+        this.onTurn?.(turn)
+        runState.recordError()
+        this.bus.emitNow({
+          type: 'plan-step-executed',
+          runId,
+          turn: turnNumber,
+          stepIndex: stepIdx + 1,
+          totalSteps: plan.steps.length,
+          action: step.action,
+          executeSuccess: false,
+          verified: false,
+          durationMs: Date.now() - stepStartedAt,
+          ...(execResult.error ? { verifyReason: execResult.error } : {}),
+        })
+        this.bus.emitNow({
+          type: 'plan-deviated',
+          runId,
+          turn: turnNumber,
+          stepIndex: stepIdx + 1,
+          totalSteps: plan.steps.length,
+          reason: `execute failed: ${execResult.error}`,
+        })
+        return {
+          kind: 'deviated',
+          lastState,
+          failedStepIndex: stepIdx,
+          reason: `execute failed at step ${stepIdx + 1}: ${execResult.error}`,
+          turnsConsumed: stepIdx + 1,
+        }
+      }
+
+      runState.clearConsecutiveErrors()
+      if (execResult.bounds) turn.actionBounds = execResult.bounds
+
+      // Gen 7.2: capture runScript output so a downstream complete step
+      // with placeholder values can be substituted with the real output.
+      // This is the supply side of the placeholder-substitution fix above.
+      if (step.action.action === 'runScript' && typeof execResult.data === 'string' && execResult.data.length > 0) {
+        lastRunScriptOutput = execResult.data
+        if (execResult.data.length > 10) {
+          runState.recordEvidence(`EXTRACTED (turn ${currentTurnIndex}): ${execResult.data.slice(0, 500)}`)
+        }
+      }
+
+      // Gen 10: capture extractWithIndex match list for fall-through to the
+      // per-action loop. The LLM must read the list and pick by index — we
+      // do not auto-complete with the raw match list.
+      if (step.action.action === 'extractWithIndex' && typeof execResult.data === 'string' && execResult.data.length > 0) {
+        lastExtractOutput = execResult.data
+        // Also push as goal verification evidence so the verifier sees what
+        // the agent extracted.
+        runState.firstSufficientEvidenceTurn ??= currentTurnIndex
+        pushGoalVerificationEvidence(runState.goalVerificationEvidence, `EXTRACT RESULT:\n${execResult.data}`)
+        if (execResult.data.length > 10) {
+          runState.recordEvidence(`EXTRACTED (turn ${currentTurnIndex}): ${execResult.data.slice(0, 500)}`)
+        }
+      }
+
+      // Verify the post-condition. We re-observe to get the post-action
+      // state, then run the same verifyExpectedEffect helper the per-action
+      // loop uses. The fresh observe is also stashed in cachedPostState so
+      // the next step's pre-step observe is short-circuited (Gen 4 lazy
+      // observe optimization).
+      this.bus.emitNow({
+        type: 'verify-started',
+        runId,
+        turn: turnNumber,
+        expectedEffect: step.expectedEffect,
+      })
+      const verifyStartedAt = Date.now()
+      // Auto-pass list — these actions either don't observably mutate
+      // the page state OR they're self-verifying (the underlying Playwright
+      // call throws on real failure, so a successful return means the
+      // mutation actually happened). Strict expectedEffect verification
+      // would generate false negatives on the per-action loop fallback for
+      // these. Plan execution trusts the execute result.
+      //
+      // - wait / scroll / hover: don't mutate observable snapshot state
+      // - runScript / evaluate / verifyPreview: meta actions
+      // - fill / clickSequence: self-verifying (Playwright throws on miss),
+      //   AND input values don't always reflect in the ARIA snapshot, so
+      //   the permissive "did state change?" check would also miss them
+      const isAutoPass =
+        step.action.action === 'wait'
+        || step.action.action === 'scroll'
+        || step.action.action === 'hover'
+        || step.action.action === 'runScript'
+        || step.action.action === 'extractWithIndex'
+        || step.action.action === 'evaluate'
+        || step.action.action === 'verifyPreview'
+        || step.action.action === 'fill'
+        || step.action.action === 'clickSequence'
+      // Settle wait for mutating actions, mirroring verifyEffect's logic
+      const needsSettleWait = step.action.action === 'click'
+        || step.action.action === 'navigate'
+        || step.action.action === 'press'
+        || step.action.action === 'select'
+        || step.action.action === 'fill'
+        || step.action.action === 'clickSequence'
+      const observePromise = this.driver.observe().catch(() => preStepState)
+      if (needsSettleWait) {
+        await Promise.all([
+          observePromise,
+          new Promise((r) => setTimeout(r, 50)),
+        ])
+      }
+      const postStepState = await observePromise
+      this.cachedPostState = postStepState
+      lastState = postStepState
+
+      // Plan verification is more permissive than per-action verification:
+      // a step passes if (a) it's a non-mutating action, OR (b) the strict
+      // verifier passes, OR (c) the snapshot/url changed in any meaningful
+      // way (the action did SOMETHING). Strict failure-on-no-change is
+      // appropriate for the per-action loop where the agent can recover,
+      // but plan execution needs to push forward unless there's positive
+      // evidence of failure.
+      let verifyResult: { verified: boolean; reason?: string }
+      if (isAutoPass) {
+        verifyResult = { verified: true }
+      } else {
+        const strictResult = verifyExpectedEffect({
+          expectedEffect: step.expectedEffect,
+          preActionState: preStepState,
+          postActionState: postStepState,
+        })
+        if (strictResult.verified) {
+          verifyResult = strictResult
+        } else {
+          // Permissive fallback: did the page change at all?
+          const stateChanged =
+            preStepState.url !== postStepState.url
+            || preStepState.title !== postStepState.title
+            || preStepState.snapshot !== postStepState.snapshot
+          if (stateChanged) {
+            verifyResult = { verified: true }
+          } else {
+            verifyResult = strictResult
+          }
+        }
+      }
+      turn.verified = verifyResult.verified
+      if (!verifyResult.verified) {
+        turn.verificationFailure = verifyResult.reason
+      }
+      turn.durationMs = Date.now() - stepStartedAt
+      turns.push(turn)
+      this.onTurn?.(turn)
+
+      this.bus.emitNow({
+        type: 'verify-completed',
+        runId,
+        turn: turnNumber,
+        verified: verifyResult.verified,
+        ...(verifyResult.reason ? { reason: verifyResult.reason } : {}),
+        durationMs: Date.now() - verifyStartedAt,
+      })
+      this.bus.emitNow({
+        type: 'plan-step-executed',
+        runId,
+        turn: turnNumber,
+        stepIndex: stepIdx + 1,
+        totalSteps: plan.steps.length,
+        action: step.action,
+        executeSuccess: true,
+        verified: verifyResult.verified,
+        durationMs: Date.now() - stepStartedAt,
+        ...(verifyResult.reason ? { verifyReason: verifyResult.reason } : {}),
+      })
+
+      if (!verifyResult.verified) {
+        this.bus.emitNow({
+          type: 'plan-deviated',
+          runId,
+          turn: turnNumber,
+          stepIndex: stepIdx + 1,
+          totalSteps: plan.steps.length,
+          reason: `verification failed at step ${stepIdx + 1}: ${verifyResult.reason ?? 'expected effect not observed'}`,
+        })
+        return {
+          kind: 'deviated',
+          lastState,
+          failedStepIndex: stepIdx,
+          reason: `verification failed at step ${stepIdx + 1}: ${verifyResult.reason ?? 'expected effect not observed'}`,
+          turnsConsumed: stepIdx + 1,
+        }
+      }
+    }
+
+    // Gen 7.2 auto-complete-from-runScript: if the plan ended without an
+    // explicit complete BUT the last successful step was a runScript with
+    // non-empty output, treat the runScript output as the final result and
+    // synthesize a complete turn. This handles the planner-prompt path where
+    // the planner correctly emits ONLY runScript on extraction tasks (per
+    // rule #7) — without this, we'd fall through to a 4-5 turn per-action
+    // loop that's much slower than necessary.
+    //
+    // Detection: the LAST step in the plan was a `runScript` AND we captured
+    // a non-empty output for it. We don't check intermediate steps because
+    // a plan like [navigate, click, runScript] where runScript is last is
+    // exactly the extraction-task shape we want to short-circuit.
+    const lastStep = plan.steps[plan.steps.length - 1]
+    if (
+      lastStep
+      && lastStep.action.action === 'runScript'
+      && isMeaningfulRunScriptOutput(lastRunScriptOutput)
+    ) {
+      const synthTurnNumber = currentTurnIndex + 1
+      const synthTurn: Turn = {
+        turn: synthTurnNumber,
+        state: lastState,
+        action: { action: 'complete', result: lastRunScriptOutput! },
+        reasoning: 'Gen 7.2 auto-complete: plan ended after runScript, runner emitted complete with the runScript output',
+        durationMs: 0,
+      }
+      turns.push(synthTurn)
+      this.onTurn?.(synthTurn)
+      this.bus.emitNow({
+        type: 'plan-step-executed',
+        runId,
+        turn: synthTurnNumber,
+        stepIndex: plan.steps.length + 1,
+        totalSteps: plan.steps.length + 1,
+        action: synthTurn.action,
+        executeSuccess: true,
+        verified: true,
+        durationMs: 0,
+      })
+      if (this.config.debug) {
+        console.log(`[Runner] Gen 7.2: auto-emitted complete with runScript output (${lastRunScriptOutput!.length} chars) after plan exhausted`)
+      }
+      return {
+        kind: 'completed',
+        lastState,
+        finalResult: lastRunScriptOutput!,
+        turnsConsumed: plan.steps.length + 1,
+      }
+    }
+
+    // Gen 10: if the plan ended with extractWithIndex, fall through to the
+    // per-action loop with the match list as feedback. The LLM must read
+    // the matches and pick by index — we do NOT auto-complete with the raw
+    // match list. This is the planner-emits-extract path for extraction
+    // tasks like npm/mdn/python-docs where the planner used the new
+    // extractWithIndex action.
+    if (lastExtractOutput) {
+      return {
+        kind: 'deviated',
+        lastState,
+        failedStepIndex: plan.steps.length,
+        reason: `plan completed extractWithIndex but the LLM must read the matches and pick by index. Match list:\n${lastExtractOutput.slice(0, 4000)}\n\nPick the index whose text matches the goal, then emit complete with result: <picked text>`,
+        turnsConsumed: plan.steps.length,
+      }
+    }
+
+    // Gen 9 (cherry-picked into Gen 10): if the last step WAS a runScript
+    // but the output was NOT meaningful (null, empty, placeholder), DO NOT
+    // auto-complete with garbage. Fall through to the per-action loop with
+    // a deviation reason that names the empty output. In Gen 10 the per-
+    // action loop has TWO new tools that make this recovery actually work:
+    //   1. extractWithIndex (the wide-query content-match action) — see
+    //      data-extraction rule #25
+    //   2. cost cap (100k tokens) — bounds any death-spiral if the LLM
+    //      can't recover, preventing the Gen 9.1 reddit failure mode
+    if (
+      lastStep
+      && lastStep.action.action === 'runScript'
+      && !isMeaningfulRunScriptOutput(lastRunScriptOutput)
+    ) {
+      if (this.config.debug) {
+        console.log(`[Runner] Gen 9: runScript returned no meaningful output (${JSON.stringify(lastRunScriptOutput).slice(0, 100)}); falling through to per-action loop for two-pass extraction`)
+      }
+      return {
+        kind: 'deviated',
+        lastState,
+        failedStepIndex: plan.steps.length - 1,
+        reason: `runScript returned no meaningful output (got: ${JSON.stringify(lastRunScriptOutput).slice(0, 200)}). The first-pass extraction failed — re-observe the page and try extractWithIndex with a wide query (e.g. 'p, span, dd, code') and a contains filter naming the expected text fragment. Pick-by-content beats pick-by-selector when the planner couldn't see the data at plan time.`,
+        turnsConsumed: plan.steps.length,
+      }
+    }
+
+    // All steps verified BUT the plan ended without an explicit complete/abort.
+    // This means the planner emitted a finite sequence of "work" steps and
+    // didn't terminate. The right behavior is NOT to fabricate a complete —
+    // we treat plan exhaustion as a deviation that triggers fallback to the
+    // per-action loop. The per-action loop will continue from the current
+    // state and emit `complete` when the goal is genuinely met.
+    return {
+      kind: 'deviated',
+      lastState,
+      failedStepIndex: plan.steps.length,
+      reason: 'plan exhausted without an explicit complete or abort step — falling through to per-action loop to finish the task',
+      turnsConsumed: plan.steps.length,
+    }
+  }
+
   private async verifyEffect(
     expectedEffect: string,
     preActionState: PageState,

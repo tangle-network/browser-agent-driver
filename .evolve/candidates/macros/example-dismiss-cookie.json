@@ -1,0 +1,24 @@
+{
+  "macro": {
+    "name": "dismiss-cookie-banner",
+    "description": "Accept/dismiss a standard cookie consent banner and give the page 500ms to settle.",
+    "params": [
+      { "name": "acceptRef", "description": "ref of the Accept button inside the banner", "required": true }
+    ],
+    "steps": [
+      { "action": "click", "selector": "${acceptRef}" },
+      { "action": "wait", "ms": 500 }
+    ]
+  },
+  "eval": {
+    "benchCase": "bench/scenarios/cases/local-cookie-banner.json",
+    "config": "bench/scenarios/configs/planner-on.mjs",
+    "modes": "fast-explore",
+    "reps": 3,
+    "successCriteria": {
+      "minPassRate": 1.0,
+      "maxTurnsMean": 5
+    }
+  },
+  "rationale": "Cookie banners cost 1-2 turns of ad-hoc selector probing. A named macro collapses the sequence into one dispatch."
+}

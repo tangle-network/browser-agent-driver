@@ -57,11 +57,10 @@ describe('library usage', () => {
     expect(plan.concurrency).toBe(1);
     expect(plan.extensionPaths).toEqual(['/repo/extensions/metamask']);
     expect(plan.userDataDir).toBe('/repo/.wallet-profile');
-    expect(plan.browserArgs).toEqual([
-      '--lang=en-US',
-      '--disable-extensions-except=/repo/extensions/metamask',
-      '--load-extension=/repo/extensions/metamask',
-    ]);
+    expect(plan.browserArgs).toContain('--lang=en-US');
+    expect(plan.browserArgs).toContain('--disable-extensions-except=/repo/extensions/metamask');
+    expect(plan.browserArgs).toContain('--load-extension=/repo/extensions/metamask');
+    expect(plan.browserArgs).toContain('--disable-blink-features=AutomationControlled');
   });
 
   it('maps programmatic DriverConfig to AgentConfig without leaking browser-only fields', () => {

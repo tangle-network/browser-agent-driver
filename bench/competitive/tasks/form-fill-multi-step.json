@@ -1,0 +1,14 @@
+{
+  "id": "form-fill-multi-step",
+  "name": "Multi-step account creation form (19 fields, 3 steps)",
+  "goal": "Fill out the entire multi-step account creation form, completing every field across all three steps before submitting:\n\nSTEP 1 (Personal Information):\n- First Name: Jordan\n- Last Name: Rivera\n- Date of Birth: 1990-04-15\n- Gender: select 'other'\nClick Next.\n\nSTEP 2 (Contact Details):\n- Email: jordan.rivera@example.com\n- Phone: 555-0142\n- Street Address: 742 Evergreen Terrace\n- City: Seattle\n- State: select Washington (WA)\n- ZIP Code: 98101\nClick Next.\n\nSTEP 3 (Preferences):\n- Plan: select 'Pro ($9/mo)'\n- Check the SMS notifications box\n- Check the Push notifications box\n- Check the Weekly digest box\n- Bio: 'Senior engineer building reliable browser automation.'\n- Website: https://jordan.example.com\n- Check the Terms of Service box\n- Check the Privacy Policy box\nClick Create Account.\n\nDo not skip any field. Verify the success message 'Account Created!' appears.",
+  "startUrl": "__FIXTURE_BASE_URL__/form.html",
+  "fixture": "form.html",
+  "maxTurns": 30,
+  "timeoutMs": 600000,
+  "tags": ["form-fill", "product-usage"],
+  "oracle": {
+    "type": "text-in-snapshot",
+    "expectedText": "Account Created!"
+  }
+}

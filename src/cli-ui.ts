@@ -289,11 +289,26 @@ ${chalk.bold('bad')} ${D('— LLM-driven browser automation CLI')}
 
 ${H('USAGE')}
   bad run [options]
-  bad runs [--session-id <id>] [--json]
+  bad attach [--attach-port <n>] --goal "..."    ${D('# drive your already-running Chrome')}
+  bad preview --goal "..." --url <url>           ${D('# plan-only dry run (no execution)')}
+  bad chrome-debug [--attach-port <n>]           ${D('# launch system Chrome on :9222')}
+  bad view <run-dir>                             ${D('# replay with frame-synced timeline')}
+  bad share <run-id>                             ${D('# create share link, copy to clipboard')}
+  bad runs [--session-id <id>] [--json]          ${D('# list recent runs')}
+  bad snapshot --url <url> [--json] [--out <file>]  ${D('# headless accessibility-tree dump, no LLM')}
   bad design-audit --url <url>
   bad auth save [--url <url>] [--storage-state <path>]
   bad auth login --url <url> --fill "field=value" [--wait-for <signal>]
   bad auth check [--storage-state <path>] [origin]
+
+${H('ATTACH MODE')}
+  ${D('$')} bad chrome-debug                              ${D('# launch system Chrome on :9222 with your real profile')}
+  ${D('$')} bad attach ${C('-g')} "Post to TikTok"                 ${D('# drive the already-logged-in Chrome')}
+  ${D('$')} bad run ${C('--attach')} ${C('-g')} "..."                    ${D('# same thing, flag form (still supported)')}
+
+  Attach mode connects to your real Chrome via CDP so your login state,
+  cookies, and extensions are preserved. Incompatible with ${C('--wallet')}
+  and ${C('--extension')} (both require launching a fresh Chromium).
 
 ${H('SINGLE TASK')}
   ${D('$')} bad run ${C('--goal')} "Sign up for account" ${C('--url')} http://localhost:3000
@@ -309,6 +324,15 @@ ${H('RESUME / FORK')}
 ${H('TEST SUITE')}
   ${D('$')} bad run ${C('--cases')} ./cases.json ${C('--concurrency')} 4
   ${D('$')} bad run ${C('--cases')} ./cases.json ${C('--sink')} ./results/ ${C('--model')} gpt-5.4
+
+${H('SNAPSHOT')}
+  ${D('$')} bad snapshot ${C('--url')} https://example.com ${C('--json')}
+  ${D('$')} bad snapshot ${C('--url')} http://localhost:3000 ${C('--out')} snap.json ${C('--wait')} domcontentloaded
+
+  Headless, no-LLM accessibility-tree dump. Loads URL, dismisses consent
+  dialogs, waits for network-idle, prints the aria snapshot. Intended for
+  deterministic DOM-level signal in CI and downstream quality pipelines
+  where the agentic loop is overkill.
 
 ${H('DESIGN AUDIT')}
   ${D('$')} bad design-audit ${C('--url')} https://stripe.com

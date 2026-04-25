@@ -12,8 +12,7 @@ import type { MeasurementBundle } from '../types.js'
 import { measureContrast } from './contrast.js'
 import { measureA11y } from './a11y.js'
 
-export { measureContrast } from './contrast.js'
-export { measureA11y, impactToSeverity } from './a11y.js'
+export { impactToSeverity } from './a11y.js'
 
 export async function gatherMeasurements(page: Page): Promise<MeasurementBundle> {
   const [contrast, a11y] = await Promise.all([

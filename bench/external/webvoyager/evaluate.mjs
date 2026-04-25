@@ -15,6 +15,14 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { loadLocalEnvFiles } from '../../../scripts/lib/env-loader.mjs'
+
+// Gen 11 fix: load .env so OPENAI_API_KEY is available when the LLM judge
+// (which uses the openai npm package) needs it. Other runners load this
+// via scripts/run-mode-baseline.mjs but evaluate.mjs is a top-level entry.
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+loadLocalEnvFiles(path.resolve(__dirname, '../../..'))
 
 const argv = process.argv.slice(2)
 const getArg = (name, fallback) => {
@@ -82,7 +90,11 @@ function extractTrajectory(result) {
   // Extract agent's final answer
   const agentAnswer = testResult.agentResult?.result || ''
   const goal = testResult.testCase?.goal || ''
-  const passed = testResult.verdict === 'PASS'
+  // Gen 11 fix: `verdict` is the agent's freeform completion text or error
+  // reason, NOT a "PASS"/"FAIL" status. The actual pass signal is
+  // testResult.agentSuccess (top-level) or agentResult.success.
+  const passed = testResult.agentSuccess === true
+    || testResult.agentResult?.success === true
 
   // Collect screenshot paths from turns
   const screenshots = []
@@ -92,10 +104,14 @@ function extractTrajectory(result) {
       // Base64 screenshot embedded in turn
       screenshots.push({ type: 'base64', data: turn.state.screenshot })
     }
-    // Check for screenshot files in the scenario directory
-    const ssPath = path.join(scenarioDir, 'fast-explore', 'suite', `turn-${turn.turn}.png`)
-    if (fs.existsSync(ssPath)) {
-      screenshots.push({ type: 'file', path: ssPath })
+    // Check for screenshot files in the scenario directory (both naming conventions)
+    for (const candidate of [
+      path.join(scenarioDir, 'fast-explore', 'suite', `turn-${turn.turn}.png`),
+      path.join(scenarioDir, 'fast-explore', 'suite', `turn-${String(turn.turn).padStart(3, '0')}.jpg`),
+    ]) {
+      if (fs.existsSync(candidate) && !screenshots.some((s) => s.path === candidate)) {
+        screenshots.push({ type: 'file', path: candidate })
+      }
     }
   }
 
@@ -103,11 +119,20 @@ function extractTrajectory(result) {
   const manifestPath = path.join(scenarioDir, 'fast-explore', 'manifest.json')
   if (fs.existsSync(manifestPath)) {
     const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
-    const ssEntries = (manifest.artifacts || []).filter(
-      (a) => a.type === 'screenshot' || a.path?.endsWith('.png'),
+    // Manifest entries use { type, name, uri } — not .path
+    const ssEntries = (Array.isArray(manifest) ? manifest : manifest.artifacts || []).filter(
+      (a) => a.type === 'screenshot',
     )
     for (const entry of ssEntries) {
-      const fullPath = path.resolve(path.dirname(manifestPath), entry.path)
+      // Resolve from entry.uri (file:// URI) or fall back to entry.name relative to manifest dir
+      let fullPath
+      if (entry.uri?.startsWith('file://')) {
+        fullPath = entry.uri.slice(7)
+      } else {
+        const relPath = entry.path || entry.name
+        if (!relPath) continue
+        fullPath = path.resolve(path.dirname(manifestPath), relPath)
+      }
       if (fs.existsSync(fullPath) && !screenshots.some((s) => s.path === fullPath)) {
         screenshots.push({ type: 'file', path: fullPath })
       }

@@ -1,0 +1,17 @@
+{
+  "id": "github-pr-count",
+  "name": "GitHub — TypeScript open PR count",
+  "goal": "Open https://github.com/microsoft/TypeScript/pulls and find the count of currently OPEN pull requests (the number shown in the 'Open' tab badge at the top of the PR list).\n\nReturn ONLY a JSON object with EXACTLY this key:\n  - \"open_count\": the open PR count as an integer (e.g. 357, NOT a string, NOT \"357 open\")\n\nExample correct output:\n  {\"open_count\": 357}\n\nThis number is shown next to the word 'Open' in the tab bar. Do not return the closed PR count. Complete with EXACTLY this JSON object as your final result.",
+  "startUrl": "https://github.com/microsoft/TypeScript/pulls",
+  "maxTurns": 6,
+  "timeoutMs": 180000,
+  "expectedDurationSec": 25,
+  "expectedTokenBudget": 18000,
+  "tags": ["extraction", "product-usage"],
+  "oracle": {
+    "type": "json-shape-match",
+    "expectedShape": {
+      "open_count": "re:^\\d+$"
+    }
+  }
+}

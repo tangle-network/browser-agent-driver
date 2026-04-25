@@ -71,6 +71,38 @@ export interface RunScriptAction {
   script: string;
 }
 
+/**
+ * Gen 10 — Extract a numbered, text-rich index of elements matching a CSS
+ * selector. Returns the visible textContent + tag + key attributes + a stable
+ * selector for each match. The agent then picks elements by index in the next
+ * turn (e.g., complete with `result: extracted[3].text`).
+ *
+ * This is the **capability change** Gen 10 ships: rather than asking the LLM
+ * to guess a precise selector that returns one element, the agent gets a wide
+ * net (e.g. `'p, span, dd, code'`) and reads the actual text content of every
+ * match. Pick-by-content is dramatically more reliable than selector-by-name
+ * on real-web pages where data lives in `<dl>/<dt>/<dd>/<code>/<pre>` or
+ * inside obscurely-classed wrapper divs.
+ *
+ * Example payload for npm weekly downloads:
+ *   {
+ *     action: 'extractWithIndex',
+ *     query: 'p, span, strong',
+ *     contains: 'downloads',
+ *   }
+ *
+ * Optional `contains` filters matches to only those containing the substring
+ * (case-insensitive). Without `contains`, all matches are returned (capped at
+ * 80 to keep the response readable).
+ */
+export interface ExtractWithIndexAction {
+  action: 'extractWithIndex';
+  /** CSS selector — broad selectors are fine, the response includes full text per match */
+  query: string;
+  /** Optional substring filter (case-insensitive) applied to textContent */
+  contains?: string;
+}
+
 export interface VerifyPreviewAction {
   action: 'verifyPreview';
 }
@@ -123,6 +155,124 @@ export interface ClickSequenceAction {
   intervalMs?: number;
 }
 
+// Gen 13: Vision-first coordinate-based actions
+export interface ClickAtAction {
+  action: 'clickAt';
+  /** X coordinate in virtual screen space (0-1024) */
+  x: number;
+  /** Y coordinate in virtual screen space (0-768) */
+  y: number;
+}
+
+export interface TypeAtAction {
+  action: 'typeAt';
+  /** X coordinate in virtual screen space (0-1024) */
+  x: number;
+  /** Y coordinate in virtual screen space (0-768) */
+  y: number;
+  /** Text to type after clicking */
+  text: string;
+}
+
+// Gen 23: SoM (Set-of-Marks) label-based action
+export interface ClickLabelAction {
+  action: 'clickLabel';
+  /** Label number from the SoM overlay (e.g., 3 for element [3]) */
+  label: number;
+}
+
+export interface TypeLabelAction {
+  action: 'typeLabel';
+  /** Label number from the SoM overlay */
+  label: number;
+  /** Text to type after clicking */
+  text: string;
+}
+
+/**
+ * Gen 29: invoke a named macro defined in `skills/macros/<name>.json`. The
+ * macro expands into a sequence of existing primitive actions. The driver
+ * executes each step in order; the first failure aborts the macro and its
+ * error is surfaced as the macro's ActionResult error.
+ *
+ * Macros are flat (cannot call other macros) to keep dispatch bounded and
+ * to avoid cycles. They receive arguments via `args`, which is substituted
+ * into `${paramName}` placeholders in each step's string fields.
+ */
+export interface MacroAction {
+  action: 'macro';
+  /** Macro name, matches a registered MacroDefinition */
+  name: string;
+  /** Arguments to interpolate into the macro's steps. Optional when the
+   *  macro has no declared parameters. */
+  args?: Record<string, string>;
+}
+
+/**
+ * Gen 33 — mid-run parallel fan-out. Spawns N sub-agents in fresh tabs,
+ * each with its own URL + goal, collects the results as structured
+ * feedback. Used when the agent sees "10 candidates, investigate each
+ * in parallel" — search result fan-out, roster screening, N-way
+ * comparison shopping, etc.
+ *
+ * Each sub-goal runs in an isolated tab sharing the parent context
+ * (cookies, localStorage) but not the parent page's live state. Results
+ * are merged and injected back as agent feedback so the outer goal
+ * continues with the enriched data.
+ */
+export interface FanOutAction {
+  action: 'fanOut';
+  /**
+   * Explicit sub-goals. Use when each branch needs a different URL
+   * or fundamentally different instruction. Mutually exclusive with
+   * the (baseUrl, goalTemplate, items) shorthand below.
+   */
+  subGoals?: Array<{
+    /** Starting URL for this branch. */
+    url: string;
+    /** Natural-language goal for this branch. */
+    goal: string;
+    /** Human-readable label rendered in the overlay + feedback. */
+    label?: string;
+    /** Max turns for this sub-agent. Default: 8. */
+    maxTurns?: number;
+  }>;
+  /**
+   * Shorthand for batch-shaped fanOuts. Lets the agent emit a tiny JSON
+   * object (one baseUrl, one template, an array of string items) that
+   * the runtime expands into full subGoals. This is the PREFERRED shape
+   * for N>3 branches — it keeps the LLM's JSON output minimal and
+   * escape-free, which meaningfully improves reliability (long nested
+   * subGoals arrays cause JSON parse failures in practice).
+   *
+   * Example:
+   *   {
+   *     "action": "fanOut",
+   *     "baseUrl": "https://sanctionssearch.ofac.treas.gov/",
+   *     "goalTemplate": "Screen {item} on OFAC SDN. Report CLEARED / POSITIVE MATCH with program / NEEDS REVIEW.",
+   *     "items": ["SMITH JOHN", "MADURO NICOLAS", "AL-ASSAD BASHAR"]
+   *   }
+   *
+   * Expanded to:
+   *   subGoals: [
+   *     { url: baseUrl, goal: "Screen SMITH JOHN on OFAC SDN. ...", label: "SMITH JOHN" },
+   *     { url: baseUrl, goal: "Screen MADURO NICOLAS on OFAC SDN. ...", label: "MADURO NICOLAS" },
+   *     ...
+   *   ]
+   *
+   * `{item}` in goalTemplate is replaced with each array entry verbatim.
+   * The label is the item itself.
+   */
+  baseUrl?: string;
+  goalTemplate?: string;
+  items?: string[];
+  /**
+   * Optional guidance on how to combine sub-results when they return.
+   * Default: serialize as a JSON array with {label, verdict} entries.
+   */
+  summarize?: string;
+}
+
 export type Action =
   | ClickAction
   | TypeAction
@@ -134,11 +284,72 @@ export type Action =
   | WaitAction
   | EvaluateAction
   | RunScriptAction
+  | ExtractWithIndexAction
   | VerifyPreviewAction
   | CompleteAction
   | AbortAction
   | BatchFillAction
-  | ClickSequenceAction;
+  | ClickSequenceAction
+  | ClickAtAction
+  | TypeAtAction
+  | ClickLabelAction
+  | TypeLabelAction
+  | MacroAction
+  | FanOutAction;
+
+// ============================================================================
+// Plan - Structured action sequence (Gen 7)
+// ============================================================================
+
+/**
+ * A single step in a Plan. Wraps an action with a verification checkpoint
+ * and optional recovery hint. The runner executes steps deterministically;
+ * `expectedEffect` is the post-condition that must hold for the next step
+ * to fire.
+ */
+export interface PlanStep {
+  /**
+   * The action to execute deterministically. Use Gen 6 batch verbs
+   * (`fill`, `clickSequence`) wherever possible to minimize step count.
+   */
+  action: Action;
+  /**
+   * Post-condition the runner verifies before advancing. Same shape as
+   * the existing `expectedEffect` on Turn — natural-language assertion
+   * checked against the post-action snapshot.
+   */
+  expectedEffect: string;
+  /**
+   * Optional human-readable description of what this step does. Surfaced
+   * in plan-step-executed events for observability and the live viewer.
+   */
+  rationale?: string;
+}
+
+/**
+ * A complete plan from `Brain.plan()`. The runner attempts to execute
+ * every step deterministically. On the first verification failure or
+ * selector miss, the runner falls back to the existing per-action
+ * decide loop with a `[REPLAN]` hint in extraContext.
+ *
+ * Plans are NOT trees — they're flat sequences. Branching is handled
+ * by the per-action fallback loop, which decide()'s its way through
+ * the unexpected state then potentially re-enters the planner.
+ */
+export interface Plan {
+  /** Steps to execute in order */
+  steps: PlanStep[];
+  /**
+   * Final result text the runner should emit as `complete` if all steps
+   * pass verification. If absent, the runner emits a generic completion.
+   */
+  finalResult?: string;
+  /**
+   * Plan-level reasoning — what's the strategy, why this sequence?
+   * Surfaced in plan-completed events for observability.
+   */
+  reasoning?: string;
+}
 
 // ============================================================================
 // Page State - What the agent sees
@@ -196,6 +407,18 @@ export interface AgentConfig {
   navModel?: string;
   /** Provider for navModel (defaults to provider) */
   navProvider?: 'openai' | 'anthropic' | 'google' | 'cli-bridge' | 'codex-cli' | 'claude-code' | 'sandbox-backend' | 'zai-coding-plan';
+
+  /** Gen 28: per-role model overrides. Each role falls back to the main model/provider. */
+  models?: {
+    /** Planner — needs best reasoning. Default: main model. */
+    planner?: { model: string; provider?: string };
+    /** Executor — follows plans, can be cheap. Default: navModel or main model. */
+    executor?: { model: string; provider?: string };
+    /** Verifier — structured yes/no. Default: navModel or main model. */
+    verifier?: { model: string; provider?: string };
+    /** Supervisor — strategic recovery. Default: main model. */
+    supervisor?: { model: string; provider?: string };
+  };
   /** API key (defaults to OPENAI_API_KEY) */
   apiKey?: string;
   /** Custom API base URL (for LiteLLM, local models, etc.) */
@@ -214,6 +437,8 @@ export interface AgentConfig {
   vision?: boolean;
   /** Vision policy: always, never, or auto-escalate on ambiguous/stalled states */
   visionStrategy?: 'always' | 'never' | 'auto';
+  /** Gen 13: observation mode — 'dom' (default), 'vision', or 'hybrid' */
+  observationMode?: 'dom' | 'vision' | 'hybrid';
   /** Max conversation history turns to keep (default: 10) */
   maxHistoryTurns?: number;
   /** Number of retries on transient failures (default: 3) */
@@ -234,6 +459,25 @@ export interface AgentConfig {
   traceTtlDays?: number;
   /** Optional micro-planning: execute small follow-up actions within a turn */
   microPlan?: MicroPlanConfig;
+  /**
+   * Gen 7 plan-then-execute. When true, BrowserAgent.run() makes a single
+   * `Brain.plan()` LLM call up front, then executes the plan steps
+   * deterministically without re-entering the LLM until verification fails.
+   * On the first plan deviation, the runner falls back to the existing
+   * per-action observe→decide→execute loop with a [REPLAN] hint injected.
+   *
+   * Default: false (per-action loop only). Set to true to enable the planner.
+   * Disable via BAD_PLANNER=0 env override.
+   */
+  plannerEnabled?: boolean;
+  /**
+   * Gen 8: extra wait BEFORE the planner's initial observe, in ms. Used by
+   * real-web runs (planner-on-realweb.mjs) to give SPAs time to load their
+   * dynamic content before the planner snapshots the page. Without this,
+   * the planner sees a half-loaded SPA and emits runScript queries against
+   * selectors that don't exist yet, returning null/empty. Default: 0.
+   */
+  initialObserveSettleMs?: number;
   /** Optional scout that ranks ambiguous link choices before the actor decides */
   scout?: ScoutConfig;
   /** Optional supervisor that can intervene when the run is hard-stalled */
@@ -250,6 +494,17 @@ export interface AgentConfig {
     /** Max solve attempts per encounter (default: 5) */
     maxAttempts?: number;
   };
+
+  /** Gen 21: parallel tab execution for compound goals */
+  parallelTabs?: {
+    /** Enable goal decomposition + parallel tab execution (default: false) */
+    enabled?: boolean;
+    /** Max parallel tabs (default: 3) */
+    maxTabs?: number;
+  };
+
+  /** Override token budget (used internally by parallel runner to split budget) */
+  tokenBudget?: number;
 }
 
 export interface ObservabilityConfig {
@@ -528,7 +783,22 @@ export interface TestResult {
   runtime?: RunRuntimeConfig;
 }
 
+/**
+ * Current on-disk schema version for `report.json` / `TestSuiteResult`.
+ *
+ * Consumers that parse `<sink>/report.json` should pin or range-check this.
+ * The contract: bump on any breaking shape change (removed fields, renamed
+ * fields, changed value semantics). Adding an optional field is non-breaking
+ * and does NOT bump the version.
+ */
+export const TEST_SUITE_SCHEMA_VERSION = '1' as const;
+
 export interface TestSuiteResult {
+  /**
+   * On-disk schema version. See {@link TEST_SUITE_SCHEMA_VERSION}. Consumers
+   * should verify this matches their expected version before destructuring.
+   */
+  schemaVersion: string;
   /** Model used */
   model: string;
   /** Runtime/backend configuration for the suite */

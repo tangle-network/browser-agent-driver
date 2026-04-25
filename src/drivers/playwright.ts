@@ -17,10 +17,91 @@ import { ANALYTICS_PATTERNS, IMAGE_PATTERNS, MEDIA_PATTERNS } from './block-patt
 import { buildCdpSnapshot } from './cdp-snapshot.js';
 import { getPageMetadata } from './cdp-page-state.js';
 import { CURSOR_OVERLAY_INIT_SCRIPT } from './cursor-overlay.js';
+import { formatOverlayLabel } from './overlay-label.js';
+import { runExtractWithIndex, formatExtractWithIndexResult } from './extract-with-index.js';
+import { SOM_INJECT_SCRIPT, SOM_REMOVE_SCRIPT } from './som-overlay.js';
+import type { SomElement } from './som-overlay.js';
+import type { MacroRegistry } from '../skills/macro-loader.js';
+import { interpolateStep } from '../skills/macro-loader.js';
 
 function isPointerInterceptError(error: string): boolean {
   return /intercepts pointer events|subtree intercepts pointer events|not receiving pointer events/i.test(error);
 }
+
+// ---------------------------------------------------------------------------
+// Mouse humanization — Bezier curve movement with gaussian jitter
+// ---------------------------------------------------------------------------
+
+/** Cubic bezier interpolation for a single axis */
+function cubicBezier(t: number, p0: number, p1: number, p2: number, p3: number): number {
+  const u = 1 - t;
+  return u * u * u * p0 + 3 * u * u * t * p1 + 3 * u * t * t * p2 + t * t * t * p3;
+}
+
+/** Generate Bezier control points with human-like overshoot */
+function bezierControlPoints(
+  x0: number, y0: number, x1: number, y1: number,
+): { cp1x: number; cp1y: number; cp2x: number; cp2y: number } {
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  // Control points offset perpendicular to the line + slight overshoot
+  const spread = Math.max(30, Math.sqrt(dx * dx + dy * dy) * 0.3);
+  const angle = Math.atan2(dy, dx);
+  const perpAngle = angle + Math.PI / 2;
+  const jitter1 = (Math.random() - 0.5) * spread;
+  const jitter2 = (Math.random() - 0.5) * spread;
+  return {
+    cp1x: x0 + dx * 0.25 + Math.cos(perpAngle) * jitter1,
+    cp1y: y0 + dy * 0.25 + Math.sin(perpAngle) * jitter1,
+    cp2x: x0 + dx * 0.75 + Math.cos(perpAngle) * jitter2,
+    cp2y: y0 + dy * 0.75 + Math.sin(perpAngle) * jitter2,
+  };
+}
+
+/** Gaussian-distributed click offset — never hits exact center */
+function gaussianOffset(size: number): number {
+  const sigma = size * 0.15;
+  // Box-Muller transform
+  const u1 = Math.random() || 0.001;
+  const u2 = Math.random();
+  return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2) * sigma;
+}
+
+/**
+ * Move the real mouse along a Bezier curve from current position to target.
+ * Generates 8-15 intermediate points with velocity-based timing (fast in
+ * middle, slow at endpoints). Total duration 150-400ms.
+ */
+async function humanMouseMove(page: Page, targetX: number, targetY: number): Promise<void> {
+  // Get current mouse position (approximate from last known or viewport center)
+  const viewport = page.viewportSize();
+  const startX = viewport ? viewport.width / 2 : 512;
+  const startY = viewport ? viewport.height / 2 : 384;
+
+  const { cp1x, cp1y, cp2x, cp2y } = bezierControlPoints(startX, startY, targetX, targetY);
+  const steps = 8 + Math.floor(Math.random() * 8); // 8-15 points
+  const totalMs = 150 + Math.floor(Math.random() * 250); // 150-400ms
+
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    // Ease-in-out timing (slow start/end, fast middle)
+    const eased = t < 0.5
+      ? 2 * t * t
+      : -1 + (4 - 2 * t) * t;
+    const x = cubicBezier(eased, startX, cp1x, cp2x, targetX);
+    const y = cubicBezier(eased, startY, cp1y, cp2y, targetY);
+    await page.mouse.move(x, y);
+    if (i < steps) {
+      const stepDelay = Math.max(1, Math.floor(totalMs / steps * (0.5 + Math.random())));
+      await page.waitForTimeout(stepDelay);
+    }
+  }
+}
+
+// Gen 13: Virtual screen dimensions for vision-first coordinate actions.
+// Claude's computer-use training uses 1024x768. Screenshots are resized to
+// this before being sent, and coordinate outputs are in this space.
+const VIRTUAL_SCREEN = { width: 1024, height: 768 } as const;
 
 /** Phase-level timing breakdown for observe() */
 export interface ObserveTiming {
@@ -67,6 +148,10 @@ export interface PlaywrightDriverOptions {
    * screenshot lands wherever the transition has reached by then.
    */
   showCursor?: boolean;
+  /** Gen 29: registry of user-defined macros the agent can invoke via
+   * `{action:"macro", name:..., args:...}`. When omitted, macro calls fail
+   * with an error message referencing the missing name. */
+  macros?: MacroRegistry;
 }
 
 export class PlaywrightDriver implements Driver {
@@ -81,6 +166,8 @@ export class PlaywrightDriver implements Driver {
    * the init script. Undefined if showCursor is off.
    */
   private cursorInstallPromise?: Promise<void>;
+  /** Gen 23: SoM element map from last observe — used to resolve clickLabel/typeLabel */
+  private somElements: SomElement[] = [];
 
   constructor(
     private page: Page,
@@ -99,13 +186,45 @@ export class PlaywrightDriver implements Driver {
    * browser context, so it survives navigations and applies to popups.
    */
   private async installCursorOverlay(): Promise<void> {
+    const debug = process.env.BAD_DEBUG_CURSOR === '1';
+    if (debug) {
+      this.page.on('console', (msg) => {
+        const text = msg.text();
+        if (text.includes('[bad-cursor]') || text.includes('bad_overlay')) {
+          console.error('[cursor/page-console]', msg.type(), text.slice(0, 200));
+        }
+      });
+      this.page.on('pageerror', (err) => {
+        if (err.message.includes('overlay') || err.message.includes('bad_')) {
+          console.error('[cursor/page-error]', err.message.slice(0, 200));
+        }
+      });
+    }
+    // Re-inject on every frame navigation. addInitScript at context/page level
+    // is SUPPOSED to fire on every new document, but in practice we observed it
+    // missing on navigations kicked off from `bad run --url` (empirically
+    // verified via flag/api/rootAttached all false post-navigate). This handler
+    // is the belt: every time the main frame hits a new URL, we evaluate the
+    // init script directly. Idempotent via the __bad_overlay_installed guard.
+    this.page.on('framenavigated', async (frame) => {
+      if (frame !== this.page.mainFrame()) return;
+      try {
+        await frame.evaluate(CURSOR_OVERLAY_INIT_SCRIPT);
+        if (debug) console.error('[cursor] framenavigated reinject ok for', frame.url().slice(0, 80));
+      } catch (err) {
+        if (debug) console.error('[cursor] framenavigated reinject failed:', (err as Error).message?.slice(0, 120));
+      }
+    });
     try {
       // Context-level: applies to all current and future pages
       await this.page.context().addInitScript({ content: CURSOR_OVERLAY_INIT_SCRIPT });
+      if (debug) console.error('[cursor] addInitScript ok');
       // Page-level: ensure the current page has it now (addInitScript is for new docs)
-      await this.page.evaluate(CURSOR_OVERLAY_INIT_SCRIPT).catch(() => { /* may already exist or CSP-blocked */ });
-    } catch {
-      // Strict CSP can block evaluate; init script via context still works on next nav
+      await this.page.evaluate(CURSOR_OVERLAY_INIT_SCRIPT).catch((err) => {
+        if (debug) console.error('[cursor] page.evaluate(init) failed:', err.message?.slice(0, 200));
+      });
+    } catch (err) {
+      if (debug) console.error('[cursor] installCursorOverlay threw:', (err as Error).message?.slice(0, 200));
     }
   }
 
@@ -119,7 +238,7 @@ export class PlaywrightDriver implements Driver {
    */
   private async animateCursorToSelector(
     selector: string,
-    actionLabel: string,
+    actionOrVerb: Action | string,
   ): Promise<void> {
     if (!this.options.showCursor) return;
     // Make sure the install promise (fired in the constructor) has resolved
@@ -136,6 +255,15 @@ export class PlaywrightDriver implements Driver {
       const cx = box.x + box.width / 2;
       const cy = box.y + box.height / 2;
 
+      // Build a rich label from the structured action when available. Falls
+      // back to the bare verb (back-compat) for callers that haven't been
+      // migrated yet (e.g., clickAt/typeAt paths that only have raw coords).
+      const isAction = typeof actionOrVerb === 'object' && actionOrVerb !== null && 'action' in actionOrVerb;
+      const ref = this.snapshot.lookupRef(selector);
+      const actionLabel = isAction
+        ? formatOverlayLabel(actionOrVerb as Action, { targetName: ref?.name, targetRole: ref?.role })
+        : (actionOrVerb as string);
+
       // Schedule highlight + cursor move + click pulse in a SINGLE page.evaluate
       // round trip. The CSS transition runs asynchronously (no waitForTimeout)
       // — the actual click fires immediately after, and the next observe() picks
@@ -144,26 +272,136 @@ export class PlaywrightDriver implements Driver {
       // Previously this slept 240ms after the moveTo to let the transition
       // land before the click — pure dead time on every interactive action.
       // Over a 50-turn session that was ~12s of zero-information waiting.
-      const isClickLike = actionLabel === 'click' || actionLabel === 'type' || actionLabel === 'press';
-      await this.page.evaluate(
+      const verb = isAction ? (actionOrVerb as Action).action : (actionOrVerb as string);
+      const isClickLike = verb === 'click' || verb === 'type' || verb === 'press';
+      const debug = process.env.BAD_DEBUG_CURSOR === '1';
+      const result = await this.page.evaluate(
         ({ x, y, w, h, label, cx: cxArg, cy: cyArg, pulse }: { x: number; y: number; w: number; h: number; label: string; cx: number; cy: number; pulse: boolean }) => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const ov = (window as any).__bad_overlay;
-          if (!ov) return;
+          const w_ = window as any;
+          const state = {
+            flag: Boolean(w_.__bad_overlay_installed),
+            api: Boolean(w_.__bad_overlay),
+            rootAttached: Boolean(document.getElementById('__bad_overlay_root')),
+            url: location.href.slice(0, 80),
+          };
+          const ov = w_.__bad_overlay;
+          if (!ov) return { found: false, state };
           ov.highlightRect(x, y, w, h);
           ov.moveTo(cxArg, cyArg, label);
           if (pulse) ov.pulseClick(cxArg, cyArg);
+          return { found: true, label, state };
         },
         { x: box.x, y: box.y, w: box.width, h: box.height, label: actionLabel, cx, cy, pulse: isClickLike },
-      ).catch(() => { /* CSP or page closed */ });
+      ).catch((err) => ({ error: err.message?.slice(0, 150) }));
+      if (debug) console.error('[cursor] animate result:', JSON.stringify(result));
     } catch {
       // Overlay is purely cosmetic — never let it break the action
+    }
+  }
+
+  /**
+   * Animate cursor to raw (x, y) coordinates — for clickAt/typeAt actions.
+   * Same visual effect as animateCursorToSelector but without needing a locator.
+   */
+  private async animateCursorToCoord(x: number, y: number, label: string): Promise<void> {
+    if (!this.options.showCursor) return;
+    if (this.cursorInstallPromise) {
+      await this.cursorInstallPromise.catch(() => undefined);
+    }
+    try {
+      await this.page.evaluate(
+        ({ cx, cy, lbl }: { cx: number; cy: number; lbl: string }) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const ov = (window as any).__bad_overlay;
+          if (!ov) return;
+          ov.moveTo(cx, cy, lbl);
+          ov.pulseClick(cx, cy);
+        },
+        { cx: x, cy: y, lbl: label },
+      ).catch(() => {});
+    } catch {
+      // Cosmetic — never break the action
     }
   }
 
   /** Get phase-level timing from the last observe() call */
   getLastTiming(): ObserveTiming | undefined {
     return this.lastTiming;
+  }
+
+  /**
+   * Invoke a method on `window.__bad_overlay` in the page context. No-op
+   * when the overlay is disabled or the page doesn't carry the widget
+   * (XML docs, PDF viewer, chrome://, navigation-in-flight). All failures
+   * are swallowed — the overlay is strictly cosmetic, never break a run.
+   *
+   * Centralizes the defensive pattern that previously lived in 8 copies
+   * across 3 files: install-await, try/catch, page.evaluate.catch, method
+   * existence guard. One place to fix, one place to audit.
+   */
+  private async callOverlay(method: string, args: unknown[] = []): Promise<void> {
+    if (!this.options.showCursor) return
+    if (this.cursorInstallPromise) {
+      await this.cursorInstallPromise.catch(() => undefined)
+    }
+    try {
+      await this.page.evaluate(
+        ({ m, a }: { m: string; a: unknown[] }) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const ov = (window as { __bad_overlay?: any }).__bad_overlay
+          const fn = ov && ov[m]
+          if (typeof fn === 'function') fn.apply(ov, a)
+        },
+        { m: method, a: args },
+      ).catch(() => {})
+    } catch { /* cosmetic */ }
+  }
+
+  /** Agent reasoning panel (top-right). Pass empty to hide. */
+  async setOverlayReasoning(text: string): Promise<void> {
+    await this.callOverlay('setReasoning', [text])
+  }
+
+  /** Turn counter + progress bar (top). `label` is a short status chip. */
+  async setOverlayProgress(current: number, total: number, label?: string): Promise<void> {
+    await this.callOverlay('setProgress', [current, total, label])
+  }
+
+  /** Verdict badge (bottom-left, stacked). Kinds: positive/cleared/review/info. */
+  async pushOverlayBadge(kind: 'positive' | 'cleared' | 'review' | 'info', text: string): Promise<void> {
+    await this.callOverlay('pushBadge', [kind, text])
+  }
+
+  // ── Gen 34 Hydra API ───────────────────────────────────────────────
+
+  /** Start the fan-out overlay: dim backdrop + grid of N labeled cells. */
+  async fanOutStart(labels: string[]): Promise<void> {
+    await this.callOverlay('fanOutStart', [labels.slice(0, 8)])
+  }
+
+  /** Stream a JPEG data URL into cell N. Call at 2-5 FPS during fan-out. */
+  async fanOutUpdateCell(index: number, dataUrl?: string): Promise<void> {
+    await this.callOverlay('fanOutUpdateCell', [index, dataUrl])
+  }
+
+  /** Lock cell N to a verdict color + chip text. */
+  async fanOutCompleteCell(
+    index: number,
+    kind: 'positive' | 'cleared' | 'review' | 'info',
+    verdictText?: string,
+  ): Promise<void> {
+    await this.callOverlay('fanOutCompleteCell', [index, kind, verdictText])
+  }
+
+  /** Collapse the grid — cells fly to center (~500ms animation). */
+  async fanOutCollapse(): Promise<void> {
+    await this.callOverlay('fanOutCollapse')
+  }
+
+  /** Fade out the fan-out overlay. Call after collapse finishes. */
+  async fanOutDismiss(): Promise<void> {
+    await this.callOverlay('fanOutDismiss')
   }
 
   getPage(): Page {
@@ -336,6 +574,17 @@ export class PlaywrightDriver implements Driver {
       }
     }
 
+    // Gen 23: SoM overlay — inject numbered labels, screenshot, remove.
+    // Only when visionStrategy is 'always' (vision/hybrid mode).
+    const useSom = captureScreenshot && this.options.visionStrategy === 'always';
+    if (useSom) {
+      try {
+        this.somElements = await this.page.evaluate(SOM_INJECT_SCRIPT) as SomElement[];
+      } catch { this.somElements = []; }
+    } else {
+      this.somElements = [];
+    }
+
     // Screenshot still via Playwright (viewport compositing)
     const ssStart = performance.now();
     let screenshot: string | undefined;
@@ -344,6 +593,11 @@ export class PlaywrightDriver implements Driver {
       screenshot = buf.toString('base64');
     }
     const screenshotMs = performance.now() - ssStart;
+
+    // Remove SoM overlay after screenshot
+    if (useSom) {
+      await this.page.evaluate(SOM_REMOVE_SCRIPT).catch(() => {});
+    }
 
     const snapshotDiff = this.snapshot.getDiff();
     const snapshotDiffRaw = this.snapshot.getRawDiff();
@@ -423,6 +677,12 @@ export class PlaywrightDriver implements Driver {
     }
   }
 
+  /** Expose construction options so runners can clone this driver's config
+   * onto a sub-driver (compound-goal parallel tabs). */
+  getDriverOptions(): PlaywrightDriverOptions {
+    return this.options;
+  }
+
   /**
    * Execute an action first. If it fails and a blocking overlay is detected,
    * dismiss it and retry once.
@@ -450,12 +710,27 @@ export class PlaywrightDriver implements Driver {
   async execute(action: Action): Promise<ActionResult> {
     const timeout = this.options.timeout ?? 30000;
 
+    // The cursor overlay install is fire-and-forget from the constructor.
+    // Await it here so addInitScript is registered on the context BEFORE
+    // the first navigate fires — otherwise the init script races the nav
+    // and doesn't apply to the target page, which means window.__bad_overlay
+    // is undefined when animateCursorToSelector tries to drive it.
+    if (this.cursorInstallPromise) {
+      await this.cursorInstallPromise.catch(() => undefined);
+    }
+
     try {
       switch (action.action) {
         case 'click': {
           const locator = this.snapshot.resolveLocator(this.page, action.selector);
           const bounds = await this.captureBounds(locator);
-          await this.animateCursorToSelector(action.selector, 'click');
+          await this.animateCursorToSelector(action.selector, action);
+          // Human-like mouse movement to the target before clicking
+          if (bounds) {
+            const targetX = bounds.x + bounds.width / 2 + gaussianOffset(bounds.width);
+            const targetY = bounds.y + bounds.height / 2 + gaussianOffset(bounds.height);
+            await humanMouseMove(this.page, targetX, targetY);
+          }
           // Listen for popups but don't block: collect any that fire during the click
           let popupPage: import('playwright').Page | null = null;
           const onPopup = (page: import('playwright').Page) => { popupPage = page; };
@@ -487,7 +762,7 @@ export class PlaywrightDriver implements Driver {
         case 'type': {
           const locator = this.snapshot.resolveLocator(this.page, action.selector);
           const bounds = await this.captureBounds(locator);
-          await this.animateCursorToSelector(action.selector, 'type');
+          await this.animateCursorToSelector(action.selector, action);
           try {
             await this.withOverlayRecovery(async () => {
               await locator.click({ timeout });
@@ -513,7 +788,7 @@ export class PlaywrightDriver implements Driver {
         case 'press': {
           const locator = this.snapshot.resolveLocator(this.page, action.selector);
           const bounds = await this.captureBounds(locator);
-          await this.animateCursorToSelector(action.selector, 'press');
+          await this.animateCursorToSelector(action.selector, action);
           await this.withOverlayRecovery(async () => {
             await locator.press(action.key, { timeout });
           });
@@ -523,7 +798,7 @@ export class PlaywrightDriver implements Driver {
         case 'hover': {
           const locator = this.snapshot.resolveLocator(this.page, action.selector);
           const bounds = await this.captureBounds(locator);
-          await this.animateCursorToSelector(action.selector, 'hover');
+          await this.animateCursorToSelector(action.selector, action);
           await locator.hover({ timeout });
           return { success: true, bounds };
         }
@@ -531,7 +806,7 @@ export class PlaywrightDriver implements Driver {
         case 'select': {
           const locator = this.snapshot.resolveLocator(this.page, action.selector);
           const bounds = await this.captureBounds(locator);
-          await this.animateCursorToSelector(action.selector, 'select');
+          await this.animateCursorToSelector(action.selector, action);
           await locator.selectOption(action.value, { timeout });
           return { success: true, bounds };
         }
@@ -581,6 +856,17 @@ export class PlaywrightDriver implements Driver {
           return { success: true, error: undefined, data: stringified };
         }
 
+        case 'extractWithIndex': {
+          // Gen 10: numbered DOM-index extraction. Returns the formatted match
+          // list as `data` so executePlan can capture it like runScript does.
+          // The per-action loop has its own intercept (runner.ts) so this
+          // path is only hit when extractWithIndex appears in a planner-
+          // emitted Plan step.
+          const matches = await runExtractWithIndex(this.page, action.query, action.contains);
+          const formatted = formatExtractWithIndexResult(matches, action.query, action.contains);
+          return { success: true, error: undefined, data: formatted };
+        }
+
         case 'evaluate':
         case 'verifyPreview':
           // Handled by the runner — the driver just acknowledges it.
@@ -613,9 +899,11 @@ export class PlaywrightDriver implements Driver {
           // sees something move on screen. The actual fills happen below.
           const firstSelector = fieldEntries[0]?.[0] ?? selectEntries[0]?.[0] ?? checkEntries[0];
           if (firstSelector) {
-            await this.animateCursorToSelector(firstSelector, 'type');
+            const firstText = fieldEntries[0]?.[1] ?? '';
+            await this.animateCursorToSelector(firstSelector, { action: 'type', selector: firstSelector, text: firstText });
           }
-          for (const [ref, text] of fieldEntries) {
+          for (let fi = 0; fi < fieldEntries.length; fi++) {
+            const [ref, text] = fieldEntries[fi]!;
             try {
               const locator = this.snapshot.resolveLocator(this.page, ref);
               const bounds = await this.captureBounds(locator);
@@ -628,6 +916,12 @@ export class PlaywrightDriver implements Driver {
                   el.dispatchEvent(new Event('change', { bubbles: true }));
                 });
               });
+              // Gen 27: settle delay between fields. Complex forms (Google
+              // Flights, Booking) use framework-managed state that needs time
+              // to process each field before the next one is filled.
+              if (fi < fieldEntries.length - 1) {
+                await this.page.waitForTimeout(150);
+              }
             } catch (err) {
               const message = err instanceof Error ? err.message : String(err);
               return { success: false, error: `fill ${ref}: ${message}` };
@@ -655,6 +949,60 @@ export class PlaywrightDriver implements Driver {
               return { success: false, error: `fill check ${ref}: ${message}` };
             }
           }
+          // Gen 27: post-fill verification. Read back field values to detect
+          // silent form resets (e.g., Google Flights wiping fields on state change).
+          // Report mismatches so the agent can switch to keyboard-only filling.
+          if (fieldEntries.length > 0) {
+            await this.page.waitForTimeout(200); // let framework settle
+            const mismatches: string[] = [];
+            for (const [ref, expectedText] of fieldEntries) {
+              try {
+                const locator = this.snapshot.resolveLocator(this.page, ref);
+                const actualValue = await locator.inputValue({ timeout: 2000 }).catch(() =>
+                  locator.evaluate((el: HTMLElement) => {
+                    if ('value' in el) return (el as HTMLInputElement).value;
+                    return el.textContent?.trim() || '';
+                  }).catch(() => '')
+                );
+                const expected = expectedText.toLowerCase().trim();
+                const actual = (actualValue || '').toLowerCase().trim();
+                if (actual && expected && !actual.includes(expected) && !expected.includes(actual)) {
+                  mismatches.push(`${ref}: expected "${expectedText}" but got "${actualValue}"`);
+                }
+              } catch { /* skip verification for inaccessible fields */ }
+            }
+            if (mismatches.length > 0) {
+              // Auto-retry mismatched fields with keyboard-mode:
+              // click → triple-click (select all) → type → short wait.
+              // This fires individual key events that framework components handle
+              // better than locator.fill()'s programmatic value assignment.
+              const retried: string[] = [];
+              for (const mismatch of mismatches) {
+                const ref = mismatch.split(':')[0];
+                const entry = fieldEntries.find(([r]) => r === ref);
+                if (!entry) continue;
+                try {
+                  const locator = this.snapshot.resolveLocator(this.page, ref);
+                  await locator.click({ timeout: 3000 });
+                  // Select all existing text
+                  await this.page.keyboard.press('Control+a');
+                  await this.page.waitForTimeout(50);
+                  // Type character-by-character to fire proper key events
+                  await this.page.keyboard.type(entry[1], { delay: 30 });
+                  await this.page.waitForTimeout(300);
+                  retried.push(ref);
+                } catch { /* skip failed retries */ }
+              }
+              const retriedNote = retried.length > 0
+                ? ` Auto-retried ${retried.length} field(s) with keyboard input.`
+                : '';
+              return {
+                success: true,
+                ...(lastBounds ? { bounds: lastBounds } : {}),
+                warning: `FORM RESET DETECTED: ${mismatches.length}/${fieldEntries.length} field(s) did not retain values.${retriedNote} If fields are still wrong, use keyboard-only interaction (click field → type → Enter to confirm autocomplete → Tab to next).`,
+              };
+            }
+          }
           return { success: true, ...(lastBounds ? { bounds: lastBounds } : {}) };
         }
 
@@ -675,7 +1023,7 @@ export class PlaywrightDriver implements Driver {
               const locator = this.snapshot.resolveLocator(this.page, ref);
               const bounds = await this.captureBounds(locator);
               if (bounds) lastBounds = bounds;
-              await this.animateCursorToSelector(ref, 'click');
+              await this.animateCursorToSelector(ref, { action: 'click', selector: ref });
               await this.withOverlayRecovery(async () => {
                 await locator.click({ timeout: sequenceClickTimeout });
               });
@@ -686,6 +1034,95 @@ export class PlaywrightDriver implements Driver {
             if (i < action.refs.length - 1 && intervalMs > 0) {
               await this.page.waitForTimeout(intervalMs);
             }
+          }
+          return { success: true, ...(lastBounds ? { bounds: lastBounds } : {}) };
+        }
+
+        // Gen 13: Vision-first coordinate-based actions.
+        // Bounds use a 40×40 box centered on the click point so the
+        // bad-app ClickOverlay renders a visible highlight + ripple.
+        case 'clickAt': {
+          const viewport = this.page.viewportSize() ?? { width: 1920, height: 1080 };
+          const actualX = Math.round(action.x * (viewport.width / VIRTUAL_SCREEN.width));
+          const actualY = Math.round(action.y * (viewport.height / VIRTUAL_SCREEN.height));
+          await this.animateCursorToCoord(actualX, actualY, 'clickAt');
+          await humanMouseMove(this.page, actualX, actualY);
+          await this.page.mouse.click(actualX, actualY);
+          return { success: true, bounds: { x: actualX - 20, y: actualY - 20, width: 40, height: 40 } };
+        }
+
+        case 'typeAt': {
+          const viewport = this.page.viewportSize() ?? { width: 1920, height: 1080 };
+          const actualX = Math.round(action.x * (viewport.width / VIRTUAL_SCREEN.width));
+          const actualY = Math.round(action.y * (viewport.height / VIRTUAL_SCREEN.height));
+          await this.animateCursorToCoord(actualX, actualY, 'typeAt');
+          await this.page.mouse.click(actualX, actualY);
+          await this.page.waitForTimeout(100);
+          await this.page.keyboard.type(action.text);
+          return { success: true, bounds: { x: actualX - 20, y: actualY - 20, width: 40, height: 40 } };
+        }
+
+        // Gen 23: SoM label-based actions — resolve label → element center → click
+        case 'clickLabel': {
+          const el = this.somElements.find(e => e.label === action.label);
+          if (!el) return { success: false, error: `SoM label [${action.label}] not found (${this.somElements.length} elements available)` };
+          await this.animateCursorToCoord(el.cx, el.cy, `[${action.label}]`);
+          await this.page.mouse.click(el.cx, el.cy);
+          return { success: true, bounds: { x: el.x, y: el.y, width: el.width, height: el.height } };
+        }
+
+        case 'typeLabel': {
+          const el = this.somElements.find(e => e.label === action.label);
+          if (!el) return { success: false, error: `SoM label [${action.label}] not found` };
+          await this.animateCursorToCoord(el.cx, el.cy, `[${action.label}]`);
+          await this.page.mouse.click(el.cx, el.cy);
+          await this.page.waitForTimeout(100);
+          await this.page.keyboard.type(action.text);
+          return { success: true, bounds: { x: el.x, y: el.y, width: el.width, height: el.height } };
+        }
+
+        case 'macro': {
+          // Gen 29: expand a named macro into its composed safe-primitive
+          // steps and execute each via this.execute. Flat-only (the loader
+          // forbids macro-in-macro), so recursion depth is bounded at 1.
+          // A step failure short-circuits the macro with a contextual error.
+          const registry = this.options.macros;
+          if (!registry) {
+            return { success: false, error: `No macro registry loaded; cannot invoke "${action.name}"` };
+          }
+          const macro = registry.macros.get(action.name);
+          if (!macro) {
+            const known = [...registry.macros.keys()].join(', ') || '(none)';
+            return { success: false, error: `Unknown macro "${action.name}". Known: ${known}` };
+          }
+          const args = action.args ?? {};
+          for (const spec of macro.params) {
+            if (spec.required !== false && !(spec.name in args)) {
+              return { success: false, error: `macro "${macro.name}" missing required arg "${spec.name}"` };
+            }
+          }
+          let lastBounds: ActionResult['bounds'];
+          for (let i = 0; i < macro.steps.length; i++) {
+            const { step, unresolved } = interpolateStep(macro.steps[i], args);
+            if (unresolved.length > 0) {
+              return {
+                success: false,
+                error: `macro "${macro.name}" step ${i + 1} has unresolved params: ${unresolved.join(', ')} (pass them in args or mark required:false when you mean "optional")`,
+              };
+            }
+            // Defensive: the loader rejected nested macros, but a malicious
+            // on-disk file could still put one in; dispatch refuses anyway.
+            if (step.action === 'macro') {
+              return { success: false, error: `macro "${macro.name}" tried to invoke another macro (nesting disallowed)` };
+            }
+            const result = await this.execute(step);
+            if (!result.success) {
+              return {
+                success: false,
+                error: `macro "${macro.name}" failed at step ${i + 1}/${macro.steps.length} (${step.action}): ${result.error ?? 'unknown'}`,
+              };
+            }
+            if (result.bounds) lastBounds = result.bounds;
           }
           return { success: true, ...(lastBounds ? { bounds: lastBounds } : {}) };
         }

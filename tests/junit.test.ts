@@ -44,6 +44,7 @@ function makeSuite(results: TestResult[], overrides?: Partial<TestSuiteResult>):
   const total = results.length;
 
   return {
+    schemaVersion: '1',
     model: 'gpt-4o',
     timestamp: '2026-01-15T10:00:00Z',
     results,

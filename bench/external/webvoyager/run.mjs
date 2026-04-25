@@ -39,16 +39,26 @@ const getArg = (name, fallback) => {
 const hasFlag = (name) => argv.includes(`--${name}`)
 
 const model = getArg('model', 'gpt-5.4')
-const benchmarkProfile = getArg('benchmark-profile', 'webbench-stealth')
+const benchmarkProfile = getArg('benchmark-profile', 'webvoyager')
 const site = getArg('site')
 const maxTasks = getArg('max-tasks', '0')
 const concurrency = getArg('concurrency', '3')
 const scenarioConcurrency = getArg('scenario-concurrency', '2')
+// Gen 30 R3: let callers route LLM calls through a custom endpoint
+// (e.g. router.tangle.tools) with a non-OpenAI model id. These flags pass
+// straight through to scenario-track → bad run.
+const providerArg = getArg('provider')
+const baseUrlArg = getArg('base-url')
+const apiKeyArg = getArg('api-key')
 const noEval = hasFlag('no-eval')
 const evalOnly = hasFlag('eval-only')
 const evalResults = getArg('results')
 const estimate = hasFlag('estimate')
 const outDir = getArg('out', path.resolve(rootDir, `agent-results/wv-${Date.now()}`))
+// Gen 11: --cases-file lets the master comparison runner pass a curated
+// subset (e.g. bench/external/webvoyager/curated-30.json) without overwriting
+// the canonical converted cases.json.
+const casesFileOverride = getArg('cases-file')
 
 const TASKS_URL = 'https://raw.githubusercontent.com/MinorJerry/WebVoyager/main/data/WebVoyager_data.jsonl'
 const PATCHES_URL = 'https://raw.githubusercontent.com/magnitudedev/webvoyager/main/data/patches.json'
@@ -80,7 +90,7 @@ function convertTasks() {
 // ── Step 3: Estimate cost ───────────────────────────────────────────────────
 
 function estimateCost() {
-  const cases = JSON.parse(fs.readFileSync(casesPath, 'utf8'))
+  const cases = JSON.parse(fs.readFileSync(activeCasesPath, 'utf8'))
   const costPerCase = 0.25 // based on WEBBENCH empirical average
   const evalCostPerCase = 0.02 // GPT-4o judge per case
   const total = cases.length
@@ -99,7 +109,7 @@ function runAgent() {
   return new Promise((resolve, reject) => {
     const args = [
       'scripts/run-scenario-track.mjs',
-      '--cases', casesPath,
+      '--cases', activeCasesPath,
       '--model', model,
       '--benchmark-profile', benchmarkProfile,
       '--modes', 'fast-explore',
@@ -108,6 +118,9 @@ function runAgent() {
       '--memory',
       '--memory-isolation', 'per-run',
     ]
+    if (providerArg) args.push('--provider', providerArg)
+    if (baseUrlArg) args.push('--base-url', baseUrlArg)
+    if (apiKeyArg) args.push('--api-key', apiKeyArg)
 
     console.log(`\nRunning agent: node ${args.join(' ')}`)
     const proc = spawn('node', args, { cwd: rootDir, stdio: 'inherit' })
@@ -139,6 +152,18 @@ function evaluate(dir) {
 
 // ── Main ────────────────────────────────────────────────────────────────────
 
+// Gen 11: when --cases-file is given, point cases.json at the override file
+// for the duration of this run by writing a sibling cases-active.json. The
+// runner downstream uses casesPath, so we just point that variable.
+let activeCasesPath = casesPath
+if (casesFileOverride) {
+  activeCasesPath = path.resolve(casesFileOverride)
+  if (!fs.existsSync(activeCasesPath)) {
+    console.error(`--cases-file not found: ${activeCasesPath}`)
+    process.exit(1)
+  }
+}
+
 async function main() {
   console.log('WebVoyager Benchmark Runner')
   console.log('══════════════════════════════════════')
@@ -152,14 +177,20 @@ async function main() {
     return
   }
 
-  // Download data
-  console.log('\n1. Downloading WebVoyager data...')
-  download(TASKS_URL, tasksPath)
-  download(PATCHES_URL, patchesPath)
+  if (casesFileOverride) {
+    console.log(`\nUsing curated cases file: ${activeCasesPath}`)
+    const curated = JSON.parse(fs.readFileSync(activeCasesPath, 'utf-8'))
+    console.log(`  ${curated.length} cases loaded`)
+  } else {
+    // Download data
+    console.log('\n1. Downloading WebVoyager data...')
+    download(TASKS_URL, tasksPath)
+    download(PATCHES_URL, patchesPath)
 
-  // Convert
-  console.log('\n2. Converting tasks...')
-  convertTasks()
+    // Convert
+    console.log('\n2. Converting tasks...')
+    convertTasks()
+  }
 
   if (estimate) {
     estimateCost()
