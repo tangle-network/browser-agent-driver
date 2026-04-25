@@ -186,8 +186,8 @@ export interface Scenario {
 // ============================================================================
 
 export interface AgentConfig {
-  /** LLM provider: 'openai' (default), 'anthropic', 'google', 'codex-cli', 'claude-code', or 'sandbox-backend' */
-  provider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend';
+  /** LLM provider: 'openai' (default), 'anthropic', 'google', 'cli-bridge', 'codex-cli', 'claude-code', 'sandbox-backend', or 'zai-coding-plan' */
+  provider?: 'openai' | 'anthropic' | 'google' | 'cli-bridge' | 'codex-cli' | 'claude-code' | 'sandbox-backend' | 'zai-coding-plan';
   /** LLM model (default: gpt-5.4) */
   model?: string;
   /** Enable adaptive model routing for decide() (default: false) */
@@ -195,7 +195,7 @@ export interface AgentConfig {
   /** Fast navigation model used when adaptive routing is enabled */
   navModel?: string;
   /** Provider for navModel (defaults to provider) */
-  navProvider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend';
+  navProvider?: 'openai' | 'anthropic' | 'google' | 'cli-bridge' | 'codex-cli' | 'claude-code' | 'sandbox-backend' | 'zai-coding-plan';
   /** API key (defaults to OPENAI_API_KEY) */
   apiKey?: string;
   /** Custom API base URL (for LiteLLM, local models, etc.) */
@@ -280,7 +280,7 @@ export interface ScoutConfig {
   /** Optional model override for scout reasoning */
   model?: string;
   /** Optional provider override for scout model */
-  provider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend';
+  provider?: 'openai' | 'anthropic' | 'google' | 'cli-bridge' | 'codex-cli' | 'claude-code' | 'sandbox-backend' | 'zai-coding-plan';
   /** Allow the scout to inspect the current screenshot when available */
   useVision?: boolean;
   /** Max ranked candidates sent to the scout */
@@ -299,7 +299,7 @@ export interface SupervisorConfig {
   /** Optional model override for supervisor reasoning */
   model?: string;
   /** Optional provider override for supervisor model */
-  provider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend';
+  provider?: 'openai' | 'anthropic' | 'google' | 'cli-bridge' | 'codex-cli' | 'claude-code' | 'sandbox-backend' | 'zai-coding-plan';
   /** Allow the supervisor to inspect the current screenshot when available */
   useVision?: boolean;
   /** Minimum completed turns before supervisor can intervene */

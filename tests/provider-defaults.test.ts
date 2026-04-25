@@ -18,6 +18,15 @@ describe('resolveProviderModelName', () => {
     expect(resolveProviderModelName('openai')).toBe('gpt-5.4');
   });
 
+  it('defaults cli-bridge to the codex harness', () => {
+    expect(resolveProviderModelName('cli-bridge')).toBe('codex/gpt-5.5');
+    expect(resolveProviderModelName('cli-bridge', 'gpt-5.5')).toBe('codex/gpt-5.5');
+  });
+
+  it('preserves explicit cli-bridge harness model choices', () => {
+    expect(resolveProviderModelName('cli-bridge', 'claude-code/sonnet')).toBe('claude-code/sonnet');
+  });
+
   it('defaults sandbox-backend claude runs to sonnet when backend type is claude-code', () => {
     expect(
       resolveProviderModelName('sandbox-backend', undefined, {
@@ -63,5 +72,14 @@ describe('resolveProviderApiKey', () => {
         OPENAI_API_KEY: 'openai-key',
       } as NodeJS.ProcessEnv),
     ).toBe('openai-key');
+  });
+
+  it('uses cli-bridge bearer tokens without falling back across providers', () => {
+    expect(
+      resolveProviderApiKey('cli-bridge', undefined, {
+        CLI_BRIDGE_BEARER: 'bridge-token',
+        OPENAI_API_KEY: 'openai-key',
+      } as NodeJS.ProcessEnv),
+    ).toBe('bridge-token');
   });
 });

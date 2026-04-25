@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>acme-prod · Releases</title>
+  <style>
+    body { font: 14px/1.5 system-ui, sans-serif; margin: 0; color: #111; background: #0b1020; color: #e5e7eb; }
+    header { padding: 16px 24px; border-bottom: 1px solid #1f2937; display: flex; justify-content: space-between; align-items: center; }
+    main { max-width: 880px; margin: 32px auto; padding: 0 24px; }
+    .release { background: #111827; border: 1px solid #1f2937; border-radius: 10px; padding: 20px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+    .meta { color: #9ca3af; font-size: 12px; }
+    button { padding: 8px 14px; border-radius: 6px; border: 0; cursor: pointer; font: inherit; }
+    .deploy { background: #2563eb; color: #fff; }
+    .rollback { background: #fff; color: #111827; }
+  </style>
+</head>
+<body>
+  <header>
+    <strong>acme-prod</strong>
+    <nav><span class="meta">main · 4 environments</span></nav>
+  </header>
+  <main>
+    <div class="release">
+      <div>
+        <div><strong>v2.41.0</strong></div>
+        <div class="meta">2 commits · 18 minutes ago</div>
+      </div>
+      <div>
+        <button class="rollback">Rollback</button>
+        <button class="deploy">Deploy</button>
+      </div>
+    </div>
+    <div class="release">
+      <div>
+        <div><strong>v2.40.0</strong></div>
+        <div class="meta">12 commits · 2 days ago</div>
+      </div>
+      <div>
+        <button class="rollback">Rollback</button>
+        <button class="deploy">Deploy</button>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

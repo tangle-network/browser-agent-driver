@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Dashboard</title>
+  <style>
+    body { font: 14px/1.5 system-ui, sans-serif; margin: 0; color: #111; background: #f9fafb; }
+    .shell { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
+    aside { background: #fff; border-right: 1px solid #e5e7eb; padding: 24px 16px; }
+    aside ul { list-style: none; padding: 0; margin: 0; }
+    aside li { padding: 8px 12px; border-radius: 6px; color: #6b7280; }
+    main { padding: 32px; }
+    .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px; }
+    .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; }
+    .card .label { color: #9ca3af; font-size: 12px; text-transform: uppercase; }
+    .card .value { font-size: 28px; font-weight: 600; margin-top: 8px; }
+    .card .delta { color: #10b981; font-size: 12px; margin-top: 4px; }
+    h1 { font-size: 20px; margin: 0 0 24px; }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside>
+      <ul>
+        <li>Overview</li>
+        <li>Activity</li>
+        <li>Reports</li>
+        <li>Integrations</li>
+        <li>Settings</li>
+      </ul>
+    </aside>
+    <main>
+      <h1>Overview</h1>
+      <div class="grid">
+        <div class="card"><div class="label">Total</div><div class="value">12,430</div><div class="delta">+12%</div></div>
+        <div class="card"><div class="label">Active</div><div class="value">8,201</div><div class="delta">+4%</div></div>
+        <div class="card"><div class="label">Pending</div><div class="value">312</div><div class="delta">+1%</div></div>
+        <div class="card"><div class="label">Errors</div><div class="value">7</div><div class="delta">-22%</div></div>
+      </div>
+      <p style="color:#6b7280;">Looking for help? Check our documentation or contact support.</p>
+    </main>
+  </div>
+</body>
+</html>

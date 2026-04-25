@@ -1,4 +1,4 @@
-import { generateText } from 'ai';
+import { generateText, streamText } from 'ai';
 import type { LanguageModel } from 'ai';
 import type {
   Action,
@@ -15,7 +15,7 @@ export interface SupervisorCriticInput {
   currentState: PageState;
   recentTurns: Turn[];
   signal: SupervisorSignal;
-  provider: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend';
+  provider: 'openai' | 'anthropic' | 'google' | 'cli-bridge' | 'codex-cli' | 'claude-code' | 'sandbox-backend' | 'zai-coding-plan';
   model: string;
   useVision?: boolean;
   apiKey?: string;
@@ -30,6 +30,20 @@ export interface SupervisorCriticInput {
 type SupervisorUserContent =
   | string
   | Array<{ type: 'text'; text: string } | { type: 'image'; image: string; mediaType: string }>;
+
+const JSON_TEXT_OUTPUT = {
+  name: 'json-text',
+  responseFormat: Promise.resolve({ type: 'json' as const }),
+  async parseCompleteOutput({ text }: { text: string }) {
+    return text;
+  },
+  async parsePartialOutput({ text }: { text: string }) {
+    return { partial: text };
+  },
+  createElementStreamTransform() {
+    return undefined;
+  },
+};
 
 const SUPERVISOR_PROMPT = `You are a supervising browser-automation strategist.
 
@@ -262,11 +276,11 @@ function validateSelectorRefs(action: Action, snapshot: string): boolean {
 }
 
 function shouldSendTemperature(modelName: string): boolean {
-  return !/^gpt-5(?:[.-]|$)/i.test(modelName);
+  return !/(^|\/)gpt-5(?:[.-]|$)/i.test(modelName);
 }
 
 async function getModel(config: {
-  provider: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code';
+  provider: 'openai' | 'anthropic' | 'google' | 'cli-bridge' | 'codex-cli' | 'claude-code' | 'zai-coding-plan';
   model: string;
   apiKey?: string;
   baseUrl?: string;
@@ -290,6 +304,16 @@ async function getModel(config: {
         ...(config.baseUrl ? { baseURL: config.baseUrl } : {}),
       });
       return provider(modelName) as LanguageModel;
+    }
+    case 'cli-bridge': {
+      const { createOpenAI } = await import('@ai-sdk/openai');
+      const rawUrl = config.baseUrl || process.env.CLI_BRIDGE_URL;
+      if (!rawUrl) {
+        throw new Error('cli-bridge provider requires CLI_BRIDGE_URL or --base-url');
+      }
+      const baseURL = rawUrl.endsWith('/v1') ? rawUrl : `${rawUrl.replace(/\/+$/, '')}/v1`;
+      const provider = createOpenAI({ apiKey: apiKey || '', baseURL });
+      return provider.chat(modelName) as LanguageModel;
     }
     case 'codex-cli': {
       const { codexExec } = await import('ai-sdk-provider-codex-cli');
@@ -324,6 +348,14 @@ async function getModel(config: {
         },
       });
       return provider(modelName) as LanguageModel;
+    }
+    case 'zai-coding-plan': {
+      const { createOpenAI } = await import('@ai-sdk/openai');
+      const provider = createOpenAI({
+        apiKey: apiKey || '',
+        baseURL: config.baseUrl || 'https://api.z.ai/api/coding/paas/v4',
+      });
+      return provider.chat(modelName) as LanguageModel;
     }
     default: {
       const { createOpenAI } = await import('@ai-sdk/openai');
@@ -366,14 +398,29 @@ async function generateSupervisorText(
     debug: input.debug,
   });
 
-  const result = await generateText({
+  const generationSettings = {
     model,
     system: SUPERVISOR_PROMPT,
-    messages: [{ role: 'user', content: userContent }],
+    messages: [{ role: 'user' as const, content: userContent }],
+    ...(input.provider === 'cli-bridge' ? { output: JSON_TEXT_OUTPUT } : {}),
     ...(shouldSendTemperature(modelName) ? { temperature: 0 } : {}),
-    ...(input.provider === 'codex-cli' || input.provider === 'claude-code' ? {} : { maxOutputTokens: 700 }),
+    ...(input.provider === 'codex-cli' || input.provider === 'claude-code' || input.provider === 'cli-bridge' || /(^|\/)gpt-5(?:[.-]|$)/i.test(modelName) ? {} : { maxOutputTokens: 700 }),
+    ...(input.provider === 'openai' && /(^|\/)gpt-5(?:[.-]|$)/i.test(modelName)
+      ? {
+          providerOptions: {
+            openai: {
+              forceReasoning: true,
+              maxCompletionTokens: 700,
+            },
+          },
+        }
+      : {}),
     abortSignal: AbortSignal.timeout(input.timeoutMs ?? 45_000),
-  });
+  };
+
+  const result = input.provider === 'cli-bridge'
+    ? { text: await streamText(generationSettings).text }
+    : await generateText(generationSettings);
 
   return result.text ?? '';
 }

@@ -17,11 +17,11 @@ export interface DriverConfig {
   browser?: 'chromium' | 'firefox' | 'webkit';
 
   // LLM
-  provider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend';
+  provider?: 'openai' | 'anthropic' | 'google' | 'cli-bridge' | 'codex-cli' | 'claude-code' | 'sandbox-backend' | 'zai-coding-plan';
   model?: string;
   adaptiveModelRouting?: boolean;
   navModel?: string;
-  navProvider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend';
+  navProvider?: 'openai' | 'anthropic' | 'google' | 'cli-bridge' | 'codex-cli' | 'claude-code' | 'sandbox-backend' | 'zai-coding-plan';
   apiKey?: string;
   baseUrl?: string;
   sandboxBackendType?: string;
@@ -93,7 +93,7 @@ export interface DriverConfig {
   scout?: {
     enabled?: boolean;
     model?: string;
-    provider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend';
+    provider?: 'openai' | 'anthropic' | 'google' | 'cli-bridge' | 'codex-cli' | 'claude-code' | 'sandbox-backend' | 'zai-coding-plan';
     useVision?: boolean;
     maxCandidates?: number;
     minTopScore?: number;
@@ -132,7 +132,7 @@ export interface DriverConfig {
   supervisor?: {
     enabled?: boolean;
     model?: string;
-    provider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend';
+    provider?: 'openai' | 'anthropic' | 'google' | 'cli-bridge' | 'codex-cli' | 'claude-code' | 'sandbox-backend' | 'zai-coding-plan';
     useVision?: boolean;
     minTurnsBeforeInvoke?: number;
     cooldownTurns?: number;

@@ -18,7 +18,10 @@ import { loadLocalEnvFiles } from './env-loader.js'
 import { cliError } from './cli-ui.js'
 import { auditOnePage } from './design/audit/pipeline.js'
 import type { PageAuditResult as Gen2PageAuditResult } from './design/audit/types.js'
+import { resolveAuditPasses } from './design/audit/evaluate.js'
 import { detectSystemicFindings, topByRoi } from './design/audit/roi.js'
+import { getTelemetry, setInvocation } from './telemetry/index.js'
+import { randomUUID } from 'node:crypto'
 
 // ---------------------------------------------------------------------------
 // Page discovery — find key pages by crawling links
@@ -226,10 +229,12 @@ export interface DesignAuditOptions {
   model?: string
   provider?: string
   apiKey?: string
+  baseUrl?: string
   output?: string
   json?: boolean
   headless?: boolean
   debug?: boolean
+  storageState?: string
   viewport?: string
   extractTokens?: boolean
   /** Evolve mode: true/css for CSS injection, or agent name (claude-code, codex, opencode) for agent dispatch */
@@ -242,6 +247,8 @@ export interface DesignAuditOptions {
   projectDir?: string
   /** Optional path to user-supplied rubric fragments */
   rubricsDir?: string
+  /** Subjective LLM audit passes: standard, deep, max, number, or comma-list */
+  auditPasses?: string
 }
 
 export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
@@ -261,18 +268,39 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
   const provider = (opts.provider ?? 'claude-code') as SupportedProvider
   const modelName = resolveProviderModelName(provider, opts.model)
   const apiKey = opts.apiKey ?? resolveProviderApiKey(provider)
+  const auditPasses = resolveAuditPasses(opts.auditPasses)
+
+  // Telemetry: every design-audit invocation gets a stable runId. Children
+  // (per-page, evolve rounds) link back via parentRunId so a fleet rollup can
+  // reconstruct the tree.
+  const runId = randomUUID()
+  const runStartedAt = Date.now()
+  const invocation = opts.evolve ? 'design-audit:evolve' : opts.reproducibility ? 'design-audit:reproducibility' : 'design-audit'
+  setInvocation(invocation)
+  const telemetry = getTelemetry()
 
   const [vw, vh] = (opts.viewport ?? '1440x900').split('x').map(Number)
 
   console.log('')
   console.log(`  ${chalk.bold('bad design-audit')}`)
   const profileLabel = profile ?? chalk.dim('auto-classify')
-  console.log(`  ${profileLabel} ${chalk.dim('·')} ${chalk.cyan(modelName)} ${chalk.dim('·')} ${vw}×${vh} ${chalk.dim('·')} up to ${maxPages} pages`)
+  const passLabel = auditPasses.length === 1 && auditPasses[0] === 'standard'
+    ? '1 audit pass'
+    : `${auditPasses.length} audit passes (${auditPasses.join(', ')})`
+  console.log(`  ${profileLabel} ${chalk.dim('·')} ${chalk.cyan(modelName)} ${chalk.dim('·')} ${vw}×${vh} ${chalk.dim('·')} ${passLabel} ${chalk.dim('·')} up to ${maxPages} pages`)
   console.log(`  ${chalk.dim('→')} ${opts.url}`)
   console.log('')
 
+  const storageState = opts.storageState ? path.resolve(opts.storageState) : undefined
+  if (storageState && !fs.existsSync(storageState)) {
+    cliError(`storage state file not found: ${storageState}`)
+  }
+
   const browser = await chromium.launch({ headless: opts.headless ?? true })
-  const context = await browser.newContext({ viewport: { width: vw, height: vh } })
+  const context = await browser.newContext({
+    viewport: { width: vw, height: vh },
+    ...(storageState ? { storageState } : {}),
+  })
   const page = await context.newPage()
 
   // Discover pages
@@ -292,7 +320,8 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
   const brain = new Brain({
     model: modelName,
     apiKey,
-    provider: opts.provider as 'openai' | 'anthropic' | undefined,
+    provider: provider,
+    baseUrl: opts.baseUrl ?? process.env.LLM_BASE_URL,
     vision: true,
     debug: opts.debug,
     llmTimeoutMs: 120_000, // design audits generate ~8k tokens of structured JSON — need 2min
@@ -314,6 +343,10 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
       profileOverride: profile,
       screenshotDir,
       userRubricsDir: opts.rubricsDir,
+      auditPasses,
+      runId,
+      provider,
+      model: modelName,
     })
     const result = gen2 as PageAuditResult
     results.push(result)
@@ -388,6 +421,11 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
           url,
           profileOverride: profile,
           userRubricsDir: opts.rubricsDir,
+          auditPasses,
+          runId,
+          provider,
+          model: modelName,
+          parentRunId: runId,
         })
         repResults.push(gen2 as PageAuditResult)
       }
@@ -427,11 +465,15 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
       const projectDir = opts.projectDir ?? process.cwd()
       evolveResult = await runAgentEvolveLoop(
         brain, driver, page, pages, evolveProfile, results, outputDir,
-        opts.evolveRounds ?? 3, evolveMode, projectDir, opts.debug,
+        opts.evolveRounds ?? 3, evolveMode, projectDir, opts.debug, auditPasses,
+        runId, provider, modelName,
       )
     } else {
       // CSS-injection evolve — ephemeral fixes injected into the browser page
-      evolveResult = await runEvolveLoop(brain, driver, page, pages, evolveProfile, results, outputDir, opts.evolveRounds ?? 3)
+      evolveResult = await runEvolveLoop(
+        brain, driver, page, pages, evolveProfile, results, outputDir,
+        opts.evolveRounds ?? 3, auditPasses, runId, provider, modelName,
+      )
     }
 
     // Write evolve report
@@ -451,7 +493,60 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
       fs.writeFileSync(evJsonPath, JSON.stringify(evolveResult, null, 2))
     }
     console.log('')
+
+    telemetry.emit({
+      kind: 'design-evolve-run',
+      runId,
+      ok: true,
+      durationMs: Date.now() - runStartedAt,
+      model: { provider, name: modelName },
+      data: {
+        url: opts.url,
+        pages: pages.length,
+        rounds: evolveResult.scoreHistory.length - 1,
+        scoreHistory: evolveResult.scoreHistory,
+        appliedFixCount: evolveResult.appliedFixes?.length ?? 0,
+        evolveMode: evolveMode === 'css' ? 'css' : `agent:${evolveMode}`,
+      },
+      metrics: {
+        initialScore: evolveResult.scoreHistory[0] ?? 0,
+        finalScore: evolveResult.scoreHistory[evolveResult.scoreHistory.length - 1] ?? 0,
+        delta: (evolveResult.scoreHistory[evolveResult.scoreHistory.length - 1] ?? 0) - (evolveResult.scoreHistory[0] ?? 0),
+        rounds: evolveResult.scoreHistory.length - 1,
+      },
+    })
   }
+
+  // Run-level summary envelope — fires for every design-audit invocation,
+  // evolve or not. This is the row a fleet rollup queries to track audit
+  // health across repos over time.
+  telemetry.emit({
+    kind: 'design-audit-run',
+    runId,
+    ok: true,
+    durationMs: Date.now() - runStartedAt,
+    model: { provider, name: modelName },
+    data: {
+      url: opts.url,
+      pages: pages.length,
+      profile: profile ?? null,
+      auditPasses,
+      outputDir,
+    },
+    metrics: {
+      avgScore,
+      pageCount: pages.length,
+      totalFindings: allFindings.length,
+      criticalFindings: critical,
+      majorFindings: major,
+      minorFindings: minor,
+      topFixCount: topFixes.length,
+    },
+    tags: {
+      evolveMode: opts.evolve ? (opts.evolve === true || opts.evolve === 'css' ? 'css' : 'agent') : 'off',
+      reproducibility: opts.reproducibility ? 'on' : 'off',
+    },
+  })
 
   await browser.close()
 }
@@ -471,7 +566,12 @@ async function runEvolveLoop(
   initialResults: PageAuditResult[],
   outputDir: string,
   maxRounds: number,
+  auditPasses: ReturnType<typeof resolveAuditPasses>,
+  parentRunId?: string,
+  provider?: SupportedProvider,
+  model?: string,
 ): Promise<DesignEvolveResult> {
+  const telemetry = parentRunId ? getTelemetry() : undefined
   const initialAvg = initialResults.reduce((s, r) => s + r.score, 0) / initialResults.length
   const scoreHistory: number[] = [initialAvg]
   const appliedFixes: DesignEvolveResult['appliedFixes'] = []
@@ -587,6 +687,10 @@ async function runEvolveLoop(
           url,
           profileOverride: profile,
           screenshotDir,
+          auditPasses,
+          ...(parentRunId ? { runId: parentRunId, parentRunId } : {}),
+          ...(provider ? { provider } : {}),
+          ...(model ? { model } : {}),
         })) as PageAuditResult
         roundResults.push(result)
       } catch {
@@ -607,6 +711,29 @@ async function runEvolveLoop(
 
     const deltaStr = delta >= 0 ? chalk.green(`+${delta.toFixed(1)}`) : chalk.red(delta.toFixed(1))
     console.log(`  ${chalk.dim('  Score:')} ${roundAvg.toFixed(1)}/10 (${deltaStr})`)
+
+    if (telemetry && parentRunId) {
+      telemetry.emit({
+        kind: 'design-evolve-round',
+        runId: parentRunId,
+        parentRunId,
+        ok: true,
+        durationMs: 0, // round-level wall time would require a per-round timer; the parent run captures total duration
+        ...(provider && model ? { model: { provider, name: model } } : {}),
+        data: {
+          mode: 'css',
+          round,
+          fixesApplied: fixableFixes.length,
+        },
+        metrics: {
+          round,
+          beforeScore: currentAvg,
+          afterScore: roundAvg,
+          delta,
+          fixesApplied: fixableFixes.length,
+        },
+      })
+    }
 
     currentResults = roundResults
     currentAvg = roundAvg
@@ -792,7 +919,12 @@ async function runAgentEvolveLoop(
   agentName: string,
   projectDir: string,
   debug?: boolean,
+  auditPasses?: ReturnType<typeof resolveAuditPasses>,
+  parentRunId?: string,
+  provider?: SupportedProvider,
+  model?: string,
 ): Promise<DesignEvolveResult> {
+  const telemetry = parentRunId ? getTelemetry() : undefined
   const initialAvg = initialResults.reduce((s, r) => s + r.score, 0) / initialResults.length
   const scoreHistory: number[] = [initialAvg]
   const appliedFixes: DesignEvolveResult['appliedFixes'] = []
@@ -890,6 +1022,10 @@ async function runAgentEvolveLoop(
         url,
         profileOverride: profile,
         screenshotDir: roundScreenshotDir,
+        auditPasses,
+        ...(parentRunId ? { runId: parentRunId, parentRunId } : {}),
+        ...(provider ? { provider } : {}),
+        ...(model ? { model } : {}),
       })) as PageAuditResult
       roundResults.push(result)
     }
@@ -910,6 +1046,29 @@ async function runAgentEvolveLoop(
         cssSelector: `round-${round}`,
         cssFix: `${agentName} resolved ${resolvedCount} findings`,
         finding: `Score: ${currentAvg.toFixed(1)} → ${roundAvg.toFixed(1)}`,
+      })
+    }
+
+    if (telemetry && parentRunId) {
+      telemetry.emit({
+        kind: 'design-evolve-round',
+        runId: parentRunId,
+        parentRunId,
+        ok: true,
+        durationMs: 0,
+        ...(provider && model ? { model: { provider, name: model } } : {}),
+        data: {
+          mode: `agent:${agentName}`,
+          round,
+          resolvedCount,
+        },
+        metrics: {
+          round,
+          beforeScore: currentAvg,
+          afterScore: roundAvg,
+          delta,
+          findingsResolved: resolvedCount,
+        },
       })
     }
 

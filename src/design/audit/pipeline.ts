@@ -15,8 +15,9 @@ import { PlaywrightDriver } from '../../drivers/playwright.js'
 import { classifyPage, defaultClassification } from './classify.js'
 import { composeRubric, composeRubricFromProfile } from './rubric/loader.js'
 import { gatherMeasurements } from './measure/index.js'
-import { evaluatePage } from './evaluate.js'
+import { evaluatePage, type AuditPassId, type AuditOverrides } from './evaluate.js'
 import type { PageAuditResult, PageClassification } from './types.js'
+import { getTelemetry, shortHash } from '../../telemetry/index.js'
 
 export interface AuditOnePageOptions {
   brain: Brain
@@ -29,6 +30,19 @@ export interface AuditOnePageOptions {
   screenshotDir?: string
   /** User-supplied rubric fragments directory */
   userRubricsDir?: string
+  /** Focused LLM audit passes to run for the subjective evaluation layer */
+  auditPasses?: AuditPassId[]
+  /** Telemetry correlation — links every page envelope to its parent run. */
+  runId?: string
+  parentRunId?: string
+  /** Provider/model — captured into telemetry so a rollup can group by model. */
+  provider?: string
+  model?: string
+  /**
+   * Evolve-aware overrides. The GEPA harness passes these per-trial to A/B
+   * candidate prompts; production runs leave them undefined.
+   */
+  overrides?: AuditOverrides
 }
 
 const COOKIE_BANNER_SELECTORS = [
@@ -54,7 +68,8 @@ async function dismissCookieBanners(page: Page): Promise<void> {
  * Audit one page through the full Gen 2 pipeline.
  */
 export async function auditOnePage(opts: AuditOnePageOptions): Promise<PageAuditResult> {
-  const { brain, driver, page, url, profileOverride, screenshotDir, userRubricsDir } = opts
+  const { brain, driver, page, url, profileOverride, screenshotDir, userRubricsDir, auditPasses, runId, parentRunId, provider, model, overrides } = opts
+  const startedAt = Date.now()
 
   try {
     // ── 1. Load the page ──
@@ -113,17 +128,81 @@ export async function auditOnePage(opts: AuditOnePageOptions): Promise<PageAudit
       rubric,
       measurements,
       screenshotPath,
+      auditPasses,
+      overrides,
     })
+
+    if (runId) {
+      const findings = result.findings ?? []
+      getTelemetry().emit({
+        kind: 'design-audit-page',
+        runId,
+        parentRunId,
+        ok: !result.error,
+        durationMs: Date.now() - startedAt,
+        ...(provider && model ? { model: { provider, name: model, rubricHash: shortHash(rubric.body) } } : {}),
+        data: {
+          url,
+          classification,
+          rubricFragments: rubric.fragments.map((f) => f.id),
+          rubricDimensions: rubric.dimensions,
+          auditPasses: auditPasses ?? ['standard'],
+          designSystemScore: result.designSystemScore,
+          summary: result.summary,
+          strengths: result.strengths,
+          findings: findings.map((f) => ({
+            category: f.category,
+            severity: f.severity,
+            description: f.description,
+            location: f.location,
+            cssSelector: f.cssSelector,
+            impact: f.impact,
+            effort: f.effort,
+            blast: f.blast,
+          })),
+        },
+        metrics: {
+          score: result.score,
+          findingCount: findings.length,
+          criticalCount: findings.filter((f) => f.severity === 'critical').length,
+          majorCount: findings.filter((f) => f.severity === 'major').length,
+          minorCount: findings.filter((f) => f.severity === 'minor').length,
+          contrastAaPassRate: measurements.contrast.summary.aaPassRate,
+          a11yViolations: measurements.a11y.violations.length,
+          tokensUsed: result.tokensUsed ?? 0,
+        },
+        tags: {
+          pageType: classification.type,
+          domain: classification.domain,
+          maturity: classification.maturity,
+          designSystem: classification.designSystem,
+        },
+      })
+    }
 
     return result
   } catch (err) {
+    const error = err instanceof Error ? err.message : String(err)
+    if (runId) {
+      getTelemetry().emit({
+        kind: 'design-audit-page',
+        runId,
+        parentRunId,
+        ok: false,
+        durationMs: Date.now() - startedAt,
+        ...(provider && model ? { model: { provider, name: model } } : {}),
+        data: { url },
+        metrics: { score: 0, findingCount: 0 },
+        error,
+      })
+    }
     return {
       url,
       score: 0,
       summary: 'Audit failed',
       strengths: [],
       findings: [],
-      error: err instanceof Error ? err.message : String(err),
+      error,
     }
   }
 }

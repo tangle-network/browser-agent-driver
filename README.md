@@ -126,7 +126,7 @@ Recovery is automatic: cookie consent, modal blockers, stuck loops (A-B-A-B osci
 
 ## Design Audit
 
-`bad design-audit` is a vision-powered design quality analyzer with a closed-loop improvement mode. It auto-classifies the page, runs ground-truth measurements (axe-core + WCAG contrast math), then evaluates visual quality with a composable rubric — and ranks the top fixes by ROI.
+`bad design-audit` is a vision-powered product and design quality analyzer with a closed-loop improvement mode. It auto-classifies the page, runs ground-truth measurements (axe-core + WCAG contrast math), infers audience/job/stakes, then evaluates whether the page helps users complete the real product task — not just whether it looks clean. Findings are ranked by ROI.
 
 ```bash
 # Audit any URL — auto-classifies, no profile needed
@@ -134,6 +134,9 @@ bad design-audit --url https://your-app.com
 
 # Multi-page crawl with cross-page systemic detection
 bad design-audit --url https://your-app.com --pages 10
+
+# Serious review: parallel product, visual-system, and trust/workflow passes
+bad design-audit --url https://your-app.com --audit-passes deep
 
 # Closed-loop fix: dispatch findings to a coding agent that edits source files
 bad design-audit --url http://localhost:3000 \

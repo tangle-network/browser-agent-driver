@@ -150,3 +150,36 @@ Reveals: distinct color count (>6 hues = problem), font size count (>5-6 = no sc
 2. Fix systemic issues in shared components/styles FIRST
 3. Then fix page-specific issues
 4. Re-audit all pages together
+
+## Telemetry — every audit emits learning data
+
+Every `bad design-audit` invocation now emits structured telemetry to `~/.bad/telemetry/<repo>/<date>.jsonl`. Per-page envelopes carry classification, score, findings, ROI metadata, prompt/rubric hashes, and token cost. Per-run envelopes summarise the whole invocation. Per-evolve-round envelopes track score deltas across rounds.
+
+This is on by default. To opt out, set `BAD_TELEMETRY=0`. To centralise, set `BAD_TELEMETRY_ENDPOINT=https://your-collector` (optional `BAD_TELEMETRY_BEARER=...`).
+
+When the user asks "are we improving?", run:
+
+```bash
+pnpm telemetry:rollup
+pnpm telemetry:rollup --repo <name>
+pnpm telemetry:rollup --kind design-audit-page --json | jq '.byPromptHash'
+```
+
+The rollup surfaces: per-repo run counts, score trends, regression detection, and per-prompt-hash variance. Use it before evolving prompts.
+
+## GEPA prompt evolution
+
+When the rollup or a manual review shows the audit prompt itself needs to change (low recall on planted defects, score variance > 1.0 across reps, dominant findings missed), evolve the prompt instead of editing it by hand:
+
+```bash
+pnpm design:gepa:smoke                          # 30s deterministic mutator, no LLM
+pnpm design:gepa --target pass-focus --population 4 --generations 2
+pnpm design:gepa --target conservative-score-weights --mutator deterministic
+pnpm design:gepa --target few-shot-example --mutator reflective --reps 2
+```
+
+Targets: `pass-focus`, `few-shot-example`, `no-bs-rules`, `conservative-score-weights`, `pass-selection-per-classification`, `infer-audit-mode`.
+
+Fixtures live in `bench/design/gepa/fixtures/fixtures.json`. Each fixture has golden findings the audit MUST surface; recall against goldens is the primary fitness signal. Add new fixtures (controlled HTML in `pages/`, plus a JSON entry) when a defect class is repeatedly missed in production telemetry.
+
+Reports land in `.evolve/gepa/<runId>/`; one summary row appended to `.evolve/experiments.jsonl`. Promotion is manual: read `gen-N.md`, decide if the winning variant ships, paste the payload into `evaluate.ts`'s defaults.
