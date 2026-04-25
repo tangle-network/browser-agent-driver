@@ -34,10 +34,21 @@ interface CliArgs {
   json: boolean
   /** Print individual envelopes instead of group rollups. */
   raw: boolean
+  /**
+   * When true, query the fleet collector at BAD_TELEMETRY_API instead of
+   * reading local files. Errors out if BAD_TELEMETRY_API or
+   * BAD_TELEMETRY_ADMIN_BEARER is not set.
+   */
+  remote: boolean
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const args = parseCliArgs()
+
+  if (args.remote) {
+    await runRemote(args)
+    return
+  }
 
   if (!fs.existsSync(args.baseDir)) {
     console.error(`[rollup] no telemetry dir found: ${args.baseDir}`)
@@ -71,8 +82,20 @@ function parseCliArgs(): CliArgs {
       kind: { type: 'string' },
       json: { type: 'boolean' },
       raw: { type: 'boolean' },
+      remote: { type: 'boolean' },
     },
   })
+  const remote = !!values.remote
+  if (remote) {
+    if (!process.env.BAD_TELEMETRY_API) {
+      console.error('[rollup] --remote requires BAD_TELEMETRY_API to be set (e.g. https://bad-app.example.com).')
+      process.exit(2)
+    }
+    if (!process.env.BAD_TELEMETRY_ADMIN_BEARER) {
+      console.error('[rollup] --remote requires BAD_TELEMETRY_ADMIN_BEARER to be set.')
+      process.exit(2)
+    }
+  }
   return {
     baseDir: values.dir ?? process.env.BAD_TELEMETRY_DIR ?? path.join(os.homedir(), '.bad', 'telemetry'),
     ...(values.since ? { since: values.since } : {}),
@@ -81,7 +104,68 @@ function parseCliArgs(): CliArgs {
     ...(values.kind ? { kind: values.kind } : {}),
     json: !!values.json,
     raw: !!values.raw,
+    remote,
   }
+}
+
+interface RemoteRollup {
+  byRepoKind: unknown[]
+  byEvolveOutcome: unknown[]
+  byPromptHash: unknown[]
+  recentRegressions: unknown[]
+  totals: { repos: number; totalEnvelopes: number; distinctRuns: number; distinctRepos: string[] }
+  truncated?: boolean
+}
+
+async function runRemote(args: CliArgs): Promise<void> {
+  const base = process.env.BAD_TELEMETRY_API!.replace(/\/$/, '')
+  const bearer = process.env.BAD_TELEMETRY_ADMIN_BEARER!
+
+  // --raw streams individual envelopes via the /envelopes endpoint with cursor
+  // pagination so large fleet data doesn't have to fit in one response.
+  if (args.raw) {
+    let cursor: string | undefined
+    while (true) {
+      const url = buildRemoteUrl(`${base}/api/telemetry/v1/envelopes`, args, cursor)
+      const res = await fetch(url, { headers: { authorization: `Bearer ${bearer}` } })
+      if (!res.ok) {
+        console.error(`[rollup] remote /envelopes failed: ${res.status} ${await res.text().catch(() => '')}`)
+        process.exit(1)
+      }
+      const body = (await res.json()) as { envelopes: TelemetryEnvelope[]; cursor?: string }
+      for (const env of body.envelopes) console.log(JSON.stringify(env))
+      if (!body.cursor) break
+      cursor = body.cursor
+    }
+    return
+  }
+
+  const url = buildRemoteUrl(`${base}/api/telemetry/v1/rollup`, args)
+  const res = await fetch(url, { headers: { authorization: `Bearer ${bearer}` } })
+  if (!res.ok) {
+    console.error(`[rollup] remote /rollup failed: ${res.status} ${await res.text().catch(() => '')}`)
+    process.exit(1)
+  }
+  const summary = (await res.json()) as RemoteRollup
+  if (args.json) {
+    console.log(JSON.stringify(summary, null, 2))
+    return
+  }
+  printSummary(summary as unknown as RolledUp, summary.totals.totalEnvelopes, args)
+  if (summary.truncated) {
+    console.log()
+    console.log('⚠ rollup truncated at server cap (5000 envelopes scanned). Use --since/--until to narrow.')
+  }
+}
+
+function buildRemoteUrl(base: string, args: CliArgs, cursor?: string): string {
+  const u = new URL(base)
+  if (args.repo) u.searchParams.set('repo', args.repo)
+  if (args.kind) u.searchParams.set('kind', args.kind)
+  if (args.since) u.searchParams.set('since', args.since)
+  if (args.until) u.searchParams.set('until', args.until)
+  if (cursor) u.searchParams.set('cursor', cursor)
+  return u.toString()
 }
 
 function readAll(baseDir: string): TelemetryEnvelope[] {
@@ -347,4 +431,13 @@ function pad(s: string, width: number): string {
   return s + ' '.repeat(width - s.length)
 }
 
-main()
+// Exported so the test suite can drive the remote URL builder directly.
+export { buildRemoteUrl }
+
+// Auto-run unless explicitly imported as a module by the test harness.
+if (!process.env.BAD_TELEMETRY_ROLLUP_NO_AUTORUN) {
+  main().catch((err) => {
+    console.error('[rollup]', err instanceof Error ? err.message : err)
+    process.exit(1)
+  })
+}
