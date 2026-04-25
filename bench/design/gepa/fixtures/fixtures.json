@@ -1,0 +1,261 @@
+{
+  "$schema": "../types.ts",
+  "description": "Adversarial fixtures for design-audit GEPA. Mix of controlled local pages with planted defects + curated reference URLs. Local fixtures are loaded via file:// — no server needed.",
+  "fixtures": [
+    {
+      "id": "no-primary-action",
+      "name": "Workspace home with 6 equal-weight CTAs",
+      "source": { "type": "file", "target": "pages/no-primary-action.html" },
+      "profile": "saas",
+      "expectedScoreRange": { "min": 1, "max": 6 },
+      "notes": "Welcome screen has six equal-weight outline buttons. Audit must flag absent action hierarchy.",
+      "goldenFindings": [
+        {
+          "id": "primary-action-missing",
+          "category": "product",
+          "severity": "major",
+          "any": [
+            "primary action",
+            "no clear primary",
+            "equal weight",
+            "action hierarchy",
+            "no obvious next step",
+            "buried among"
+          ],
+          "hint": "Six identical outlined buttons compete for attention; one should dominate."
+        },
+        {
+          "id": "generic-welcome",
+          "category": "product",
+          "severity": "major",
+          "any": [
+            "generic welcome",
+            "could belong to any",
+            "lacks product specificity",
+            "no domain object",
+            "vague"
+          ],
+          "hint": "The screen could be any startup; nothing is specific to the product."
+        }
+      ]
+    },
+    {
+      "id": "generic-dashboard",
+      "name": "Dashboard with abstract metric cards and no domain objects",
+      "source": { "type": "file", "target": "pages/generic-dashboard.html" },
+      "profile": "saas",
+      "expectedScoreRange": { "min": 2, "max": 6 },
+      "notes": "Cards labelled Total/Active/Pending/Errors with no units or domain context.",
+      "goldenFindings": [
+        {
+          "id": "abstract-metrics",
+          "category": "product",
+          "severity": "major",
+          "any": [
+            "abstract metric",
+            "no units",
+            "no domain object",
+            "could belong to any",
+            "generic dashboard",
+            "labels lack context",
+            "no real product state"
+          ],
+          "hint": "Total/Active/Pending/Errors are abstract; the audit should call out missing domain meaning."
+        },
+        {
+          "id": "no-primary-action-dashboard",
+          "category": "workflow",
+          "severity": "major",
+          "any": [
+            "no primary action",
+            "no next step",
+            "viewer-only",
+            "no obvious action",
+            "passive"
+          ],
+          "hint": "User has nothing to do here — no next-action affordance."
+        }
+      ]
+    },
+    {
+      "id": "hidden-fees-checkout",
+      "name": "Payment confirmation hides fees and provider identity",
+      "source": { "type": "file", "target": "pages/hidden-fees-checkout.html" },
+      "profile": "fintech",
+      "expectedScoreRange": { "min": 2, "max": 6 },
+      "notes": "$120 total with no fee/tax line, no merchant identity beyond a name, no payment method shown.",
+      "goldenFindings": [
+        {
+          "id": "fees-not-disclosed",
+          "category": "trust",
+          "severity": "critical",
+          "any": [
+            "fee",
+            "tax",
+            "fees not disclosed",
+            "no breakdown",
+            "missing line items"
+          ],
+          "hint": "Order summary lacks fees/tax line items before commitment."
+        },
+        {
+          "id": "merchant-identity",
+          "category": "trust",
+          "severity": "major",
+          "any": [
+            "merchant",
+            "provenance",
+            "verify the merchant",
+            "no merchant identity",
+            "no logo",
+            "trust signal"
+          ],
+          "hint": "Acme Pay is unverified — no logo, no domain proof, no security indicator."
+        },
+        {
+          "id": "payment-method-missing",
+          "category": "workflow",
+          "severity": "major",
+          "any": [
+            "payment method",
+            "card",
+            "how the user pays",
+            "no payment input"
+          ],
+          "hint": "No card or payment method visible; user cannot tell how payment will be charged."
+        }
+      ]
+    },
+    {
+      "id": "empty-state-noise",
+      "name": "Empty inbox with cute decorative empty state",
+      "source": { "type": "file", "target": "pages/empty-state-noise.html" },
+      "profile": "saas",
+      "expectedScoreRange": { "min": 3, "max": 6 },
+      "notes": "Empty state shows a sparkle and a generic 'Nothing here' message instead of previewing the product.",
+      "goldenFindings": [
+        {
+          "id": "empty-state-no-preview",
+          "category": "product",
+          "severity": "major",
+          "any": [
+            "empty state",
+            "no preview",
+            "decorative",
+            "sample data",
+            "preview the product",
+            "generic empty",
+            "no setup checklist"
+          ],
+          "hint": "Empty state uses a sparkle and platitude instead of a preview row, sample message, or setup checklist."
+        },
+        {
+          "id": "got-it-no-action",
+          "category": "workflow",
+          "severity": "major",
+          "any": [
+            "got it",
+            "button does nothing",
+            "no next step",
+            "dead-end",
+            "primary action does not advance"
+          ],
+          "hint": "The 'Got it' button does not move the user toward any product outcome."
+        }
+      ]
+    },
+    {
+      "id": "meta-copy-feature",
+      "name": "Reports page that explains itself instead of showing reports",
+      "source": { "type": "file", "target": "pages/meta-copy-feature.html" },
+      "profile": "saas",
+      "expectedScoreRange": { "min": 2, "max": 6 },
+      "notes": "Body copy explains what the Reports page is supposed to be, with no real reports rendered.",
+      "goldenFindings": [
+        {
+          "id": "meta-copy",
+          "category": "content",
+          "severity": "major",
+          "any": [
+            "meta copy",
+            "explains the ui",
+            "explains the page",
+            "describes the feature",
+            "instead of showing",
+            "self-describing"
+          ],
+          "hint": "Copy is meta — describes the page rather than helping the user act."
+        },
+        {
+          "id": "no-real-state",
+          "category": "product",
+          "severity": "major",
+          "any": [
+            "no real",
+            "no reports rendered",
+            "scaffolding",
+            "no product state",
+            "filler"
+          ],
+          "hint": "The product surface is empty scaffolding instead of real reports or starter state."
+        }
+      ]
+    },
+    {
+      "id": "ambiguous-deploy",
+      "name": "Production deploy controls without risk surfacing",
+      "source": { "type": "file", "target": "pages/ambiguous-deploy.html" },
+      "profile": "devtools",
+      "expectedScoreRange": { "min": 2, "max": 6 },
+      "notes": "Deploy and Rollback buttons sit side by side, no environment label, no diff, no warning before commit.",
+      "goldenFindings": [
+        {
+          "id": "deploy-without-risk",
+          "category": "trust",
+          "severity": "critical",
+          "any": [
+            "deploy",
+            "irreversible",
+            "no confirmation",
+            "no risk",
+            "production",
+            "no diff",
+            "no environment indicator"
+          ],
+          "hint": "Deploy is one click on production with no environment indicator, no diff, no confirmation."
+        },
+        {
+          "id": "deploy-rollback-equal-weight",
+          "category": "workflow",
+          "severity": "major",
+          "any": [
+            "equal weight",
+            "rollback",
+            "destructive action",
+            "primary",
+            "weight"
+          ],
+          "hint": "Deploy and Rollback buttons have similar visual weight; the destructive option should be distinguished."
+        }
+      ]
+    },
+    {
+      "id": "linear-baseline",
+      "name": "Linear marketing — high-bar reference",
+      "source": { "type": "url", "target": "https://linear.app" },
+      "profile": "marketing",
+      "expectedScoreRange": { "min": 7, "max": 10 },
+      "notes": "Reference high-quality page. Recall here is OPTIONAL — used as a stability and ceiling check.",
+      "goldenFindings": []
+    },
+    {
+      "id": "stripe-baseline",
+      "name": "Stripe marketing — high-bar reference",
+      "source": { "type": "url", "target": "https://stripe.com" },
+      "profile": "marketing",
+      "expectedScoreRange": { "min": 7, "max": 10 },
+      "notes": "Reference high-quality page; bound the ceiling so GEPA doesn't optimise toward false-positive verbosity.",
+      "goldenFindings": []
+    }
+  ]
+}

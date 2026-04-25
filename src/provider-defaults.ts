@@ -2,6 +2,7 @@ export type SupportedProvider =
   | 'openai'
   | 'anthropic'
   | 'google'
+  | 'cli-bridge'
   | 'codex-cli'
   | 'claude-code'
   | 'sandbox-backend'
@@ -54,6 +55,12 @@ export function resolveProviderModelName(
     }
   }
 
+  if (provider === 'cli-bridge') {
+    const harness = process.env.CLI_BRIDGE_DEFAULT_HARNESS?.trim() || 'codex';
+    if (!model) return `${harness}/gpt-5.5`;
+    return model.includes('/') ? model : `${harness}/${model}`;
+  }
+
   if (provider === 'sandbox-backend') {
     const backendType = (options?.sandboxBackendType || process.env.SANDBOX_BACKEND_TYPE || '').trim().toLowerCase();
     if (backendType === 'claude-code') {
@@ -91,6 +98,8 @@ export function resolveProviderApiKey(
       // (which is what Claude Code uses when redirected at Z.ai), then
       // ANTHROPIC_API_KEY for the truly lazy path.
       return env.ZAI_API_KEY || env.ZAI_CODING_API_KEY || env.ANTHROPIC_AUTH_TOKEN || env.ANTHROPIC_API_KEY;
+    case 'cli-bridge':
+      return env.CLI_BRIDGE_BEARER || env.BRIDGE_BEARER;
     case 'codex-cli':
     case 'openai':
     default:

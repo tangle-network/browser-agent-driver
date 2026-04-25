@@ -401,7 +401,8 @@ ${H('OPTIONS')}
 
   ${D('LLM configuration')}
   ${C('-m, --model')} <name>          LLM model ${D('(default: gpt-5.4)')}
-      ${C('--provider')} <name>       LLM provider: ${D('openai, anthropic, google, codex-cli, claude-code, sandbox-backend')}
+      ${C('--provider')} <name>       LLM provider: ${D('openai, anthropic, google, cli-bridge, codex-cli, claude-code, sandbox-backend')}
+      ${C('--audit-passes')} <mode>   design-audit only: ${D('standard, deep, max, or product,visual,trust')}
       ${C('--model-adaptive')}        Enable adaptive model routing for decide() turns
       ${C('--nav-model')} <name>      Fast navigation model for adaptive routing
       ${C('--nav-provider')} <name>   Provider for nav model
@@ -499,6 +500,9 @@ ${H('ENVIRONMENT VARIABLES')}
   ${C('OPENAI_API_KEY')}              OpenAI API key
   ${C('ANTHROPIC_API_KEY')}           Anthropic API key
   ${C('LLM_BASE_URL')}                Custom LLM endpoint URL
+  ${C('CLI_BRIDGE_URL')}              Local cli-bridge URL ${D('(for --provider cli-bridge)')}
+  ${C('CLI_BRIDGE_BEARER')}           Local cli-bridge bearer token
+  ${C('CLI_BRIDGE_DEFAULT_HARNESS')}  Default harness for bare cli-bridge models ${D('(default: codex)')}
   ${C('BROWSER_ENDPOINT')}            Remote browser endpoint ${D('(CDP or Playwright)')}
   ${C('CODEX_CLI_PATH')}              Optional Codex CLI binary path
   ${C('CODEX_ALLOW_NPX')}             Set to 0 to disable npx fallback for codex-cli

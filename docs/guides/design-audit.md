@@ -1,6 +1,6 @@
 # Design Audit Guide
 
-`bad design-audit` is a vision-powered design quality analysis system. It loads pages in a real browser, captures screenshots, extracts design tokens from the DOM, and uses an LLM with vision to produce structured findings with concrete CSS fixes.
+`bad design-audit` is a vision-powered product and design quality analysis system. It loads pages in a real browser, captures screenshots, extracts design tokens from the DOM, infers the page's audience/job/stakes, and uses an LLM with vision to produce structured findings with concrete fixes.
 
 ## Quick Start
 
@@ -62,6 +62,7 @@ bad design-audit [options]
 | `--viewport <WxH>` | `1440x900` | Viewport size |
 | `--sink <dir>` | auto | Output directory for reports and screenshots |
 | `--debug` | false | Print raw LLM responses |
+| `--audit-passes <mode>` | `standard` | Subjective LLM passes: `standard`, `deep`, `max`, a number, or comma-list like `product,visual,trust` |
 
 ### Modes
 
@@ -113,9 +114,9 @@ Reports open with the **Top Fixes** section — the 5 highest-ROI findings to fi
 2. **Measure** — deterministic, in-page:
    - WCAG 2.1 contrast ratios for every visible text element (pure JS, no LLM)
    - axe-core a11y violations (industry-standard rule engine)
-3. **Evaluate** — LLM vision call sees the screenshot + a rubric composed from markdown fragments matching the classification, plus a summary of what the deterministic measurements already found. LLM produces visual findings only — it's forbidden from inventing contrast or a11y findings (those come from the measurements).
+3. **Evaluate** — LLM vision call sees the screenshot + a rubric composed from markdown fragments matching the classification, plus a summary of what the deterministic measurements already found. The universal rubric forces a product-intent pass first: audience, primary job, primary action, stakes, and success path. The LLM then produces product, IA, visual, and interaction findings. It is forbidden from inventing contrast or a11y findings (those come from the measurements). For broader coverage, pass `--audit-passes deep` to run focused product, visual-system, and trust/workflow LLM passes in parallel and merge the findings conservatively.
 
-The rubric system is composable: drop a markdown file in `~/.bad/rubrics/` (or pass `--rubrics-dir`) to add a domain-specific evaluation criteria without touching code.
+The rubric system is composable: drop a markdown file in `~/.bad/rubrics/` (or pass `--rubrics-dir`) to add domain-specific evaluation criteria without touching code. Built-in profile aliases map common CLI names to the right fragments, e.g. `--profile saas` loads `type-saas-app`, and `--profile defi` loads both app workflow and crypto trust rubrics.
 
 ### Top Fixes & ROI ranking
 
@@ -544,11 +545,12 @@ pnpm tsx bench/design/run-design-bench.ts --tier average --evolve
 ## Cost
 
 Default provider is `claude-code` — uses your Claude Code subscription (no per-call API cost).
-With `--provider openai` or `--provider anthropic`, each page audit costs one LLM vision call (~5-10k tokens).
+With `--provider openai` or `--provider anthropic`, each standard page audit costs one LLM vision call (~5-10k tokens). `--audit-passes deep` runs three subjective calls per page; use it for serious review, not cheap smoke checks.
 
 | Operation | Pages | LLM Calls | Cost (claude-code) | Cost (openai gpt-5.4) |
 |-----------|-------|-----------|--------------------|-----------------------|
 | Single page audit | 1 | 1 | subscription | ~$0.15 |
+| Deep single page audit | 1 | 3 | subscription | ~$0.45 |
 | 5-page crawl | 5 | 5 | subscription | ~$0.75 |
 | Evolve (3 rounds, 1 page) | 1 | 4-7 | subscription | ~$1.00 |
 | Reproducibility (3 runs, 1 page) | 1 | 3 | subscription | ~$0.45 |

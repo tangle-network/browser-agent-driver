@@ -27,6 +27,7 @@ import { loadLocalEnvFiles } from './env-loader.js';
 import { CliRenderer, cliError, cliWarn, cliLog, printStyledHelp } from './cli-ui.js';
 import { ProjectStore } from './memory/project-store.js';
 import { RunRegistry } from './memory/run-registry.js';
+import { setCliVersion, setInvocation, getTelemetry } from './telemetry/index.js';
 
 type RunMode = 'fast-explore' | 'full-evidence';
 const RUN_MODES: RunMode[] = ['fast-explore', 'full-evidence'];
@@ -89,8 +90,19 @@ async function applyStorageStateToPersistentContext(context: BrowserContext, sto
   }
 }
 
+function readCliVersion(): string {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf-8')) as { version?: string };
+    return pkg.version ?? '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
+
 async function main(): Promise<void> {
   loadLocalEnvFiles(process.cwd());
+  setCliVersion(readCliVersion());
+  setInvocation(process.argv.slice(2)[0] || 'unknown', process.argv.slice(2));
 
   const { values, positionals } = parseArgs({
     allowPositionals: true,
@@ -140,6 +152,7 @@ async function main(): Promise<void> {
       'project-dir': { type: 'string' },
       reproducibility: { type: 'boolean' },
       'rubrics-dir': { type: 'string' },
+      'audit-passes': { type: 'string' },
       // bad view
       port: { type: 'string' },
       'no-open': { type: 'boolean' },
@@ -315,16 +328,19 @@ async function main(): Promise<void> {
       model: values.model,
       provider: values.provider,
       apiKey: values['api-key'],
+      baseUrl: values['base-url'],
       output: values.sink,
       json: values.json,
       headless: values.headless,
       debug: values.debug,
+      storageState: values['storage-state'],
       extractTokens: values['extract-tokens'],
       evolve: values.evolve,
       evolveRounds: values['evolve-rounds'] ? parseInt(values['evolve-rounds']) : undefined,
       projectDir: values['project-dir'],
       reproducibility: values.reproducibility,
       rubricsDir: values['rubrics-dir'],
+      auditPasses: values['audit-passes'],
     });
     process.exit(0);
   }
@@ -1756,7 +1772,14 @@ async function syncLocalBenchmarkRun(outPath: string, label: string): Promise<vo
   }
 }
 
+// Flush telemetry on every exit path (`process.exit` from inside main, throw, or
+// natural completion). beforeExit fires before Node decides to terminate, so
+// any pending HTTP POSTs from HttpTelemetrySink finish flushing before we go.
+process.on('beforeExit', () => {
+  void getTelemetry().close();
+});
+
 main().catch((err) => {
   cliError(err instanceof Error ? err.message : String(err));
-  process.exit(1);
+  void getTelemetry().close().finally(() => process.exit(1));
 });

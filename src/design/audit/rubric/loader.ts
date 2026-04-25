@@ -228,10 +228,14 @@ export function composeRubricFromProfile(
   fragmentsOverride?: RubricFragment[],
 ): ComposedRubric {
   const all = fragmentsOverride ?? loadFragments(BUILTIN_FRAGMENTS_DIR)
+  const normalizedProfile = profile.toLowerCase()
+  const profileFragmentIds = profileToFragmentIds(normalizedProfile)
   const wanted = new Set([
-    `type-${profile}`,
+    ...profileFragmentIds,
     'universal-foundation',
+    'universal-product-intent',
     'universal-calibration',
+    'universal-effort-anchor',
   ])
   const matched = all
     .filter(f => wanted.has(f.id))
@@ -248,4 +252,32 @@ export function composeRubricFromProfile(
   )
 
   return { fragments: matched, body, calibration, dimensions }
+}
+
+function profileToFragmentIds(profile: string): string[] {
+  switch (profile) {
+    case 'saas':
+    case 'app':
+    case 'dashboard':
+      return ['type-saas-app']
+    case 'defi':
+    case 'crypto':
+    case 'web3':
+      return ['type-saas-app', 'domain-crypto']
+    case 'devtools':
+    case 'developer':
+    case 'dev':
+      return ['type-saas-app', 'domain-devtools']
+    case 'ai':
+    case 'ml':
+    case 'llm':
+      return ['type-saas-app', 'domain-ai']
+    case 'fintech':
+    case 'finance':
+      return ['type-saas-app', 'domain-fintech']
+    case 'general':
+      return []
+    default:
+      return [`type-${profile}`]
+  }
 }

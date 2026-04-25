@@ -6,6 +6,7 @@ import {
   composeRubricFromProfile,
   loadFragments,
 } from '../src/design/audit/rubric/loader.js'
+import { resolveAuditPasses } from '../src/design/audit/evaluate.js'
 import type { PageClassification, RubricFragment } from '../src/design/audit/types.js'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
@@ -25,6 +26,22 @@ function makeClassification(overrides: Partial<PageClassification> = {}): PageCl
 }
 
 describe('rubric loader', () => {
+  describe('audit pass resolution', () => {
+    it('defaults to a single integrated audit pass', () => {
+      expect(resolveAuditPasses()).toEqual(['standard'])
+      expect(resolveAuditPasses('standard')).toEqual(['standard'])
+    })
+
+    it('maps deep and numeric modes to focused parallel passes', () => {
+      expect(resolveAuditPasses('deep')).toEqual(['product', 'visual', 'trust'])
+      expect(resolveAuditPasses('4')).toEqual(['product', 'visual', 'trust', 'workflow'])
+    })
+
+    it('accepts explicit comma-separated pass lists', () => {
+      expect(resolveAuditPasses('content, visual, trust')).toEqual(['content', 'visual', 'trust'])
+    })
+  })
+
   describe('parseFragment', () => {
     it('parses YAML frontmatter and body from a temp file', () => {
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rubric-'))
@@ -201,14 +218,29 @@ Universal body`,
       const rubric = composeRubricFromProfile('marketing')
       expect(rubric.fragments.some(f => f.id === 'type-marketing')).toBe(true)
       expect(rubric.fragments.some(f => f.id === 'universal-foundation')).toBe(true)
+      expect(rubric.fragments.some(f => f.id === 'universal-product-intent')).toBe(true)
       // Should NOT include domain-specific fragments since we're overriding by profile
       expect(rubric.fragments.some(f => f.id === 'domain-fintech')).toBe(false)
+    })
+
+    it('maps legacy saas profile to the SaaS app rubric', () => {
+      const rubric = composeRubricFromProfile('saas')
+      expect(rubric.fragments.some(f => f.id === 'type-saas-app')).toBe(true)
+      expect(rubric.fragments.some(f => f.id === 'universal-product-intent')).toBe(true)
+    })
+
+    it('maps defi profile to crypto trust and app workflow rubrics', () => {
+      const rubric = composeRubricFromProfile('defi')
+      expect(rubric.fragments.some(f => f.id === 'type-saas-app')).toBe(true)
+      expect(rubric.fragments.some(f => f.id === 'domain-crypto')).toBe(true)
+      expect(rubric.dimensions).toContain('trust-signals')
     })
 
     it('handles unknown profiles gracefully (just universals)', () => {
       const rubric = composeRubricFromProfile('totally-not-a-profile')
       expect(rubric.fragments.some(f => f.id === 'universal-foundation')).toBe(true)
       expect(rubric.fragments.some(f => f.id === 'universal-calibration')).toBe(true)
+      expect(rubric.fragments.some(f => f.id === 'universal-product-intent')).toBe(true)
     })
   })
 
@@ -260,8 +292,7 @@ Body`,
 
     it('produces empty dimensions array when no fragments declare one', () => {
       const rubric = composeRubricFromProfile('marketing')
-      // Just universals + type-marketing (no dimension)
-      expect(rubric.dimensions).toEqual([])
+      expect(rubric.dimensions).toEqual(['product-clarity'])
     })
 
     it('docs domain gets readability dimension', () => {

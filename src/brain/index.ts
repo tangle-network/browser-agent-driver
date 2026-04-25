@@ -5,7 +5,7 @@
  * Uses Vercel AI SDK for multi-provider support (OpenAI, Anthropic, Google, Codex CLI, Claude Code).
  */
 
-import { generateText } from 'ai';
+import { generateText, streamText } from 'ai';
 import type { ModelMessage, LanguageModel, SystemModelMessage } from 'ai';
 import type { Action, PageState, AgentConfig, DesignFinding, GoalVerification, Plan, PlanStep } from '../types.js';
 import { AriaSnapshotHelper } from '../drivers/snapshot.js';
@@ -463,13 +463,27 @@ export interface LinkScoutRecommendation {
 /** User message content — text-only or multimodal with screenshot */
 type UserContent = string | Array<{ type: 'text'; text: string } | { type: 'image'; image: string; mediaType: string }>;
 
+const JSON_TEXT_OUTPUT = {
+  name: 'json-text',
+  responseFormat: Promise.resolve({ type: 'json' as const }),
+  async parseCompleteOutput({ text }: { text: string }) {
+    return text;
+  },
+  async parsePartialOutput({ text }: { text: string }) {
+    return { partial: text };
+  },
+  createElementStreamTransform() {
+    return undefined;
+  },
+};
+
 export class Brain {
   private modelCache = new Map<string, LanguageModel>();
-  private provider: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend' | 'zai-coding-plan';
+  private provider: 'openai' | 'anthropic' | 'google' | 'cli-bridge' | 'codex-cli' | 'claude-code' | 'sandbox-backend' | 'zai-coding-plan';
   private modelName: string;
   private adaptiveModelRouting: boolean;
   private navModelName?: string;
-  private navProvider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend' | 'zai-coding-plan';
+  private navProvider?: 'openai' | 'anthropic' | 'google' | 'cli-bridge' | 'codex-cli' | 'claude-code' | 'sandbox-backend' | 'zai-coding-plan';
   private explicitApiKey?: string;
   private baseUrl?: string;
   private debug: boolean;
@@ -483,7 +497,7 @@ export class Brain {
   private lastDecisionUrl?: string;
   private systemPrompt: string;
   private scoutModelName?: string;
-  private scoutProvider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend' | 'zai-coding-plan';
+  private scoutProvider?: 'openai' | 'anthropic' | 'google' | 'cli-bridge' | 'codex-cli' | 'claude-code' | 'sandbox-backend' | 'zai-coding-plan';
   private scoutUseVision: boolean;
   // Gen 28: per-role model overrides
   private plannerModel?: string;
@@ -541,7 +555,7 @@ export class Brain {
   }
 
   private resolveModelName(
-    provider: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend' | 'zai-coding-plan',
+    provider: 'openai' | 'anthropic' | 'google' | 'cli-bridge' | 'codex-cli' | 'claude-code' | 'sandbox-backend' | 'zai-coding-plan',
     requestedModel?: string,
   ): string {
     return resolveProviderModelName(provider, requestedModel, {
@@ -551,13 +565,13 @@ export class Brain {
 
   private shouldSendTemperature(modelName = this.modelName): boolean {
     // OpenAI GPT-5 reasoning family currently rejects explicit temperature.
-    return !/^gpt-5(?:[.-]|$)/i.test(modelName);
+    return !/(^|\/)gpt-5(?:[.-]|$)/i.test(modelName);
   }
 
   private generationOptions(
     maxOutputTokens: number,
-    selection?: { provider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend' | 'zai-coding-plan'; model?: string },
-  ): Record<string, number> {
+    selection?: { provider?: 'openai' | 'anthropic' | 'google' | 'cli-bridge' | 'codex-cli' | 'claude-code' | 'sandbox-backend' | 'zai-coding-plan'; model?: string },
+  ): Record<string, unknown> {
     const providerName = selection?.provider || this.provider;
     const modelName = this.resolveModelName(providerName, selection?.model || this.modelName);
     // CLI-spawning providers (codex-cli, claude-code, and zai-coding-plan
@@ -568,19 +582,30 @@ export class Brain {
       providerName === 'claude-code' ||
       providerName === 'sandbox-backend' ||
       (providerName === 'zai-coding-plan' && isClaudeCodeRoutedModel(modelName));
+    const omitsLegacyMaxTokens = providerName === 'cli-bridge' || /(^|\/)gpt-5(?:[.-]|$)/i.test(modelName);
     return {
       ...(this.shouldSendTemperature(modelName) ? { temperature: 0 } : {}),
-      ...(isCliSpawning ? {} : { maxOutputTokens }),
+      ...(isCliSpawning || omitsLegacyMaxTokens ? {} : { maxOutputTokens }),
+      ...(providerName === 'openai' && /(^|\/)gpt-5(?:[.-]|$)/i.test(modelName)
+        ? {
+            providerOptions: {
+              openai: {
+                forceReasoning: true,
+                maxCompletionTokens: maxOutputTokens,
+              },
+            },
+          }
+        : {}),
     };
   }
 
   /** Get a LLM model instance, optionally with provider/model override (e.g. for CAPTCHA fallback) */
-  async getLanguageModel(selection?: { provider?: 'openai' | 'anthropic' | 'google'; model?: string }): Promise<LanguageModel> {
+  async getLanguageModel(selection?: { provider?: 'openai' | 'anthropic' | 'google' | 'cli-bridge'; model?: string }): Promise<LanguageModel> {
     return this.getModel(selection)
   }
 
   /** Lazily create the LLM model instance based on provider config */
-  private async getModel(selection?: { provider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend' | 'zai-coding-plan'; model?: string }): Promise<LanguageModel> {
+  private async getModel(selection?: { provider?: 'openai' | 'anthropic' | 'google' | 'cli-bridge' | 'codex-cli' | 'claude-code' | 'sandbox-backend' | 'zai-coding-plan'; model?: string }): Promise<LanguageModel> {
     const providerName = selection?.provider || this.provider;
     const modelName = this.resolveModelName(providerName, selection?.model || this.modelName);
     const apiKey = resolveProviderApiKey(providerName, this.explicitApiKey);
@@ -606,6 +631,20 @@ export class Brain {
           ...(this.baseUrl ? { baseURL: this.baseUrl } : {}),
         });
         model = provider(modelName) as LanguageModel;
+        break;
+      }
+      case 'cli-bridge': {
+        const { createOpenAI } = await import('@ai-sdk/openai');
+        const rawUrl = this.baseUrl || process.env.CLI_BRIDGE_URL;
+        if (!rawUrl) {
+          throw new Error('cli-bridge provider requires CLI_BRIDGE_URL or --base-url');
+        }
+        const baseURL = rawUrl.endsWith('/v1') ? rawUrl : `${rawUrl.replace(/\/+$/, '')}/v1`;
+        const provider = createOpenAI({
+          apiKey: apiKey || '',
+          baseURL,
+        });
+        model = provider.chat(modelName) as LanguageModel;
         break;
       }
       case 'codex-cli': {
@@ -740,7 +779,7 @@ export class Brain {
   private async generate(
     system: string | SystemModelMessage[],
     messages: ModelMessage[],
-    selection?: { provider?: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend' | 'zai-coding-plan'; model?: string },
+    selection?: { provider?: 'openai' | 'anthropic' | 'google' | 'cli-bridge' | 'codex-cli' | 'claude-code' | 'sandbox-backend' | 'zai-coding-plan'; model?: string },
     maxOutputTokens = 800,
   ): Promise<{ text: string; tokensUsed?: number; inputTokens?: number; outputTokens?: number; cacheReadInputTokens?: number; cacheCreationInputTokens?: number }> {
     const providerName = selection?.provider || this.provider;
@@ -778,13 +817,25 @@ export class Brain {
       ? system
       : systemForSandbox;
 
-    const result = await generateText({
+    const generationSettings = {
       model,
       system: systemForRequest,
       messages,
+      ...(providerName === 'cli-bridge' ? { output: JSON_TEXT_OUTPUT } : {}),
       ...this.generationOptions(maxOutputTokens, { provider: providerName, model: modelName }),
       abortSignal: AbortSignal.timeout(this.llmTimeoutMs),
-    });
+    };
+    const result = providerName === 'cli-bridge'
+      ? await (async () => {
+          const streamed = streamText(generationSettings);
+          const [text, usage, providerMetadata] = await Promise.all([
+            streamed.text,
+            streamed.totalUsage,
+            streamed.providerMetadata,
+          ]);
+          return { text, usage, providerMetadata };
+        })()
+      : await generateText(generationSettings);
 
     // Extract prompt-cache stats from the AI SDK's PROVIDER-AGNOSTIC fields:
     //   result.usage.inputTokenDetails.{cacheReadTokens, cacheWriteTokens}
@@ -987,7 +1038,7 @@ export class Brain {
     goal: string,
     state: PageState,
     turn: number,
-    providerName: 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend' | 'zai-coding-plan',
+    providerName: 'openai' | 'anthropic' | 'google' | 'cli-bridge' | 'codex-cli' | 'claude-code' | 'sandbox-backend' | 'zai-coding-plan',
   ): string | SystemModelMessage[] {
     const parts = this.composeSystemPromptParts(goal, state, turn)
     if (providerName !== 'anthropic' || this.systemPrompt !== SYSTEM_PROMPT || parts.length === 0) {
@@ -2231,6 +2282,28 @@ Only include facts that are genuinely useful. Quality over quantity. Max 10 fact
     } catch {
       return [];
     }
+  }
+
+  /**
+   * Generic text-completion entry point for non-agent uses (GEPA reflective
+   * mutation, ad-hoc rubric authoring, knowledge distillation). Returns the
+   * raw text + token usage; callers parse JSON themselves.
+   *
+   * No tool use, no decode-loop heuristics — just a single round-trip through
+   * the configured provider/model.
+   */
+  async complete(
+    system: string,
+    user: string,
+    options: { maxOutputTokens?: number } = {},
+  ): Promise<{ text: string; tokensUsed?: number }> {
+    const result = await this.generate(
+      system,
+      [{ role: 'user', content: user }],
+      undefined,
+      options.maxOutputTokens ?? 1500,
+    );
+    return { text: result.text, tokensUsed: result.tokensUsed };
   }
 
   private parse(raw: string): Omit<BrainDecision, 'raw' | 'tokensUsed'> {
