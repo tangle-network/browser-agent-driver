@@ -6,6 +6,8 @@
  *
  * Currently copies:
  *   - src/design/audit/rubric/fragments/*.md (rubric library)
+ *   - src/design/audit/rubric/anchors/*.yaml (calibration anchors)
+ *   - src/design/audit/ethics/rules/*.yaml (ethics gate rules)
  *   - src/viewer/*.html (session viewer UI)
  */
 
@@ -26,6 +28,12 @@ const COPIES = [
     label: 'rubric anchor(s)',
     src: 'src/design/audit/rubric/anchors',
     dest: 'dist/design/audit/rubric/anchors',
+    pattern: /\.ya?ml$/,
+  },
+  {
+    label: 'ethics rule(s)',
+    src: 'src/design/audit/ethics/rules',
+    dest: 'dist/design/audit/ethics/rules',
     pattern: /\.ya?ml$/,
   },
   {

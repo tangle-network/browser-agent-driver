@@ -176,8 +176,8 @@ export async function runLlmClassifier(
   return first === 'yes'
 }
 
-/** Build the lowercased text blob used by pattern detectors. */
+/** Build the lowercased text blob used by pattern detectors. URL is intentionally excluded — URL path tokens (e.g. "no-dosage") would cause false negatives on pattern-absent rules. */
 export function pageTextBlob(snapshot: string, extra?: { url?: string; title?: string }): string {
-  const parts = [snapshot, extra?.title ?? '', extra?.url ?? '']
+  const parts = [snapshot, extra?.title ?? '']
   return parts.join('\n').toLowerCase()
 }

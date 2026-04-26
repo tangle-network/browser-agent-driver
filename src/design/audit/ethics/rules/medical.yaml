@@ -5,7 +5,7 @@
   category: medical
   severity: critical-floor
   appliesWhen:
-    domain: [medical, clinical, pharmacy]
+    domain: [medical, clinical, pharmacy, health]
   detector:
     kind: pattern-absent
     pattern: (dosage|warning|contraindication|adverse|side effect)
@@ -16,7 +16,7 @@
   category: medical
   severity: major-floor
   appliesWhen:
-    domain: [medical, clinical, pharmacy]
+    domain: [medical, clinical, pharmacy, health]
   detector:
     kind: pattern-absent
     pattern: (report.{0,20}(side effect|adverse|reaction)|MedWatch|FDA 1088|pharmacovigilance)
@@ -27,7 +27,7 @@
   category: medical
   severity: major-floor
   appliesWhen:
-    domain: [medical, clinical, pharmacy]
+    domain: [medical, clinical, pharmacy, health]
     audienceVulnerability: [patient-facing]
   detector:
     kind: llm-classifier
