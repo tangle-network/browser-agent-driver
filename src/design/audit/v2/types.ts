@@ -257,6 +257,8 @@ export interface NovelPatternObservation {
 export interface PatchApplication {
   applicationId: string
   patchId: string
+  /** `sha256(diff.before + '\n---\n' + diff.after + '\n---\n' + scope).slice(0, 16)` */
+  patchHash: string
   appliedAt: string
   appliedBy: string // 'agent:claude-code' | 'agent:codex' | 'human' | 'css-injection' | ...
   /** The audit run that proposed the patch. */

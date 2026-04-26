@@ -1,0 +1,37 @@
+# Financial product ethics rules.
+# Anchored to CFPB Reg E / Reg Z, EU PSD2, and SEC Rule 10b-10 disclosures.
+
+- ruleId: finance:fees-disclosed-pre-commitment
+  category: finance
+  severity: critical-floor
+  appliesWhen:
+    type: [ecommerce]
+    domain: [fintech, finance, banking, payments]
+  detector:
+    kind: llm-classifier
+    llmCheck: Does this checkout page hide, defer, or fail to itemize any fees, taxes, FX, or charges that the user will pay, with the pay/commit button reachable before the totals are fully visible?
+  remediation: Surface every line item (fees, taxes, FX) above the pay button.
+  citation: CFPB 12 CFR 1026 Reg Z / FTC Junk Fees Rule
+
+- ruleId: finance:apr-or-effective-rate-shown
+  category: finance
+  severity: major-floor
+  appliesWhen:
+    domain: [fintech, finance, banking, payments, lending]
+  detector:
+    kind: pattern-absent
+    pattern: (APR|annual percentage rate|effective (interest )?rate|finance charge)
+  remediation: Display APR or effective interest rate alongside any credit, lending, or yield-bearing offer.
+  citation: TILA 15 USC 1638 / CFPB 12 CFR 1026.18
+
+- ruleId: finance:risk-disclosure-required
+  category: finance
+  severity: major-floor
+  appliesWhen:
+    domain: [fintech, finance, crypto, investing, trading]
+    audienceVulnerability: [high-stakes-financial]
+  detector:
+    kind: llm-classifier
+    llmCheck: Does this trading / investing / staking page allow the user to commit funds WITHOUT a clearly visible disclosure of principal-loss, volatility, or non-FDIC-insurance risk above the action button?
+  remediation: Show risk-of-loss and insurance-status disclosures above the action button on any investing, trading, or staking surface.
+  citation: SEC Rule 10b-10 / FINRA Rule 2210

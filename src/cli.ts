@@ -153,6 +153,15 @@ async function main(): Promise<void> {
       reproducibility: { type: 'boolean' },
       'rubrics-dir': { type: 'string' },
       'audit-passes': { type: 'string' },
+      // Layer 7 — domain ethics gate. --skip-ethics bypasses the rollup floor
+      // for testing scenarios; --ethics-rules-dir overrides the builtin rule set.
+      'skip-ethics': { type: 'boolean' },
+      'ethics-rules-dir': { type: 'string' },
+      // Layer 6 / 7 — audience predicate hints. Comma-separated.
+      audience: { type: 'string' },
+      'regulatory-context': { type: 'string' },
+      'audience-vulnerability': { type: 'string' },
+      modality: { type: 'string' },
       // bad view
       port: { type: 'string' },
       'no-open': { type: 'boolean' },
@@ -341,6 +350,12 @@ async function main(): Promise<void> {
       reproducibility: values.reproducibility,
       rubricsDir: values['rubrics-dir'],
       auditPasses: values['audit-passes'],
+      skipEthics: values['skip-ethics'],
+      ethicsRulesDir: values['ethics-rules-dir'],
+      audience: values.audience,
+      regulatoryContext: values['regulatory-context'],
+      audienceVulnerability: values['audience-vulnerability'],
+      modality: values.modality,
     });
     process.exit(0);
   }

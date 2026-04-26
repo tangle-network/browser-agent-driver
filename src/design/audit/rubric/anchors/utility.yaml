@@ -1,0 +1,33 @@
+type: utility
+score_9_10:
+  criteria:
+    - Status, configuration, or admin surface that exposes the operational object directly (deploy, build, job, account)
+    - Real state (running, succeeded, failed, queued) with timestamps and durations
+    - Action affordances (retry, rollback, configure, audit) match the operational verbs of the system
+    - Logs, diagnostics, or detail panels are one click from the summary
+    - Empty states preview what real activity will look like
+  fixtures:
+    - fixture:vercel-deployment-status
+    - fixture:cloudflare-dashboard
+    - fixture:github-actions
+score_7_8:
+  criteria:
+    - Status surface clear but action affordances are generic (Edit/Save instead of Retry/Rollback)
+    - Logs accessible but require navigation
+    - Empty states use illustrations rather than previewing activity
+  fixtures:
+    - fixture:generic-admin
+score_5_6:
+  criteria:
+    - Status indicators are decorative pills without timestamps or durations
+    - Logs and diagnostics buried in modals
+    - Forms-of-forms pattern instead of operational verbs
+  fixtures:
+    - fixture:basic-settings-page
+score_3_4:
+  criteria:
+    - Status is text only — no visual signal of failure or success
+    - No way to retry, rollback, or audit from the surface
+    - Settings sprawl with no IA, no search
+  fixtures:
+    - fixture:settings-sprawl

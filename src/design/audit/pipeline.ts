@@ -18,6 +18,19 @@ import { gatherMeasurements } from './measure/index.js'
 import { evaluatePage, type AuditPassId, type AuditOverrides } from './evaluate.js'
 import type { PageAuditResult, PageClassification } from './types.js'
 import { getTelemetry, shortHash } from '../../telemetry/index.js'
+import { loadEthicsRules } from './ethics/loader.js'
+import { checkEthics, pageTextBlob } from './ethics/check.js'
+import { classifyEnsemble } from './classify-ensemble.js'
+import { loadAnchors } from './rubric/anchor-loader.js'
+import { buildAuditResultV2 } from './v2/build-result.js'
+import type {
+  AudienceTag,
+  ModalityTag,
+  RegulatoryContextTag,
+  AudienceVulnerabilityTag,
+  EthicsViolation,
+  EnsembleClassification,
+} from './v2/types.js'
 
 export interface AuditOnePageOptions {
   brain: Brain
@@ -43,6 +56,17 @@ export interface AuditOnePageOptions {
    * candidate prompts; production runs leave them undefined.
    */
   overrides?: AuditOverrides
+  /**
+   * Layer 7 — bypass the ethics gate entirely. Audited + warned. Test-only.
+   */
+  skipEthics?: boolean
+  /** Override directory containing ethics `*.yaml` rule files. */
+  ethicsRulesDir?: string
+  /** Layer 6 hints used by ethics + composable predicates. */
+  audience?: AudienceTag[]
+  modality?: ModalityTag[]
+  regulatoryContext?: RegulatoryContextTag[]
+  audienceVulnerability?: AudienceVulnerabilityTag[]
 }
 
 const COOKIE_BANNER_SELECTORS = [
@@ -68,7 +92,27 @@ async function dismissCookieBanners(page: Page): Promise<void> {
  * Audit one page through the full Gen 2 pipeline.
  */
 export async function auditOnePage(opts: AuditOnePageOptions): Promise<PageAuditResult> {
-  const { brain, driver, page, url, profileOverride, screenshotDir, userRubricsDir, auditPasses, runId, parentRunId, provider, model, overrides } = opts
+  const {
+    brain,
+    driver,
+    page,
+    url,
+    profileOverride,
+    screenshotDir,
+    userRubricsDir,
+    auditPasses,
+    runId,
+    parentRunId,
+    provider,
+    model,
+    overrides,
+    skipEthics,
+    ethicsRulesDir,
+    audience,
+    modality,
+    regulatoryContext,
+    audienceVulnerability,
+  } = opts
   const startedAt = Date.now()
 
   try {
@@ -90,7 +134,9 @@ export async function auditOnePage(opts: AuditOnePageOptions): Promise<PageAudit
     }
 
     // ── 3. Classify (or use profile override) ──
+    // Layer 1: ensemble classifier (URL + DOM + LLM) when no override is set.
     let classification: PageClassification
+    let ensemble: EnsembleClassification | undefined
     if (profileOverride) {
       // Build a synthetic classification matching the explicit profile
       classification = {
@@ -99,7 +145,8 @@ export async function auditOnePage(opts: AuditOnePageOptions): Promise<PageAudit
         confidence: 1,
       }
     } else {
-      classification = await classifyPage(brain, state)
+      ensemble = await classifyEnsemble({ brain, state, url })
+      classification = ensemble
     }
 
     // ── 4. Compose rubric ──
@@ -132,8 +179,62 @@ export async function auditOnePage(opts: AuditOnePageOptions): Promise<PageAudit
       overrides,
     })
 
+    // ── 7. Ethics gate (Layer 7) — apply rollup floor when rules fire ──
+    if (skipEthics) {
+      console.warn(`[ethics] --skip-ethics: gate bypassed for ${url} (test-only)`)
+      result.ethicsViolations = []
+    } else {
+      const rules = loadEthicsRules(ethicsRulesDir)
+      const ethicsViolations = await checkEthics(
+        rules,
+        {
+          pageText: pageTextBlob(state.snapshot, { url, title: state.title }),
+          snapshot: state.snapshot,
+          classification,
+          audience,
+          modality,
+          regulatoryContext,
+          audienceVulnerability,
+        },
+        { brain },
+      )
+      if (ethicsViolations.length > 0) {
+        const minCap = Math.min(...ethicsViolations.map((v) => v.rollupCap))
+        if (typeof result.score === 'number' && result.score > minCap) {
+          result.preEthicsScore = result.score
+          result.score = minCap
+        }
+      }
+      result.ethicsViolations = ethicsViolations
+    }
+
+    // ── 8. Layer 1 v2 — multi-dim scoring + rollup, emitted alongside v1 ──
+    if (ensemble) {
+      try {
+        const anchors = loadAnchors()
+        const anchor = anchors.get(ensemble.type)
+        const v2 = await buildAuditResultV2({
+          brain,
+          state,
+          pageRef: url,
+          ensemble,
+          rubric,
+          measurements,
+          v1Result: result,
+          anchor,
+          runId,
+        })
+        result.auditResultV2 = v2
+        result.ensembleClassification = ensemble
+      } catch (v2Err) {
+        // Don't let v2 failures break v1. Log + move on.
+        console.warn(`[audit/v2] failed to build v2 result for ${url}: ${(v2Err as Error).message}`)
+      }
+    }
+
     if (runId) {
       const findings = result.findings ?? []
+      const ethicsViolations: EthicsViolation[] = result.ethicsViolations ?? []
       getTelemetry().emit({
         kind: 'design-audit-page',
         runId,
@@ -170,6 +271,9 @@ export async function auditOnePage(opts: AuditOnePageOptions): Promise<PageAudit
           contrastAaPassRate: measurements.contrast.summary.aaPassRate,
           a11yViolations: measurements.a11y.violations.length,
           tokensUsed: result.tokensUsed ?? 0,
+          ethicsViolations: ethicsViolations.length,
+          ethicsCriticalFloor: ethicsViolations.filter((v) => v.severity === 'critical-floor').length,
+          ethicsMajorFloor: ethicsViolations.filter((v) => v.severity === 'major-floor').length,
         },
         tags: {
           pageType: classification.type,
@@ -202,6 +306,7 @@ export async function auditOnePage(opts: AuditOnePageOptions): Promise<PageAudit
       summary: 'Audit failed',
       strengths: [],
       findings: [],
+      ethicsViolations: [],
       error,
     }
   }

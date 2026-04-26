@@ -23,6 +23,12 @@ const COPIES = [
     pattern: /\.md$/,
   },
   {
+    label: 'rubric anchor(s)',
+    src: 'src/design/audit/rubric/anchors',
+    dest: 'dist/design/audit/rubric/anchors',
+    pattern: /\.ya?ml$/,
+  },
+  {
     label: 'viewer asset(s)',
     src: 'src/viewer',
     dest: 'dist/viewer',

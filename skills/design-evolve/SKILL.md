@@ -65,7 +65,33 @@ Batch related fixes: all spacing in one pass, all color in another.
 
 ## Phase 3: Apply Fixes to Source Code
 
-Match the project's styling approach. Fix the **design system** (shared components, tokens, globals), not individual instances.
+**Preferred (v2 — patch-based):** If the audit output has `findings[*].patches[]`, apply mechanically rather than authoring from scratch:
+
+```ts
+// Iterate topFixes in order
+for (const findingId of page.topFixes) {
+  const finding = page.findings.find(f => f.id === findingId)
+  if (!finding.patches?.length) continue  // Layer 2 not yet active for this finding
+
+  const patch = finding.patches[0]
+  // Option A: file path known → apply unified diff
+  if (patch.target.filePath && patch.diff.unifiedDiff) {
+    // write unifiedDiff to a temp file and: git apply <tmp>
+  }
+  // Option B: CSS selector → search-replace
+  // find patch.diff.before in relevant file, replace with patch.diff.after
+
+  // Verify
+  if (patch.testThatProves.command) {
+    // run patch.testThatProves.command
+  }
+
+  // Close the loop — record attribution
+  // bad design-audit ack-patch <patch.patchId> --pre-run-id <runId>
+}
+```
+
+**Fallback (prose-to-code):** When `patches[]` is empty, match the project's styling approach and fix the **design system** (shared components, tokens, globals), not individual instances.
 
 **Tailwind:**
 ```tsx
@@ -100,17 +126,22 @@ Rules:
 - Fix the design system, not individual instances
 - Only change visual properties — never touch event handlers, state, or business logic
 
-## Phase 4: Re-Audit
+## Phase 4: Re-Audit + Attribution
 
 ```bash
+# If you used patch-based flow in Phase 3, record attribution before re-auditing:
+# bad design-audit ack-patch <patchId> --pre-run-id <runId>
+
 node dist/cli.js design-audit \
   --url <TARGET_URL> \
   --profile <PROFILE> \
   --pages <N> \
   --json --headless
+# (add --post-patch <patchId> if you ack'd above)
 ```
 
 Compare: did score improve? Are original critical/major findings resolved? Any new findings introduced?
+Check `ethicsViolations` — if any are present the rollup is capped; scores won't improve past the cap until violations are remediated.
 
 ## Phase 5: Iterate
 
