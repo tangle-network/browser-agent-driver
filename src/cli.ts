@@ -104,6 +104,20 @@ async function main(): Promise<void> {
   setCliVersion(readCliVersion());
   setInvocation(process.argv.slice(2)[0] || 'unknown', process.argv.slice(2));
 
+  // Subcommand groups with their own arg shape — dispatch before the strict
+  // parent parser (which only knows the run/design-audit/auth/showcase flags).
+  const subArgs = process.argv.slice(2);
+  if (subArgs[0] === 'jobs') {
+    const { runJobsCli } = await import('./cli-jobs.js');
+    await runJobsCli(subArgs.slice(1));
+    process.exit(0);
+  }
+  if (subArgs[0] === 'reports') {
+    const { runReportsCli } = await import('./cli-reports.js');
+    await runReportsCli(subArgs.slice(1));
+    process.exit(0);
+  }
+
   const { values, positionals } = parseArgs({
     allowPositionals: true,
     allowNegative: true,
@@ -552,7 +566,7 @@ async function main(): Promise<void> {
   }
 
   if (command !== 'run' && command !== 'attach') {
-    cliError(`Unknown command: ${command}. Use "run", "attach", "preview", "runs", "view", "share", "chrome-debug", "design-audit", "showcase", or "auth".`);
+    cliError(`Unknown command: ${command}. Use "run", "attach", "preview", "runs", "view", "share", "chrome-debug", "design-audit", "showcase", "auth", "jobs", or "reports".`);
     process.exit(1);
   }
 
