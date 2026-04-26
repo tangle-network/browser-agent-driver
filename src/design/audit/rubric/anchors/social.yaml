@@ -1,0 +1,33 @@
+type: social
+score_9_10:
+  criteria:
+    - Feed prioritizes real content (posts, conversations) over chrome and ads
+    - Compose surface is one click away and primary in the layout
+    - Identity signals (verified accounts, profile preview, follower counts) consistent and lightweight
+    - State transitions (like, reply, repost) feel instant and reversible
+    - Empty states preview what the feed will look like with a few followed accounts
+  fixtures:
+    - fixture:threads-web
+    - fixture:bluesky-web
+    - fixture:substack-inline
+score_7_8:
+  criteria:
+    - Solid feed and compose flow but reply chains are visually flat
+    - Identity signals inconsistent across surfaces
+    - Empty states use illustrations rather than previewing real content
+  fixtures:
+    - fixture:generic-microblog
+score_5_6:
+  criteria:
+    - Feed cluttered with chrome (rails, ads, suggestions) competing with content
+    - Compose buried two clicks deep
+    - Action affordances (reply, like, share) are equal weight with no clear primary
+  fixtures:
+    - fixture:cluttered-feed
+score_3_4:
+  criteria:
+    - Page reads as ad inventory with content squeezed in
+    - No clear primary feed; multiple surfaces compete
+    - Identity signals fake or absent (anonymous content with no provenance)
+  fixtures:
+    - fixture:ad-heavy-feed

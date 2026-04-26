@@ -15,6 +15,25 @@ import type {
   ComposedRubric,
   AppliesWhen,
 } from '../types.js'
+import type {
+  AudienceTag,
+  ModalityTag,
+  RegulatoryContextTag,
+  AudienceVulnerabilityTag,
+} from '../v2/types.js'
+
+/**
+ * Operator-supplied context for Layer 6 composable predicate matching.
+ * When provided, fragments whose `applies-when.audience | modality |
+ * regulatoryContext | audienceVulnerability` overlap with these values are
+ * included in the composed rubric alongside the classification-matched set.
+ */
+export interface RubricContext {
+  audience?: AudienceTag[]
+  modality?: ModalityTag[]
+  regulatoryContext?: RegulatoryContextTag[]
+  audienceVulnerability?: AudienceVulnerabilityTag[]
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const BUILTIN_FRAGMENTS_DIR = path.join(__dirname, 'fragments')
@@ -134,44 +153,66 @@ export function loadFragments(dir: string = BUILTIN_FRAGMENTS_DIR): RubricFragme
 }
 
 /**
- * Predicate evaluator. Returns true if the fragment applies to the classification.
+ * Predicate evaluator. Returns true if the fragment applies to the classification
+ * or the optional Layer 6 context (audience / modality / regulatoryContext /
+ * audienceVulnerability hints).
  *
  * Universal fragments always apply.
- * Type/domain/maturity/designSystem predicates are AND-combined: all listed
- * fields must match. Within a field, the classification value must be in the
- * fragment's allowed set.
+ * Predicate groups are OR-combined at the group level: a fragment fires if ANY
+ * one of its predicate groups matches. Within a group, list membership is used
+ * (the classification/context value must appear in the fragment's allowed set).
+ *
+ * Layer 6 predicates are additive: they can cause a fragment to fire even when
+ * no type/domain predicate matches, enabling composition across independent
+ * predicate dimensions.
  */
 export function fragmentApplies(
   fragment: RubricFragment,
   classification: PageClassification,
+  ctx?: RubricContext,
 ): boolean {
-  const w = fragment.appliesWhen
+  const w = fragment.appliesWhen as AppliesWhen & {
+    audience?: string[]
+    modality?: string[]
+    regulatoryContext?: string[]
+    audienceVulnerability?: string[]
+  }
   if (w.universal) return true
 
-  if (w.type && w.type.length > 0) {
-    if (!w.type.includes(classification.type)) return false
-  }
-  if (w.domain && w.domain.length > 0) {
-    const domainMatch = w.domain.some(d =>
-      classification.domain.toLowerCase().includes(d.toLowerCase()),
-    )
-    if (!domainMatch) return false
-  }
-  if (w.maturity && w.maturity.length > 0) {
-    if (!w.maturity.includes(classification.maturity)) return false
-  }
-  if (w.designSystem && w.designSystem.length > 0) {
-    if (!w.designSystem.includes(classification.designSystem)) return false
+  // --- Layer 1 classification predicates (AND-combined when all set) ---
+  const classificationPredicateSet =
+    !!w.type?.length || !!w.domain?.length || !!w.maturity?.length || !!w.designSystem?.length
+
+  if (classificationPredicateSet) {
+    if (w.type?.length && !w.type.includes(classification.type)) return false
+    if (w.domain?.length) {
+      const domainMatch = w.domain.some(d =>
+        classification.domain.toLowerCase().includes(d.toLowerCase()),
+      )
+      if (!domainMatch) return false
+    }
+    if (w.maturity?.length && !w.maturity.includes(classification.maturity)) return false
+    if (w.designSystem?.length && !w.designSystem.includes(classification.designSystem)) return false
+    return true
   }
 
-  // If at least one predicate field was set and all matched, apply.
-  // If NO predicates were set and not universal, don't apply (be conservative).
-  const hasPredicate =
-    !!w.type?.length ||
-    !!w.domain?.length ||
-    !!w.maturity?.length ||
-    !!w.designSystem?.length
-  return hasPredicate
+  // --- Layer 6 context predicates (any overlap fires the fragment) ---
+  if (ctx) {
+    if (w.audience?.length && ctx.audience?.length) {
+      if (w.audience.some(a => ctx.audience!.includes(a as AudienceTag))) return true
+    }
+    if (w.modality?.length && ctx.modality?.length) {
+      if (w.modality.some(m => ctx.modality!.includes(m as ModalityTag))) return true
+    }
+    if (w.regulatoryContext?.length && ctx.regulatoryContext?.length) {
+      if (w.regulatoryContext.some(r => ctx.regulatoryContext!.includes(r as RegulatoryContextTag))) return true
+    }
+    if (w.audienceVulnerability?.length && ctx.audienceVulnerability?.length) {
+      if (w.audienceVulnerability.some(av => ctx.audienceVulnerability!.includes(av as AudienceVulnerabilityTag))) return true
+    }
+  }
+
+  return false
 }
 
 /**
@@ -180,11 +221,13 @@ export function fragmentApplies(
  * @param classification - the page classification
  * @param fragments - all loaded fragments (defaults to builtin)
  * @param userFragmentsDir - optional path to user-supplied fragments
+ * @param ctx - optional Layer 6 context for audience/modality/regulatory predicates
  */
 export function composeRubric(
   classification: PageClassification,
   fragments?: RubricFragment[],
   userFragmentsDir?: string,
+  ctx?: RubricContext,
 ): ComposedRubric {
   const all = [
     ...(fragments ?? loadFragments(BUILTIN_FRAGMENTS_DIR)),
@@ -192,7 +235,7 @@ export function composeRubric(
   ]
 
   const matched = all
-    .filter(f => fragmentApplies(f, classification))
+    .filter(f => fragmentApplies(f, classification, ctx))
     .sort((a, b) => WEIGHT_ORDER[a.weight] - WEIGHT_ORDER[b.weight])
 
   const body = matched

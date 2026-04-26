@@ -17,7 +17,72 @@ import { resolveProviderApiKey, resolveProviderModelName, type SupportedProvider
 import { loadLocalEnvFiles } from './env-loader.js'
 import { cliError } from './cli-ui.js'
 import { auditOnePage } from './design/audit/pipeline.js'
-import type { PageAuditResult as Gen2PageAuditResult } from './design/audit/types.js'
+import type { PageAuditResult as Gen2PageAuditResult, EthicsViolation } from './design/audit/types.js'
+
+/** Split "a, b , c" → ['a','b','c']. Returns undefined for empty input so the
+ *  v2 predicate predicates can distinguish "operator did not say" from "[]". */
+function parseTagList(input: string | undefined): string[] | undefined {
+  if (!input) return undefined
+  const tags = input.split(',').map(s => s.trim()).filter(Boolean)
+  return tags.length > 0 ? tags : undefined
+}
+
+/** Pretty-print the ethics-violation report for a set of pages. Prints
+ *  nothing when no page tripped a rule. Each rule is shown with severity,
+ *  remediation, and citation so the operator can act without re-running. */
+function printEthicsViolations(pages: Array<{ url: string; ethicsViolations?: EthicsViolation[] }>): void {
+  const offenders = pages.filter(p => (p.ethicsViolations?.length ?? 0) > 0)
+  if (offenders.length === 0) return
+  console.log('')
+  console.log(`  ${chalk.bgRed.white.bold(' ETHICS VIOLATIONS ')}`)
+  for (const page of offenders) {
+    console.log(`  ${chalk.dim('Page:')} ${page.url}`)
+    for (const v of page.ethicsViolations ?? []) {
+      const sevColor = v.severity === 'critical-floor' ? chalk.red : chalk.yellow
+      console.log(`    ${sevColor('•')} ${chalk.bold(v.ruleId)} ${chalk.dim('—')} ${sevColor(v.severity)} ${chalk.dim(`(rollup capped at ${v.rollupCap})`)}`)
+      console.log(`      ${chalk.dim('fix:')} ${v.remediation}`)
+      if (v.citation) console.log(`      ${chalk.dim('cite:')} ${v.citation}`)
+    }
+  }
+}
+
+/** Lowest rollup cap across all violated pages, or undefined if none fired. */
+function lowestRollupCap(pages: Array<{ ethicsViolations?: EthicsViolation[] }>): number | undefined {
+  const caps = pages.flatMap(p => p.ethicsViolations ?? []).map(v => v.rollupCap)
+  return caps.length === 0 ? undefined : Math.min(...caps)
+}
+
+/**
+ * Layer 1 — print the per-dimension breakdown for one page when an
+ * `auditResultV2` is attached. Five dim lines + one rollup line; each shows
+ * score, range, and confidence so an agent can reason about uncertainty.
+ */
+function printV2Breakdown(page: { auditResultV2?: unknown }): void {
+  const v2 = page.auditResultV2 as
+    | {
+        scores?: Record<string, { score: number; range: [number, number]; confidence: string }>
+        rollup?: { score: number; range: [number, number]; confidence: string; rule: string }
+      }
+    | undefined
+  if (!v2 || !v2.scores || !v2.rollup) return
+
+  const dimOrder = ['product_intent', 'visual_craft', 'trust_clarity', 'workflow', 'content_ia']
+  for (const dim of dimOrder) {
+    const s = v2.scores[dim]
+    if (!s) continue
+    const sevColor = s.score >= 8 ? chalk.green : s.score >= 5 ? chalk.yellow : chalk.red
+    const confColor = s.confidence === 'high' ? chalk.green : s.confidence === 'medium' ? chalk.yellow : chalk.dim
+    console.log(
+      `      ${chalk.dim(dim.padEnd(15))} ${sevColor(`${s.score}/10`)} ${chalk.dim(`[${s.range[0]}-${s.range[1]}]`)} ${confColor(s.confidence)}`,
+    )
+  }
+  const r = v2.rollup
+  const rColor = r.score >= 8 ? chalk.green : r.score >= 5 ? chalk.yellow : chalk.red
+  const confColor = r.confidence === 'high' ? chalk.green : r.confidence === 'medium' ? chalk.yellow : chalk.dim
+  console.log(
+    `      ${chalk.dim('rollup'.padEnd(15))} ${rColor(`${r.score.toFixed(1)}/10`)} ${chalk.dim(`[${r.range[0].toFixed(1)}-${r.range[1].toFixed(1)}]`)} ${confColor(r.confidence)}  ${chalk.dim(r.rule)}`,
+  )
+}
 import { resolveAuditPasses } from './design/audit/evaluate.js'
 import { detectSystemicFindings, topByRoi } from './design/audit/roi.js'
 import { getTelemetry, setInvocation } from './telemetry/index.js'
@@ -92,6 +157,12 @@ interface PageAuditResult {
   rubricFragments?: string[]
   /** Gen 2: deterministic measurements */
   measurements?: Gen2PageAuditResult['measurements']
+  /** Layer 7: ethics violations that capped the rollup, if any. */
+  ethicsViolations?: EthicsViolation[]
+  /** Layer 7: the pre-cap rollup score when ethicsViolations is non-empty. */
+  preEthicsScore?: number
+  /** Layer 1: opaque v2 result attached for backwards-compat dual-emit. */
+  auditResultV2?: unknown
 }
 
 // ---------------------------------------------------------------------------
@@ -249,6 +320,19 @@ export interface DesignAuditOptions {
   rubricsDir?: string
   /** Subjective LLM audit passes: standard, deep, max, number, or comma-list */
   auditPasses?: string
+  // ── Layer 7 — domain ethics gate ──
+  /** Bypass the ethics floor entirely. Audited + warned. Test-only. */
+  skipEthics?: boolean
+  /** Override directory for ethics rule yaml files. */
+  ethicsRulesDir?: string
+  /** Comma-separated audience tags: developer, clinician, kids, ... */
+  audience?: string
+  /** Comma-separated regulatory contexts: hipaa, gdpr, coppa, ... */
+  regulatoryContext?: string
+  /** Comma-separated audience-vulnerability tags: patient-facing, minor-facing, ... */
+  audienceVulnerability?: string
+  /** Single modality: mobile, tablet, desktop, tv, kiosk */
+  modality?: string
 }
 
 export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
@@ -269,6 +353,19 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
   const modelName = resolveProviderModelName(provider, opts.model)
   const apiKey = opts.apiKey ?? resolveProviderApiKey(provider)
   const auditPasses = resolveAuditPasses(opts.auditPasses)
+
+  // Layer 7 — ethics gate options. Threaded into every auditOnePage call site.
+  if (opts.skipEthics) {
+    console.warn(`  ${chalk.yellow('⚠')} ${chalk.bold('--skip-ethics')} ${chalk.dim('— ethics floor disabled (test-only)')}`)
+  }
+  const ethicsCommonOpts = {
+    skipEthics: opts.skipEthics,
+    ethicsRulesDir: opts.ethicsRulesDir,
+    audience: parseTagList(opts.audience) as never,
+    regulatoryContext: parseTagList(opts.regulatoryContext) as never,
+    audienceVulnerability: parseTagList(opts.audienceVulnerability) as never,
+    modality: parseTagList(opts.modality) as never,
+  }
 
   // Telemetry: every design-audit invocation gets a stable runId. Children
   // (per-page, evolve rounds) link back via parentRunId so a fleet rollup can
@@ -347,6 +444,7 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
       runId,
       provider,
       model: modelName,
+      ...ethicsCommonOpts,
     })
     const result = gen2 as PageAuditResult
     results.push(result)
@@ -358,6 +456,7 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
       ? chalk.dim(` (${result.classification.type}/${result.classification.domain})`)
       : ''
     console.log(`  ${icon} ${scoreColor(`${result.score}/10`)} ${chalk.dim('—')} ${findingCount} finding${findingCount !== 1 ? 's' : ''}${classLabel}`)
+    printV2Breakdown(result)
   }
 
   // Cross-page systemic detection + top-fixes ranking.
@@ -383,16 +482,30 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
 
   if (opts.json) {
     const jsonPath = path.join(outputDir, 'report.json')
+    // Layer 1 — emit BOTH schemaVersion 1 (legacy) and schemaVersion 2 (new)
+    // shapes for one release. Consumers can migrate to v2 incrementally.
+    const v2Pages = results
+      .map(r => r.auditResultV2)
+      .filter((r): r is unknown => r !== undefined)
     fs.writeFileSync(jsonPath, JSON.stringify({
+      schemaVersion: 1,
       timestamp: new Date().toISOString(),
       profile,
       url: opts.url,
       pages: results,
       topFixes,
       summary: { avgScore, totalFindings: allFindings.length, critical, major, minor },
+      v2: {
+        schemaVersion: 2,
+        pages: v2Pages,
+      },
     }, null, 2))
     console.log(`  ${chalk.dim('JSON →')} ${jsonPath}`)
   }
+
+  // ── Layer 7 — surface ethics violations BEFORE the score summary so the
+  // operator sees the floor reason, not just the capped number. ──
+  printEthicsViolations(results)
 
   // Summary
   console.log('')
@@ -403,6 +516,10 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
   if (major > 0) findingParts.push(chalk.yellow(`${major} major`))
   if (minor > 0) findingParts.push(chalk.dim(`${minor} minor`))
   console.log(`  Avg: ${avgColor(`${avgScore.toFixed(1)}/10`)}  ${chalk.dim('·')}  ${allFindings.length} findings ${findingParts.length ? chalk.dim('(') + findingParts.join(chalk.dim(' · ')) + chalk.dim(')') : ''}`)
+  const lowestCap = lowestRollupCap(results)
+  if (lowestCap !== undefined) {
+    console.log(`  ${chalk.red('⚠ Rollup capped at')} ${chalk.bold(`${lowestCap}/10`)} ${chalk.dim('— resolve ethics violations to lift the cap')}`)
+  }
   console.log(`  ${chalk.dim('Report →')} ${reportPath}`)
   if (screenshotDir) console.log(`  ${chalk.dim('Screenshots →')} ${screenshotDir}`)
   console.log('')
@@ -426,6 +543,7 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
           provider,
           model: modelName,
           parentRunId: runId,
+          ...ethicsCommonOpts,
         })
         repResults.push(gen2 as PageAuditResult)
       }

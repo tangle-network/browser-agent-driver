@@ -1,0 +1,35 @@
+type: docs
+score_9_10:
+  criteria:
+    - Quickstart path from landing to a working result is obvious within one viewport
+    - Code samples are runnable, copy-button-equipped, and language-tabbed where relevant
+    - Reference structure (sidebar, breadcrumbs, search) supports both linear and lookup reading
+    - Versioning, deprecation, and last-updated signals are visible
+    - Typography scale and line-length tuned for sustained reading
+  fixtures:
+    - fixture:stripe-docs
+    - fixture:tailwind-docs
+    - fixture:mdn-docs
+    - fixture:vercel-docs
+score_7_8:
+  criteria:
+    - Quickstart present but buried; copy is solid but examples are partial
+    - Sidebar IA works but search is weak or missing
+    - Versioning unclear
+  fixtures:
+    - fixture:generic-mkdocs
+score_5_6:
+  criteria:
+    - Wall-of-text reference with no quickstart
+    - Code samples without copy buttons or language switching
+    - No search, no breadcrumbs, no last-updated metadata
+    - Default theme typography (inconsistent line-height, no scale)
+  fixtures:
+    - fixture:default-docusaurus
+score_3_4:
+  criteria:
+    - Marketing page disguised as docs (heavy hero, no actual reference)
+    - No code samples or syntax highlighting
+    - IA broken — "Getting Started" buried under marketing copy
+  fixtures:
+    - fixture:marketing-as-docs

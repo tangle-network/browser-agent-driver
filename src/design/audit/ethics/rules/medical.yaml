@@ -1,0 +1,36 @@
+# Medical / clinical / pharmacy ethics rules.
+# Anchored to FDA labeling regs, ICH E2 pharmacovigilance, and ONC info-blocking.
+
+- ruleId: medical:dosage-warning-required
+  category: medical
+  severity: critical-floor
+  appliesWhen:
+    domain: [medical, clinical, pharmacy, health]
+  detector:
+    kind: pattern-absent
+    pattern: (dosage|warning|contraindication|adverse|side effect)
+  remediation: Display dosage warnings, contraindications, and adverse-effect summaries before any prescription action.
+  citation: FDA 21 CFR 201.57
+
+- ruleId: medical:adverse-event-reporting-path
+  category: medical
+  severity: major-floor
+  appliesWhen:
+    domain: [medical, clinical, pharmacy, health]
+  detector:
+    kind: pattern-absent
+    pattern: (report.{0,20}(side effect|adverse|reaction)|MedWatch|FDA 1088|pharmacovigilance)
+  remediation: Provide a visible adverse-event reporting path (MedWatch link or equivalent) on any prescribing or dispensing surface.
+  citation: FDA 21 CFR 314.80 / ICH E2D
+
+- ruleId: medical:patient-education-disclosure
+  category: medical
+  severity: major-floor
+  appliesWhen:
+    domain: [medical, clinical, pharmacy, health]
+    audienceVulnerability: [patient-facing]
+  detector:
+    kind: llm-classifier
+    llmCheck: Does this patient-facing page request a clinical action or health-data submission WITHOUT first presenting plain-language patient education (indications, risks, instructions for use)?
+  remediation: Surface plain-language patient education (indications, risks, instructions) ahead of any clinical action a patient can take.
+  citation: ONC 45 CFR 170.315(g)(9) Patient Education

@@ -1,0 +1,33 @@
+type: ecommerce
+score_9_10:
+  criteria:
+    - Product photography is real, detailed, and honest (not stock or AI-rendered)
+    - Price, fees, taxes, shipping, and total are surfaced before the commit button
+    - Stock, delivery, and return-policy signals are visible at decision points
+    - Cart and checkout flows preserve context — user always knows what they are buying
+    - Trust signals (verified payment, secure checkout, real merchant identity) appear where commitment occurs
+  fixtures:
+    - fixture:apple-store
+    - fixture:shopify-storefront
+    - fixture:allbirds-pdp
+score_7_8:
+  criteria:
+    - Solid PDPs but checkout exposes fees only at the last step
+    - Stock and delivery info present but inconsistent across pages
+    - Photography mixes real and stock
+  fixtures:
+    - fixture:generic-shopify
+score_5_6:
+  criteria:
+    - Fees surfaced only after pressing Pay; no shipping calculator
+    - Stock/delivery signals missing on PDPs
+    - Generic merchant identity, no trust badges, no return policy summary
+  fixtures:
+    - fixture:hidden-fees-checkout
+score_3_4:
+  criteria:
+    - Total never shown until after commitment
+    - No merchant identity, no return policy, no trust signals
+    - Forced account creation before checkout, dark-pattern upsells
+  fixtures:
+    - fixture:dark-pattern-checkout

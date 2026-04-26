@@ -6,9 +6,11 @@
  */
 
 import type { DesignFinding, DesignSystemScore } from '../../types.js'
+import type { EthicsViolation } from './v2/types.js'
 
 // Re-export the canonical Finding/Score types so consumers only import from here
 export type { DesignFinding, DesignSystemScore } from '../../types.js'
+export type { EthicsViolation } from './v2/types.js'
 
 // ── Classification ─────────────────────────────────────────────────────────
 
@@ -208,5 +210,31 @@ export interface PageAuditResult {
   designSystemScore?: DesignSystemScore
   screenshotPath?: string
   tokensUsed?: number
+  /**
+   * Layer 7 — domain ethics violations. When non-empty, `score` is capped by
+   * the lowest `rollupCap` across violations until the underlying issue is
+   * remediated. Empty when --skip-ethics is set or when no rule fires.
+   */
+  ethicsViolations?: EthicsViolation[]
+  /**
+   * The pre-cap score (Layer 7). Set when `ethicsViolations` is non-empty so
+   * tooling can show "would have scored X, capped at Y" without losing
+   * the LLM's original assessment.
+   */
+  preEthicsScore?: number
+  /**
+   * Layer 1 — v2 multi-dim audit result. Emitted alongside the v1 fields for
+   * one release as a backwards-compat bridge. Consumers should migrate to
+   * `auditResultV2` and treat the v1 surface as deprecated.
+   *
+   * Typed as `unknown` here to avoid pulling v2/types.ts into v1 consumers.
+   * The concrete shape is `import('./v2/types.js').AuditResult_v2`.
+   */
+  auditResultV2?: unknown
+  /**
+   * Layer 1 — ensemble classification (URL + DOM + LLM). When set, the
+   * pipeline used `--audit-passes auto` (the new default).
+   */
+  ensembleClassification?: unknown
   error?: string
 }

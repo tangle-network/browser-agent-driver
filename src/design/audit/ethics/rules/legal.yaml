@@ -1,0 +1,35 @@
+# Legal / regulatory consent rules.
+# Anchored to GDPR, ePrivacy Directive, and CCPA/CPRA notice-at-collection.
+
+- ruleId: legal:gdpr-cookie-consent
+  category: legal
+  severity: major-floor
+  appliesWhen:
+    regulatoryContext: [gdpr]
+  detector:
+    kind: pattern-absent
+    pattern: (cookie|consent|necessary|preferences)
+  remediation: Display GDPR-compliant cookie consent banner with granular controls.
+  citation: GDPR Art. 7 / ePrivacy Directive 2002/58/EC Art. 5(3)
+
+- ruleId: legal:privacy-policy-link-required
+  category: legal
+  severity: major-floor
+  appliesWhen:
+    regulatoryContext: [gdpr]
+  detector:
+    kind: pattern-absent
+    pattern: (privacy policy|privacy notice|data protection)
+  remediation: Provide a clearly labeled privacy policy / notice link on every page that processes personal data.
+  citation: GDPR Art. 13-14
+
+- ruleId: legal:ccpa-do-not-sell-link
+  category: legal
+  severity: major-floor
+  appliesWhen:
+    regulatoryContext: [gdpr]
+  detector:
+    kind: pattern-absent
+    pattern: (do not sell|do not share|opt.?out|your privacy choices)
+  remediation: Provide a "Do Not Sell or Share My Personal Information" / "Your Privacy Choices" link in the global footer.
+  citation: CCPA Cal. Civ. Code 1798.135 / CPRA 1798.121

@@ -1,0 +1,33 @@
+type: blog
+score_9_10:
+  criteria:
+    - Reading column tuned to 60-75 character measure with deliberate vertical rhythm
+    - Typography scale supports headings, body, callouts, code, captions distinctly
+    - Author identity and publication date prominent without being chrome
+    - Inline media (images, code, embeds) integrate cleanly with text flow
+    - Navigation between posts (next, related, archive) supports the reading habit
+  fixtures:
+    - fixture:stratechery
+    - fixture:substack-post
+    - fixture:notion-blog-template
+score_7_8:
+  criteria:
+    - Strong reading experience but typographic scale is one step shy of intentional
+    - Author and date present but visually inconsistent
+    - Inline media works but breaks rhythm at boundaries
+  fixtures:
+    - fixture:medium-default
+score_5_6:
+  criteria:
+    - Default theme typography (no custom scale, line-height defaults)
+    - Heavy chrome (sidebar, social rail) competing with the article
+    - Author/date hidden in footer
+  fixtures:
+    - fixture:default-ghost
+score_3_4:
+  criteria:
+    - Article copy crammed against gutters; no measure control
+    - Inline ads break reading flow every paragraph
+    - No publication date — content is unanchored in time
+  fixtures:
+    - fixture:ad-heavy-article

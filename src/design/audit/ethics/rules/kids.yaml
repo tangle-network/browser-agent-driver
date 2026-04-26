@@ -1,0 +1,37 @@
+# Kids-targeted product ethics rules.
+# Anchored to COPPA + UK ICO Age Appropriate Design Code (AADC).
+
+- ruleId: kids:dark-patterns-prohibited
+  category: kids
+  severity: critical-floor
+  appliesWhen:
+    audience: [kids]
+  detector:
+    kind: llm-classifier
+    llmCheck: Does this page use any dark pattern (hidden costs, forced action, fake urgency, confirmshaming, manipulated visual hierarchy) targeting a minor user?
+  remediation: Remove all dark patterns. Use clear, age-appropriate, friction-symmetric flows.
+  citation: COPPA 16 CFR 312.5 / FTC Dark Patterns Report 2022
+
+- ruleId: kids:age-gate-required
+  category: kids
+  severity: critical-floor
+  appliesWhen:
+    audience: [kids]
+    audienceVulnerability: [minor-facing]
+  detector:
+    kind: pattern-absent
+    pattern: (age|date of birth|verify your age)
+  remediation: Implement an age gate before collecting any data or showing user-generated content.
+  citation: COPPA 16 CFR 312.5
+
+- ruleId: kids:data-minimization-default
+  category: kids
+  severity: major-floor
+  appliesWhen:
+    audience: [kids]
+    regulatoryContext: [coppa]
+  detector:
+    kind: llm-classifier
+    llmCheck: Does this page request data fields from a child that are NOT strictly necessary for the activity (e.g. unmarked optional fields, profile / social / friend-graph fields, location or contact data not required for the task)?
+  remediation: Default to data minimization for child users — collect only what is strictly necessary, mark every optional field, and disable profile/social fields by default.
+  citation: ICO AADC Standard 8 / COPPA 16 CFR 312.7

@@ -1,0 +1,35 @@
+type: dashboard
+score_9_10:
+  criteria:
+    - Real metrics with units, time windows, and comparison baselines visible at first glance
+    - Charts use deliberate scales, axis labels, and selective color (not rainbow defaults)
+    - Filters, time ranges, and segment selectors are obvious and persistent
+    - Empty states preview real data shape (sample rows, last-7-days skeleton)
+    - Density tuned to operator workflow — no decorative whitespace where dense data belongs
+  fixtures:
+    - fixture:linear-app
+    - fixture:figma-file-ui
+    - fixture:datadog-dashboard
+    - fixture:vercel-dashboard
+score_7_8:
+  criteria:
+    - Metrics present and useful but lack comparison baselines or time-window controls
+    - Charts readable but use default color palette; minor density issues
+    - Filters present but discoverability unclear
+  fixtures:
+    - fixture:grafana-default
+score_5_6:
+  criteria:
+    - Generic stat cards (4 equal boxes) without context or comparison
+    - Charts are rainbow defaults from the component library
+    - No filters or time-range affordance
+    - Empty states are illustrations + platitudes
+  fixtures:
+    - fixture:generic-dashboard
+score_3_4:
+  criteria:
+    - Numbers without units, labels, or context — operator cannot tell good from bad
+    - Decorative chart visualizations (donuts, gauges) instead of operational data
+    - Equal-weight UI controls; no clear workflow path
+  fixtures:
+    - fixture:empty-state-noise

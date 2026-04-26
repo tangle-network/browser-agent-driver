@@ -1,0 +1,38 @@
+type: saas-app
+score_9_10:
+  criteria:
+    - Domain object visible above the fold (tasks, deployments, conversations, files)
+    - One visually-dominant primary action per page state
+    - Empty states preview real product (sample rows, setup checklists, status timelines), not generic illustrations
+    - Action hierarchy = product hierarchy; no decorative buttons competing with workflow
+    - Trust details visible where commitment exists (price, permissions, undo, audit trail)
+  fixtures:
+    - fixture:linear-app
+    - fixture:figma-file-ui
+    - fixture:notion-editor
+    - fixture:superhuman
+    - fixture:github-pr-view
+score_7_8:
+  criteria:
+    - Most criteria from 9-10 with one or two minor gaps
+    - Polish gaps that don't block job completion
+    - Domain objects present but action hierarchy slightly diffuse
+  fixtures:
+    - fixture:airtable-grid
+    - fixture:notion-database
+score_5_6:
+  criteria:
+    - Functional but generic component-library assembly
+    - No domain object above the fold OR action hierarchy unclear
+    - Empty states show illustrations + platitudes instead of product preview
+    - Multiple equal-weight CTAs without a dominant primary
+  fixtures:
+    - fixture:generic-dashboard
+score_3_4:
+  criteria:
+    - No primary job inferable from screen
+    - Equal-weight CTAs blocking workflow
+    - Decorative elements actively distract from product surface
+    - Page reads as a marketing/setup stub rather than an operational product
+  fixtures:
+    - fixture:no-primary-action

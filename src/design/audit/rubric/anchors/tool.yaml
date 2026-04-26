@@ -1,0 +1,33 @@
+type: tool
+score_9_10:
+  criteria:
+    - Single-purpose surface — the input and output relationship is immediate and obvious
+    - Keyboard-first interaction (shortcuts, focus management, paste support)
+    - Output is copyable, exportable, and shareable without modal interruption
+    - Recent results, history, or undo always available
+    - State (input, processing, output, error) handled explicitly with clear transitions
+  fixtures:
+    - fixture:linear-command-palette
+    - fixture:github-pr-view
+    - fixture:raycast
+score_7_8:
+  criteria:
+    - Tool works well but lacks keyboard affordances or history
+    - Output exportable but with extra clicks
+    - Error states present but generic
+  fixtures:
+    - fixture:generic-converter
+score_5_6:
+  criteria:
+    - Form-and-submit pattern with reload-style output
+    - No keyboard shortcuts, no history, no undo
+    - Loading and error states use defaults
+  fixtures:
+    - fixture:basic-tool-form
+score_3_4:
+  criteria:
+    - Multi-step flow for what should be a single action
+    - Output requires manual selection/copy
+    - No error handling — failures show generic browser errors
+  fixtures:
+    - fixture:broken-tool
