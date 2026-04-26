@@ -1,5 +1,177 @@
 # @tangle-network/browser-agent-driver
 
+## 0.31.0
+
+### Minor Changes
+
+- [#84](https://github.com/tangle-network/browser-agent-driver/pull/84) [`a679190`](https://github.com/tangle-network/browser-agent-driver/commit/a679190727f37f28dab9ad015dacb47502e28873) Thanks [@drewstone](https://github.com/drewstone)! - feat(jobs+reports): brand-kit / design-system extraction at every audit target
+
+  Comparative-audit jobs can now extract the full deterministic design-token bundle (colors, font families, type scale, logos, font files, brand metadata, detected libraries) at every target — including every wayback snapshot. New `brand-evolution` report template renders a per-URL chronological view of palette and typography drift, with snapshot-to-snapshot deltas (colors added/removed, font family swaps, brand-meta changes, library adoption).
+
+  **Spec:** add `audit.extractTokens: true` to a `JobSpec`. Each per-target output dir gets a `tokens.json` alongside `report.json`.
+
+  **CLI:** `bad reports generate --template brand-evolution --job <id>`
+
+  **AI SDK tools:** two new tools — `fetchTokens` (returns the per-target token summaries, optionally filtered to one URL's chronological series) and `diffTokens` (deterministic delta between two token summaries in the same job). `renderTemplate` now accepts `template: 'brand-evolution'`.
+
+  The token extractor is the existing `extractDesignTokens` (no LLM, ~10s per target). Same deterministic-data / LLM-narrates contract as the rest of the reports surface — every callout in the brand-evolution report comes from a pure function of `tokens.json`.
+
+  Verified end-to-end on `https://stripe.com/` 2014 → 2019 → 2024 wayback snapshots: pulled out the Whitney → Camphor → sohne-var typeface progression and the matching primary-color shifts (`#008cdd` → `#6772e5` → `#635bff`).
+
+  +12 new tests across `reports-tokens` and the queue/tools touch-ups. Total: 1460 passing.
+
+- [#81](https://github.com/tangle-network/browser-agent-driver/pull/81) [`36b6e63`](https://github.com/tangle-network/browser-agent-driver/commit/36b6e634721c83de40fc9075d97d43de1c09f97b) Thanks [@drewstone](https://github.com/drewstone)! - feat(design-audit): 8-layer architecture — Layers 1-7 fully shipped, Layer 8 scaffold
+
+  Full implementation of RFC-002: World-Class Design Audit. Primary consumer is coding agents (Claude Code, Codex, OpenCode, Pi); the architecture is JSON-first, tool-callable, and self-explaining when uncertain.
+
+  **Layer 1 — Multi-dimensional scoring** _(shipped)_
+
+  - Ensemble classifier (URL pattern + DOM heuristic + LLM tiebreaker) with `ensembleConfidence`, `signalsAgreed`, `dissent`.
+  - Five universal dimensions: `product_intent / visual_craft / trust_clarity / workflow / content_ia`.
+  - Per-page-type rollup weights (saas-app, marketing, dashboard, docs, ecommerce, social, tool, blog, utility).
+  - Per-page-type calibration anchors (`rubric/anchors/*.yaml`) so app surfaces aren't judged against marketing-site polish.
+  - `AuditResult_v2` emitted alongside v1 shape; v1 deprecated with one-release lag.
+
+  **Layer 2 — Patch primitives** _(shipped)_
+
+  - Every major/critical finding now ships `patches[]` with `target`, `diff.before`/`after`, `testThatProves`, `rollback`, `estimatedDelta`, and `estimatedDeltaConfidence`.
+  - `diff.before` is validated as a substring of the page snapshot at parse time — agents apply patches literally without re-authoring.
+  - Severity enforcement: findings without valid patches are downgraded from major/critical to minor.
+  - `patches/render.ts`: renders `unifiedDiff` from before/after when `target.filePath` is known (`git apply`-able).
+
+  **Layer 3 — First-principles fallback** _(shipped)_
+
+  - Fires when `ensembleConfidence < 0.6`, signals disagree, or page type is `unknown`.
+  - Scores against 5 universal product principles only (primary-job clarity, action obviousness, state preview, trust-before-commitment, recovery-from-failure).
+  - Sets `rollup.confidence = 'low'`; emits `NovelPatternObservation` to `~/.bad/novel-patterns/` for fleet mining.
+  - New rubric fragment `first-principles.md` carries the exact prompt that fires in this mode.
+
+  **Layer 4 — Outcome attribution** _(shipped)_
+
+  - `bad design-audit ack-patch <patchId> --pre-run-id <runId>` — records that an agent applied a patch.
+  - `bad design-audit --post-patch <patchId>` on re-audit — computes observed delta vs predicted, writes `agreementScore`.
+  - JSONL store at `~/.bad/attribution/applications/`. Append-only — outcomes are new events, not mutations.
+  - `aggregatePatchReliability()` cross-tenant rollup: groups by `patchHash = sha256(before+after+scope).slice(0,16)`. After N≥30 / ≥5 tenants / replicationRate≥0.7 → `recommendation: 'recommended'`.
+
+  **Layer 5 — Pattern library** _(scaffold)_
+
+  - `patterns/{store,mine,match}.ts` + `cli-patterns.ts` (`bad patterns query|show`).
+  - Cold-start: library is empty until ~6 weeks of attribution data accumulates. Mine threshold: N≥30, ≥5 tenants, replicationRate≥0.7. Mining impl is a TODO; the query API and types are stable.
+
+  **Layer 6 — Composable predicates** _(shipped)_
+
+  - `AppliesWhen` extended with `audience`, `modality`, `regulatoryContext`, `audienceVulnerability`.
+  - 9 new rubric fragments: `audience-{clinician,kids,developer}.md`, `regulatory-{hipaa,gdpr,coppa}.md`, `modality-{mobile,tablet}.md`, `audience-vulnerability-minor-facing.md`.
+  - Rubric loader matches new predicates when context provided via `--audience`, `--modality`, `--regulatory`, `--audience-vulnerability` CLI flags.
+
+  **Layer 7 — Domain ethics gate** _(shipped)_
+
+  - 4 rule files (medical, kids, finance, legal) with citation-backed rules (FDA 21 CFR 201.57, COPPA 16 CFR 312.5, TILA/Reg Z, GDPR).
+  - Hard rollup floor: `critical-floor → 4`, `major-floor → 6`. `preEthicsScore` preserves the LLM's uncapped score.
+  - `--skip-ethics` bypass (test-only, logged + warned), `--ethics-rules-dir` override.
+  - 8 paired pass/fail fixtures in `bench/design/ethics-fixtures/`.
+
+  **Layer 8 — Modality adapters** _(scaffold)_
+
+  - `modality/{types,html,ios,android,index}.ts`. HTML adapter wraps existing Playwright pipeline. iOS and Android throw `NotImplementedError` with clear message. `--modality html|ios|android` dispatches to the right adapter.
+
+  **Skill contract updates:**
+
+  - `~/code/dotfiles/claude/skills/bad/SKILL.md`: patch consumption loop, Layer 3-8 contract, ack-patch / --post-patch close-the-loop, ethics floor priority rule.
+  - `skills/design-evolve/SKILL.md`: Phase 3 (apply fixes) now patch-first; Phase 4 includes attribution close-the-loop.
+
+  **Tests:** +40 new tests across `design-audit-patch-{parse,validate}`, `design-audit-first-principles`, `design-audit-attribution`. Total: 1393 passing.
+
+- [#81](https://github.com/tangle-network/browser-agent-driver/pull/81) [`36b6e63`](https://github.com/tangle-network/browser-agent-driver/commit/36b6e634721c83de40fc9075d97d43de1c09f97b) Thanks [@drewstone](https://github.com/drewstone)! - feat(design-audit): Layer 1 — multi-dim scoring foundation
+
+  Land the first layer of the world-class 8-layer design-audit architecture (RFC `docs/rfc/design-audit-world-class.md`). This release ships:
+
+  - **Ensemble classifier** (`src/design/audit/classify-ensemble.ts`) — three-signal vote (URL pattern + DOM heuristic + LLM tiebreaker) with explicit `ensembleConfidence`, `signalsAgreed`, and `dissent` records. URL+DOM agreement above the 0.7 threshold skips the LLM call entirely.
+  - **Per-page-type rollup weights** (`src/design/audit/rubric/rollup-weights.ts`) — saas-app, marketing, dashboard, docs, ecommerce, social, tool, blog, utility, plus `default`/`unknown` fallbacks. Module-load invariant: every weight set sums to 1.0 ± 1e-6.
+  - **Per-page-type calibration anchors** (`src/design/audit/rubric/anchors/*.yaml`) — 9 anchor files referencing real product 9-10 examples (Linear's app, Figma, Notion, Stripe, MDN, Apple Store, Threads, Stratechery, Vercel deploys, etc.) so saas-app surfaces are no longer judged against marketing-site polish.
+  - **Multi-dim scoring** (`src/design/audit/v2/score.ts`) — five universal dimensions (product_intent / visual_craft / trust_clarity / workflow / content_ia) each with `score`, `range`, `confidence`. Rollup is a weighted aggregate with conservative confidence (any dim `low` → rollup `low`).
+  - **`AuditResult_v2`** — emitted alongside the v1 shape in `report.json` under a top-level `v2` block. One-release deprecation window before v1 is removed.
+  - **`--audit-passes auto`** — new default that runs the ensemble classifier first, then picks the focused pass bundle for that classification.
+  - **CLI summary** — per-page console output now prints the 5-dimension breakdown plus rollup formula.
+
+  Backwards compat: all existing v1 fields (`score`, `findings`, `summary`, `strengths`, etc.) remain on `PageAuditResult` and `report.json`. Consumers should migrate to `report.v2.pages[].scores` over the next release.
+
+  Skill update: `skills/bad/SKILL.md` documents the new JSON shape with an agent-side worked example for choosing which dimension to invest in based on `score × weight` leverage.
+
+- [#81](https://github.com/tangle-network/browser-agent-driver/pull/81) [`36b6e63`](https://github.com/tangle-network/browser-agent-driver/commit/36b6e634721c83de40fc9075d97d43de1c09f97b) Thanks [@drewstone](https://github.com/drewstone)! - feat(design-audit): Layer 7 — domain ethics gate (+ Layer 6 composable predicates)
+
+  Adds a hard score floor for pages that fail domain-specific ethics rules and the predicate vocabulary that lets those rules target the right audience/modality/regulatory context. RFC: `docs/rfc/design-audit-world-class.md`.
+
+  - **Ethics rule set** (`src/design/audit/ethics/rules/{medical,kids,finance,legal}.yaml`) — curated, citation-backed rules covering medication dosage disclosure (FDA 21 CFR 201.57), kid-facing dark-pattern guards (COPPA, FTC Endorsement Guides), finance fee disclosure (TILA / Reg Z), and legal disclaimer presence.
+  - **Detector kinds** (`src/design/audit/ethics/check.ts`) — `pattern-absent`, `pattern-present`, `llm-classifier`. Pattern checks are case-insensitive against page text; the LLM classifier asks for a single yes/no token to keep latency + cost predictable.
+  - **Hard rollup floor** — a `critical-floor` violation caps the rollup at 4; `major-floor` caps at 6. `PageAuditResult.preEthicsScore` preserves the LLM's pre-cap score so reports can show "would have scored 8, capped at 4 — fix the dosage disclosure".
+  - **Composable predicates (Layer 6)** — extends `AppliesWhen` with `audience`, `modality`, `regulatoryContext`, and `audienceVulnerability`. A pediatric medical app on tablet for clinicians now matches the medical _and_ kids rule sets simultaneously instead of forcing one classification.
+  - **CLI flags**: `--skip-ethics` (test-only bypass, audited + warned), `--ethics-rules-dir <path>` (override the builtin yaml), `--audience`, `--modality`, `--audience-vulnerability` (comma-separated tag lists threaded into rule matching).
+  - **Fixtures** (`bench/design/ethics-fixtures/`) — paired pass/fail HTML for each rule category, used by `tests/design-audit-ethics-{rules,check}.test.ts`.
+
+  Backwards compat: rules ship empty by default for any classification not on the curated list, so existing audits see no change unless they opt in via `--audience`/`--modality` or land on a covered domain. `EthicsViolation` is exported from both `src/design/audit/types.ts` and `v2/types.ts`; `PageAuditResult.ethicsViolations` is optional.
+
+- [#83](https://github.com/tangle-network/browser-agent-driver/pull/83) [`aec48b5`](https://github.com/tangle-network/browser-agent-driver/commit/aec48b56bd6a2ead77f168669afc627801adece5) Thanks [@drewstone](https://github.com/drewstone)! - feat(jobs+reports): comparative-audit jobs API + AI SDK report tool surface
+
+  Three new modules layered cleanly on top of the existing audit pipeline. Lets you declaratively audit N URLs (optionally expanded into M historical wayback snapshots each), aggregate the results, and emit shareable markdown reports — or expose the same data as AI SDK tools so a browser-side agent can answer ad-hoc questions.
+
+  **`src/jobs/`** — declarative comparative-audit jobs.
+
+  - `JobSpec` JSON describes targets + audit options + cost cap; `createJob` mints and persists; `runJob` fans out with bounded concurrency and crash-safe per-result writes to `~/.bad/jobs/`.
+  - Pre-flight cost estimate (`estimateCost`) refuses jobs that would silently spend more than `maxCostUSD`.
+  - `AuditFn` injection keeps the queue decoupled from Playwright/LLM for tests.
+  - CLI: `bad jobs create --spec <file.json>`, `bad jobs status <id>`, `bad jobs list`, `bad jobs estimate --spec <file.json>`.
+
+  **`src/discover/`** — turn a `DiscoverSpec` into audit targets.
+
+  - `wayback` source uses archive.org's CDX API to list captures, then samples `count` evenly across the time range.
+  - `list` source is a pass-through.
+  - Pluggable `fetch` for tests; status-200-only filter on by default so 4xx snapshots don't poison the job.
+
+  **`src/reports/`** — turn a job into an artifact.
+
+  - `aggregateJob` reads each per-target `report.json`, projects to `AggregateRow` (rollup, dimensions, ethics count). All numbers in any report flow through this — never an LLM.
+  - `leaderboard`, `longitudinalFor`, `compareRuns`, `tierBuckets` are pure functions over rows.
+  - `renderLeaderboard` / `renderLongitudinal` / `renderBatchComparison` produce deterministic markdown.
+  - `narrateReport(brain, body)` optionally prepends an LLM exec-summary; without `brain`, returns the deterministic body unchanged. Same contract as the audit-patches layer: agent narrates, code computes.
+  - `buildReportTools()` exposes a 7-tool AI SDK surface (`queryJob`, `fetchAudit`, `compareRuns`, `longitudinal`, `tierBuckets`, `renderTemplate`, `runFreshAudit`) so a browser-side agent can interrogate jobs without re-implementing aggregation.
+  - CLI: `bad reports generate --job <id> --template <leaderboard|longitudinal|batch-comparison> [--top N --by-type X --buckets 10,100 --narrate --out file.md]`.
+
+  **Tests:** +55 across `jobs-store`, `jobs-queue`, `jobs-cost-estimate`, `discover-wayback`, `reports-aggregate`, `reports-templates`, `reports-tools`. Total: 1448 passing.
+
+- [#85](https://github.com/tangle-network/browser-agent-driver/pull/85) [`3451a43`](https://github.com/tangle-network/browser-agent-driver/commit/3451a43074163915d7b406e2d6b0e6707ea235c3) Thanks [@drewstone](https://github.com/drewstone)! - feat(jobs): robustness layer + agentic orchestrator
+
+  Five hardening additions plus an LLM-driven control loop that wraps the runner. The architectural rule: protocols are deterministic (retry, anti-bot detection, schema gating) and judgment is agentic (when to re-sample broken wayback snapshots, retry vs. skip, conclude). Mixing those lines is how you end up paying LLM tax on exponential backoff.
+
+  **Deterministic foundation**
+
+  - `src/jobs/retry.ts` — whitelist-based retry with exponential backoff + jitter. Retries 429 / 5xx / network / timeout / fetch failures; everything else (4xx, anti-bot, schema, unknown) is treated as deterministic and not retried. Configurable per-error-class via `isRetryable`. Default: 3 attempts, 500ms base, 5s cap. Wired into `runJob` via `RunJobOptions.retryPolicy`.
+  - `src/jobs/anti-bot.ts` — pure pattern match against an audit's `report.json`. Title patterns (Cloudflare interstitial, "Just a moment...", "Access denied", etc.) and intent patterns plus a last-resort heuristic (zero findings + low classifier confidence + unknown type). When fired, the runner records `status: 'skipped'` with a reason instead of putting a bogus score on the leaderboard.
+  - `src/jobs/cost-history.ts` — adaptive cost estimate from prior job records. Uses static default until N≥3 completed jobs exist; afterward averages per-target cost from the last 20. Floors at 50% of the static default to prevent runaway optimism on a stretch of zero-cost claude-code jobs.
+  - Schema versioning: `tokens.json` is now stamped with `schemaVersion: 1` at write time; the aggregator refuses files older than `MIN_TOKENS_SCHEMA`.
+  - Resume: `bad jobs resume <jobId>` re-runs only targets that aren't already `ok`/`skipped`. `RunJobOptions.resume` exposes the same on the API.
+
+  **Agentic orchestrator**
+
+  - `src/jobs/orchestrator.ts` — `orchestrateJob(job, opts)` runs the deterministic fan-out via `runJob`, then enters a control loop only if intervention is warranted. `needsIntervention` is the gate: any failures, missing entries, or zero-scored wayback snapshots (broken archive captures) trigger the agent.
+  - LLM tool surface (5 tools): `getJobState`, `resampleWayback`, `retryTarget`, `markSkipped`, `concludeJob`. Hard caps: 2 retries per target, 1 resample per URL, cost ≤ `spec.maxCostUSD * 0.9`.
+  - Default brain uses the same `claude-code` provider as the audit pipeline (subscription-based, no API key required).
+  - CLI: `bad jobs orchestrate --spec <file.json>` runs the spec end-to-end with the agent layer. Same JSON spec as `create`.
+
+  **Tests:** +34 across `jobs-retry`, `jobs-anti-bot`, `jobs-cost-history`, `jobs-orchestrator` (deterministic gate), and `jobs-orchestrator-agent` (LLM path with `MockLanguageModelV3`). Total: 1494 passing.
+
+### Patch Changes
+
+- [#84](https://github.com/tangle-network/browser-agent-driver/pull/84) [`a679190`](https://github.com/tangle-network/browser-agent-driver/commit/a679190727f37f28dab9ad015dacb47502e28873) Thanks [@drewstone](https://github.com/drewstone)! - fix(discover/wayback): use CDX `collapse=timestamp:6` instead of `limit` so longitudinal jobs span the requested window
+
+  Symptom: a job with `since: 2012-01-01, until: 2024-01-01, snapshotsPerUrl: 4` against a popular site returned four snapshots all clustered in 2012-2013 instead of evenly across 2012-2024.
+
+  Cause: the CDX call passed `limit: max(count*4, 50)`, which caps how many captures CDX returns _before_ `sampleEvenly` runs. For sites with thousands of captures (Stripe, Linear, GitHub, etc.) the first 50 in chronological order are all from the start of the window, so even sampling could only produce early-window snapshots.
+
+  Fix: drop `limit`, use `collapse=timestamp:6` (one capture per month). The row count is now bounded by the window length in months, which keeps payloads sane while ensuring captures are spread across the whole window.
+
+  Verified: `discoverWaybackSnapshots('https://stripe.com/', { count: 5, since: '2012-01-01', until: '2024-01-01' })` now returns snapshots at 2012-02, 2015-03, 2018-03, 2021-02, 2024-01.
+
 ## 0.30.0
 
 ### Minor Changes
