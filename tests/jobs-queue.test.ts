@@ -17,6 +17,16 @@ describe('runJob', () => {
   let dir: string
   afterEach(() => { if (dir) rmSync(dir, { recursive: true, force: true }) })
 
+  it('persists tokensPath when auditFn returns one', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'bad-q-'))
+    const job = createJob(SPEC, [{ url: 'https://a.test' }], dir)
+    const auditFn: AuditFn = async () => ({
+      runId: 'run-a', resultPath: '/tmp/x/report.json', rollupScore: 7, tokensPath: '/tmp/x/tokens.json',
+    })
+    const final = await runJob(job, { auditFn, dir })
+    expect(final.results[0].tokensPath).toBe('/tmp/x/tokens.json')
+  })
+
   it('runs every target and marks the job completed when all succeed', async () => {
     dir = mkdtempSync(join(tmpdir(), 'bad-q-'))
     const job = createJob(SPEC, SPEC.discover.urls.map(url => ({ url })), dir)

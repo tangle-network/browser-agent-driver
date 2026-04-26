@@ -23,6 +23,7 @@ import {
   renderLeaderboard,
   renderLongitudinal,
   renderBatchComparison,
+  renderBrandEvolution,
   renderJobHeader,
   narrateReport,
 } from './reports/index.js'
@@ -56,7 +57,7 @@ function parseArgs(argv: string[]): ReportArgs {
   return out
 }
 
-const TEMPLATES = new Set(['leaderboard', 'longitudinal', 'batch-comparison'])
+const TEMPLATES = new Set(['leaderboard', 'longitudinal', 'batch-comparison', 'brand-evolution'])
 
 export async function runReportsCli(args: string[]): Promise<void> {
   const sub = args[0]
@@ -76,6 +77,8 @@ export async function runReportsCli(args: string[]): Promise<void> {
     body = renderLeaderboard(rows, { topN: opts.top, byType: opts.byType, buckets: opts.buckets })
   } else if (opts.template === 'longitudinal') {
     body = renderLongitudinal(rows)
+  } else if (opts.template === 'brand-evolution') {
+    body = renderBrandEvolution(job)
   } else {
     body = renderBatchComparison(rows)
   }

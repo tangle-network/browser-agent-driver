@@ -41,6 +41,12 @@ export interface AuditOptions {
   regulatoryContext?: RegulatoryContextTag[]
   headless?: boolean
   skipEthics?: boolean
+  /**
+   * Layer 8 add-on: also run the deterministic brand/design-token extractor at
+   * every target. Adds ~10s/target (no LLM). Output lands at
+   * `<resultPath dir>/tokens.json` and is surfaced via `JobResultEntry.tokensPath`.
+   */
+  extractTokens?: boolean
 }
 
 export interface JobSpec {
@@ -81,6 +87,8 @@ export interface JobResultEntry extends JobTarget {
   rollupScore?: number
   /** Page-type classification. */
   pageType?: string
+  /** Path to the tokens.json from the brand-kit extractor (when extractTokens=true). */
+  tokensPath?: string
 }
 
 export interface Job {

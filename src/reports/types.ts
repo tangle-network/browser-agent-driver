@@ -53,4 +53,4 @@ export interface LongitudinalRow {
   pageType?: string
 }
 
-export type ReportTemplate = 'leaderboard' | 'longitudinal' | 'batch-comparison'
+export type ReportTemplate = 'leaderboard' | 'longitudinal' | 'batch-comparison' | 'brand-evolution'
