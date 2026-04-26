@@ -9,6 +9,7 @@ process.env.BAD_TELEMETRY_ROLLUP_NO_AUTORUN = '1'
 const { buildRemoteUrl } = await import('../bench/telemetry/rollup.js')
 
 const ROLLUP_PATH = path.resolve(__dirname, '..', 'bench', 'telemetry', 'rollup.ts')
+const TSX_BIN = path.resolve(__dirname, '..', 'node_modules', '.bin', 'tsx')
 
 describe('rollup --remote URL building', () => {
   it('appends repo, kind, since, until query params when set', () => {
@@ -60,8 +61,8 @@ describe('rollup --remote env requirements', () => {
     delete env.BAD_TELEMETRY_ADMIN_BEARER
     delete env.BAD_TELEMETRY_ROLLUP_NO_AUTORUN
     const out = spawnSync(
-      process.execPath,
-      ['--experimental-strip-types', '--no-warnings', ROLLUP_PATH, '--remote'],
+      TSX_BIN,
+      [ROLLUP_PATH, '--remote'],
       { encoding: 'utf-8', env },
     )
     expect(out.status).toBe(2)
@@ -73,8 +74,8 @@ describe('rollup --remote env requirements', () => {
     delete env.BAD_TELEMETRY_ADMIN_BEARER
     delete env.BAD_TELEMETRY_ROLLUP_NO_AUTORUN
     const out = spawnSync(
-      process.execPath,
-      ['--experimental-strip-types', '--no-warnings', ROLLUP_PATH, '--remote'],
+      TSX_BIN,
+      [ROLLUP_PATH, '--remote'],
       { encoding: 'utf-8', env },
     )
     expect(out.status).toBe(2)
