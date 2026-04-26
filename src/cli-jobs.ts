@@ -35,6 +35,7 @@ interface ParsedArgs {
   json?: boolean
   jobId?: string
   yes?: boolean
+  maxIterations?: number
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -44,6 +45,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     if (a === '--spec') out.spec = argv[++i]
     else if (a === '--json') out.json = true
     else if (a === '--yes' || a === '-y') out.yes = true
+    else if (a === '--max-iterations') out.maxIterations = Number(argv[++i])
     else if (!a.startsWith('-') && !out.jobId) out.jobId = a
   }
   return out
@@ -68,7 +70,9 @@ export async function runJobsCli(args: string[]): Promise<void> {
   if (sub === 'status') return cmdStatus(opts)
   if (sub === 'estimate') return cmdEstimate(opts)
   if (sub === 'create') return cmdCreate(opts)
-  die(`Unknown subcommand: ${sub}. Use create | list | status | estimate.`)
+  if (sub === 'resume') return cmdResume(opts)
+  if (sub === 'orchestrate') return cmdOrchestrate(opts)
+  die(`Unknown subcommand: ${sub}. Use create | list | status | estimate | resume | orchestrate.`)
 }
 
 function cmdList(opts: ParsedArgs): void {
@@ -112,13 +116,15 @@ async function cmdEstimate(opts: ParsedArgs): Promise<void> {
   if (!opts.spec) die('--spec is required for estimate')
   const spec = readSpec(opts.spec)
   const targets = await discoverTargets(spec.discover)
-  const est = estimateCost(spec, targets.length)
+  const { computePerAuditFromHistory } = await import('./jobs/cost-history.js')
+  const adaptive = computePerAuditFromHistory()
+  const est = estimateCost(spec, targets.length, adaptive.perAuditUSD)
   if (opts.json) {
-    console.log(JSON.stringify({ spec, ...est }, null, 2))
+    console.log(JSON.stringify({ spec, ...est, costSource: adaptive.source, jobsObserved: adaptive.jobsObserved }, null, 2))
     return
   }
   console.log(`  Targets: ${est.targetCount}`)
-  console.log(`  Per-audit: $${est.perAuditUSD.toFixed(2)}`)
+  console.log(`  Per-audit: $${est.perAuditUSD.toFixed(2)} ${chalk.dim(`(${adaptive.source}${adaptive.source === 'history' ? `, n=${adaptive.targetsObserved}` : ''})`)}`)
   console.log(`  Estimated total: $${est.estimatedTotalUSD.toFixed(2)}`)
   if (est.exceedsCap && spec.maxCostUSD !== undefined) {
     console.log(chalk.yellow(`  ⚠ exceeds cap of $${spec.maxCostUSD.toFixed(2)}`))
@@ -146,6 +152,45 @@ async function cmdCreate(opts: ParsedArgs): Promise<void> {
   console.log(`  Status: ${chalk.bold(final?.status ?? 'unknown')}  ·  ok: ${final?.results.filter(r => r.status === 'ok').length ?? 0}/${final?.targets.length ?? 0}  ·  $${final?.totalCostUSD.toFixed(2)}`)
 }
 
+async function cmdResume(opts: ParsedArgs): Promise<void> {
+  if (!opts.jobId) die('jobId is required: bad jobs resume <jobId>')
+  const job = loadJob(opts.jobId)
+  if (!job) die(`job not found: ${opts.jobId}`)
+  const remaining = job.targets.filter(t => {
+    const key = t.snapshotUrl ?? t.url
+    return !job.results.some(r => (r.snapshotUrl ?? r.url) === key && (r.status === 'ok' || r.status === 'skipped'))
+  })
+  if (remaining.length === 0) {
+    console.log(chalk.green(`  Nothing to resume — all ${job.targets.length} targets already completed or skipped.`))
+    return
+  }
+  console.log(`  Resuming job ${chalk.bold(job.jobId)}  ·  ${remaining.length}/${job.targets.length} targets remain`)
+  const auditFn = await buildAuditFn(job.spec)
+  await runJob(job, { auditFn, resume: true })
+  const final = loadJob(job.jobId)
+  console.log(`  Status: ${chalk.bold(final?.status ?? 'unknown')}  ·  ok: ${final?.results.filter(r => r.status === 'ok').length ?? 0}/${final?.targets.length ?? 0}`)
+}
+
+async function cmdOrchestrate(opts: ParsedArgs): Promise<void> {
+  if (!opts.spec) die('--spec is required: bad jobs orchestrate --spec <file.json>')
+  const spec = readSpec(opts.spec)
+  const targets = await discoverTargets(spec.discover)
+  if (targets.length === 0) die('discover yielded zero targets — check your URLs / wayback range')
+  const est = estimateCost(spec, targets.length)
+  console.log(`  Targets discovered: ${targets.length}`)
+  console.log(`  Estimated cost: $${est.estimatedTotalUSD.toFixed(2)}`)
+  if (est.exceedsCap && spec.maxCostUSD !== undefined) {
+    die(`Estimated cost $${est.estimatedTotalUSD.toFixed(2)} exceeds maxCostUSD $${spec.maxCostUSD.toFixed(2)}`)
+  }
+  const job = createJob(spec, targets)
+  console.log(`  Created job ${chalk.bold(job.jobId)} (orchestrator mode)`)
+  const auditFn = await buildAuditFn(spec)
+  const { orchestrateJob } = await import('./jobs/orchestrator.js')
+  await orchestrateJob(job, { auditFn, verbose: true, maxIterations: opts.maxIterations })
+  const final = loadJob(job.jobId)
+  console.log(`  Status: ${chalk.bold(final?.status ?? 'unknown')}  ·  ok: ${final?.results.filter(r => r.status === 'ok').length ?? 0}/${final?.targets.length ?? 0}  ·  $${final?.totalCostUSD.toFixed(2)}`)
+}
+
 /**
  * Wire the runner to the design-audit pipeline. Imported lazily so `bad jobs
  * list` doesn't pull in Playwright. Each target gets its own output dir so
@@ -153,6 +198,7 @@ async function cmdCreate(opts: ParsedArgs): Promise<void> {
  */
 async function buildAuditFn(_spec: JobSpec): Promise<AuditFn> {
   const { runDesignAudit, extractDesignTokens } = await import('./cli-design-audit.js')
+  const { detectBlock } = await import('./jobs/anti-bot.js')
   let counter = 0
   return async (target, opts) => {
     const url = target.snapshotUrl ?? target.url
@@ -187,15 +233,27 @@ async function buildAuditFn(_spec: JobSpec): Promise<AuditFn> {
     const rollupScore = page?.auditResultV2?.rollup?.score ?? page?.rollup?.score ?? page?.score
     const pageType = page?.auditResultV2?.classification?.type ?? page?.classification?.type
 
+    // Anti-bot / blocked-page detection. When fired, runOne records skipped.
+    const blockedReason = detectBlock(data) ?? undefined
+
     let tokensPath: string | undefined
-    if (opts?.extractTokens) {
+    // Skip token extraction on blocked pages — there's no real DOM to mine.
+    if (opts?.extractTokens && !blockedReason) {
       try {
         const tokensDir = path.join(outputDir, 'tokens')
         const { tokens } = await extractDesignTokens({ url, headless: opts?.headless ?? true, outputDir: tokensDir })
         tokensPath = path.resolve(tokensDir, 'tokens.json')
-        // extractDesignTokens persists its own files; ensure tokens.json exists at the canonical path.
+        // extractDesignTokens persists its own files; ensure tokens.json exists at the canonical path,
+        // and stamp it with our schemaVersion so future readers can refuse incompatible shapes.
+        const tokensWithVersion = { schemaVersion: 1, ...tokens }
         if (!fs.existsSync(tokensPath)) {
-          fs.writeFileSync(tokensPath, JSON.stringify(tokens, null, 2))
+          fs.writeFileSync(tokensPath, JSON.stringify(tokensWithVersion, null, 2))
+        } else {
+          // Re-stamp existing file with schemaVersion if missing.
+          const existing = JSON.parse(fs.readFileSync(tokensPath, 'utf-8')) as Record<string, unknown>
+          if (typeof existing.schemaVersion !== 'number') {
+            fs.writeFileSync(tokensPath, JSON.stringify({ schemaVersion: 1, ...existing }, null, 2))
+          }
         }
       } catch (err) {
         // Token extraction is additive — never let it fail the parent audit.
@@ -209,6 +267,7 @@ async function buildAuditFn(_spec: JobSpec): Promise<AuditFn> {
       rollupScore,
       pageType,
       tokensPath,
+      blockedReason,
     }
   }
 }

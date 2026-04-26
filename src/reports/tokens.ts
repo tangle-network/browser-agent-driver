@@ -6,11 +6,20 @@
  * batch comparison templates can render without re-implementing extraction.
  *
  * No LLM. Pure function of on-disk data — same contract as aggregate.ts.
+ *
+ * Schema-version contract: `tokens.json` files older than `MIN_TOKENS_SCHEMA`
+ * are skipped with a warning. The aggregator never silently coerces old
+ * shapes — better empty rows than wrong rows.
  */
 
 import * as fs from 'node:fs'
 import type { Job } from '../jobs/types.js'
 import type { DesignTokens, ColorToken, FontFamily } from '../types.js'
+
+/** Minimum acceptable schemaVersion for tokens.json. Bump when the shape changes incompatibly. */
+export const MIN_TOKENS_SCHEMA = 1
+/** Most recent schemaVersion we know how to read. Future versions will warn but still attempt to parse. */
+export const CURRENT_TOKENS_SCHEMA = 1
 
 export interface TokenSummary {
   /** Seed URL (groups snapshots of the same site). */
@@ -45,7 +54,12 @@ export function aggregateTokens(job: Job): TokenSummary[] {
   for (const r of job.results) {
     if (r.status !== 'ok' || !r.tokensPath || !fs.existsSync(r.tokensPath)) continue
     try {
-      const tokens = JSON.parse(fs.readFileSync(r.tokensPath, 'utf-8')) as DesignTokens
+      const raw = JSON.parse(fs.readFileSync(r.tokensPath, 'utf-8')) as DesignTokens & { schemaVersion?: number }
+      // Only enforce when schemaVersion is present. Pre-versioned files (the
+      // bulk of existing jobs at the time this check landed) are accepted as
+      // implicitly v1 — see CURRENT_TOKENS_SCHEMA.
+      if (typeof raw.schemaVersion === 'number' && raw.schemaVersion < MIN_TOKENS_SCHEMA) continue
+      const tokens = raw
       out.push({
         url: r.url,
         snapshotUrl: r.snapshotUrl,
