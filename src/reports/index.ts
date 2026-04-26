@@ -15,13 +15,17 @@ export {
   renderLeaderboard,
   renderLongitudinal,
   renderBatchComparison,
+  renderBrandEvolution,
   renderJobHeader,
 } from './templates.js'
 export type {
   LeaderboardRenderOpts,
   LongitudinalRenderOpts,
   BatchComparisonRenderOpts,
+  BrandEvolutionRenderOpts,
 } from './templates.js'
+export { aggregateTokens, diffTokens, groupByUrl } from './tokens.js'
+export type { TokenSummary, TokenDiff, TokenSeries } from './tokens.js'
 export { buildReportTools } from './tools.js'
 export type { ReportToolsContext, ReportToolSet } from './tools.js'
 export { narrateReport } from './narrate.js'

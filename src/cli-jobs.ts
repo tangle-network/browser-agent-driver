@@ -152,7 +152,7 @@ async function cmdCreate(opts: ParsedArgs): Promise<void> {
  * we can deterministically locate `report.json` after the audit returns.
  */
 async function buildAuditFn(_spec: JobSpec): Promise<AuditFn> {
-  const { runDesignAudit } = await import('./cli-design-audit.js')
+  const { runDesignAudit, extractDesignTokens } = await import('./cli-design-audit.js')
   let counter = 0
   return async (target, opts) => {
     const url = target.snapshotUrl ?? target.url
@@ -186,11 +186,29 @@ async function buildAuditFn(_spec: JobSpec): Promise<AuditFn> {
     const page = data.pages?.[0]
     const rollupScore = page?.auditResultV2?.rollup?.score ?? page?.rollup?.score ?? page?.score
     const pageType = page?.auditResultV2?.classification?.type ?? page?.classification?.type
+
+    let tokensPath: string | undefined
+    if (opts?.extractTokens) {
+      try {
+        const tokensDir = path.join(outputDir, 'tokens')
+        const { tokens } = await extractDesignTokens({ url, headless: opts?.headless ?? true, outputDir: tokensDir })
+        tokensPath = path.resolve(tokensDir, 'tokens.json')
+        // extractDesignTokens persists its own files; ensure tokens.json exists at the canonical path.
+        if (!fs.existsSync(tokensPath)) {
+          fs.writeFileSync(tokensPath, JSON.stringify(tokens, null, 2))
+        }
+      } catch (err) {
+        // Token extraction is additive — never let it fail the parent audit.
+        console.warn(`  ${chalk.dim('tokens:')} extraction failed for ${url}: ${(err as Error).message}`)
+      }
+    }
+
     return {
       runId: outputDir, // The output dir is the de-facto runId for jobs.
       resultPath: reportJson,
       rollupScore,
       pageType,
+      tokensPath,
     }
   }
 }

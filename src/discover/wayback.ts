@@ -111,7 +111,12 @@ export async function discoverWaybackSnapshots(url: string, opts: WaybackOptions
   const params = new URLSearchParams({
     url,
     output: 'json',
-    limit: String(Math.max(count * 4, 50)), // overcollect, then sample evenly
+    // collapse=timestamp:6 dedupes to one capture per month (yyyymm = 6 chars).
+    // Without this, CDX returns every capture in the window — which for popular
+    // sites is tens of thousands and silently skews `sampleEvenly` if combined
+    // with a `limit`. With the collapse, the row count is bounded by the
+    // window length in months, so we don't need a limit.
+    collapse: 'timestamp:6',
   })
   if (opts.since) params.set('from', isoToCdxStamp(opts.since))
   if (opts.until) params.set('to', isoToCdxStamp(opts.until, true))

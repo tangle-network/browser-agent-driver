@@ -9,6 +9,7 @@
 import type { Job } from '../jobs/types.js'
 import type { AggregateRow, LongitudinalRow } from './types.js'
 import { leaderboard, longitudinalFor, tierBuckets, compareRuns } from './aggregate.js'
+import { aggregateTokens, diffTokens, groupByUrl, type TokenSummary } from './tokens.js'
 
 export interface LeaderboardRenderOpts {
   title?: string
@@ -131,6 +132,73 @@ export function renderBatchComparison(rows: AggregateRow[], opts: BatchCompariso
         lines.push(`| ${d.dim} | ${d.afterScore.toFixed(1)} | ${d.beforeScore.toFixed(1)} | ${signed(d.delta)} |`)
       }
       lines.push('')
+    }
+  }
+  return lines.join('\n')
+}
+
+export interface BrandEvolutionRenderOpts {
+  title?: string
+  /** Max colors to render per snapshot (top by usage count). Default 6. */
+  topColors?: number
+}
+
+/**
+ * Render a per-URL brand-kit evolution: for each URL, list the snapshots in
+ * chronological order with their distinct color palette, font families, and
+ * detected libraries. Between consecutive snapshots, surface the delta
+ * (colors added/removed, families added/removed, brand-meta changes).
+ */
+export function renderBrandEvolution(job: Job, opts: BrandEvolutionRenderOpts = {}): string {
+  const summaries = aggregateTokens(job)
+  const lines: string[] = []
+  lines.push(`# ${opts.title ?? 'Brand & Design-System Evolution'}`)
+  lines.push('')
+  lines.push(`Generated: ${new Date().toISOString()}`)
+  lines.push('')
+
+  if (summaries.length === 0) {
+    lines.push(`_No tokens.json files were produced. Run the job with \`audit.extractTokens: true\` to enable._`)
+    return lines.join('\n')
+  }
+
+  const topColors = opts.topColors ?? 6
+  const series = groupByUrl(summaries)
+  for (const { url, snapshots } of series) {
+    lines.push(`## ${escapeMd(url)}`)
+    lines.push('')
+    for (let i = 0; i < snapshots.length; i++) {
+      const s = snapshots[i]
+      const captured = s.capturedAt ? s.capturedAt.slice(0, 10) : 'live'
+      lines.push(`### ${captured}`)
+      lines.push('')
+      const swatches = s.colors.slice(0, topColors).map(c => `\`${c.hex}\` ×${c.count}`).join(' · ')
+      lines.push(`**Top colors**: ${swatches || '_none extracted_'}`)
+      const families = s.fontFamilies.map(f => `${f.family} (${f.classification})`).join(', ')
+      lines.push(`**Font families**: ${families || '_none_'}`)
+      lines.push(`**Type-scale entries**: ${s.typeScaleEntries}`)
+      if (s.detectedLibraries.length > 0) lines.push(`**Detected libraries**: ${s.detectedLibraries.join(', ')}`)
+      if (s.brand?.themeColor) lines.push(`**Theme color**: \`${s.brand.themeColor}\``)
+      if (s.logos.length > 0) lines.push(`**Logos**: ${s.logos.length}`)
+      lines.push('')
+
+      // Snapshot-to-snapshot delta against the previous snapshot in the series.
+      const prev = snapshots[i - 1]
+      if (prev) {
+        const d = diffTokens(prev, s)
+        const callouts: string[] = []
+        if (d.colorsAdded.length > 0) callouts.push(`+${d.colorsAdded.length} new colors`)
+        if (d.colorsRemoved.length > 0) callouts.push(`−${d.colorsRemoved.length} removed`)
+        if (d.familiesAdded.length > 0) callouts.push(`+ ${d.familiesAdded.join(', ')}`)
+        if (d.familiesRemoved.length > 0) callouts.push(`− ${d.familiesRemoved.join(', ')}`)
+        if (d.librariesAdded.length > 0) callouts.push(`adopted ${d.librariesAdded.join(', ')}`)
+        if (d.librariesRemoved.length > 0) callouts.push(`dropped ${d.librariesRemoved.join(', ')}`)
+        if (d.brandChanges.length > 0) callouts.push(`brand meta: ${d.brandChanges.map(c => c.field).join(', ')} changed`)
+        if (callouts.length > 0) {
+          lines.push(`_Δ vs ${prev.capturedAt?.slice(0, 10) ?? 'previous'}: ${callouts.join(' · ')}_`)
+          lines.push('')
+        }
+      }
     }
   }
   return lines.join('\n')

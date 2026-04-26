@@ -71,7 +71,7 @@ describe('buildReportTools', () => {
   it('exposes the documented tool surface', () => {
     const tools = buildReportTools()
     const names = Object.keys(tools).sort()
-    expect(names).toEqual(['compareRuns', 'fetchAudit', 'longitudinal', 'queryJob', 'renderTemplate', 'runFreshAudit', 'tierBuckets'].sort())
+    expect(names).toEqual(['compareRuns', 'diffTokens', 'fetchAudit', 'fetchTokens', 'longitudinal', 'queryJob', 'renderTemplate', 'runFreshAudit', 'tierBuckets'].sort())
   })
 
   it('queryJob returns ranked rows', async () => {

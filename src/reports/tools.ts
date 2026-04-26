@@ -15,7 +15,8 @@ import { tool, jsonSchema } from 'ai'
 import * as fs from 'node:fs'
 import { loadJob } from '../jobs/store.js'
 import { aggregateJob, leaderboard, longitudinalFor, compareRuns, tierBuckets } from './aggregate.js'
-import { renderLeaderboard, renderLongitudinal, renderBatchComparison } from './templates.js'
+import { aggregateTokens, diffTokens as diffTokensFn, groupByUrl } from './tokens.js'
+import { renderLeaderboard, renderLongitudinal, renderBatchComparison, renderBrandEvolution } from './templates.js'
 import type { AggregateRow } from './types.js'
 
 export interface ReportToolsContext {
@@ -128,7 +129,7 @@ export function buildReportTools(ctx: ReportToolsContext = {}) {
       description: 'Render a deterministic markdown report from a job. Use this when the user wants a shareable artifact, not a free-form answer.',
       inputSchema: jsonSchema<{
         jobId: string
-        template: 'leaderboard' | 'longitudinal' | 'batch-comparison'
+        template: 'leaderboard' | 'longitudinal' | 'batch-comparison' | 'brand-evolution'
         title?: string
         topN?: number
         byType?: string
@@ -137,7 +138,7 @@ export function buildReportTools(ctx: ReportToolsContext = {}) {
         type: 'object',
         properties: {
           jobId: { type: 'string' },
-          template: { type: 'string', enum: ['leaderboard', 'longitudinal', 'batch-comparison'] },
+          template: { type: 'string', enum: ['leaderboard', 'longitudinal', 'batch-comparison', 'brand-evolution'] },
           title: { type: 'string' },
           topN: { type: 'integer', minimum: 1 },
           byType: { type: 'string' },
@@ -146,10 +147,59 @@ export function buildReportTools(ctx: ReportToolsContext = {}) {
         required: ['jobId', 'template'],
       }),
       execute: async ({ jobId, template, title, topN, byType, buckets }) => {
+        if (template === 'brand-evolution') {
+          const job = loadJob(jobId, ctx.jobsDir)
+          if (!job) throw new Error(`job not found: ${jobId}`)
+          return { markdown: renderBrandEvolution(job, { title }) }
+        }
         const rows = rowsForJob(jobId, ctx.jobsDir)
         if (template === 'leaderboard') return { markdown: renderLeaderboard(rows, { title, topN, byType, buckets }) }
         if (template === 'longitudinal') return { markdown: renderLongitudinal(rows, { title }) }
         return { markdown: renderBatchComparison(rows, { title }) }
+      },
+    }),
+
+    fetchTokens: tool({
+      description: 'Return aggregated brand-kit token summaries (colors, fonts, libraries, brand metadata) for every audited target that had token extraction enabled. Use for "what colors does X use" or "how has the design system evolved" questions.',
+      inputSchema: jsonSchema<{ jobId: string; url?: string }>({
+        type: 'object',
+        properties: {
+          jobId: { type: 'string' },
+          url: { type: 'string', description: 'Filter to one URL (returns the chronological series).' },
+        },
+        required: ['jobId'],
+      }),
+      execute: async ({ jobId, url }) => {
+        const job = loadJob(jobId, ctx.jobsDir)
+        if (!job) throw new Error(`job not found: ${jobId}`)
+        const summaries = aggregateTokens(job)
+        if (url) {
+          const series = groupByUrl(summaries).find(s => s.url === url)
+          return series ? series.snapshots : []
+        }
+        return summaries
+      },
+    }),
+
+    diffTokens: tool({
+      description: 'Compute the token delta (colors added/removed, font families added/removed, brand-meta changes, library swaps) between two audited targets in the same job.',
+      inputSchema: jsonSchema<{ jobId: string; runIdA: string; runIdB: string }>({
+        type: 'object',
+        properties: {
+          jobId: { type: 'string' },
+          runIdA: { type: 'string' },
+          runIdB: { type: 'string' },
+        },
+        required: ['jobId', 'runIdA', 'runIdB'],
+      }),
+      execute: async ({ jobId, runIdA, runIdB }) => {
+        const job = loadJob(jobId, ctx.jobsDir)
+        if (!job) throw new Error(`job not found: ${jobId}`)
+        const summaries = aggregateTokens(job)
+        const a = summaries.find(s => s.runId === runIdA)
+        const b = summaries.find(s => s.runId === runIdB)
+        if (!a || !b) throw new Error(`token summary not found for ${!a ? runIdA : runIdB} — was extractTokens enabled?`)
+        return diffTokensFn(a, b)
       },
     }),
 

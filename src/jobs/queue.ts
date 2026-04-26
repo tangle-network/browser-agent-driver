@@ -21,6 +21,7 @@ export interface AuditFn {
     rollupScore?: number
     pageType?: string
     costUSD?: number
+    tokensPath?: string
   }>
 }
 
@@ -87,6 +88,7 @@ async function runOne(
       rollupScore: out.rollupScore,
       pageType: out.pageType,
       costUSD: out.costUSD,
+      tokensPath: out.tokensPath,
     }
   } catch (err) {
     const error = err as Error
