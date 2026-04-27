@@ -6,11 +6,11 @@
  */
 
 import type { DesignFinding, DesignSystemScore } from '../../types.js'
-import type { EthicsViolation } from './v2/types.js'
+import type { EthicsViolation } from './score-types.js'
 
 // Re-export the canonical Finding/Score types so consumers only import from here
 export type { DesignFinding, DesignSystemScore } from '../../types.js'
-export type { EthicsViolation } from './v2/types.js'
+export type { EthicsViolation } from './score-types.js'
 
 // ── Classification ─────────────────────────────────────────────────────────
 
@@ -223,14 +223,14 @@ export interface PageAuditResult {
    */
   preEthicsScore?: number
   /**
-   * Layer 1 — v2 multi-dim audit result. Emitted alongside the v1 fields for
+   * Layer 1 — multi-dim audit result. Emitted alongside the v1 fields for
    * one release as a backwards-compat bridge. Consumers should migrate to
-   * `auditResultV2` and treat the v1 surface as deprecated.
+   * `auditResult` and treat the v1 surface as deprecated.
    *
-   * Typed as `unknown` here to avoid pulling v2/types.ts into v1 consumers.
-   * The concrete shape is `import('./v2/types.js').AuditResult_v2`.
+   * Typed as `unknown` here to avoid pulling score-types.ts into v1 consumers.
+   * The concrete shape is `import('./score-types.js').AuditResult`.
    */
-  auditResultV2?: unknown
+  auditResult?: unknown
   /**
    * Layer 1 — ensemble classification (URL + DOM + LLM). When set, the
    * pipeline used `--audit-passes auto` (the new default).

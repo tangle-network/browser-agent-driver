@@ -6,7 +6,7 @@
  * pipeline is unchanged; this module provides the typed adapter boundary.
  */
 
-import type { ModalityAdapter, ModalityInput, Evidence, MeasurementBundle } from '../v2/types.js'
+import type { ModalityAdapter, ModalityInput, Evidence, MeasurementBundle } from '../score-types.js'
 
 export class HtmlModalityAdapter implements ModalityAdapter {
   readonly modality = 'html' as const

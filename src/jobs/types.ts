@@ -10,7 +10,7 @@
  * `~/.bad/jobs/index.jsonl` for fast listing.
  */
 
-import type { AudienceTag, ModalityTag, RegulatoryContextTag, AudienceVulnerabilityTag } from '../design/audit/v2/types.js'
+import type { AudienceTag, ModalityTag, RegulatoryContextTag, AudienceVulnerabilityTag } from '../design/audit/score-types.js'
 
 export type JobKind = 'comparative-audit'
 

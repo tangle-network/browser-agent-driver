@@ -31,9 +31,9 @@ describe('reasonFor', () => {
 })
 
 describe('detectBlock', () => {
-  it('reads the v2 classification path first', () => {
+  it('reads the auditResult classification path first', () => {
     const reason = detectBlock({
-      pages: [{ title: 'Just a moment...', auditResultV2: { classification: { intent: 'normal site' } } }],
+      pages: [{ title: 'Just a moment...', auditResult: { classification: { intent: 'normal site' } } }],
     })
     expect(reason).toMatch(/anti-bot/)
   })

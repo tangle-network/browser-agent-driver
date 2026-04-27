@@ -20,7 +20,7 @@ import type {
   ModalityTag,
   RegulatoryContextTag,
   AudienceVulnerabilityTag,
-} from '../v2/types.js'
+} from '../score-types.js'
 
 /**
  * Operator-supplied context for Layer 6 composable predicate matching.

@@ -107,13 +107,13 @@ export async function evaluateCalibration(opts: CalibrationOptions): Promise<{ f
 
 function readScore(reportJson: string): number {
   const data = JSON.parse(fs.readFileSync(reportJson, 'utf-8')) as {
-    pages?: Array<{ score?: number; rollup?: { score?: number }; auditResultV2?: { rollup?: { score?: number } } }>
+    pages?: Array<{ score?: number; rollup?: { score?: number }; auditResult?: { rollup?: { score?: number } } }>
     summary?: { avgScore?: number }
   }
   const page = data.pages?.[0]
   if (!page) throw new Error('report.json has no pages[]')
-  // Prefer the v2 rollup, fall back to v1 page.score / summary.avgScore.
-  return page.auditResultV2?.rollup?.score
+  // Prefer the auditResult rollup, fall back to v1 page.score / summary.avgScore.
+  return page.auditResult?.rollup?.score
     ?? page.rollup?.score
     ?? page.score
     ?? data.summary?.avgScore

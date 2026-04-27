@@ -6,7 +6,7 @@ import {
   deriveHeuristics,
   ENSEMBLE_INTERNALS,
 } from '../src/design/audit/classify-ensemble.js'
-import type { DomHeuristics } from '../src/design/audit/v2/types.js'
+import type { DomHeuristics } from '../src/design/audit/score-types.js'
 import type { Brain } from '../src/brain/index.js'
 import type { PageState } from '../src/types.js'
 

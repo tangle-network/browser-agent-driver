@@ -9,7 +9,7 @@
  */
 
 import type { Pattern, PatternMatch, PatternQuery } from './types.js'
-import type { PageType, Dimension } from '../v2/types.js'
+import type { PageType, Dimension } from '../score-types.js'
 import { queryPatterns } from './store.js'
 
 export interface MatchContext {

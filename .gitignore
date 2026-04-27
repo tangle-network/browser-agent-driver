@@ -30,3 +30,4 @@ mm-*.png
 # bench/ and tests/, not demos/.
 demos/
 bench/design/eval/results/
+.claude/worktrees/

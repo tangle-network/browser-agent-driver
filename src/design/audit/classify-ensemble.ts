@@ -20,7 +20,7 @@ import type {
   ClassifierSource,
   DomHeuristics,
   EnsembleClassification,
-} from './v2/types.js'
+} from './score-types.js'
 
 interface UrlPatternRule {
   pattern: RegExp

@@ -1,5 +1,5 @@
 /**
- * Design audit v2 — type contract for the 8-layer architecture.
+ * design audit — type contract for the 8-layer architecture.
  *
  * RFC: docs/rfc/design-audit-world-class.md
  *
@@ -22,12 +22,12 @@ import type {
   PageType,
   Maturity,
   DesignSystemTag,
-  AppliesWhen as AppliesWhenV1,
+  AppliesWhen as BaseAppliesWhen,
   MeasurementBundle,
-  DesignFinding as DesignFindingV1,
-} from '../types.js'
+  DesignFinding as DesignFindingBase,
+} from './types.js'
 
-// Re-export so consumers import only from v2/types.ts.
+// Re-export so consumers import only from score-types.ts.
 export type { PageClassification, PageType, Maturity, DesignSystemTag, MeasurementBundle }
 
 // ─── Layer 1 · Multi-dimensional scoring ────────────────────────────────────
@@ -212,7 +212,7 @@ export interface Patch {
  * Updated `DesignFinding` shape — extends v1 with stable id, dimension link,
  * mandatory patches for major/critical, optional pattern match.
  */
-export interface DesignFinding extends DesignFindingV1 {
+export interface DesignFinding extends DesignFindingBase {
   /** Stable id, used by `DimensionScore.primaryFindings`. */
   id: string
   /** Which dimension this finding affects. */
@@ -368,11 +368,12 @@ export type AudienceVulnerabilityTag =
   | 'crisis-context'
 
 /**
- * v2 predicate set. Extends v1 with audience/modality/regulatoryContext/
- * audienceVulnerability so a pediatric medical app on tablet for clinicians
- * loads multiple fragments simultaneously.
+ * Predicate set composed by the rubric loader. Extends the base predicate
+ * with audience/modality/regulatoryContext/audienceVulnerability so a
+ * pediatric medical app on tablet for clinicians loads multiple fragments
+ * simultaneously.
  */
-export interface AppliesWhen extends AppliesWhenV1 {
+export interface AppliesWhen extends BaseAppliesWhen {
   audience?: AudienceTag[]
   modality?: ModalityTag[]
   regulatoryContext?: RegulatoryContextTag[]
@@ -460,10 +461,9 @@ export interface ModalityAdapter {
   capture(input: ModalityInput): Promise<Evidence>
 }
 
-// ─── AuditResult v2 — the top-level output ──────────────────────────────────
+// ─── AuditResult — the top-level output ─────────────────────────────────────
 
-export interface AuditResult_v2 {
-  schemaVersion: 2
+export interface AuditResult {
   /** Run id for telemetry / attribution correlation. */
   runId: string
   /** Page reference (URL for HTML; bundle id for native; etc.). */

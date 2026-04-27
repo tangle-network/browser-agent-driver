@@ -11,7 +11,7 @@
 
 import * as crypto from 'node:crypto'
 import type { PatchApplication } from './design/audit/attribution/types.js'
-import type { Dimension } from './design/audit/v2/types.js'
+import type { Dimension } from './design/audit/score-types.js'
 import {
   appendPatchApplication,
   patchHash,

@@ -7,7 +7,7 @@ import {
   buildNovelPatternObservation,
   appendNovelPatternObservation,
 } from '../src/design/audit/first-principles-mode.js'
-import type { EnsembleClassification } from '../src/design/audit/v2/types.js'
+import type { EnsembleClassification } from '../src/design/audit/score-types.js'
 import { readFileSync, existsSync } from 'node:fs'
 
 function makeClassification(overrides: Partial<EnsembleClassification> = {}): EnsembleClassification {

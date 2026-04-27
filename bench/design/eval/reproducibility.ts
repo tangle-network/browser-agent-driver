@@ -51,10 +51,10 @@ export async function evaluateReproducibility(opts: ReproOptions): Promise<{ flo
         const reportJson = path.join(dir, 'report.json')
         if (!fs.existsSync(reportJson)) continue
         const data = JSON.parse(fs.readFileSync(reportJson, 'utf-8')) as {
-          pages?: Array<{ score?: number; rollup?: { score?: number }; auditResultV2?: { rollup?: { score?: number } } }>
+          pages?: Array<{ score?: number; rollup?: { score?: number }; auditResult?: { rollup?: { score?: number } } }>
         }
         const page = data.pages?.[0]
-        const score = page?.auditResultV2?.rollup?.score ?? page?.rollup?.score ?? page?.score
+        const score = page?.auditResult?.rollup?.score ?? page?.rollup?.score ?? page?.score
         if (typeof score === 'number' && Number.isFinite(score)) scores.push(score)
       } catch {
         // skip failed reps; computed mean/stddev is over the survivors

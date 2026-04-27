@@ -6,7 +6,7 @@
  * from `resultPath` on demand via `fetchAudit`.
  */
 
-import type { Dimension } from '../design/audit/v2/types.js'
+import type { Dimension } from '../design/audit/score-types.js'
 
 export interface AggregateRow {
   /** Seed URL (groups multiple snapshots of the same site together). */
@@ -23,7 +23,7 @@ export interface AggregateRow {
   domain?: string
   /** Rollup score (0-10). */
   rollupScore: number
-  /** Per-dimension scores (subset — only the v2 universal dimensions). */
+  /** Per-dimension scores (subset — only the universal dimensions). */
   dimensions: Partial<Record<Dimension, number>>
   /** Number of ethics violations detected. */
   ethicsViolations: number

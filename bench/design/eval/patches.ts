@@ -13,7 +13,7 @@ import * as path from 'node:path'
 import type { FlowEnvelope } from './scorecard.js'
 import { statusFor } from './scorecard.js'
 import { validatePatch, type ValidationReason } from '../../../src/design/audit/patches/validate.js'
-import type { DesignFinding } from '../../../src/design/audit/v2/types.js'
+import type { DesignFinding } from '../../../src/design/audit/score-types.js'
 
 export interface PatchEvalOptions {
   /** Roots to scan for `report.json` files. */
@@ -79,7 +79,7 @@ function* walkReportJsons(root: string): Generator<string> {
 
 interface RawReport {
   snapshot?: string
-  pages?: Array<{ snapshot?: string; findings?: DesignFinding[]; auditResultV2?: { findings?: DesignFinding[] } }>
+  pages?: Array<{ snapshot?: string; findings?: DesignFinding[]; auditResult?: { findings?: DesignFinding[] } }>
 }
 
 function readReport(reportJson: string): { snapshot: string; findings: DesignFinding[] } | null {
@@ -88,7 +88,7 @@ function readReport(reportJson: string): { snapshot: string; findings: DesignFin
     const page = raw.pages?.[0]
     if (!page) return null
     const snapshot = page.snapshot ?? raw.snapshot ?? ''
-    const findings = page.auditResultV2?.findings ?? page.findings ?? []
+    const findings = page.auditResult?.findings ?? page.findings ?? []
     return { snapshot, findings: findings as DesignFinding[] }
   } catch {
     return null

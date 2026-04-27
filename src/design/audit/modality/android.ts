@@ -6,7 +6,7 @@
  * TODO Layer 8: UI Automator bridge, emulator management, ax-tree capture.
  */
 
-import type { ModalityAdapter, ModalityInput, Evidence } from '../v2/types.js'
+import type { ModalityAdapter, ModalityInput, Evidence } from '../score-types.js'
 
 export class AndroidModalityAdapter implements ModalityAdapter {
   readonly modality = 'android' as const

@@ -1,6 +1,6 @@
 {
   "product": "browser-agent-driver",
-  "timestamp": "2026-04-26T23:07:33.597Z",
+  "timestamp": "2026-04-27T00:31:46.206Z",
   "generation": 1,
   "evolveRound": 1,
   "flows": [
@@ -87,12 +87,12 @@
     {
       "name": "designAudit_calibration_in_range_rate",
       "description": "Fraction of corpus sites whose design-audit rollup falls inside the human-declared expected range.",
-      "score": 1,
+      "score": 0,
       "target": 0.7,
       "comparator": ">=",
-      "status": "pass",
-      "notes": "5/5 sites in range, 0 failed/skipped. Per-tier: world-class 5/5",
-      "artifact": "/home/drew/code/browser-agent-driver/bench/design/eval/results/run-1777244483701/calibration",
+      "status": "fail",
+      "notes": "0/5 sites in range, 0 failed/skipped. Per-tier: world-class 0/5",
+      "artifact": "/home/drew/code/browser-agent-driver/bench/design/eval/results/run-1777249812216/calibration",
       "detail": {
         "sites": [
           {
@@ -100,40 +100,40 @@
             "tier": "world-class",
             "expectedMin": 8,
             "expectedMax": 10,
-            "score": 9,
-            "inRange": true
+            "score": 5,
+            "inRange": false
           },
           {
             "url": "https://stripe.com",
             "tier": "world-class",
             "expectedMin": 8,
             "expectedMax": 10,
-            "score": 8,
-            "inRange": true
+            "score": 5,
+            "inRange": false
           },
           {
             "url": "https://vercel.com",
             "tier": "world-class",
             "expectedMin": 8,
             "expectedMax": 10,
-            "score": 8,
-            "inRange": true
+            "score": 5,
+            "inRange": false
           },
           {
             "url": "https://raycast.com",
             "tier": "world-class",
             "expectedMin": 8,
             "expectedMax": 10,
-            "score": 8,
-            "inRange": true
+            "score": 5,
+            "inRange": false
           },
           {
             "url": "https://cursor.com",
             "tier": "world-class",
             "expectedMin": 7,
             "expectedMax": 9,
-            "score": 8,
-            "inRange": true
+            "score": 5,
+            "inRange": false
           }
         ],
         "target": 0.7,
