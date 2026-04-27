@@ -184,18 +184,7 @@ export const DEFAULT_FEW_SHOT_EXAMPLES: Record<AuditPassId, string> = {
       "cssFix": "padding-bottom: 48px",
       "impact": 6,
       "effort": 1,
-      "blast": "page",
-      "patches": [{
-        "patchId": "p-hero-padding",
-        "findingId": "placeholder",
-        "scope": "section",
-        "target": { "scope": "css", "cssSelector": "main > section:first-child" },
-        "diff": { "before": "padding: 64px 0 16px;", "after": "padding: 48px 0;" },
-        "testThatProves": { "kind": "rerun-audit", "description": "Hero rhythm aligns with 8px grid; visual_craft +1." },
-        "rollback": { "kind": "css-disable" },
-        "estimatedDelta": { "dim": "visual_craft", "delta": 1 },
-        "estimatedDeltaConfidence": "medium"
-      }]
+      "blast": "page"
     }`,
   product: `{
       "category": "ux",
@@ -231,18 +220,7 @@ export const DEFAULT_FEW_SHOT_EXAMPLES: Record<AuditPassId, string> = {
       "cssFix": "/* structural: insert fee + tax rows above .total; render merchant identity + payment method block */",
       "impact": 9,
       "effort": 4,
-      "blast": "page",
-      "patches": [{
-        "patchId": "p-checkout-fees",
-        "findingId": "placeholder",
-        "scope": "section",
-        "target": { "scope": "structural", "cssSelector": ".wrap .row.total" },
-        "diff": { "before": "Pay now", "after": "Pay $123.40 (incl. $3.40 tax)" },
-        "testThatProves": { "kind": "rerun-audit", "description": "Trust commitment surfaces fee + total before action; trust_clarity +2." },
-        "rollback": { "kind": "manual" },
-        "estimatedDelta": { "dim": "trust_clarity", "delta": 2 },
-        "estimatedDeltaConfidence": "medium"
-      }]
+      "blast": "page"
     }`,
   workflow: `{
       "category": "ux",
@@ -440,7 +418,6 @@ YOUR JOB:
 7. Prefer findings that would actually move the product outcome, not tiny decorative nits.
 8. For each finding include a concrete CSS fix in the cssFix field when CSS can help. If the real fix is content/IA/component structure, put the smallest honest structural hint in cssFix as a comment.
 9. For each finding ALSO include impact, effort, and blast — these drive the ROI ranking.
-10. For each finding with severity in {"major","critical"}, you MUST emit a "patches" array with at least one Patch (see PATCH CONTRACT below). Findings that ship without a valid patch are downgraded to "minor".
 
 NO-BS REVIEW RULES:
 ${noBsRules.map((r) => `- ${r}`).join('\n')}
@@ -455,38 +432,6 @@ ROI FIELDS — score each finding on:
     "system" = a design token or global style — every page benefits
 
 A high-blast / low-effort fix has massive ROI. Use this scale honestly — the user will fix the top-ROI items first.
-
-PATCH CONTRACT (required on every major/critical finding):
-Each Patch is an agent-actionable diff the agent applies literally. The contract:
-- patchId: a stable id you mint (e.g. "p-${'$'}{findingIndex}-${'$'}{shortHash}")
-- findingId: the id of the finding this patch fixes (use a placeholder you also embed in the finding)
-- scope: "page" | "section" | "component" | "system"
-- target: { scope: "css" | "tsx" | "jsx" | "tailwind" | "module-css" | "styled-component" | "html" | "structural", cssSelector?: "...", filePath?: "...", componentName?: "..." }
-  At least ONE of cssSelector / filePath / componentName MUST be set.
-- diff: { before: "<EXACT verbatim text from the snapshot — agent will search-replace this>", after: "<replacement text>" }
-  CRITICAL: 'before' MUST appear verbatim in the page snapshot. Validators reject fuzzy matches.
-- testThatProves: { kind: "rerun-audit" | "visual-snapshot" | "a11y-rule" | "storybook" | "unit" | "manual", description: "..." }
-- rollback: { kind: "css-disable" | "git-revert" | "manual" }
-- estimatedDelta: { dim: "product_intent" | "visual_craft" | "trust_clarity" | "workflow" | "content_ia", delta: <-3..3> }
-- estimatedDeltaConfidence: "high" | "medium" | "low" | "untested"
-
-ONE WORKED PATCH EXAMPLE (do not copy verbatim; produce your own grounded in the snapshot):
-{
-  "patchId": "p-1-stripe-cta",
-  "findingId": "f-1-cta-density",
-  "scope": "section",
-  "target": { "scope": "css", "cssSelector": "section.hero button[type=submit]" },
-  "diff": {
-    "before": "padding: 8px 14px; background: #635bff;",
-    "after": "padding: 12px 20px; background: #635bff; box-shadow: 0 1px 2px rgb(0 0 0 / 0.06);"
-  },
-  "testThatProves": { "kind": "rerun-audit", "description": "Hero CTA size + shadow lifts visual_craft +1." },
-  "rollback": { "kind": "css-disable" },
-  "estimatedDelta": { "dim": "visual_craft", "delta": 1 },
-  "estimatedDeltaConfidence": "medium"
-}
-
-If you cannot honestly emit a Patch whose 'before' text exists in the snapshot, downgrade the finding to "minor" yourself rather than fabricate a diff.
 
 RESPOND WITH ONLY a JSON object:
 {
