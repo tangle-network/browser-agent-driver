@@ -1,6 +1,6 @@
 {
   "product": "browser-agent-driver",
-  "timestamp": "2026-04-27T00:31:46.206Z",
+  "timestamp": "2026-04-27T01:45:49.510Z",
   "generation": 1,
   "evolveRound": 1,
   "flows": [
@@ -87,12 +87,12 @@
     {
       "name": "designAudit_calibration_in_range_rate",
       "description": "Fraction of corpus sites whose design-audit rollup falls inside the human-declared expected range.",
-      "score": 0,
+      "score": 0.6,
       "target": 0.7,
       "comparator": ">=",
       "status": "fail",
-      "notes": "0/5 sites in range, 0 failed/skipped. Per-tier: world-class 0/5",
-      "artifact": "/home/drew/code/browser-agent-driver/bench/design/eval/results/run-1777249812216/calibration",
+      "notes": "3/5 sites in range, 0 failed/skipped. Per-tier: world-class 3/5",
+      "artifact": "/home/drew/code/browser-agent-driver/bench/design/eval/results/run-1777253420396/calibration",
       "detail": {
         "sites": [
           {
@@ -100,15 +100,15 @@
             "tier": "world-class",
             "expectedMin": 8,
             "expectedMax": 10,
-            "score": 5,
-            "inRange": false
+            "score": 8.7,
+            "inRange": true
           },
           {
             "url": "https://stripe.com",
             "tier": "world-class",
             "expectedMin": 8,
             "expectedMax": 10,
-            "score": 5,
+            "score": 7.3,
             "inRange": false
           },
           {
@@ -116,15 +116,15 @@
             "tier": "world-class",
             "expectedMin": 8,
             "expectedMax": 10,
-            "score": 5,
-            "inRange": false
+            "score": 8.5,
+            "inRange": true
           },
           {
             "url": "https://raycast.com",
             "tier": "world-class",
             "expectedMin": 8,
             "expectedMax": 10,
-            "score": 5,
+            "score": 7.5,
             "inRange": false
           },
           {
@@ -132,8 +132,8 @@
             "tier": "world-class",
             "expectedMin": 7,
             "expectedMax": 9,
-            "score": 5,
-            "inRange": false
+            "score": 7.4,
+            "inRange": true
           }
         ],
         "target": 0.7,
@@ -143,15 +143,23 @@
     {
       "name": "designAudit_patches_valid_rate",
       "description": "Fraction of audit-emitted patches whose diff.before is present in the page snapshot.",
-      "score": null,
+      "score": 0.9444444444444444,
       "target": 0.95,
       "comparator": ">=",
-      "status": "unmeasured",
-      "notes": "no patches emitted across the scanned reports — eval is unmeasured this round",
+      "status": "fail",
+      "notes": "17/18 patches valid, 1 failures",
       "detail": {
-        "total": 0,
-        "valid": 0,
-        "failures": []
+        "total": 18,
+        "valid": 17,
+        "failures": [
+          {
+            "report": "/home/drew/code/browser-agent-driver/bench/design/eval/results/run-1777253420396/calibration/world-class/cursor.com/report.json",
+            "patchId": "p-hero-headline",
+            "reasons": [
+              "before-not-in-snapshot"
+            ]
+          }
+        ]
       }
     }
   ],

@@ -33,6 +33,7 @@ import { renderAnchor, type CalibrationAnchor } from './rubric/anchor-loader.js'
 import { parsePatches } from './patches/parse.js'
 import { validatePatch } from './patches/validate.js'
 import { enforcePatchPolicy } from './patches/severity-enforcement.js'
+import { generatePatches } from './patches/generate.js'
 
 export interface BuildAuditResultInput {
   brain: Brain
@@ -84,10 +85,32 @@ export async function buildAuditResult(input: BuildAuditResultInput): Promise<Au
   }
 
   const rollup: RollupScore = computeRollup(scores, ensemble.type)
-  // Layer 2 — adapt findings, parse + validate patches against the page
-  // snapshot, then enforce the severity policy (downgrade major/critical
-  // without a valid patch).
-  const findings = enforceFindingPolicy(adaptFindings(v1Result.findings), state.snapshot)
+  // Layer 2 — two-call patch flow. The findings prompt above stayed slim
+  // and focused on scoring; now ask the LLM for one patch per major/critical
+  // finding (skipped when precomputedScores is set, since tests can supply
+  // findings with rawPatches already attached).
+  let findings = adaptFindingsLite(v1Result.findings)
+  if (!input.precomputedScores) {
+    try {
+      const generated = await generatePatches({
+        brain,
+        snapshot: state.snapshot,
+        findings: findings,
+      })
+      findings = generated.findings
+      llmTokens += generated.tokensUsed
+    } catch (err) {
+      // Patch generator failure is non-fatal — Layer 2 enforcement below will
+      // still downgrade major/critical findings that lack a valid patch.
+      console.warn(`[audit/patches] generator failed: ${(err as Error).message}`)
+    }
+  }
+  // Now parse rawPatches → typed Patches, validate against the snapshot,
+  // and enforce the severity policy (downgrade major/critical without a
+  // valid patch). adaptFindingsLite wires the parser; enforceFindingPolicy
+  // wires the validator + downgrade rule.
+  findings = parseAndAttachPatches(findings)
+  findings = enforceFindingPolicy(findings, state.snapshot)
   const topFixes = computeTopFixes(findings).slice(0, 5).map((f) => f.id)
 
   const promptHash = sha1(prompt)
@@ -124,23 +147,39 @@ function renderMeasurementSummary(measurements: MeasurementBundle): string {
   ].join('\n')
 }
 
-function adaptFindings(v1Findings: PageAuditResult['findings']): DesignFinding[] {
+/**
+ * Stamp stable ids + dimension + kind onto v1 findings. Patches are parsed
+ * separately by parseAndAttachPatches so the patch generator (which runs
+ * between adaptFindingsLite and parseAndAttachPatches) can populate
+ * `rawPatches` first.
+ */
+function adaptFindingsLite(v1Findings: PageAuditResult['findings']): DesignFinding[] {
   return v1Findings.map((f, idx) => {
     const id = `finding-${idx + 1}-${sha1(`${f.category}|${f.description}`).slice(0, 8)}`
     const dimension = mapCategoryToDimension(f.category)
     const kind = inferKind(f)
-    // Pull raw patches from the LLM response (preserved by Brain.auditDesign).
-    // We override the findingId on each parsed patch so it always points at
-    // this finding's stable id — even if the LLM emitted its own placeholder.
-    const rawPatches = (f.rawPatches ?? []) as unknown[]
-    const parsed = parsePatches(rawPatches.map(p => withFindingId(p, id)))
     return {
       ...f,
       id,
       dimension,
       kind,
-      patches: parsed.patches,
+      patches: [],
     }
+  })
+}
+
+/**
+ * After the patch generator has run, parse each finding's `rawPatches` array
+ * into typed Patch objects. The findingId on each parsed patch is overridden
+ * with the finding's stable id so it always points at the right place — even
+ * if the LLM emitted its own placeholder.
+ */
+function parseAndAttachPatches(findings: DesignFinding[]): DesignFinding[] {
+  return findings.map(f => {
+    const rawPatches = (f.rawPatches ?? []) as unknown[]
+    if (rawPatches.length === 0) return f
+    const parsed = parsePatches(rawPatches.map(p => withFindingId(p, f.id)))
+    return { ...f, patches: parsed.patches }
   })
 }
 
@@ -240,7 +279,9 @@ function sha1(s: string): string {
 
 export const BUILD_RESULT_INTERNALS = {
   renderMeasurementSummary,
-  adaptFindings,
+  adaptFindingsLite,
+  parseAndAttachPatches,
+  enforceFindingPolicy,
   mapCategoryToDimension,
   computeTopFixes,
   synthesizeScoresFromLegacy,
