@@ -5,7 +5,7 @@
     "startUrl": "https://www.allrecipes.com/",
     "goal": "Provide a recipe for vegetarian lasagna with more than 100 reviews and a rating of at least 4.5 stars suitable for 6 people.",
     "maxTurns": 15,
-    "timeoutMs": 120000,
+    "timeoutMs": 300000,
     "tags": [
       "webvoyager",
       "allrecipes",
@@ -22,7 +22,7 @@
     "startUrl": "https://www.allrecipes.com/",
     "goal": "Find a recipe for a vegetarian lasagna that has at least a four-star rating and uses zucchini.",
     "maxTurns": 15,
-    "timeoutMs": 120000,
+    "timeoutMs": 300000,
     "tags": [
       "webvoyager",
       "allrecipes",
@@ -39,7 +39,7 @@
     "startUrl": "https://www.amazon.com/",
     "goal": "Search an Xbox Wireless controller with green color and rated above 4 stars.",
     "maxTurns": 15,
-    "timeoutMs": 120000,
+    "timeoutMs": 300000,
     "tags": [
       "webvoyager",
       "amazon",
@@ -56,7 +56,7 @@
     "startUrl": "https://www.amazon.com/",
     "goal": "Search for women's golf polos in m size, priced between 50 to 75 dollars, and save the lowest priced among results.",
     "maxTurns": 15,
-    "timeoutMs": 120000,
+    "timeoutMs": 300000,
     "tags": [
       "webvoyager",
       "amazon",
@@ -73,7 +73,7 @@
     "startUrl": "https://www.apple.com/",
     "goal": "Compare the prices of the latest models of MacBook Air available on Apple's website.",
     "maxTurns": 15,
-    "timeoutMs": 120000,
+    "timeoutMs": 300000,
     "tags": [
       "webvoyager",
       "apple",
@@ -90,7 +90,7 @@
     "startUrl": "https://www.apple.com/",
     "goal": "Find the latest model of the iPhone and compare the price and screen size between the pro and pro max.",
     "maxTurns": 15,
-    "timeoutMs": 120000,
+    "timeoutMs": 300000,
     "tags": [
       "webvoyager",
       "apple",
@@ -107,7 +107,7 @@
     "startUrl": "https://arxiv.org/",
     "goal": "Search for the latest preprints about 'quantum computing'.",
     "maxTurns": 15,
-    "timeoutMs": 120000,
+    "timeoutMs": 300000,
     "tags": [
       "webvoyager",
       "arxiv",
@@ -124,7 +124,7 @@
     "startUrl": "https://arxiv.org/",
     "goal": "Search for the latest research papers on quantum computing submitted to ArXiv within the last two days.",
     "maxTurns": 15,
-    "timeoutMs": 120000,
+    "timeoutMs": 300000,
     "tags": [
       "webvoyager",
       "arxiv",
@@ -141,7 +141,7 @@
     "startUrl": "https://www.bbc.com/news/",
     "goal": "Find a report on the BBC News website about recent developments in renewable energy technologies in the UK.",
     "maxTurns": 15,
-    "timeoutMs": 120000,
+    "timeoutMs": 300000,
     "tags": [
       "webvoyager",
       "bbc news",
@@ -158,7 +158,7 @@
     "startUrl": "https://www.bbc.com/news/",
     "goal": "Read the latest health-related news article published on BBC News and summarize the key points discussed.",
     "maxTurns": 15,
-    "timeoutMs": 120000,
+    "timeoutMs": 300000,
     "tags": [
       "webvoyager",
       "bbc news",
@@ -175,7 +175,7 @@
     "startUrl": "https://www.booking.com/",
     "goal": "Find a Mexico hotel with deals for December 25-26.",
     "maxTurns": 15,
-    "timeoutMs": 120000,
+    "timeoutMs": 300000,
     "tags": [
       "webvoyager",
       "booking",
@@ -192,7 +192,7 @@
     "startUrl": "https://www.booking.com/",
     "goal": "Find the cheapest available hotel room for a three night stay from 1st Jan in Jakarta. The room is for 2 adults, just answer the cheapest hotel room and the price.",
     "maxTurns": 15,
-    "timeoutMs": 120000,
+    "timeoutMs": 300000,
     "tags": [
       "webvoyager",
       "booking",
@@ -209,7 +209,7 @@
     "startUrl": "https://dictionary.cambridge.org/",
     "goal": "Look up the pronunciation and definition of the word \"sustainability\" on the Cambridge Dictionary.",
     "maxTurns": 15,
-    "timeoutMs": 120000,
+    "timeoutMs": 300000,
     "tags": [
       "webvoyager",
       "cambridge dictionary",
@@ -226,7 +226,7 @@
     "startUrl": "https://dictionary.cambridge.org/",
     "goal": "Find the pronunciation, definition, and a sample sentence for the word 'serendipity'.",
     "maxTurns": 15,
-    "timeoutMs": 120000,
+    "timeoutMs": 300000,
     "tags": [
       "webvoyager",
       "cambridge dictionary",
@@ -243,7 +243,7 @@
     "startUrl": "https://www.coursera.org/",
     "goal": "Find a beginner-level online course about '3d printing' which lasts 1-3 months, and is provided by a renowned university.",
     "maxTurns": 15,
-    "timeoutMs": 120000,
+    "timeoutMs": 300000,
     "tags": [
       "webvoyager",
       "coursera",
@@ -260,7 +260,7 @@
     "startUrl": "https://www.coursera.org/",
     "goal": "Search for a beginner-level online course about Python programming, suitable for someone who has no programming experience on Coursera.",
     "maxTurns": 15,
-    "timeoutMs": 120000,
+    "timeoutMs": 300000,
     "tags": [
       "webvoyager",
       "coursera",
@@ -277,7 +277,7 @@
     "startUrl": "https://www.espn.com/",
     "goal": "Look up the current standings for the NBA Eastern Conference on ESPN.",
     "maxTurns": 15,
-    "timeoutMs": 120000,
+    "timeoutMs": 300000,
     "tags": [
       "webvoyager",
       "espn",
@@ -294,7 +294,7 @@
     "startUrl": "https://www.espn.com/",
     "goal": "Check the latest articles on ESPN for updates on any trades that occurred in the NBA within the past 2 days.",
     "maxTurns": 15,
-    "timeoutMs": 120000,
+    "timeoutMs": 300000,
     "tags": [
       "webvoyager",
       "espn",
@@ -311,7 +311,7 @@
     "startUrl": "https://github.com/",
     "goal": "Search for an open-source project related to 'climate change data visualization' on GitHub and report the project with the most stars.",
     "maxTurns": 15,
-    "timeoutMs": 120000,
+    "timeoutMs": 300000,
     "tags": [
       "webvoyager",
       "github",
@@ -328,7 +328,7 @@
     "startUrl": "https://github.com/",
     "goal": "Search for an open-source repository for machine learning in Python, specifically focused on decision trees, updated within the last 2 days.",
     "maxTurns": 15,
-    "timeoutMs": 120000,
+    "timeoutMs": 300000,
     "tags": [
       "webvoyager",
       "github",
@@ -345,7 +345,7 @@
     "startUrl": "https://www.google.com/travel/flights/",
     "goal": "Show me the list of one-way flights on February 17, 2026 from Chicago to Paris.",
     "maxTurns": 15,
-    "timeoutMs": 120000,
+    "timeoutMs": 300000,
     "tags": [
       "webvoyager",
       "google flights",
@@ -362,7 +362,7 @@
     "startUrl": "https://www.google.com/travel/flights/",
     "goal": "Find the lowest fare from all eligible one-way flights for 1 adult from JFK to Heathrow on Jan. 22.",
     "maxTurns": 15,
-    "timeoutMs": 120000,
+    "timeoutMs": 300000,
     "tags": [
       "webvoyager",
       "google flights",
@@ -379,7 +379,7 @@
     "startUrl": "https://www.google.com/maps/",
     "goal": "Find 5 beauty salons with ratings greater than 4.8 in Seattle, WA.",
     "maxTurns": 15,
-    "timeoutMs": 120000,
+    "timeoutMs": 300000,
     "tags": [
       "webvoyager",
       "google map",
@@ -396,7 +396,7 @@
     "startUrl": "https://www.google.com/maps/",
     "goal": "Tell me one bus stop that is nearest to the intersection of main street and Amherst street in Altavista.",
     "maxTurns": 15,
-    "timeoutMs": 120000,
+    "timeoutMs": 300000,
     "tags": [
       "webvoyager",
       "google map",
@@ -413,7 +413,7 @@
     "startUrl": "https://www.google.com/",
     "goal": "Find the initial release date for Guardians of the Galaxy Vol. 3 the movie.",
     "maxTurns": 15,
-    "timeoutMs": 120000,
+    "timeoutMs": 300000,
     "tags": [
       "webvoyager",
       "google search",
@@ -430,7 +430,7 @@
     "startUrl": "https://www.google.com/",
     "goal": "Find Kevin Durant's bio",
     "maxTurns": 15,
-    "timeoutMs": 120000,
+    "timeoutMs": 300000,
     "tags": [
       "webvoyager",
       "google search",
@@ -447,7 +447,7 @@
     "startUrl": "https://huggingface.co/",
     "goal": "Find a pre-trained natural language processing model on Hugging Face that can perform sentiment analysis, and make sure the model's last update is within March 2023.",
     "maxTurns": 15,
-    "timeoutMs": 120000,
+    "timeoutMs": 300000,
     "tags": [
       "webvoyager",
       "huggingface",
@@ -464,7 +464,7 @@
     "startUrl": "https://huggingface.co/",
     "goal": "Use the Huggingface Inference API to generate a short story about a dragon and a wizard.",
     "maxTurns": 15,
-    "timeoutMs": 120000,
+    "timeoutMs": 300000,
     "tags": [
       "webvoyager",
       "huggingface",
@@ -481,7 +481,7 @@
     "startUrl": "https://www.wolframalpha.com/",
     "goal": "derivative of x^2 when x=5.6",
     "maxTurns": 15,
-    "timeoutMs": 120000,
+    "timeoutMs": 300000,
     "tags": [
       "webvoyager",
       "wolfram alpha",
@@ -498,7 +498,7 @@
     "startUrl": "https://www.wolframalpha.com/",
     "goal": "Give a constraint on the set of inequalities for the inner region of the pentagram.",
     "maxTurns": 15,
-    "timeoutMs": 120000,
+    "timeoutMs": 300000,
     "tags": [
       "webvoyager",
       "wolfram alpha",
