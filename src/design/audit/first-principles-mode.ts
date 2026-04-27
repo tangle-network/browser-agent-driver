@@ -11,7 +11,7 @@ import * as fsp from 'node:fs/promises'
 import * as path from 'node:path'
 import * as os from 'node:os'
 import * as crypto from 'node:crypto'
-import type { EnsembleClassification, NovelPatternObservation, PageType } from './v2/types.js'
+import type { EnsembleClassification, NovelPatternObservation, PageType } from './score-types.js'
 
 export interface FirstPrinciplesOptions {
   /** Override the minimum ensemble confidence threshold (default 0.6). */

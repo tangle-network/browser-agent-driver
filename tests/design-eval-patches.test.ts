@@ -32,7 +32,7 @@ describe('evaluatePatches', () => {
           id: 'f1', severity: 'major',
           patches: [{
             patchId: 'p1', findingId: 'f1', scope: 'component',
-            target: { scope: 'css', filePath: 'a.css', selector: '.x' },
+            target: { scope: 'html', filePath: 'a.css', selector: '.x' },
             diff: { before: 'color: red', after: 'color: blue' },
             testThatProves: { kind: 'visual-regression' },
             rollback: { kind: 'css-disable' },
@@ -56,7 +56,7 @@ describe('evaluatePatches', () => {
           id: 'f1', severity: 'major',
           patches: [{
             patchId: 'p-bad', findingId: 'f1', scope: 'component',
-            target: { scope: 'css', filePath: 'a.css', selector: '.x' },
+            target: { scope: 'html', filePath: 'a.css', selector: '.x' },
             diff: { before: 'color: red', after: 'color: blue' },
             testThatProves: { kind: 'visual-regression' },
             rollback: { kind: 'css-disable' },
@@ -78,7 +78,7 @@ describe('evaluatePatches', () => {
     writeReport(dir, 'r1', {
       pages: [{ snapshot: 'has color: red here', findings: [{ id: 'f1', patches: [{
         patchId: 'p1', findingId: 'f1', scope: 'component',
-        target: { scope: 'css', filePath: 'a.css', selector: '.x' },
+        target: { scope: 'html', filePath: 'a.css', selector: '.x' },
         diff: { before: 'color: red', after: 'color: blue' },
         testThatProves: { kind: 'visual-regression' }, rollback: { kind: 'css-disable' },
         estimatedDelta: { dim: 'visual_craft', delta: 1 }, estimatedDeltaConfidence: 'high',
@@ -87,7 +87,7 @@ describe('evaluatePatches', () => {
     writeReport(dir, 'r2', {
       pages: [{ snapshot: 'no match here', findings: [{ id: 'f2', patches: [{
         patchId: 'p2', findingId: 'f2', scope: 'component',
-        target: { scope: 'css', filePath: 'b.css', selector: '.y' },
+        target: { scope: 'html', filePath: 'b.css', selector: '.y' },
         diff: { before: 'NOT THERE', after: 'replacement' },
         testThatProves: { kind: 'visual-regression' }, rollback: { kind: 'css-disable' },
         estimatedDelta: { dim: 'visual_craft', delta: 1 }, estimatedDeltaConfidence: 'high',

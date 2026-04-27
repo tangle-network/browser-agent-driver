@@ -1,0 +1,9 @@
+{
+  "scope": "src/design/audit/pipeline.ts, src/design/audit/v2/build-result.ts, src/design/audit/v2/score.ts, src/design/audit/patches/*",
+  "base": "1fe749d",
+  "head": "c36cd2aa21031d4d6603e44215ffce5b9301ddef",
+  "project_type": "typescript",
+  "flags": [],
+  "findings_count_by_severity": { "critical": 0, "high": 3, "medium": 1, "low": 1 },
+  "trigger": "eval-agent surfaced auditResultV2 missing + zero patches[] on stripe.com calibration run"
+}

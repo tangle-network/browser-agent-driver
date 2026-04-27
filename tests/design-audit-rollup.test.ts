@@ -7,9 +7,9 @@ import {
 import {
   computeRollup,
   mergeDimensionScoresAcrossPasses,
-  parseAuditResponseV2,
-} from '../src/design/audit/v2/score.js'
-import { DIMENSIONS, type Dimension, type DimensionScore } from '../src/design/audit/v2/types.js'
+  parseAuditResponse,
+} from '../src/design/audit/score.js'
+import { DIMENSIONS, type Dimension, type DimensionScore } from '../src/design/audit/score-types.js'
 
 function dimScore(score: number, range: [number, number] = [score - 1, score + 1], conf: 'high' | 'medium' | 'low' = 'medium'): DimensionScore {
   return {
@@ -163,7 +163,7 @@ describe('mergeDimensionScoresAcrossPasses — Layer 1', () => {
   })
 })
 
-describe('parseAuditResponseV2 — Layer 1', () => {
+describe('parseAuditResponse — Layer 1', () => {
   const validRaw = JSON.stringify({
     scores: {
       product_intent: { score: 6, range: [5, 7], confidence: 'medium', summary: 'ok', primaryFindings: [] },
@@ -176,8 +176,8 @@ describe('parseAuditResponseV2 — Layer 1', () => {
     strengths: ['a', 'b'],
   })
 
-  it('parses a well-formed v2 response with every dimension', () => {
-    const out = parseAuditResponseV2(validRaw)
+  it('parses a well-formed scoring response with every dimension', () => {
+    const out = parseAuditResponse(validRaw)
     expect(out.scores.product_intent.score).toBe(6)
     expect(out.scores.visual_craft.confidence).toBe('high')
     expect(out.summary).toBe('overall')
@@ -186,7 +186,7 @@ describe('parseAuditResponseV2 — Layer 1', () => {
 
   it('parses fenced JSON', () => {
     const fenced = '```json\n' + validRaw + '\n```'
-    const out = parseAuditResponseV2(fenced)
+    const out = parseAuditResponse(fenced)
     expect(out.scores.product_intent.score).toBe(6)
   })
 
@@ -200,7 +200,7 @@ describe('parseAuditResponseV2 — Layer 1', () => {
         content_ia: { score: 7, range: [6, 8], confidence: 'high', summary: '', primaryFindings: [] },
       },
     })
-    expect(() => parseAuditResponseV2(bad)).toThrow(/outside range/)
+    expect(() => parseAuditResponse(bad)).toThrow(/outside range/)
   })
 
   it('rejects scores outside 1..10', () => {
@@ -213,7 +213,7 @@ describe('parseAuditResponseV2 — Layer 1', () => {
         content_ia: { score: 7, range: [6, 8], confidence: 'high', summary: '', primaryFindings: [] },
       },
     })
-    expect(() => parseAuditResponseV2(bad)).toThrow(/outside 1..10/)
+    expect(() => parseAuditResponse(bad)).toThrow(/outside 1..10/)
   })
 
   it('rejects inverted ranges', () => {
@@ -226,7 +226,7 @@ describe('parseAuditResponseV2 — Layer 1', () => {
         content_ia: { score: 7, range: [6, 8], confidence: 'high', summary: '', primaryFindings: [] },
       },
     })
-    expect(() => parseAuditResponseV2(bad)).toThrow(/inverted/)
+    expect(() => parseAuditResponse(bad)).toThrow(/inverted/)
   })
 
   it('throws when a dimension is missing', () => {
@@ -239,14 +239,14 @@ describe('parseAuditResponseV2 — Layer 1', () => {
         content_ia: { score: 7, range: [6, 8], confidence: 'high', summary: '', primaryFindings: [] },
       },
     })
-    expect(() => parseAuditResponseV2(bad)).toThrow(/visual_craft missing/)
+    expect(() => parseAuditResponse(bad)).toThrow(/visual_craft missing/)
   })
 
   it('throws on missing scores object', () => {
-    expect(() => parseAuditResponseV2('{"summary":"x"}')).toThrow(/missing scores/)
+    expect(() => parseAuditResponse('{"summary":"x"}')).toThrow(/missing scores/)
   })
 
   it('throws on no JSON object at all', () => {
-    expect(() => parseAuditResponseV2('not json')).toThrow(/no JSON object/)
+    expect(() => parseAuditResponse('not json')).toThrow(/no JSON object/)
   })
 })

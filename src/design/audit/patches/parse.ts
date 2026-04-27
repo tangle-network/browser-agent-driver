@@ -15,7 +15,7 @@ import type {
   PatchTestKind,
   ConfidenceLevel,
   Dimension,
-} from '../v2/types.js'
+} from '../score-types.js'
 
 type PatchScope = 'page' | 'section' | 'component' | 'system'
 type PatchTargetScope = 'tsx' | 'jsx' | 'css' | 'tailwind' | 'module-css' | 'styled-component' | 'structural' | 'html'

@@ -11,7 +11,7 @@
 
 import type { PatternQuery } from './design/audit/patterns/types.js'
 import { queryPatterns, loadPatterns } from './design/audit/patterns/store.js'
-import type { Dimension, PageType } from './design/audit/v2/types.js'
+import type { Dimension, PageType } from './design/audit/score-types.js'
 
 export interface PatternsQueryOptions {
   category?: string

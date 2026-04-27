@@ -1,38 +1,40 @@
 /**
- * v2 AuditResult builder.
+ * AuditResult builder.
  *
- * Wraps the existing v1 PageAuditResult with multi-dim scoring + ensemble
- * classification + rollup. Layer 1 emits BOTH schemas in `report.json` so
- * downstream consumers can migrate at their own pace (one-release deprecation
- * window per the RFC).
+ * Composes the per-dimension scores, ensemble classification, and rollup
+ * into the canonical `AuditResult` that downstream consumers (jobs, reports,
+ * brand-evolution, orchestrator) read.
  */
 
 import { randomUUID, createHash } from 'node:crypto'
-import type { Brain } from '../../../brain/index.js'
-import type { PageState } from '../../../types.js'
+import type { Brain } from '../../brain/index.js'
+import type { PageState } from '../../types.js'
 import type {
   PageAuditResult,
   PageClassification,
   ComposedRubric,
   MeasurementBundle,
-} from '../types.js'
+} from './types.js'
 import {
-  type AuditResult_v2,
+  type AuditResult,
   type DesignFinding,
   type Dimension,
   type DimensionScore,
   type EnsembleClassification,
   type RollupScore,
   DIMENSIONS,
-} from './types.js'
+} from './score-types.js'
 import {
-  buildEvalPromptV2,
+  buildEvalPrompt,
   computeRollup,
-  parseAuditResponseV2,
+  parseAuditResponse,
 } from './score.js'
-import { renderAnchor, type CalibrationAnchor } from '../rubric/anchor-loader.js'
+import { renderAnchor, type CalibrationAnchor } from './rubric/anchor-loader.js'
+import { parsePatches } from './patches/parse.js'
+import { validatePatch } from './patches/validate.js'
+import { enforcePatchPolicy } from './patches/severity-enforcement.js'
 
-export interface BuildV2ResultInput {
+export interface BuildAuditResultInput {
   brain: Brain
   state: PageState
   pageRef: string
@@ -48,15 +50,15 @@ export interface BuildV2ResultInput {
 }
 
 /**
- * Produce a complete `AuditResult_v2`. When `precomputedScores` is set we
- * skip the v2 LLM call entirely (used by deterministic tests + the
+ * Produce a complete `AuditResult`. When `precomputedScores` is set we
+ * skip the LLM call entirely (used by deterministic tests + the
  * `--audit-passes auto` legacy fallback path).
  */
-export async function buildAuditResultV2(input: BuildV2ResultInput): Promise<AuditResult_v2> {
+export async function buildAuditResult(input: BuildAuditResultInput): Promise<AuditResult> {
   const { brain, state, pageRef, ensemble, rubric, measurements, v1Result, anchor, runId } = input
 
   const measurementSummary = renderMeasurementSummary(measurements)
-  const prompt = buildEvalPromptV2({
+  const prompt = buildEvalPrompt({
     pageType: ensemble.type,
     rubricBody: rubric.body,
     anchor,
@@ -70,19 +72,22 @@ export async function buildAuditResultV2(input: BuildV2ResultInput): Promise<Aud
     scores = input.precomputedScores
   } else {
     try {
-      const llm = await brain.auditDesign(state, 'Multi-dimensional audit (v2)', [], prompt)
+      const llm = await brain.auditDesign(state, 'Multi-dimensional audit', [], prompt)
       llmTokens = llm.tokensUsed ?? 0
-      const parsed = parseAuditResponseV2(llm.raw)
+      const parsed = parseAuditResponse(llm.raw)
       scores = parsed.scores
     } catch {
       // Fall back: synthesize per-dim scores from the v1 result. Conservative —
       // every dim gets the v1 score, range +/- 1, confidence 'low'.
-      scores = synthesizeScoresFromV1(v1Result)
+      scores = synthesizeScoresFromLegacy(v1Result)
     }
   }
 
   const rollup: RollupScore = computeRollup(scores, ensemble.type)
-  const findings = adaptFindings(v1Result.findings)
+  // Layer 2 — adapt findings, parse + validate patches against the page
+  // snapshot, then enforce the severity policy (downgrade major/critical
+  // without a valid patch).
+  const findings = enforceFindingPolicy(adaptFindings(v1Result.findings), state.snapshot)
   const topFixes = computeTopFixes(findings).slice(0, 5).map((f) => f.id)
 
   const promptHash = sha1(prompt)
@@ -90,7 +95,6 @@ export async function buildAuditResultV2(input: BuildV2ResultInput): Promise<Aud
   const totalTokens = (v1Result.tokensUsed ?? 0) + llmTokens
 
   return {
-    schemaVersion: 2,
     runId: runId ?? randomUUID(),
     pageRef,
     classification: ensemble,
@@ -106,7 +110,7 @@ export async function buildAuditResultV2(input: BuildV2ResultInput): Promise<Aud
     promptHash,
     rubricHash,
     tokensUsed: totalTokens > 0 ? totalTokens : undefined,
-    passes: ['v2-multidim'],
+    passes: ['multidim'],
     ...(v1Result.error ? { error: v1Result.error } : {}),
   }
 }
@@ -125,16 +129,51 @@ function adaptFindings(v1Findings: PageAuditResult['findings']): DesignFinding[]
     const id = `finding-${idx + 1}-${sha1(`${f.category}|${f.description}`).slice(0, 8)}`
     const dimension = mapCategoryToDimension(f.category)
     const kind = inferKind(f)
+    // Pull raw patches from the LLM response (preserved by Brain.auditDesign).
+    // We override the findingId on each parsed patch so it always points at
+    // this finding's stable id — even if the LLM emitted its own placeholder.
+    const rawPatches = (f.rawPatches ?? []) as unknown[]
+    const parsed = parsePatches(rawPatches.map(p => withFindingId(p, id)))
     return {
       ...f,
       id,
       dimension,
       kind,
-      // Layer 2 supplies real Patches; Layer 1 emits an empty array so the
-      // schema is satisfied without fabricating diffs.
-      patches: [],
+      patches: parsed.patches,
     }
   })
+}
+
+/**
+ * Inject `findingId` into a raw patch object before parsing, so the finding's
+ * stable id always wins over whatever placeholder the LLM emitted.
+ */
+function withFindingId(raw: unknown, findingId: string): unknown {
+  if (raw && typeof raw === 'object') {
+    return { ...(raw as Record<string, unknown>), findingId }
+  }
+  return raw
+}
+
+/**
+ * Layer 2 enforcement — validate every patch against the page snapshot
+ * (drops patches whose `diff.before` isn't actually present), then run the
+ * severity policy: major/critical findings without ≥1 valid patch downgrade
+ * to minor.
+ */
+function enforceFindingPolicy(findings: DesignFinding[], snapshot: string): DesignFinding[] {
+  // Step 1: per-finding patch validation — keep only valid patches.
+  const validated = findings.map(f => {
+    const validPatches = (f.patches ?? []).filter(p => validatePatch(p, snapshot).valid)
+    return { ...f, patches: validPatches }
+  })
+  // Step 2: severity downgrade — collect valid patch ids and let the policy
+  // decide which findings keep their declared severity.
+  const validPatchIds = new Set<string>()
+  for (const f of validated) {
+    for (const p of f.patches ?? []) validPatchIds.add(p.patchId)
+  }
+  return enforcePatchPolicy(validated, validPatchIds).findings
 }
 
 function mapCategoryToDimension(category: string): Dimension {
@@ -177,7 +216,7 @@ function blastWeight(blast: PageAuditResult['findings'][number]['blast']): numbe
   }
 }
 
-function synthesizeScoresFromV1(v1: PageAuditResult): Record<Dimension, DimensionScore> {
+function synthesizeScoresFromLegacy(v1: PageAuditResult): Record<Dimension, DimensionScore> {
   const fallback = Math.max(1, Math.min(10, Math.round(v1.score)))
   const out: Partial<Record<Dimension, DimensionScore>> = {}
   for (const dim of DIMENSIONS) {
@@ -188,7 +227,7 @@ function synthesizeScoresFromV1(v1: PageAuditResult): Record<Dimension, Dimensio
         Math.min(10, fallback + 1),
       ],
       confidence: 'low',
-      summary: 'Synthesized from v1 score (v2 LLM call unavailable).',
+      summary: 'Synthesized from v1 score (LLM call unavailable).',
       primaryFindings: [],
     }
   }
@@ -199,12 +238,12 @@ function sha1(s: string): string {
   return createHash('sha1').update(s).digest('hex')
 }
 
-export const V2_INTERNALS = {
+export const BUILD_RESULT_INTERNALS = {
   renderMeasurementSummary,
   adaptFindings,
   mapCategoryToDimension,
   computeTopFixes,
-  synthesizeScoresFromV1,
+  synthesizeScoresFromLegacy,
 }
 
 export { renderAnchor }
