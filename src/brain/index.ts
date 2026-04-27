@@ -586,7 +586,15 @@ export class Brain {
     return {
       ...(this.shouldSendTemperature(modelName) ? { temperature: 0 } : {}),
       ...(isCliSpawning || omitsLegacyMaxTokens ? {} : { maxOutputTokens }),
-      ...(providerName === 'openai' && /(^|\/)gpt-5(?:[.-]|$)/i.test(modelName)
+      // forceReasoning routes the AI SDK to OpenAI's Responses API
+      // (`/v1/responses`). Most third-party OpenAI-compatible proxies
+      // (router.tangle.tools, LiteLLM, Together, vLLM, etc.) only implement
+      // /v1/chat/completions — Responses API requests come back 503 / 4xx
+      // and the SDK throws "Invalid JSON response". Disable on proxied
+      // openai routes; only OpenAI direct supports the Responses API today.
+      ...(providerName === 'openai'
+        && /(^|\/)gpt-5(?:[.-]|$)/i.test(modelName)
+        && !this.isProxiedOpenAI(providerName)
         ? {
             providerOptions: {
               openai: {
@@ -597,6 +605,21 @@ export class Brain {
           }
         : {}),
     };
+  }
+
+  /**
+   * True iff we're hitting an OpenAI-compatible *proxy* (router.tangle.tools,
+   * LiteLLM, etc.) rather than OpenAI direct. Used to downshift to the lowest
+   * common denominator API surface — chat-completions, no Responses API,
+   * non-streaming — that every OpenAI-compatible proxy is guaranteed to serve.
+   *
+   * The single source of truth for "we're talking to a proxy, be conservative
+   * about API features" — both `createForceNonStreamingFetch()` (the Gen 30
+   * streaming-default fix) and the `forceReasoning` gate above route through
+   * this predicate.
+   */
+  private isProxiedOpenAI(providerName: string): boolean {
+    return providerName === 'openai' && Boolean(this.baseUrl);
   }
 
   /** Get a LLM model instance, optionally with provider/model override (e.g. for CAPTCHA fallback) */
@@ -756,16 +779,18 @@ export class Brain {
         // chat factory explicitly so we hit a path the upstream actually
         // serves.
         const { createOpenAI } = await import('@ai-sdk/openai');
+        const usingProxy = this.isProxiedOpenAI(providerName);
         const provider = createOpenAI({
           apiKey: apiKey || '',
           ...(this.baseUrl ? { baseURL: this.baseUrl } : {}),
-          // Gen 30: some OpenAI-compatible routers (notably router.tangle.tools)
-          // default to SSE streaming when the client omits `stream`. The AI SDK's
-          // generateText expects non-streaming responses and errors out with
-          // "Invalid JSON response" on SSE. Force `stream: false` on every
-          // chat-completions body the provider sends, but only when a custom
-          // baseUrl is set — the real OpenAI endpoint defaults correctly.
-          ...(this.baseUrl ? { fetch: createForceNonStreamingFetch() } : {}),
+          // Proxy downshift — see isProxiedOpenAI(). Routes like
+          // router.tangle.tools default chat-completions to SSE when the
+          // client omits `stream`, and the AI SDK's generateText errors with
+          // "Invalid JSON response" on SSE. Force stream: false on every
+          // chat-completions body. Paired with the forceReasoning gate in
+          // generationOptions() so all "talk to a proxy" downshifts share
+          // one predicate.
+          ...(usingProxy ? { fetch: createForceNonStreamingFetch() } : {}),
         });
         model = provider.chat(modelName) as LanguageModel;
         break;

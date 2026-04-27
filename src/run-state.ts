@@ -20,7 +20,24 @@
  * Override per-case via Scenario.tokenBudget or globally via the
  * BAD_TOKEN_BUDGET env var.
  */
-export const DEFAULT_TOKEN_BUDGET = 100_000;
+/**
+ * Default token budget per case. The cap aborts a run with `cost_cap_exceeded`
+ * once total LLM tokens (input + output + cache) exceed this number.
+ *
+ * History:
+ *   - Gen 9: 100k cap added to bound runaway recovery loops (after Gen 8.1
+ *     burned 130-173k tokens / $0.25-$0.32 per case in death-spiral runs).
+ *   - 2026-04-27: bumped 100k → 300k. The Gen 11-era 100k cap was set when
+ *     the brain default was a smaller model (gpt-5.2 family). gpt-5.4 is
+ *     materially more verbose per turn — the production-shipping cap was
+ *     dominating the failure mode (10/12 WebVoyager curated-30 misses were
+ *     `cost_cap_exceeded` at the 100k cap). Bumping to 300k took curated-30
+ *     pass rate from 60.0% → 86.7% with zero cost_cap aborts.
+ *
+ * Override per-case via Scenario.tokenBudget or globally via the
+ * BAD_TOKEN_BUDGET env var (env wins — see RunState constructor).
+ */
+export const DEFAULT_TOKEN_BUDGET = 300_000;
 
 export class RunState {
   consecutiveErrors = 0;
