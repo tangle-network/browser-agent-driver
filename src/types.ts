@@ -911,6 +911,13 @@ export interface DesignFinding {
   roi?: number;
   /** Number of audited pages where this finding (or its dedupe-equivalent) appears */
   pageCount?: number;
+  /**
+   * Layer 2 — raw LLM-emitted patches, if any. Untyped here to keep the v1
+   * shape free of audit-internal types. The Layer 2 parser in
+   * src/design/audit/patches/parse.ts validates and converts to typed Patches
+   * before they land on the canonical AuditResult.
+   */
+  rawPatches?: unknown[];
 }
 
 export interface DesignSystemScore {

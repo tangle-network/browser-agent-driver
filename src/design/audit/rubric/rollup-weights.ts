@@ -9,7 +9,7 @@
  * Invariant: every weight set sums to 1.0 within 1e-6.
  */
 
-import type { Dimension } from '../v2/types.js'
+import type { Dimension } from '../score-types.js'
 import type { PageType } from '../types.js'
 
 export type RollupWeightKey = PageType | 'default'

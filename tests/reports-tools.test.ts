@@ -24,7 +24,7 @@ function setup(): { dir: string; jobId: string } {
   mkdirSync(stripeRunDir, { recursive: true })
   writeFileSync(join(stripeRunDir, 'report.json'), JSON.stringify({
     pages: [{
-      auditResultV2: { classification: { type: 'marketing', domain: 'fintech' }, rollup: { score: 8.5 }, scores: { product_intent: { score: 9 } } },
+      auditResult: { classification: { type: 'marketing', domain: 'fintech' }, rollup: { score: 8.5 }, scores: { product_intent: { score: 9 } } },
       ethicsViolations: [],
     }],
   }))
@@ -32,7 +32,7 @@ function setup(): { dir: string; jobId: string } {
   mkdirSync(linearRunDir, { recursive: true })
   writeFileSync(join(linearRunDir, 'report.json'), JSON.stringify({
     pages: [{
-      auditResultV2: { classification: { type: 'saas-app' }, rollup: { score: 9.2 }, scores: { product_intent: { score: 9 } } },
+      auditResult: { classification: { type: 'saas-app' }, rollup: { score: 9.2 }, scores: { product_intent: { score: 9 } } },
       ethicsViolations: [],
     }],
   }))

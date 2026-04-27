@@ -20,7 +20,7 @@ import { auditOnePage } from './design/audit/pipeline.js'
 import type { PageAuditResult as Gen2PageAuditResult, EthicsViolation } from './design/audit/types.js'
 
 /** Split "a, b , c" → ['a','b','c']. Returns undefined for empty input so the
- *  v2 predicate predicates can distinguish "operator did not say" from "[]". */
+ *  layered predicates can distinguish "operator did not say" from "[]". */
 function parseTagList(input: string | undefined): string[] | undefined {
   if (!input) return undefined
   const tags = input.split(',').map(s => s.trim()).filter(Boolean)
@@ -54,21 +54,21 @@ function lowestRollupCap(pages: Array<{ ethicsViolations?: EthicsViolation[] }>)
 
 /**
  * Layer 1 — print the per-dimension breakdown for one page when an
- * `auditResultV2` is attached. Five dim lines + one rollup line; each shows
+ * `auditResult` is attached. Five dim lines + one rollup line; each shows
  * score, range, and confidence so an agent can reason about uncertainty.
  */
-function printV2Breakdown(page: { auditResultV2?: unknown }): void {
-  const v2 = page.auditResultV2 as
+function printScoreBreakdown(page: { auditResult?: unknown }): void {
+  const result = page.auditResult as
     | {
         scores?: Record<string, { score: number; range: [number, number]; confidence: string }>
         rollup?: { score: number; range: [number, number]; confidence: string; rule: string }
       }
     | undefined
-  if (!v2 || !v2.scores || !v2.rollup) return
+  if (!result || !result.scores || !result.rollup) return
 
   const dimOrder = ['product_intent', 'visual_craft', 'trust_clarity', 'workflow', 'content_ia']
   for (const dim of dimOrder) {
-    const s = v2.scores[dim]
+    const s = result.scores[dim]
     if (!s) continue
     const sevColor = s.score >= 8 ? chalk.green : s.score >= 5 ? chalk.yellow : chalk.red
     const confColor = s.confidence === 'high' ? chalk.green : s.confidence === 'medium' ? chalk.yellow : chalk.dim
@@ -76,7 +76,7 @@ function printV2Breakdown(page: { auditResultV2?: unknown }): void {
       `      ${chalk.dim(dim.padEnd(15))} ${sevColor(`${s.score}/10`)} ${chalk.dim(`[${s.range[0]}-${s.range[1]}]`)} ${confColor(s.confidence)}`,
     )
   }
-  const r = v2.rollup
+  const r = result.rollup
   const rColor = r.score >= 8 ? chalk.green : r.score >= 5 ? chalk.yellow : chalk.red
   const confColor = r.confidence === 'high' ? chalk.green : r.confidence === 'medium' ? chalk.yellow : chalk.dim
   console.log(
@@ -161,8 +161,8 @@ interface PageAuditResult {
   ethicsViolations?: EthicsViolation[]
   /** Layer 7: the pre-cap rollup score when ethicsViolations is non-empty. */
   preEthicsScore?: number
-  /** Layer 1: opaque v2 result attached for backwards-compat dual-emit. */
-  auditResultV2?: unknown
+  /** Layer 1: opaque result attached for backwards-compat dual-emit. */
+  auditResult?: unknown
 }
 
 // ---------------------------------------------------------------------------
@@ -456,7 +456,7 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
       ? chalk.dim(` (${result.classification.type}/${result.classification.domain})`)
       : ''
     console.log(`  ${icon} ${scoreColor(`${result.score}/10`)} ${chalk.dim('—')} ${findingCount} finding${findingCount !== 1 ? 's' : ''}${classLabel}`)
-    printV2Breakdown(result)
+    printScoreBreakdown(result)
   }
 
   // Cross-page systemic detection + top-fixes ranking.
@@ -482,23 +482,13 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
 
   if (opts.json) {
     const jsonPath = path.join(outputDir, 'report.json')
-    // Layer 1 — emit BOTH schemaVersion 1 (legacy) and schemaVersion 2 (new)
-    // shapes for one release. Consumers can migrate to v2 incrementally.
-    const v2Pages = results
-      .map(r => r.auditResultV2)
-      .filter((r): r is unknown => r !== undefined)
     fs.writeFileSync(jsonPath, JSON.stringify({
-      schemaVersion: 1,
       timestamp: new Date().toISOString(),
       profile,
       url: opts.url,
       pages: results,
       topFixes,
       summary: { avgScore, totalFindings: allFindings.length, critical, major, minor },
-      v2: {
-        schemaVersion: 2,
-        pages: v2Pages,
-      },
     }, null, 2))
     console.log(`  ${chalk.dim('JSON →')} ${jsonPath}`)
   }

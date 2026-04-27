@@ -10,8 +10,8 @@
  * as a Cloudflare Worker cron once the attribution data accumulates.
  */
 
-export type { PageType, Dimension } from '../v2/types.js'
-import type { PageType, Dimension } from '../v2/types.js'
+export type { PageType, Dimension } from '../score-types.js'
+import type { PageType, Dimension } from '../score-types.js'
 
 export interface PatternScaffold {
   description: string

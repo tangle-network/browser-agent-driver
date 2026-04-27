@@ -257,7 +257,7 @@ export function resolveAuditPasses(
 
   const raw = value?.trim().toLowerCase()
   if (!raw || raw === 'standard' || raw === 'single' || raw === 'default') return ['standard']
-  // Layer 1 — `auto` is the new default for the v2 path: classification-aware
+  // Layer 1 — `auto` is the new default for the canonical path: classification-aware
   // selection mirroring `deep`. The pipeline runs the ensemble classifier
   // first, then this picks the focused pass bundle for that page type.
   if (raw === 'auto' || raw === 'deep' || raw === 'parallel' || raw === 'full') {

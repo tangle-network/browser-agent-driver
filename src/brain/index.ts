@@ -2198,6 +2198,10 @@ Audit this page for design quality, UX issues, and visual bugs.`;
             ...(VALID_BLAST.has(f.blast as string)
               ? { blast: f.blast as DesignFinding['blast'] }
               : {}),
+            // Layer 2 — preserve raw patches array (untyped passthrough). The
+            // parsePatches/validatePatch pipeline in build-result.ts converts
+            // these into typed, validated Patch objects.
+            ...(Array.isArray(f.patches) ? { rawPatches: f.patches as unknown[] } : {}),
           }))
         : [];
 

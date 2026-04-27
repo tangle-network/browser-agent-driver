@@ -29,3 +29,5 @@ mm-*.png
 # recordings, or case data here. Engine-level test scenarios belong under
 # bench/ and tests/, not demos/.
 demos/
+bench/design/eval/results/
+.claude/worktrees/

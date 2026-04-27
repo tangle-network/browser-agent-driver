@@ -27,7 +27,7 @@ import {
   type EthicsCheckContext,
 } from '../src/design/audit/ethics/check.js'
 import type { Brain } from '../src/brain/index.js'
-import type { PageClassification } from '../src/design/audit/v2/types.js'
+import type { PageClassification } from '../src/design/audit/score-types.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const RULES_DIR = path.resolve(__dirname, '../src/design/audit/ethics/rules')

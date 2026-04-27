@@ -224,14 +224,14 @@ async function buildAuditFn(_spec: JobSpec): Promise<AuditFn> {
     const data = JSON.parse(fs.readFileSync(reportJson, 'utf-8')) as {
       pages?: Array<{
         score?: number
-        auditResultV2?: { rollup?: { score?: number }; classification?: { type?: string } }
+        auditResult?: { rollup?: { score?: number }; classification?: { type?: string } }
         rollup?: { score?: number }
         classification?: { type?: string }
       }>
     }
     const page = data.pages?.[0]
-    const rollupScore = page?.auditResultV2?.rollup?.score ?? page?.rollup?.score ?? page?.score
-    const pageType = page?.auditResultV2?.classification?.type ?? page?.classification?.type
+    const rollupScore = page?.auditResult?.rollup?.score ?? page?.rollup?.score ?? page?.score
+    const pageType = page?.auditResult?.classification?.type ?? page?.classification?.type
 
     // Anti-bot / blocked-page detection. When fired, runOne records skipped.
     const blockedReason = detectBlock(data) ?? undefined
@@ -243,17 +243,9 @@ async function buildAuditFn(_spec: JobSpec): Promise<AuditFn> {
         const tokensDir = path.join(outputDir, 'tokens')
         const { tokens } = await extractDesignTokens({ url, headless: opts?.headless ?? true, outputDir: tokensDir })
         tokensPath = path.resolve(tokensDir, 'tokens.json')
-        // extractDesignTokens persists its own files; ensure tokens.json exists at the canonical path,
-        // and stamp it with our schemaVersion so future readers can refuse incompatible shapes.
-        const tokensWithVersion = { schemaVersion: 1, ...tokens }
+        // extractDesignTokens persists its own files; ensure tokens.json exists at the canonical path.
         if (!fs.existsSync(tokensPath)) {
-          fs.writeFileSync(tokensPath, JSON.stringify(tokensWithVersion, null, 2))
-        } else {
-          // Re-stamp existing file with schemaVersion if missing.
-          const existing = JSON.parse(fs.readFileSync(tokensPath, 'utf-8')) as Record<string, unknown>
-          if (typeof existing.schemaVersion !== 'number') {
-            fs.writeFileSync(tokensPath, JSON.stringify({ schemaVersion: 1, ...existing }, null, 2))
-          }
+          fs.writeFileSync(tokensPath, JSON.stringify(tokens, null, 2))
         }
       } catch (err) {
         // Token extraction is additive — never let it fail the parent audit.

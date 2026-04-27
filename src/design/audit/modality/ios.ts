@@ -8,7 +8,7 @@
  * TODO Layer 8: XCUITest bridge, simulator management, ax-tree capture.
  */
 
-import type { ModalityAdapter, ModalityInput, Evidence } from '../v2/types.js'
+import type { ModalityAdapter, ModalityInput, Evidence } from '../score-types.js'
 
 export class IosModalityAdapter implements ModalityAdapter {
   readonly modality = 'ios' as const
