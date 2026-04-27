@@ -113,7 +113,13 @@ if (typeof url === 'string' && url.includes('__FIXTURE_BASE_URL__')) {
 }
 
 loadLocalEnvFiles(rootDir);
-assertApiKeyForModel(model);
+// Skip the env-var assertion when the caller supplied credentials via flags.
+// `--api-key` + `--base-url` are the production sandbox path (router-routed
+// inference); the env-var check predates that path and was firing despite
+// caller-supplied creds being valid. Honor explicit flags first.
+if (!apiKeyOverride && !baseUrlOverride) {
+  assertApiKeyForModel(model);
+}
 if (!allowedMemoryIsolation.has(String(memoryIsolation))) {
   throw new Error(`Invalid --memory-isolation value "${memoryIsolation}". Expected one of: none, shared, per-run`);
 }

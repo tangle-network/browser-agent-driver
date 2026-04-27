@@ -1,0 +1,9 @@
+{
+  "scope": "src/brain/index.ts (generationOptions, model construction); scripts/run-mode-baseline.mjs (env assertion)",
+  "base": "1fe749d29917eb4c50d868348db4464428fc589a",
+  "head": "887f6d028822a4273c1d64118e2a4c65e231d2ea",
+  "project_type": "typescript",
+  "flags": [],
+  "findings_count_by_severity": { "critical": 1, "high": 2, "medium": 2, "low": 0 },
+  "trigger": "WebVoyager validation found 30/30 cases failing 'Invalid JSON response' on gpt-5.4 via router.tangle.tools; root cause traced to forceReasoning routing through unsupported /v1/responses endpoint"
+}

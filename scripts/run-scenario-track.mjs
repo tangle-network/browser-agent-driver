@@ -47,7 +47,12 @@ const headless = argv.includes('--headless');
 const allowedMemoryIsolation = new Set(['none', 'shared', 'per-run']);
 
 loadLocalEnvFiles(rootDir);
-assertApiKeyForModel(model);
+// Skip the env-var assertion when the caller supplied credentials via flags
+// (--api-key + --base-url is the production sandbox / router path). Honor
+// explicit flags first; fall back to the env check only when nothing is set.
+if (!apiKeyOverride && !baseUrlOverride) {
+  assertApiKeyForModel(model);
+}
 if (!allowedMemoryIsolation.has(String(memoryIsolation))) {
   throw new Error(`Invalid --memory-isolation value "${memoryIsolation}". Expected one of: none, shared, per-run`);
 }
