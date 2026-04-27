@@ -1,5 +1,5 @@
 /**
- * Layer 1 multi-dim scoring — prompt builder, parser, and rollup.
+ * Multi-dimensional scoring — prompt builder, parser, and rollup.
  *
  * Pure functions. No I/O, no Brain dependency. The pipeline supplies the
  * inputs (classification, rubric, anchor, measurements) and persists the
@@ -12,15 +12,15 @@ import {
   type Dimension,
   type DimensionScore,
   type RollupScore,
-} from './types.js'
-import type { PageType } from '../types.js'
-import { rollupFormula, rollupWeightsFor } from '../rubric/rollup-weights.js'
-import type { CalibrationAnchor } from '../rubric/anchor-loader.js'
-import { renderAnchor } from '../rubric/anchor-loader.js'
+} from './score-types.js'
+import type { PageType } from './types.js'
+import { rollupFormula, rollupWeightsFor } from './rubric/rollup-weights.js'
+import type { CalibrationAnchor } from './rubric/anchor-loader.js'
+import { renderAnchor } from './rubric/anchor-loader.js'
 
 const VALID_CONFIDENCE: readonly ConfidenceLevel[] = ['high', 'medium', 'low'] as const
 
-export interface BuildV2PromptInput {
+export interface BuildPromptInput {
   pageType: PageType
   rubricBody: string
   anchor?: CalibrationAnchor
@@ -36,11 +36,11 @@ const DEFAULT_OPENER =
   'You are a principal product-design auditor. Score this page on five universal dimensions independently, with explicit ranges and confidence. The downstream system aggregates these into a page-type-aware rollup.'
 
 /**
- * Build the v2 evaluation prompt. Demands per-dim DimensionScore output with
+ * Build the evaluation prompt. Demands per-dim DimensionScore output with
  * range + confidence. Does NOT request the rollup — the rollup is computed
  * deterministically from the per-dim scores using rollup-weights.
  */
-export function buildEvalPromptV2(input: BuildV2PromptInput): string {
+export function buildEvalPrompt(input: BuildPromptInput): string {
   const opener = input.systemOpener ?? DEFAULT_OPENER
   const anchorBlock = input.anchor ? renderAnchor(input.anchor) : ''
   const intentLine = input.intent ? `\nPAGE INTENT (from classifier): ${input.intent}` : ''
@@ -94,17 +94,17 @@ export interface ParsedDimensionScores {
 }
 
 /**
- * Parse the v2 LLM response. Throws when scores are missing, ranges violate
+ * Parse the LLM response. Throws when scores are missing, ranges violate
  * `range[0] <= score <= range[1]`, or score is outside 1..10. The pipeline
  * catches the throw and falls back to v1 mean-of-passes.
  */
-export function parseAuditResponseV2(raw: string): ParsedDimensionScores {
+export function parseAuditResponse(raw: string): ParsedDimensionScores {
   const parsed = extractJsonObject(raw)
-  if (!parsed) throw new Error('v2 parser: no JSON object in response')
+  if (!parsed) throw new Error('parser: no JSON object in response')
 
   const rawScores = (parsed as { scores?: unknown }).scores
   if (!rawScores || typeof rawScores !== 'object') {
-    throw new Error('v2 parser: missing scores object')
+    throw new Error('parser: missing scores object')
   }
 
   const scoreMap = rawScores as Record<string, unknown>
@@ -112,7 +112,7 @@ export function parseAuditResponseV2(raw: string): ParsedDimensionScores {
   for (const dim of DIMENSIONS) {
     const dimRaw = scoreMap[dim]
     if (!dimRaw || typeof dimRaw !== 'object') {
-      throw new Error(`v2 parser: dimension ${dim} missing`)
+      throw new Error(`parser: dimension ${dim} missing`)
     }
     out[dim] = parseDimensionScore(dim, dimRaw as Record<string, unknown>)
   }
@@ -131,25 +131,25 @@ export function parseAuditResponseV2(raw: string): ParsedDimensionScores {
 function parseDimensionScore(dim: Dimension, raw: Record<string, unknown>): DimensionScore {
   const score = raw.score
   if (typeof score !== 'number' || !Number.isFinite(score)) {
-    throw new Error(`v2 parser: ${dim}.score must be a number`)
+    throw new Error(`parser: ${dim}.score must be a number`)
   }
   const integerScore = Math.round(score)
   if (integerScore < 1 || integerScore > 10) {
-    throw new Error(`v2 parser: ${dim}.score=${integerScore} outside 1..10`)
+    throw new Error(`parser: ${dim}.score=${integerScore} outside 1..10`)
   }
   const range = raw.range
   if (!Array.isArray(range) || range.length !== 2 || typeof range[0] !== 'number' || typeof range[1] !== 'number') {
-    throw new Error(`v2 parser: ${dim}.range must be [number, number]`)
+    throw new Error(`parser: ${dim}.range must be [number, number]`)
   }
   const [low, high] = range
   if (low > high) {
-    throw new Error(`v2 parser: ${dim}.range=[${low},${high}] inverted`)
+    throw new Error(`parser: ${dim}.range=[${low},${high}] inverted`)
   }
   if (integerScore < low || integerScore > high) {
-    throw new Error(`v2 parser: ${dim}.score=${integerScore} outside range [${low},${high}]`)
+    throw new Error(`parser: ${dim}.score=${integerScore} outside range [${low},${high}]`)
   }
   if (low < 1 || high > 10) {
-    throw new Error(`v2 parser: ${dim}.range=[${low},${high}] outside 1..10`)
+    throw new Error(`parser: ${dim}.range=[${low},${high}] outside 1..10`)
   }
   const confidenceRaw = String(raw.confidence ?? '').toLowerCase()
   const confidence = (VALID_CONFIDENCE as readonly string[]).includes(confidenceRaw)

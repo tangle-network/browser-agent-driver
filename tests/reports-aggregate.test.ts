@@ -33,7 +33,7 @@ describe('aggregateJob', () => {
     dir = mkdtempSync(join(tmpdir(), 'bad-agg-'))
     const a = writeReport(dir, 'run-a', {
       pages: [{
-        auditResultV2: {
+        auditResult: {
           classification: { type: 'saas-app', domain: 'fintech' },
           rollup: { score: 7.5 },
           scores: { product_intent: { score: 8 }, visual_craft: { score: 7 } },
@@ -54,7 +54,7 @@ describe('aggregateJob', () => {
     expect(Number.isNaN(rows[1].rollupScore)).toBe(true)
   })
 
-  it('falls back to v1 fields when auditResultV2 is missing', () => {
+  it('falls back to v1 fields when auditResult is missing', () => {
     dir = mkdtempSync(join(tmpdir(), 'bad-agg-'))
     const a = writeReport(dir, 'run-a', {
       pages: [{ score: 6.2, classification: { type: 'marketing' } }],
@@ -69,7 +69,7 @@ describe('aggregateJob', () => {
     const job = makeJob([{ url: 'https://gone/', status: 'ok', runId: 'run-x', resultPath: '/nope/report.json', rollupScore: 4 }])
     const rows = aggregateJob(job)
     expect(rows).toHaveLength(1)
-    // resultPath missing → row has the JobResultEntry-level rollupScore but no v2 enrichment.
+    // resultPath missing → row has the JobResultEntry-level rollupScore but no auditResult enrichment.
     expect(rows[0].rollupScore).toBe(4)
   })
 })

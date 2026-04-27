@@ -9,14 +9,14 @@
 
 import * as fs from 'node:fs'
 import type { Job, JobResultEntry } from '../jobs/types.js'
-import type { Dimension } from '../design/audit/v2/types.js'
+import type { Dimension } from '../design/audit/score-types.js'
 import type { AggregateRow, CompareRunsResult, DimensionDelta, LongitudinalRow } from './types.js'
 
 interface RawReport {
   pages?: Array<{
     url?: string
     classification?: { type?: string; domain?: string }
-    auditResultV2?: {
+    auditResult?: {
       classification?: { type?: string; domain?: string }
       rollup?: { score?: number }
       scores?: Partial<Record<Dimension, { score?: number }>>
@@ -61,15 +61,15 @@ function toRow(r: JobResultEntry): AggregateRow {
     const json = JSON.parse(fs.readFileSync(r.resultPath, 'utf-8')) as RawReport
     const page = json.pages?.[0]
     if (!page) return base
-    const v2 = page.auditResultV2
-    const cls = v2?.classification ?? page.classification ?? {}
+    const result = page.auditResult
+    const cls = result?.classification ?? page.classification ?? {}
     base.pageType = base.pageType ?? cls.type
     base.domain = cls.domain
-    if (v2?.rollup?.score !== undefined) base.rollupScore = v2.rollup.score
+    if (result?.rollup?.score !== undefined) base.rollupScore = result.rollup.score
     else if (page.rollup?.score !== undefined) base.rollupScore = page.rollup.score
     else if (typeof page.score === 'number') base.rollupScore = page.score
-    if (v2?.scores) {
-      for (const [dim, ds] of Object.entries(v2.scores) as [Dimension, { score?: number } | undefined][]) {
+    if (result?.scores) {
+      for (const [dim, ds] of Object.entries(result.scores) as [Dimension, { score?: number } | undefined][]) {
         if (ds && typeof ds.score === 'number') base.dimensions[dim] = ds.score
       }
     }

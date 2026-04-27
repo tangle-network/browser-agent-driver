@@ -6,7 +6,7 @@
  * search-replace instead.
  */
 
-import type { Patch } from '../v2/types.js'
+import type { Patch } from '../score-types.js'
 
 /**
  * Render a minimal unified diff (1-hunk, 3 lines context) from a patch.

@@ -18,7 +18,7 @@ import type {
   EthicsSeverity,
   EthicsDetector,
   AppliesWhen,
-} from '../v2/types.js'
+} from '../score-types.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const BUILTIN_RULES_DIR = path.join(__dirname, 'rules')

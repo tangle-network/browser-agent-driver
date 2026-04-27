@@ -11,7 +11,7 @@
  *     always over-confident on a 1–10 scale.
  */
 
-import type { Patch } from '../v2/types.js'
+import type { Patch } from '../score-types.js'
 
 export type ValidationReason =
   | 'before-not-in-snapshot'
@@ -30,6 +30,12 @@ const DELTA_MAX = 3
 /**
  * Validate a single patch against a page snapshot. Reports all issues in one
  * pass so callers can surface every problem to the agent at once.
+ *
+ * Snapshot-anchoring rule: `diff.before` must appear verbatim in the page
+ * snapshot ONLY when the patch targets the snapshot itself — i.e. `target.scope`
+ * is `html` or `structural`. CSS / TSX / Tailwind patches modify source files
+ * the audit can't see, so the snapshot check would always fail for them. The
+ * agent verifies those patches at apply-time against the actual source file.
  */
 export function validatePatch(patch: Patch, snapshot: string): ValidationResult {
   const reasons: ValidationReason[] = []
@@ -39,9 +45,11 @@ export function validatePatch(patch: Patch, snapshot: string): ValidationResult 
     reasons.push('target-missing-locator')
   }
 
+  const requiresSnapshotMatch = target.scope === 'html' || target.scope === 'structural'
+
   if (diff.before.length === 0) {
     reasons.push('before-empty')
-  } else if (!snapshot.includes(diff.before)) {
+  } else if (requiresSnapshotMatch && !snapshot.includes(diff.before)) {
     reasons.push('before-not-in-snapshot')
   }
 

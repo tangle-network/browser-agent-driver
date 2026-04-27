@@ -37,10 +37,10 @@ export interface BlockSignals {
 
 /** Check the audit's report.json for anti-bot patterns. Returns the reason or null. */
 export function detectBlock(report: unknown): string | null {
-  const r = report as { pages?: Array<{ title?: string; classification?: { type?: string; intent?: string; ensembleConfidence?: number }; findings?: unknown[]; auditResultV2?: { classification?: { intent?: string; type?: string; ensembleConfidence?: number } } }> }
+  const r = report as { pages?: Array<{ title?: string; classification?: { type?: string; intent?: string; ensembleConfidence?: number }; findings?: unknown[]; auditResult?: { classification?: { intent?: string; type?: string; ensembleConfidence?: number } } }> }
   const page = r.pages?.[0]
   if (!page) return null
-  const v2cls = page.auditResultV2?.classification
+  const v2cls = page.auditResult?.classification
   const cls = v2cls ?? page.classification ?? {}
   const signals: BlockSignals = {
     title: page.title,

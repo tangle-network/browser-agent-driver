@@ -17,7 +17,7 @@ import {
   rollupCapFor,
 } from '../src/design/audit/ethics/loader.js'
 import { appliesWhenMatches, pageTextBlob } from '../src/design/audit/ethics/check.js'
-import type { EthicsRule, PageClassification } from '../src/design/audit/v2/types.js'
+import type { EthicsRule, PageClassification } from '../src/design/audit/score-types.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const RULES_DIR = path.resolve(__dirname, '../src/design/audit/ethics/rules')

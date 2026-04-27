@@ -5,7 +5,7 @@
  * This runs as a post-processing step after patch validation.
  */
 
-import type { Patch, DesignFinding } from '../v2/types.js'
+import type { Patch, DesignFinding } from '../score-types.js'
 
 export interface EnforcementRecord {
   findingId: string

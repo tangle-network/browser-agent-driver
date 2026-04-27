@@ -25,7 +25,7 @@ import type {
   ModalityTag,
   RegulatoryContextTag,
   AudienceVulnerabilityTag,
-} from '../v2/types.js'
+} from '../score-types.js'
 import { rollupCapFor } from './loader.js'
 
 export interface EthicsCheckContext {
@@ -84,7 +84,7 @@ function toViolation(rule: EthicsRule): EthicsViolation {
 }
 
 /**
- * Predicate evaluator — extends the rubric loader's logic with the v2 fields
+ * Predicate evaluator — extends the rubric loader's logic with the layered fields
  * (audience / modality / regulatoryContext / audienceVulnerability). All
  * declared predicates are AND-combined.
  */

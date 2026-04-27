@@ -22,7 +22,7 @@ import { loadEthicsRules } from './ethics/loader.js'
 import { checkEthics, pageTextBlob } from './ethics/check.js'
 import { classifyEnsemble } from './classify-ensemble.js'
 import { loadAnchors } from './rubric/anchor-loader.js'
-import { buildAuditResultV2 } from './v2/build-result.js'
+import { buildAuditResult } from './build-result.js'
 import type {
   AudienceTag,
   ModalityTag,
@@ -30,7 +30,7 @@ import type {
   AudienceVulnerabilityTag,
   EthicsViolation,
   EnsembleClassification,
-} from './v2/types.js'
+} from './score-types.js'
 
 export interface AuditOnePageOptions {
   brain: Brain
@@ -134,16 +134,32 @@ export async function auditOnePage(opts: AuditOnePageOptions): Promise<PageAudit
     }
 
     // ── 3. Classify (or use profile override) ──
-    // Layer 1: ensemble classifier (URL + DOM + LLM) when no override is set.
+    // Layer 1 always produces an ensemble classification — either from the
+    // ensemble classifier (URL + DOM + LLM) or synthesized from an explicit
+    // profile override. The audit-result builder needs an ensemble shape;
+    // restricting it to non-override runs would silently drop the entire
+    // multi-dim scoring + patches contract whenever --profile is passed.
     let classification: PageClassification
-    let ensemble: EnsembleClassification | undefined
+    let ensemble: EnsembleClassification
     if (profileOverride) {
-      // Build a synthetic classification matching the explicit profile
-      classification = {
+      const base = {
         ...defaultClassification(),
         type: profileOverride as PageClassification['type'],
         confidence: 1,
       }
+      ensemble = {
+        ...base,
+        signals: [{
+          source: 'llm',
+          type: base.type,
+          confidence: 1,
+          rationale: `operator-supplied profile=${profileOverride}`,
+        }],
+        signalsAgreed: true,
+        ensembleConfidence: 1,
+        firstPrinciplesMode: false,
+      }
+      classification = ensemble
     } else {
       ensemble = await classifyEnsemble({ brain, state, url })
       classification = ensemble
@@ -208,28 +224,26 @@ export async function auditOnePage(opts: AuditOnePageOptions): Promise<PageAudit
       result.ethicsViolations = ethicsViolations
     }
 
-    // ── 8. Layer 1 v2 — multi-dim scoring + rollup, emitted alongside v1 ──
-    if (ensemble) {
-      try {
-        const anchors = loadAnchors()
-        const anchor = anchors.get(ensemble.type)
-        const v2 = await buildAuditResultV2({
-          brain,
-          state,
-          pageRef: url,
-          ensemble,
-          rubric,
-          measurements,
-          v1Result: result,
-          anchor,
-          runId,
-        })
-        result.auditResultV2 = v2
-        result.ensembleClassification = ensemble
-      } catch (v2Err) {
-        // Don't let v2 failures break v1. Log + move on.
-        console.warn(`[audit/v2] failed to build v2 result for ${url}: ${(v2Err as Error).message}`)
-      }
+    // ── 8. Layer 1 — multi-dim scoring + rollup ──
+    try {
+      const anchors = loadAnchors()
+      const anchor = anchors.get(ensemble.type)
+      const auditResult = await buildAuditResult({
+        brain,
+        state,
+        pageRef: url,
+        ensemble,
+        rubric,
+        measurements,
+        v1Result: result,
+        anchor,
+        runId,
+      })
+      result.auditResult = auditResult
+      result.ensembleClassification = ensemble
+    } catch (buildErr) {
+      // Don't let the audit-result builder break the legacy summary. Log + move on.
+      console.warn(`[audit] failed to build result for ${url}: ${(buildErr as Error).message}`)
     }
 
     if (runId) {
