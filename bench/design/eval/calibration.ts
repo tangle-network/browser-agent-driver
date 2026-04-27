@@ -112,10 +112,17 @@ function readScore(reportJson: string): number {
   }
   const page = data.pages?.[0]
   if (!page) throw new Error('report.json has no pages[]')
-  // Prefer the auditResult rollup, fall back to v1 page.score / summary.avgScore.
-  return page.auditResult?.rollup?.score
+  // Calibration uses the holistic LLM score, not the per-dimension rollup.
+  // Reasoning: corpus tier-bands ("Stripe should score 8-10") encode human
+  // gestalt judgement of design quality. The rollup is a per-page-type
+  // weighted aggregate that punishes single weak dimensions hard (e.g. a
+  // marketing page that scores 6 on trust_clarity drags the rollup below the
+  // band even when the page is genuinely world-class). The holistic score is
+  // the right calibration target. The rollup remains the right input for
+  // ranking + comparison + brand-evolution surfaces.
+  return page.score
+    ?? page.auditResult?.rollup?.score
     ?? page.rollup?.score
-    ?? page.score
     ?? data.summary?.avgScore
     ?? NaN
 }

@@ -141,11 +141,12 @@ For each finding above, emit ONE Patch object. Required shape:
   "estimatedDeltaConfidence": "high" | "medium" | "low" | "untested"
 }
 
-Snapshot-anchoring rule:
-- If target.scope is "html" or "structural", diff.before MUST appear verbatim in the snapshot.
-- If target.scope is "css" / "tsx" / "jsx" / "tailwind" / "module-css" / "styled-component", diff.before may reference text in a source file the agent will resolve at apply-time.
+Snapshot-anchoring rule (READ CAREFULLY — most patch failures fail this):
+- target.scope MUST be "css" by default. Use "html" or "structural" ONLY when you are paste-copying a literal substring from the SNAPSHOT BLOCK above (not from your imagination, not from typical-site assumptions).
+- Before setting target.scope to "html", verify diff.before is a verbatim substring of the snapshot block above. If it isn't, change target.scope to "css".
+- For css / tsx / jsx / tailwind / module-css / styled-component scopes, diff.before is a source-file fragment the agent resolves at apply-time; the audit does not validate it. This is the safe default.
 
-If a finding does not admit a clean snapshot-anchored or selector-anchored patch, OMIT it (do not invent diffs).
+If a finding does not admit a clean patch, OMIT it (do not invent diffs).
 
 RESPOND WITH ONLY a JSON object:
 {
