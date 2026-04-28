@@ -1,5 +1,5 @@
 {
-  "name": "WV590 Hot-Spots — booking + google-flights",
+  "name": "WV590 Hot-Spots \u2014 booking + google-flights",
   "description": "Close the 42 fails on the two dominant capability hot-spots from the 2026-04-28 WebVoyager-590 baseline (90.8%). Date-picker dialog-stuck pattern accounts for 30+ fails across both sites. Goal: research architectural changes that generalize across sites, not site-specific overfits.",
   "_baseline": {
     "date": "2026-04-28",
@@ -43,14 +43,21 @@
     {
       "id": "calendar-month-nav-macro",
       "name": "Calendar month-navigation macro for date pickers",
-      "rationale": "27/27 google-flights fails involve the date-picker dialog. ~10/15 booking fails involve the 'calendar only shows next 2 months' pattern — agent has to click 'next month' iteratively to reach Dec 2026, burning 6-8 turns per click sequence. Both sites use a similar pattern: open dialog → calendar shows current month → user must navigate to target month. A reusable macro 'navigateCalendarToMonth(year, month)' that detects month-name elements and clicks 'next' until target is visible would condense 6-8 turns into 1 macro call. Generalizable to ANY site with month-navigation calendars (Airbnb, Expedia, etc).",
+      "rationale": "27/27 google-flights fails involve the date-picker dialog. ~10/15 booking fails involve the 'calendar only shows next 2 months' pattern \u2014 agent has to click 'next month' iteratively to reach Dec 2026, burning 6-8 turns per click sequence. Both sites use a similar pattern: open dialog \u2192 calendar shows current month \u2192 user must navigate to target month. A reusable macro 'navigateCalendarToMonth(year, month)' that detects month-name elements and clicks 'next' until target is visible would condense 6-8 turns into 1 macro call. Generalizable to ANY site with month-navigation calendars (Airbnb, Expedia, etc).",
       "category": "architectural",
       "expected_impact": "pass rate: +5-7pp overall; +30-50pp on flights+booking",
       "risk": "Macro selector may be fragile across calendar implementations. Mitigation: detect month-name pattern via regex on visible text, fall back to manual navigation if not found.",
-      "priority": 1,
+      "priority": 99,
       "treatment": {
         "_note": "New macro in src/macros/ + register in skills/macros/. Detection: dialog containing month-name text. Action: click 'next month' button N times until target visible, click target date.",
         "scope": "all sites that present month-navigation calendars"
+      },
+      "result": {
+        "cycle": 1,
+        "date": "2026-04-28",
+        "verdict": "reject (combined-with-26-and-27)",
+        "evidence": "Tested as prompt-rule addition (rules 25-27 added together to SYSTEM_PROMPT.HEAVY_PAGE_RULES). 57/79 hot-spot cases run before cred-fail abort. booking 18/40=45% (-17.5pp vs 62.5% baseline); flights 2/17=12% (-19pp vs 30.8% baseline). Combined treatment is unambiguously negative. Cannot isolate which rule caused the regression in this combined test; suspicion is on rule #27 (state-regression detection) which gave the agent permission to bail without offering a working alternative strategy.",
+        "next": "Re-test rule #25 in isolation. The micro-plan instruction may still be valid but needs validation without #27 contaminating the signal."
       }
     },
     {
@@ -69,40 +76,54 @@
     {
       "id": "dialog-aware-attention-focus",
       "name": "Dialog-aware snapshot focusing",
-      "rationale": "When a modal dialog is open (date picker, occupancy selector), the snapshot still includes the entire underlying page DOM. This dilutes attention and inflates context — booking/flights dialog turns hit 200-300k tokens with vision on. Detecting an open dialog (role=dialog, aria-modal=true, or visible-blocker pattern) and FILTERING the snapshot to just the dialog subtree forces the agent to focus on the immediate task. Token cost drops + decision quality improves.",
+      "rationale": "When a modal dialog is open (date picker, occupancy selector), the snapshot still includes the entire underlying page DOM. This dilutes attention and inflates context \u2014 booking/flights dialog turns hit 200-300k tokens with vision on. Detecting an open dialog (role=dialog, aria-modal=true, or visible-blocker pattern) and FILTERING the snapshot to just the dialog subtree forces the agent to focus on the immediate task. Token cost drops + decision quality improves.",
       "category": "architectural",
       "expected_impact": "pass rate: +1-3pp overall; cost: -10-15% on dialog-heavy sites",
       "risk": "Could miss state outside the dialog (toast notifications, page errors). Mitigation: keep a small 'page-context' header (URL, page title, top-level nav state) above the dialog snapshot.",
       "priority": 3,
       "treatment": {
         "_note": "Modify src/observe/ to detect [role=dialog], [aria-modal=true], and z-index>1000 patterns; when detected, scope the DOM snapshot to dialog subtree + a 200-char page header.",
-        "scope": "all sites — improves dialog interaction broadly"
+        "scope": "all sites \u2014 improves dialog interaction broadly"
       }
     },
     {
       "id": "state-regression-detection",
       "name": "State-regression detection + URL-recovery",
-      "rationale": "Booking specifically has a 'redirect to homepage with errorc_searchstring_not_found' pattern that wipes search context. The agent currently treats this as 'dom changed slightly' and continues — but the search state is gone. Detect 'URL changed unexpectedly to root domain' or 'expected entity missing from page' as a state-regression signal and trigger recovery (re-navigate to known-good URL with search params, or restart the search flow).",
+      "rationale": "Booking specifically has a 'redirect to homepage with errorc_searchstring_not_found' pattern that wipes search context. The agent currently treats this as 'dom changed slightly' and continues \u2014 but the search state is gone. Detect 'URL changed unexpectedly to root domain' or 'expected entity missing from page' as a state-regression signal and trigger recovery (re-navigate to known-good URL with search params, or restart the search flow).",
       "category": "bug-fix",
       "expected_impact": "pass rate: +2-3pp overall (closes booking search-reset cluster)",
       "risk": "False positives on legitimate redirects (e.g., login walls). Mitigation: only trigger when the regression is to root path AND the agent had progressed past root in a prior turn.",
-      "priority": 4,
+      "priority": 99,
       "treatment": {
         "_note": "Add to src/runner/recovery.ts: track URL progression, detect 'we were on /search/results then we got bounced to /', emit recovery event with 'state regressed; re-navigate to last-known-good URL'.",
-        "scope": "all sites — generic regression detection"
+        "scope": "all sites \u2014 generic regression detection"
+      },
+      "result": {
+        "cycle": 1,
+        "date": "2026-04-28",
+        "verdict": "reject",
+        "evidence": "Implemented as prompt rule #27 in SYSTEM_PROMPT.HEAVY_PAGE_RULES. Combined treatment with #25/#26 produced -17.5pp on booking and -19pp on flights. The rule told the agent to \"switch strategy\" when the search state regressed, but the only fallback (URL-direct) is blocked on booking. Net effect: agent bails earlier than baseline because the rule gave it permission to give up. Reverted from main.",
+        "next": "A real fix needs a NEW recovery action (fresh-session retry, not just URL-direct fallback) before this rule is useful."
       }
     },
     {
       "id": "max-turns-by-flow-complexity",
       "name": "Adaptive max-turns based on detected flow complexity",
-      "rationale": "21 fails are 'agent_gave_up_at_max_turns'. Current default is max_turns=15 per case across all sites. Booking flows are 12-20 turns (date pickers + filters + result extraction); single-page lookups are 3-5 turns. Adaptive sizing — start with 15, allow extension to 25 if the agent has shown verifiable progress in the last 3 turns (URL change AND DOM significantly different) — prevents premature aborts on hard cases without rewarding spinning agents.",
+      "rationale": "21 fails are 'agent_gave_up_at_max_turns'. Current default is max_turns=15 per case across all sites. Booking flows are 12-20 turns (date pickers + filters + result extraction); single-page lookups are 3-5 turns. Adaptive sizing \u2014 start with 15, allow extension to 25 if the agent has shown verifiable progress in the last 3 turns (URL change AND DOM significantly different) \u2014 prevents premature aborts on hard cases without rewarding spinning agents.",
       "category": "parameter-tuning",
       "expected_impact": "pass rate: +2-4pp overall",
       "risk": "Could waste budget on cases that genuinely can't succeed. Mitigation: extension only granted on verified progress signal; cap at 25 absolute.",
-      "priority": 5,
+      "priority": 50,
       "treatment": {
-        "_note": "src/runner/runner.ts — track lastProgressTurn; when hitting maxTurns, if lastProgressTurn was within 3 turns ago, grant +5 extension up to 25 total.",
+        "_note": "src/runner/runner.ts \u2014 track lastProgressTurn; when hitting maxTurns, if lastProgressTurn was within 3 turns ago, grant +5 extension up to 25 total.",
         "scope": "all sites"
+      },
+      "result": {
+        "cycle": 1,
+        "date": "2026-04-28",
+        "verdict": "inconclusive",
+        "evidence": "Adaptive max-turns extension (15\u2192up-to-25 when last 3 turns showed progress) fired exactly 1 time in 57 cases. Most fails happen well before the cap (turn 9-14 with agent giving up cleanly), so the safety net never engages. Innocuous (no negative impact observed) but also no measurable positive impact. Code change kept on the branch as future-proofing.",
+        "next": "Pair with a hypothesis that addresses the EARLIER bail-out (e.g., a recovery action the agent can take when stuck), then re-test."
       }
     },
     {
@@ -114,22 +135,37 @@
       "risk": "Vision is less reliable for hidden/off-screen elements. Mitigation: only activate when DOM-snapshot-bytes > threshold AND turns-without-progress >= 2.",
       "priority": 6,
       "treatment": {
-        "_note": "src/observe/ — detect SPA via DOM heuristics; add vision-only fallback path when activation conditions met.",
+        "_note": "src/observe/ \u2014 detect SPA via DOM heuristics; add vision-only fallback path when activation conditions met.",
         "scope": "SPA-pattern-matched sites only"
       }
     },
     {
       "id": "cost-cap-domain-aware",
-      "name": "Domain-aware cost cap (300k → 500k for vision-heavy)",
-      "rationale": "9 fails are cost_cap_exceeded. 4 of them are on flights/booking/espn where pages are inherently large × vision-on context. Raising the cap to 500k for known vision-heavy domains trades ~$0.05 extra per case for closing 4-9 fails. Lowest-leverage hypothesis but cheap.",
+      "name": "Domain-aware cost cap (300k \u2192 500k for vision-heavy)",
+      "rationale": "9 fails are cost_cap_exceeded. 4 of them are on flights/booking/espn where pages are inherently large \u00d7 vision-on context. Raising the cap to 500k for known vision-heavy domains trades ~$0.05 extra per case for closing 4-9 fails. Lowest-leverage hypothesis but cheap.",
       "category": "parameter-tuning",
       "expected_impact": "pass rate: +1-2pp; cost: +5% on listed domains, 0% elsewhere",
       "risk": "Encourages runaway loops to burn more before the cap fires. Mitigation: pair with state-regression detection (#4) so loops are caught earlier.",
       "priority": 7,
       "treatment": {
-        "_note": "src/run-state.ts — domain-aware DEFAULT_TOKEN_BUDGET lookup table; default 300k, override 500k for {booking.com, google.com/travel/flights, espn.com}.",
+        "_note": "src/run-state.ts \u2014 domain-aware DEFAULT_TOKEN_BUDGET lookup table; default 300k, override 500k for {booking.com, google.com/travel/flights, espn.com}.",
         "scope": "domain-listed sites only"
       }
     }
-  ]
+  ],
+  "_cycle_results": {
+    "cycle1": {
+      "date": "2026-04-28",
+      "tested": [
+        "calendar-month-nav-macro",
+        "state-regression-detection",
+        "max-turns-by-flow-complexity"
+      ],
+      "verdict": "reject prompt rules; inconclusive on adaptive max-turns",
+      "baseline_combined": "37/79 = 46.8% (booking 25/40 + flights 12/39 from full WV-590 run)",
+      "treatment_combined": "20/57 = 35.1% (-11.7pp before cred-fail abort)",
+      "cost_usd": 32,
+      "lesson": "Adding prompt rules that tell the agent when to bail is dangerous if no better alternative is offered. Rule #27 specifically gave the agent permission to give up on booking without a working fallback. Going forward: prompt rules need to PAIR with concrete actions the agent can take."
+    }
+  }
 }

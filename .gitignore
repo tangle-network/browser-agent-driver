@@ -34,3 +34,4 @@ bench/design/eval/results/
 
 # Transient WebVoyager run-recovery cases (regenerated per session)
 bench/external/webvoyager/cases-resume*.json
+bench/external/webvoyager/cases-hotspots*.json
