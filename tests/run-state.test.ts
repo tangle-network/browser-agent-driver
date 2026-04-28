@@ -19,6 +19,34 @@ describe('RunState', () => {
     expect(state.hasConsecutiveErrorThreshold).toBe(false);
   });
 
+  it('initializes lastProgressTurn at -Infinity (no false-positive extension)', () => {
+    // The 2026-04-28 adaptive-max-turns extension reads
+    // `lastProgressTurn >= maxTurns - PROGRESS_LOOKBACK` to decide whether
+    // to grant +5 turns. Initial value MUST be -Infinity so a brand-new
+    // RunState that never saw an observation cannot accidentally satisfy
+    // the predicate (which would grant the extension to every run, even
+    // ones that crashed before observing anything).
+    const state = new RunState(15);
+    expect(state.lastProgressTurn).toBe(-Infinity);
+    const PROGRESS_LOOKBACK = 3;
+    const maxTurns = 15;
+    expect(state.lastProgressTurn >= maxTurns - PROGRESS_LOOKBACK).toBe(false);
+  });
+
+  it('lastProgressTurn satisfies extension predicate when set within lookback window', () => {
+    const state = new RunState(15);
+    const PROGRESS_LOOKBACK = 3;
+    const maxTurns = 15;
+
+    // Progress at turn 13 — within 3-turn lookback at turn 15: extend.
+    state.lastProgressTurn = 13;
+    expect(state.lastProgressTurn >= maxTurns - PROGRESS_LOOKBACK).toBe(true);
+
+    // Progress at turn 11 — outside 3-turn lookback at turn 15: no extend.
+    state.lastProgressTurn = 11;
+    expect(state.lastProgressTurn >= maxTurns - PROGRESS_LOOKBACK).toBe(false);
+  });
+
   it('recordError increments both consecutive and total', () => {
     const state = new RunState(20);
     state.recordError();

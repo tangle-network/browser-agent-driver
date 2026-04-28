@@ -405,7 +405,20 @@ export class BrowserAgent {
     const baseMaxTurns = scenario.maxTurns || DEFAULT_MAX_TURNS;
     // Gen 26: 30 turn minimum for vision. 15/51 failures were turn budget
     // exhaustion at 20. The cost cap (200k tokens) is the real bound.
-    const maxTurns = isVisionMode ? Math.max(baseMaxTurns, 30) : baseMaxTurns;
+    //
+    // 2026-04-28 update: `maxTurns` is now `let`, not `const`, because the
+    // adaptive-extension logic at the top of each iteration may bump it
+    // by EXTENSION_TURNS_GRANTED when the agent shows recent progress at
+    // the cap. WebVoyager-590 baseline showed 21/54 fails were
+    // "agent_gave_up_at_max_turns" mid-flow; the extension converts those
+    // near-misses into successes without rewarding stuck loops (extension
+    // requires URL-or-DOM progress in the prior 3 turns; capped absolute
+    // at EXTENSION_HARD_CAP).
+    let maxTurns = isVisionMode ? Math.max(baseMaxTurns, 30) : baseMaxTurns;
+    let extensionGranted = false;
+    const EXTENSION_TURNS_GRANTED = 5;
+    const EXTENSION_HARD_CAP = 25;
+    const EXTENSION_PROGRESS_LOOKBACK = 3;
     const retries = this.config.retries ?? DEFAULT_RETRIES;
     const retryDelayMs = this.config.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
     const turns: Turn[] = [];
@@ -773,6 +786,36 @@ export class BrowserAgent {
     const verdictTracker = new VerdictTracker();
 
     for (let i = 1 + plannerStartTurn; i <= maxTurns; i++) {
+      // 2026-04-28: adaptive-max-turns extension. When we hit the
+      // configured cap AND the agent has shown progress in the last
+      // EXTENSION_PROGRESS_LOOKBACK turns, grant a one-time extension up
+      // to EXTENSION_HARD_CAP. Triggers only on the original maxTurns
+      // boundary (extensionGranted guards against cascading); the
+      // recovery-fired event is emitted so the trace is honest about the
+      // turns being borrowed. No-op for vision-mode (already gets +5
+      // baseline boost) and for explicitly-large maxTurns settings.
+      if (
+        i === maxTurns
+        && !extensionGranted
+        && !isVisionMode
+        && maxTurns < EXTENSION_HARD_CAP
+        && runState.lastProgressTurn >= maxTurns - EXTENSION_PROGRESS_LOOKBACK
+      ) {
+        const extendedMax = Math.min(maxTurns + EXTENSION_TURNS_GRANTED, EXTENSION_HARD_CAP);
+        const extra = extendedMax - maxTurns;
+        if (extra > 0) {
+          this.bus.emitNow({
+            type: 'recovery-fired',
+            runId,
+            turn: i,
+            strategy: 'max-turns-extension',
+            feedback: `Granted +${extra} extra turns (cap ${maxTurns} → ${extendedMax}); progress at turn ${runState.lastProgressTurn}.`,
+          });
+          maxTurns = extendedMax;
+          extensionGranted = true;
+        }
+      }
+
       // Gen 32 — honor user-driven pause from the interrupt controller.
       // Blocks until `r` is pressed (resume) or `q` is pressed (abort).
       // A rejected beforeTurn is treated as an abort.
@@ -929,6 +972,31 @@ export class BrowserAgent {
           ...(screenshotDataUrl ? { screenshot: screenshotDataUrl } : {}),
           durationMs: observeDurationMs,
         });
+
+        // 2026-04-28: progress-turn tracking for the adaptive-max-turns
+        // extension at the end of the loop. We mark this turn as
+        // "progress" when the URL changed from the prior turn, OR the
+        // snapshot byte size moved more than 5% (which filters out
+        // decorative animations + dynamic-id reshuffles but catches
+        // real DOM changes from clicks/typing/navigation). The 5% floor
+        // is intentionally loose — false positives just keep the run
+        // alive longer; false negatives cut off agents mid-flow on
+        // hot-spot sites (booking, google-flights), which is the
+        // failure mode we're trying to fix.
+        const priorTurn = turns[turns.length - 1];
+        if (priorTurn) {
+          const urlChanged = priorTurn.state?.url !== state.url;
+          const priorSize = priorTurn.state?.snapshot?.length ?? 0;
+          const sizeDelta = priorSize > 0
+            ? Math.abs(state.snapshot.length - priorSize) / priorSize
+            : 1; // first comparison counts as change
+          if (urlChanged || sizeDelta > 0.05) {
+            runState.lastProgressTurn = i;
+          }
+        } else {
+          // No prior turn — this is the first observe. Count as progress.
+          runState.lastProgressTurn = i;
+        }
 
         // Auto-navigate: if we're on about:blank with a startUrl, navigate without
         // consuming an LLM turn. The agent always does wait->navigate on blank pages.
@@ -2419,10 +2487,15 @@ export class BrowserAgent {
       }
     }
 
-    // Max turns reached
+    // Max turns reached. The adaptive extension fired (or didn't) inside
+    // the loop body — see the `extensionGranted` check at the start of
+    // each iteration. By the time we reach this point, the (possibly
+    // extended) cap was exhausted.
     return buildResult({
       success: false,
-      reason: `Max turns (${maxTurns}) reached`,
+      reason: extensionGranted
+        ? `Max turns (${maxTurns}) reached after +${EXTENSION_TURNS_GRANTED} extension; recent progress at turn ${runState.lastProgressTurn}.`
+        : `Max turns (${maxTurns}) reached`,
       turns,
       totalMs: Date.now() - startTime,
     });
