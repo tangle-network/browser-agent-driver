@@ -1,0 +1,135 @@
+{
+  "name": "WV590 Hot-Spots — booking + google-flights",
+  "description": "Close the 42 fails on the two dominant capability hot-spots from the 2026-04-28 WebVoyager-590 baseline (90.8%). Date-picker dialog-stuck pattern accounts for 30+ fails across both sites. Goal: research architectural changes that generalize across sites, not site-specific overfits.",
+  "_baseline": {
+    "date": "2026-04-28",
+    "passRate": 0.908,
+    "n": 590,
+    "model": "gpt-5.4",
+    "route": "router.tangle.tools/v1",
+    "perSite": {
+      "booking": "25/40 = 62.5%",
+      "google-flights": "12/39 = 30.8%",
+      "wolfram-alpha": "41/46 = 89.1%",
+      "huggingface": "33/36 = 91.7%",
+      "8 sites at 100%": "allrecipes amazon apple arxiv bbc-news cambridge coursera google-map"
+    },
+    "failureMix": {
+      "agent_gave_up_at_max_turns": 21,
+      "other": 18,
+      "cost_cap": 9,
+      "unreachable": 4,
+      "wall_clock_timeout": 2
+    }
+  },
+  "defaults": {
+    "casesPath": "./bench/external/webvoyager/cases.json",
+    "casesFilter": "site=booking,google-flights",
+    "model": "gpt-5.4",
+    "provider": "openai",
+    "baseUrl": "https://router.tangle.tools/v1",
+    "benchmarkProfile": "webvoyager",
+    "repetitions": 3,
+    "concurrency": 5,
+    "scenarioConcurrency": 2,
+    "seed": "2026-04-28",
+    "memoryIsolation": "per-run",
+    "modes": "fast-explore",
+    "tokenBudget": 300000,
+    "caseTimeoutMs": 300000
+  },
+  "control": {},
+  "hypotheses": [
+    {
+      "id": "calendar-month-nav-macro",
+      "name": "Calendar month-navigation macro for date pickers",
+      "rationale": "27/27 google-flights fails involve the date-picker dialog. ~10/15 booking fails involve the 'calendar only shows next 2 months' pattern — agent has to click 'next month' iteratively to reach Dec 2026, burning 6-8 turns per click sequence. Both sites use a similar pattern: open dialog → calendar shows current month → user must navigate to target month. A reusable macro 'navigateCalendarToMonth(year, month)' that detects month-name elements and clicks 'next' until target is visible would condense 6-8 turns into 1 macro call. Generalizable to ANY site with month-navigation calendars (Airbnb, Expedia, etc).",
+      "category": "architectural",
+      "expected_impact": "pass rate: +5-7pp overall; +30-50pp on flights+booking",
+      "risk": "Macro selector may be fragile across calendar implementations. Mitigation: detect month-name pattern via regex on visible text, fall back to manual navigation if not found.",
+      "priority": 1,
+      "treatment": {
+        "_note": "New macro in src/macros/ + register in skills/macros/. Detection: dialog containing month-name text. Action: click 'next month' button N times until target visible, click target date.",
+        "scope": "all sites that present month-navigation calendars"
+      }
+    },
+    {
+      "id": "url-direct-when-params-known",
+      "name": "URL-direct construction when goal specifies all parameters",
+      "rationale": "Google Flights URL `?tfs=...` carries origin+dest+date+passengers. Booking URL `?ss=Paris&checkin=2026-12-01&checkout=2026-12-06&group_adults=2` does the same. When the goal specifies all required params (origin/destination/dates/count) the agent could construct the URL directly and skip the dialog entirely. Currently the brain only does navigate(URL) for the homepage. Adding a 'try URL-direct first, fall back to UI flow on failure' strategy bypasses the date-picker bottleneck completely.",
+      "category": "architectural",
+      "expected_impact": "pass rate: +3-5pp overall; concentrated on flights/booking/airbnb-style sites",
+      "risk": "Hand-coded URL templates per site is overfitting. Mitigation: ship as a 'site profile' system (declarative URL templates) rather than hardcoded conditionals; require goal-extracted params to all be present before attempting; on any non-200 or redirect-to-homepage, fall back to UI flow.",
+      "priority": 2,
+      "treatment": {
+        "_note": "New src/site-profiles/ with URL templates for top-failure sites + brain integration. Profile shape: {domain, urlTemplate, requiredParams, paramExtractors}.",
+        "scope": "domain-pattern-matched (booking.com, google.com/travel/flights, expedia.com, airbnb.com, etc.)"
+      }
+    },
+    {
+      "id": "dialog-aware-attention-focus",
+      "name": "Dialog-aware snapshot focusing",
+      "rationale": "When a modal dialog is open (date picker, occupancy selector), the snapshot still includes the entire underlying page DOM. This dilutes attention and inflates context — booking/flights dialog turns hit 200-300k tokens with vision on. Detecting an open dialog (role=dialog, aria-modal=true, or visible-blocker pattern) and FILTERING the snapshot to just the dialog subtree forces the agent to focus on the immediate task. Token cost drops + decision quality improves.",
+      "category": "architectural",
+      "expected_impact": "pass rate: +1-3pp overall; cost: -10-15% on dialog-heavy sites",
+      "risk": "Could miss state outside the dialog (toast notifications, page errors). Mitigation: keep a small 'page-context' header (URL, page title, top-level nav state) above the dialog snapshot.",
+      "priority": 3,
+      "treatment": {
+        "_note": "Modify src/observe/ to detect [role=dialog], [aria-modal=true], and z-index>1000 patterns; when detected, scope the DOM snapshot to dialog subtree + a 200-char page header.",
+        "scope": "all sites — improves dialog interaction broadly"
+      }
+    },
+    {
+      "id": "state-regression-detection",
+      "name": "State-regression detection + URL-recovery",
+      "rationale": "Booking specifically has a 'redirect to homepage with errorc_searchstring_not_found' pattern that wipes search context. The agent currently treats this as 'dom changed slightly' and continues — but the search state is gone. Detect 'URL changed unexpectedly to root domain' or 'expected entity missing from page' as a state-regression signal and trigger recovery (re-navigate to known-good URL with search params, or restart the search flow).",
+      "category": "bug-fix",
+      "expected_impact": "pass rate: +2-3pp overall (closes booking search-reset cluster)",
+      "risk": "False positives on legitimate redirects (e.g., login walls). Mitigation: only trigger when the regression is to root path AND the agent had progressed past root in a prior turn.",
+      "priority": 4,
+      "treatment": {
+        "_note": "Add to src/runner/recovery.ts: track URL progression, detect 'we were on /search/results then we got bounced to /', emit recovery event with 'state regressed; re-navigate to last-known-good URL'.",
+        "scope": "all sites — generic regression detection"
+      }
+    },
+    {
+      "id": "max-turns-by-flow-complexity",
+      "name": "Adaptive max-turns based on detected flow complexity",
+      "rationale": "21 fails are 'agent_gave_up_at_max_turns'. Current default is max_turns=15 per case across all sites. Booking flows are 12-20 turns (date pickers + filters + result extraction); single-page lookups are 3-5 turns. Adaptive sizing — start with 15, allow extension to 25 if the agent has shown verifiable progress in the last 3 turns (URL change AND DOM significantly different) — prevents premature aborts on hard cases without rewarding spinning agents.",
+      "category": "parameter-tuning",
+      "expected_impact": "pass rate: +2-4pp overall",
+      "risk": "Could waste budget on cases that genuinely can't succeed. Mitigation: extension only granted on verified progress signal; cap at 25 absolute.",
+      "priority": 5,
+      "treatment": {
+        "_note": "src/runner/runner.ts — track lastProgressTurn; when hitting maxTurns, if lastProgressTurn was within 3 turns ago, grant +5 extension up to 25 total.",
+        "scope": "all sites"
+      }
+    },
+    {
+      "id": "vision-only-on-spa-detection",
+      "name": "Vision-only mode on SPA detection",
+      "rationale": "Both booking and flights are React-heavy SPAs where the DOM snapshot is voluminous and unstable but the visual layout is consistent. For these specific sites, vision is more reliable than DOM-vision-hybrid. Detect SPA patterns (heavy use of data-* attributes, React/Vue runtime markers, lots of generated class names) and switch to vision-only observation. Reduces context size + makes the agent reason about what it sees, not what's in the DOM.",
+      "category": "architectural",
+      "expected_impact": "pass rate: +1-3pp on flights/booking; cost: -20% on SPA-heavy",
+      "risk": "Vision is less reliable for hidden/off-screen elements. Mitigation: only activate when DOM-snapshot-bytes > threshold AND turns-without-progress >= 2.",
+      "priority": 6,
+      "treatment": {
+        "_note": "src/observe/ — detect SPA via DOM heuristics; add vision-only fallback path when activation conditions met.",
+        "scope": "SPA-pattern-matched sites only"
+      }
+    },
+    {
+      "id": "cost-cap-domain-aware",
+      "name": "Domain-aware cost cap (300k → 500k for vision-heavy)",
+      "rationale": "9 fails are cost_cap_exceeded. 4 of them are on flights/booking/espn where pages are inherently large × vision-on context. Raising the cap to 500k for known vision-heavy domains trades ~$0.05 extra per case for closing 4-9 fails. Lowest-leverage hypothesis but cheap.",
+      "category": "parameter-tuning",
+      "expected_impact": "pass rate: +1-2pp; cost: +5% on listed domains, 0% elsewhere",
+      "risk": "Encourages runaway loops to burn more before the cap fires. Mitigation: pair with state-regression detection (#4) so loops are caught earlier.",
+      "priority": 7,
+      "treatment": {
+        "_note": "src/run-state.ts — domain-aware DEFAULT_TOKEN_BUDGET lookup table; default 300k, override 500k for {booking.com, google.com/travel/flights, espn.com}.",
+        "scope": "domain-listed sites only"
+      }
+    }
+  ]
+}

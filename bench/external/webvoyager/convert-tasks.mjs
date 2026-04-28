@@ -36,7 +36,11 @@ const excludeRemoved = hasFlag('exclude-removed') || applyPatches
 const filterSite = getArg('site')
 const maxTasks = Number(getArg('max-tasks', '0'))
 const maxTurns = Number(getArg('max-turns', '15'))
-const timeoutMs = Number(getArg('timeout', '120000'))
+// 300_000 (5 min) per case — the prior 120_000 floor dominated the failure
+// mode on long-page sites (Amazon, Booking, Google Flights), masking real
+// capability vs config issues. Override with --timeout for cost-sensitive
+// sweeps.
+const timeoutMs = Number(getArg('timeout', '300000'))
 const outFile = getArg('out', path.resolve(__dir, 'cases.json'))
 
 // Load patches

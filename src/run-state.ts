@@ -54,6 +54,25 @@ export class RunState {
   // Gen 24b: checkpoint replay — save known-good URLs for rollback on wrong-path
   checkpoints: Array<{ url: string; turn: number }> = [];
 
+  /**
+   * Last turn at which the agent showed verifiable progress: URL changed,
+   * snapshot DOM materially changed, or evidence was extracted. Drives the
+   * 2026-04-28 adaptive-max-turns extension — the runner grants up to 5
+   * extra turns past the configured maxTurns IF the last 3 turns showed
+   * progress, on the theory that an agent making demonstrable progress
+   * 3 turns from the cap should not be cut off arbitrarily.
+   *
+   * Initial value `-Infinity` so a brand-new run with zero observations
+   * cannot trigger the extension on its way in.
+   *
+   * Updated by:
+   *   - URL change between consecutive observe-completed events
+   *   - Snapshot byte delta > 5% of prior turn (filters noise from
+   *     decorative animations / dynamic IDs / timestamps)
+   *   - firstSufficientEvidenceTurn being set this turn
+   */
+  lastProgressTurn = -Infinity;
+
   readonly maxTotalErrors: number;
 
   /** Total LLM tokens (input + output + cache) charged to this case so far. */
