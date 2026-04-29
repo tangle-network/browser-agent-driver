@@ -1,0 +1,53 @@
+{
+  "variantId": "google-flights-preflight-full39-current3",
+  "trackSummary": "/home/drew/code/browser-agent-driver/agent-results/wv-google-flights-full39-preflight-current3-20260429-164952/track-summary.json",
+  "summary": {
+    "generatedAt": "2026-04-29T22:56:39.521Z",
+    "sourceSummaryPath": "/home/drew/code/browser-agent-driver/agent-results/wv-google-flights-full39-preflight-current3-20260429-164952/track-summary.json",
+    "sourceGeneratedAt": "2026-04-29T22:56:31.155Z",
+    "total": 39,
+    "rawPassed": 36,
+    "strictPassed": 35,
+    "rawPassRate": 0.9230769230769231,
+    "strictPassRate": 0.8974358974358975,
+    "totalCostUsd": 4.06,
+    "totalTokens": 1484630,
+    "meanTurns": 2.6153846153846154,
+    "labelCounts": {
+      "calendar-date-picker": 12,
+      "apparently-successful": 23,
+      "search-submit-results": 2,
+      "other": 2,
+      "explore-vs-exact-search": 1
+    },
+    "recommendedMutationPrimitives": [
+      {
+        "id": "google-flights-direct-url",
+        "channel": "code",
+        "rationale": "Most failures spend turns in date picker setup. Build Google Flights /travel/flights/search or /travel/explore URLs from parsed route, dates, trip type, cabin, passengers, and stops when task parameters are explicit."
+      },
+      {
+        "id": "google-flights-calendar-jump-apply",
+        "channel": "code",
+        "rationale": "When URL direct-start is incomplete, use a deterministic date-field fill/apply macro instead of repeated month-arrow clicks and full calendar snapshots."
+      },
+      {
+        "id": "google-flights-state-regression-guard",
+        "channel": "prompt+code",
+        "rationale": "Detect reset to empty origin/destination/date fields after navigation and recover immediately from the encoded URL or last known parsed task parameters."
+      },
+      {
+        "id": "completion-false-positive-guard",
+        "channel": "code",
+        "rationale": "Treat completions containing blocked/could-not-complete/not-requested-date language as failed even when script evidence exists."
+      },
+      {
+        "id": "compact-calendar-observation",
+        "channel": "code",
+        "rationale": "Summarize calendar state as selected dates, visible months, and relevant target-date availability instead of sending huge DOM snapshots that trigger token blowups."
+      }
+    ]
+  },
+  "rows": 39,
+  "stateDir": "/home/drew/code/browser-agent-driver/.evolve/agent-eval/webvoyager"
+}

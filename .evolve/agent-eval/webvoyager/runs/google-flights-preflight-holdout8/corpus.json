@@ -1,0 +1,236 @@
+{
+  "aggregate": {
+    "generatedAt": "2026-04-29T20:50:33.446Z",
+    "sourceSummaryPath": "/home/drew/code/browser-agent-driver/agent-results/wv-google-flights-holdout8-preflight-20260429-144508/track-summary.json",
+    "sourceGeneratedAt": "2026-04-29T20:50:10.895Z",
+    "total": 8,
+    "rawPassed": 4,
+    "strictPassed": 4,
+    "rawPassRate": 0.5,
+    "strictPassRate": 0.5,
+    "totalCostUsd": 1.3628,
+    "totalTokens": 492947,
+    "meanTurns": 6,
+    "labelCounts": {
+      "calendar-date-picker": 2,
+      "search-submit-results": 1,
+      "timeout": 1,
+      "context-token-blowup": 2,
+      "apparently-successful": 3
+    },
+    "recommendedMutationPrimitives": [
+      {
+        "id": "google-flights-direct-url",
+        "channel": "code",
+        "rationale": "Most failures spend turns in date picker setup. Build Google Flights /travel/flights/search or /travel/explore URLs from parsed route, dates, trip type, cabin, passengers, and stops when task parameters are explicit."
+      },
+      {
+        "id": "google-flights-calendar-jump-apply",
+        "channel": "code",
+        "rationale": "When URL direct-start is incomplete, use a deterministic date-field fill/apply macro instead of repeated month-arrow clicks and full calendar snapshots."
+      },
+      {
+        "id": "google-flights-state-regression-guard",
+        "channel": "prompt+code",
+        "rationale": "Detect reset to empty origin/destination/date fields after navigation and recover immediately from the encoded URL or last known parsed task parameters."
+      },
+      {
+        "id": "completion-false-positive-guard",
+        "channel": "code",
+        "rationale": "Treat completions containing blocked/could-not-complete/not-requested-date language as failed even when script evidence exists."
+      },
+      {
+        "id": "compact-calendar-observation",
+        "channel": "code",
+        "rationale": "Summarize calendar state as selected dates, visible months, and relevant target-date availability instead of sending huge DOM snapshots that trigger token blowups."
+      }
+    ]
+  },
+  "cases": [
+    {
+      "id": "wv-Google Flights--11",
+      "ordinal": 1,
+      "split": "dev",
+      "goal": "Compare the prices for round-trip flights from New York to Tokyo for a departure on February 10, 2026, and a return on February 24, 2026, and select the option with the least number of stops.",
+      "startUrl": "https://www.google.com/travel/flights/",
+      "rawPassed": true,
+      "strictPassed": true,
+      "agentSuccess": true,
+      "exitCode": 0,
+      "turnsUsed": 1,
+      "tokensUsed": 11046,
+      "inputTokens": 10547,
+      "outputTokens": 499,
+      "costUsd": 0.0338525,
+      "durationMs": 25535,
+      "labels": [
+        "calendar-date-picker"
+      ],
+      "verdict": "Visible Google Flights results already provide the comparison for New York → Tokyo, round trip, Feb 10–24, 2027. Fewest stops visible is nonstop (0 stops). Visible nonstop options and prices include: United EWR→HND for $1,444 round trip, American JFK→HND for $1,444 round trip, United EWR→NRT for $1,446 round trip, JAL JFK→HND for $1,514 round trip, and ANA JFK→HND for $1,544 round trip. Cheaper overall options exist at $1,097 and $1,098, but they each have 1 stop, so they do not meet the 'least number of stops' preference. Therefore, the selected option is the nonstop flight(s) at $1,444 round trip, specifically United Newark Liberty International Airport to Haneda or American John F. Kennedy International Airport to Haneda. Evidence from current page: URL https://www.google.com/travel/flights/search?tfs=CBwQAhopEgoyMDI3LTAyLTEwag0IAxIJL20vMDJfMjg2cgwIAxIIL20vMDdkZmsaKRIKMjAyNy0wMi0yNGoMCAMSCC9tLzA3ZGZrcg0IAxIJL20vMDJfMjg2QAFIAXABggELCP___________wGYAQE ; visible text includes 'From 1444 US dollars round trip total. Nonstop flight with United...' and 'From 1444 US dollars round trip total. Nonstop flight with American...'",
+      "reportPath": "/home/drew/code/browser-agent-driver/agent-results/wv-google-flights-holdout8-preflight-20260429-144508/wv-google-flights--11/fast-explore/report.json",
+      "summaryPath": "/home/drew/code/browser-agent-driver/agent-results/wv-google-flights-holdout8-preflight-20260429-144508/wv-google-flights--11/baseline-summary.json"
+    },
+    {
+      "id": "wv-Google Flights--13",
+      "ordinal": 2,
+      "split": "train",
+      "goal": "Find the cheapest round-trip flight option from New York City to Tokyo for a departure on January 10, 2026, and a return on January 24, 2026.",
+      "startUrl": "https://www.google.com/travel/flights/",
+      "rawPassed": false,
+      "strictPassed": false,
+      "agentSuccess": false,
+      "exitCode": 1,
+      "turnsUsed": 14,
+      "tokensUsed": 164815,
+      "inputTokens": 161072,
+      "outputTokens": 3743,
+      "costUsd": 0.45882500000000004,
+      "durationMs": 194634,
+      "labels": [
+        "calendar-date-picker",
+        "search-submit-results"
+      ],
+      "verdict": "Could not reliably reach a results page before final turn. Evidence on current page shows origin/destination only, with dates not applied and no flight results visible: URL https://www.google.com/travel/flights?tfs=CBwQARodag0IAxIJL20vMDJfMjg2cgwIAxIIL20vMDdkZmsaHWoMCAMSCC9tLzA3ZGZrcg0IAxIJL20vMDJfMjg2QAFIAXABggELCP___________wGYAQE&tfu=KgIIAw ; visible state includes combobox 'Where from?' value 'New York', combobox 'Where to?' value 'Tokyo', empty textbox 'Departure', empty textbox 'Return', and no results list for Jan 10–24, 2026. Prior script feedback also indicates date selection failed to stick correctly (e.g. picker advanced to January 2027; later main page still showed empty Departure/Return).",
+      "reportPath": "/home/drew/code/browser-agent-driver/agent-results/wv-google-flights-holdout8-preflight-20260429-144508/wv-google-flights--13/fast-explore/report.json",
+      "summaryPath": "/home/drew/code/browser-agent-driver/agent-results/wv-google-flights-holdout8-preflight-20260429-144508/wv-google-flights--13/baseline-summary.json"
+    },
+    {
+      "id": "wv-Google Flights--14",
+      "ordinal": 3,
+      "split": "train",
+      "goal": "Compare flight options and find the lowest round trip fare from New York to London departing on January 10, 2026, and returning on January 17, 2026.",
+      "startUrl": "https://www.google.com/travel/flights/",
+      "rawPassed": false,
+      "strictPassed": false,
+      "agentSuccess": false,
+      "exitCode": 1,
+      "turnsUsed": 9,
+      "tokensUsed": 76876,
+      "inputTokens": 75130,
+      "outputTokens": 1746,
+      "costUsd": 0.214015,
+      "durationMs": 300022,
+      "labels": [
+        "timeout"
+      ],
+      "verdict": "Test timed out after 300000ms",
+      "reportPath": "/home/drew/code/browser-agent-driver/agent-results/wv-google-flights-holdout8-preflight-20260429-144508/wv-google-flights--14/fast-explore/report.json",
+      "summaryPath": "/home/drew/code/browser-agent-driver/agent-results/wv-google-flights-holdout8-preflight-20260429-144508/wv-google-flights--14/baseline-summary.json"
+    },
+    {
+      "id": "wv-Google Flights--15",
+      "ordinal": 4,
+      "split": "train",
+      "goal": "Compare the prices and total duration of non-stop flights from New York to Tokyo Narita Airport departing on February 12th, 2026, and returning on February 26th, 2026.",
+      "startUrl": "https://www.google.com/travel/flights/",
+      "rawPassed": false,
+      "strictPassed": false,
+      "agentSuccess": false,
+      "exitCode": 1,
+      "turnsUsed": 10,
+      "tokensUsed": 103622,
+      "inputTokens": 101998,
+      "outputTokens": 1624,
+      "costUsd": 0.279355,
+      "durationMs": 146995,
+      "labels": [
+        "context-token-blowup"
+      ],
+      "verdict": "3 consecutive errors: Input tokens exceed the configured limit of 922000 tokens. Your messages resulted in 1660490 tokens. Please reduce the length of the messages.",
+      "reportPath": "/home/drew/code/browser-agent-driver/agent-results/wv-google-flights-holdout8-preflight-20260429-144508/wv-google-flights--15/fast-explore/report.json",
+      "summaryPath": "/home/drew/code/browser-agent-driver/agent-results/wv-google-flights-holdout8-preflight-20260429-144508/wv-google-flights--15/baseline-summary.json"
+    },
+    {
+      "id": "wv-Google Flights--16",
+      "ordinal": 5,
+      "split": "train",
+      "goal": "Find the cheapest one-way flight from New York to Tokyo departing on January 15, 2026, and provide the airline and total flight duration.",
+      "startUrl": "https://www.google.com/travel/flights/",
+      "rawPassed": true,
+      "strictPassed": true,
+      "agentSuccess": true,
+      "exitCode": 0,
+      "turnsUsed": 1,
+      "tokensUsed": 10478,
+      "inputTokens": 10153,
+      "outputTokens": 325,
+      "costUsd": 0.030257500000000003,
+      "durationMs": 22809,
+      "labels": [
+        "apparently-successful"
+      ],
+      "verdict": "Cheapest visible one-way flight from New York to Tokyo departing Jan 15 is Philippine Airlines for $644 USD. Visible evidence on the page shows: 'From 644 US dollars. 1 stop flight with Philippine Airlines... Total duration 21 hr 15 min' (ref @l8d8). Another equally priced Philippine Airlines option is also visible at $644 with total duration 22 hr 10 min (ref @l2627), but the cheapest visible result at the top is @l8d8. URL: https://www.google.com/travel/flights/search?tfs=CBwQAhopEgoyMDI3LTAxLTE1ag0IAxIJL20vMDJfMjg2cgwIAxIIL20vMDdkZmtAAUgBcAGCAQsI____________AZgBAg",
+      "reportPath": "/home/drew/code/browser-agent-driver/agent-results/wv-google-flights-holdout8-preflight-20260429-144508/wv-google-flights--16/fast-explore/report.json",
+      "summaryPath": "/home/drew/code/browser-agent-driver/agent-results/wv-google-flights-holdout8-preflight-20260429-144508/wv-google-flights--16/baseline-summary.json"
+    },
+    {
+      "id": "wv-Google Flights--17",
+      "ordinal": 6,
+      "split": "dev",
+      "goal": "Find the cheapest round-trip flight from New York to Paris leaving on December 27, 2025, and returning on January 10, 2026.",
+      "startUrl": "https://www.google.com/travel/flights/",
+      "rawPassed": true,
+      "strictPassed": true,
+      "agentSuccess": true,
+      "exitCode": 0,
+      "turnsUsed": 1,
+      "tokensUsed": 11334,
+      "inputTokens": 10981,
+      "outputTokens": 353,
+      "costUsd": 0.0327475,
+      "durationMs": 23462,
+      "labels": [
+        "apparently-successful"
+      ],
+      "verdict": "Cheapest visible round-trip flight on Google Flights for New York → Paris departing Dec 27, 2026 and returning Jan 10, 2027 is $670 USD. Visible evidence: the page URL is https://www.google.com/travel/flights/search?tfs=CBwQAhopEgoyMDI2LTEyLTI3ag0IAxIJL20vMDJfMjg2cgwIAxIIL20vMDVxdGoaKRIKMjAyNy0wMS0xMGoMCAMSCC9tLzA1cXRqcg0IAxIJL20vMDJfMjg2QAFIAXABggELCP___________wGYAQE and the results show a tab labeled 'Cheapest from 670 US dollars'. The top listed cheapest visible itinerary is: 'From 670 US dollars round trip total. Nonstop flight with United. Leaves Newark Liberty International Airport at 6:05 PM on Sunday, December 27 and arrives at Paris Charles de Gaulle Airport at 7:25 AM on Monday, December 28. Total duration 7 hr 20 min.'",
+      "reportPath": "/home/drew/code/browser-agent-driver/agent-results/wv-google-flights-holdout8-preflight-20260429-144508/wv-google-flights--17/fast-explore/report.json",
+      "summaryPath": "/home/drew/code/browser-agent-driver/agent-results/wv-google-flights-holdout8-preflight-20260429-144508/wv-google-flights--17/baseline-summary.json"
+    },
+    {
+      "id": "wv-Google Flights--18",
+      "ordinal": 7,
+      "split": "train",
+      "goal": "Compare flight options from New York to Tokyo for a round trip leaving on January 25, 2026, and returning on February 15, 2026, for one adult. Prioritize the comparisons by the shortest travel time.",
+      "startUrl": "https://www.google.com/travel/flights/",
+      "rawPassed": false,
+      "strictPassed": false,
+      "agentSuccess": false,
+      "exitCode": 1,
+      "turnsUsed": 11,
+      "tokensUsed": 102278,
+      "inputTokens": 100419,
+      "outputTokens": 1859,
+      "costUsd": 0.2789325,
+      "durationMs": 102144,
+      "labels": [
+        "context-token-blowup"
+      ],
+      "verdict": "3 consecutive errors: Input tokens exceed the configured limit of 922000 tokens. Your messages resulted in 1196992 tokens. Please reduce the length of the messages.",
+      "reportPath": "/home/drew/code/browser-agent-driver/agent-results/wv-google-flights-holdout8-preflight-20260429-144508/wv-google-flights--18/fast-explore/report.json",
+      "summaryPath": "/home/drew/code/browser-agent-driver/agent-results/wv-google-flights-holdout8-preflight-20260429-144508/wv-google-flights--18/baseline-summary.json"
+    },
+    {
+      "id": "wv-Google Flights--19",
+      "ordinal": 8,
+      "split": "train",
+      "goal": "Find the cheapest one-way flight from London to Paris, departing on January 25, 2026. Include the airline, total travel time, and layovers for the chosen flight.",
+      "startUrl": "https://www.google.com/travel/flights/",
+      "rawPassed": true,
+      "strictPassed": true,
+      "agentSuccess": true,
+      "exitCode": 0,
+      "turnsUsed": 1,
+      "tokensUsed": 12498,
+      "inputTokens": 12209,
+      "outputTokens": 289,
+      "costUsd": 0.0348575,
+      "durationMs": 22975,
+      "labels": [
+        "apparently-successful"
+      ],
+      "verdict": "Cheapest one-way flight found on Google Flights for London → Paris on Mon, Jan 25: easyJet for 42 US dollars. Visible evidence from the first result: 'From 42 US dollars... Nonstop flight with easyJet. Leaves London Gatwick Airport at 4:45 PM on Monday, January 25 and arrives at Paris Charles de Gaulle Airport at 7:00 PM on Monday, January 25. Total duration 1 hr 15 min.' Layovers: none (nonstop). URL: https://www.google.com/travel/flights/search?tfs=CBwQAhooEgoyMDI3LTAxLTI1agwIAxIIL20vMDRqcGxyDAgDEggvbS8wNXF0akABSAFwAYIBCwj___________8BmAEC",
+      "reportPath": "/home/drew/code/browser-agent-driver/agent-results/wv-google-flights-holdout8-preflight-20260429-144508/wv-google-flights--19/fast-explore/report.json",
+      "summaryPath": "/home/drew/code/browser-agent-driver/agent-results/wv-google-flights-holdout8-preflight-20260429-144508/wv-google-flights--19/baseline-summary.json"
+    }
+  ]
+}

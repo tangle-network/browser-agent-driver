@@ -1,0 +1,48 @@
+{
+  "generatedAt": "2026-04-29T22:46:41.819Z",
+  "sourceSummaryPath": "/home/drew/code/browser-agent-driver/agent-results/wv-google-flights-full39-preflight-current2-20260429-163852/track-summary.json",
+  "sourceGeneratedAt": "2026-04-29T22:46:34.780Z",
+  "total": 39,
+  "rawPassed": 35,
+  "strictPassed": 34,
+  "rawPassRate": 0.8974358974358975,
+  "strictPassRate": 0.8717948717948718,
+  "totalCostUsd": 5.2664,
+  "totalTokens": 1928426,
+  "meanTurns": 3.4871794871794872,
+  "labelCounts": {
+    "calendar-date-picker": 17,
+    "apparently-successful": 16,
+    "search-submit-results": 6,
+    "verifier-false-positive-risk": 2,
+    "timeout": 1,
+    "explore-vs-exact-search": 1
+  },
+  "recommendedMutationPrimitives": [
+    {
+      "id": "google-flights-direct-url",
+      "channel": "code",
+      "rationale": "Most failures spend turns in date picker setup. Build Google Flights /travel/flights/search or /travel/explore URLs from parsed route, dates, trip type, cabin, passengers, and stops when task parameters are explicit."
+    },
+    {
+      "id": "google-flights-calendar-jump-apply",
+      "channel": "code",
+      "rationale": "When URL direct-start is incomplete, use a deterministic date-field fill/apply macro instead of repeated month-arrow clicks and full calendar snapshots."
+    },
+    {
+      "id": "google-flights-state-regression-guard",
+      "channel": "prompt+code",
+      "rationale": "Detect reset to empty origin/destination/date fields after navigation and recover immediately from the encoded URL or last known parsed task parameters."
+    },
+    {
+      "id": "completion-false-positive-guard",
+      "channel": "code",
+      "rationale": "Treat completions containing blocked/could-not-complete/not-requested-date language as failed even when script evidence exists."
+    },
+    {
+      "id": "compact-calendar-observation",
+      "channel": "code",
+      "rationale": "Summarize calendar state as selected dates, visible months, and relevant target-date availability instead of sending huge DOM snapshots that trigger token blowups."
+    }
+  ]
+}

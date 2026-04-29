@@ -1,0 +1,4664 @@
+{
+  "generatedAt": "2026-04-29T22:56:39.657Z",
+  "stateDir": "/home/drew/code/browser-agent-driver/.evolve/agent-eval/webvoyager",
+  "rows": 139,
+  "comparableRows": 139,
+  "variants": [
+    "baseline-gpt-5.4-fast-explore",
+    "verifier-guard-fp5",
+    "google-flights-preflight-fp5",
+    "google-flights-preflight-holdout8",
+    "google-flights-preflight-parser3",
+    "google-flights-preflight-case15-compareguard",
+    "google-flights-preflight-full39-current2",
+    "google-flights-preflight-full39-current3"
+  ],
+  "comparableVariants": [
+    "baseline-gpt-5.4-fast-explore",
+    "verifier-guard-fp5",
+    "google-flights-preflight-fp5",
+    "google-flights-preflight-holdout8",
+    "google-flights-preflight-parser3",
+    "google-flights-preflight-case15-compareguard",
+    "google-flights-preflight-full39-current2",
+    "google-flights-preflight-full39-current3"
+  ],
+  "scenarios": 39,
+  "coverage": {
+    "totalScenarios": 39,
+    "comparableScenarios": 39,
+    "byVariant": {
+      "baseline-gpt-5.4-fast-explore": 39,
+      "verifier-guard-fp5": 5,
+      "google-flights-preflight-fp5": 5,
+      "google-flights-preflight-holdout8": 8,
+      "google-flights-preflight-parser3": 3,
+      "google-flights-preflight-case15-compareguard": 1,
+      "google-flights-preflight-full39-current2": 39,
+      "google-flights-preflight-full39-current3": 39
+    }
+  },
+  "pairwise": {
+    "backend": "pairwise",
+    "recommendedVariantId": "google-flights-preflight-parser3",
+    "rationale": "Highest observed mean aggregate across 139 scored run(s).",
+    "rankings": [
+      {
+        "variantId": "google-flights-preflight-parser3",
+        "mean": 15.247334833333332,
+        "runs": 3
+      },
+      {
+        "variantId": "google-flights-preflight-case15-compareguard",
+        "mean": 15.049928333333334,
+        "runs": 1
+      },
+      {
+        "variantId": "google-flights-preflight-full39-current3",
+        "mean": 13.888089742521364,
+        "runs": 39
+      },
+      {
+        "variantId": "google-flights-preflight-full39-current2",
+        "mean": 13.536998085470081,
+        "runs": 39
+      },
+      {
+        "variantId": "google-flights-preflight-fp5",
+        "mean": 12.162204366666668,
+        "runs": 5
+      },
+      {
+        "variantId": "google-flights-preflight-holdout8",
+        "mean": 8.969041567708333,
+        "runs": 8
+      },
+      {
+        "variantId": "verifier-guard-fp5",
+        "mean": 4.591929299999999,
+        "runs": 5
+      },
+      {
+        "variantId": "baseline-gpt-5.4-fast-explore",
+        "mean": 2.469923158119658,
+        "runs": 39
+      }
+    ]
+  },
+  "axGepa": {
+    "skipped": true,
+    "reason": "OPENAI_API_KEY or TANGLE_ROUTER_USER_KEY is required for AxGEPA"
+  },
+  "promptEvolution": {
+    "bestVariantId": "google-flights-preflight-full39-current3",
+    "bestAggregate": {
+      "variantId": "google-flights-preflight-full39-current3",
+      "meanScore": 13.888089742521364,
+      "meanCost": 0.10410224358974361,
+      "meanDurationMs": 47038.51282051282,
+      "okRate": 0.8974358974358975,
+      "scenarios": [
+        {
+          "variantId": "google-flights-preflight-full39-current3",
+          "scenarioId": "wv-Google Flights--1",
+          "meanScore": 15.087722041666666,
+          "meanCost": 0.0323125,
+          "meanDurationMs": 31987,
+          "okRate": 1,
+          "trials": 1,
+          "metrics": {
+            "strictSuccess": 1,
+            "finalGate": 1,
+            "goalProgress": 1,
+            "testReality": 1
+          }
+        },
+        {
+          "variantId": "google-flights-preflight-full39-current3",
+          "scenarioId": "wv-Google Flights--2",
+          "meanScore": 15.337188583333333,
+          "meanCost": 0.032675,
+          "meanDurationMs": 33533,
+          "okRate": 1,
+          "trials": 1,
+          "metrics": {
+            "strictSuccess": 1,
+            "finalGate": 1,
+            "goalProgress": 1,
+            "testReality": 1
+          }
+        },
+        {
+          "variantId": "google-flights-preflight-full39-current3",
+          "scenarioId": "wv-Google Flights--3",
+          "meanScore": 15.339182291666665,
+          "meanCost": 0.0303075,
+          "meanDurationMs": 27907,
+          "okRate": 1,
+          "trials": 1,
+          "metrics": {
+            "strictSuccess": 1,
+            "finalGate": 1,
+            "goalProgress": 1,
+            "testReality": 1
+          }
+        },
+        {
+          "variantId": "google-flights-preflight-full39-current3",
+          "scenarioId": "wv-Google Flights--4",
+          "meanScore": 15.320984,
+          "meanCost": 0.16252,
+          "meanDurationMs": 62670,
+          "okRate": 1,
+          "trials": 1,
+          "metrics": {
+            "strictSuccess": 1,
+            "finalGate": 1,
+            "goalProgress": 1,
+            "testReality": 1
+          }
+        },
+        {
+          "variantId": "google-flights-preflight-full39-current3",
+          "scenarioId": "wv-Google Flights--5",
+          "meanScore": 15.088369625,
+          "meanCost": 0.0328475,
+          "meanDurationMs": 29964,
+          "okRate": 1,
+          "trials": 1,
+          "metrics": {
+            "strictSuccess": 1,
+            "finalGate": 1,
+            "goalProgress": 1,
+            "testReality": 1
+          }
+        },
+        {
+          "variantId": "google-flights-preflight-full39-current3",
+          "scenarioId": "wv-Google Flights--6",
+          "meanScore": 15.079422999999998,
+          "meanCost": 0.11918000000000001,
+          "meanDurationMs": 43854,
+          "okRate": 1,
+          "trials": 1,
+          "metrics": {
+            "strictSuccess": 1,
+            "finalGate": 1,
+            "goalProgress": 1,
+            "testReality": 1
+          }
+        },
+        {
+          "variantId": "google-flights-preflight-full39-current3",
+          "scenarioId": "wv-Google Flights--8",
+          "meanScore": 15.081736166666666,
+          "meanCost": 0.06733,
+          "meanDurationMs": 44692,
+          "okRate": 1,
+          "trials": 1,
+          "metrics": {
+            "strictSuccess": 1,
+            "finalGate": 1,
+            "goalProgress": 1,
+            "testReality": 1
+          }
+        },
+        {
+          "variantId": "google-flights-preflight-full39-current3",
+          "scenarioId": "wv-Google Flights--9",
+          "meanScore": 15.321766541666667,
+          "meanCost": 0.0684025,
+          "meanDurationMs": 74440,
+          "okRate": 1,
+          "trials": 1,
+          "metrics": {
+            "strictSuccess": 1,
+            "finalGate": 1,
+            "goalProgress": 1,
+            "testReality": 1
+          }
+        },
+        {
+          "variantId": "google-flights-preflight-full39-current3",
+          "scenarioId": "wv-Google Flights--10",
+          "meanScore": 15.067253458333333,
+          "meanCost": 0.19925750000000003,
+          "meanDurationMs": 68351,
+          "okRate": 1,
+          "trials": 1,
+          "metrics": {
+            "strictSuccess": 1,
+            "finalGate": 1,
+            "goalProgress": 1,
+            "testReality": 1
+          }
+        },
+        {
+          "variantId": "google-flights-preflight-full39-current3",
+          "scenarioId": "wv-Google Flights--11",
+          "meanScore": 15.088874791666667,
+          "meanCost": 0.0332375,
+          "meanDurationMs": 28390,
+          "okRate": 1,
+          "trials": 1,
+          "metrics": {
+            "strictSuccess": 1,
+            "finalGate": 1,
+            "goalProgress": 1,
+            "testReality": 1
+          }
+        },
+        {
+          "variantId": "google-flights-preflight-full39-current3",
+          "scenarioId": "wv-Google Flights--12",
+          "meanScore": 15.321040208333333,
+          "meanCost": 0.2139625,
+          "meanDurationMs": 54785,
+          "okRate": 1,
+          "trials": 1,
+          "metrics": {
+            "strictSuccess": 1,
+            "finalGate": 1,
+            "goalProgress": 1,
+            "testReality": 1
+          }
+        },
+        {
+          "variantId": "google-flights-preflight-full39-current3",
+          "scenarioId": "wv-Google Flights--13",
+          "meanScore": 15.090037541666668,
+          "meanCost": 0.0325825,
+          "meanDurationMs": 25000,
+          "okRate": 1,
+          "trials": 1,
+          "metrics": {
+            "strictSuccess": 1,
+            "finalGate": 1,
+            "goalProgress": 1,
+            "testReality": 1
+          }
+        },
+        {
+          "variantId": "google-flights-preflight-full39-current3",
+          "scenarioId": "wv-Google Flights--14",
+          "meanScore": 15.339986208333332,
+          "meanCost": 0.0370225,
+          "meanDurationMs": 24488,
+          "okRate": 1,
+          "trials": 1,
+          "metrics": {
+            "strictSuccess": 1,
+            "finalGate": 1,
+            "goalProgress": 1,
+            "testReality": 1
+          }
+        },
+        {
+          "variantId": "google-flights-preflight-full39-current3",
+          "scenarioId": "wv-Google Flights--15",
+          "meanScore": 0.3093280000000001,
+          "meanCost": 0.34474000000000005,
+          "meanDurationMs": 70305,
+          "okRate": 0,
+          "trials": 1,
+          "metrics": {
+            "strictSuccess": 0,
+            "finalGate": 0,
+            "goalProgress": 0.5,
+            "testReality": 0
+          }
+        },
+        {
+          "variantId": "google-flights-preflight-full39-current3",
+          "scenarioId": "wv-Google Flights--16",
+          "meanScore": 15.340242291666666,
+          "meanCost": 0.0298675,
+          "meanDurationMs": 24793,
+          "okRate": 1,
+          "trials": 1,
+          "metrics": {
+            "strictSuccess": 1,
+            "finalGate": 1,
+            "goalProgress": 1,
+            "testReality": 1
+          }
+        },
+        {
+          "variantId": "google-flights-preflight-full39-current3",
+          "scenarioId": "wv-Google Flights--17",
+          "meanScore": 15.339926458333332,
+          "meanCost": 0.0329575,
+          "meanDurationMs": 25277,
+          "okRate": 1,
+          "trials": 1,
+          "metrics": {
+            "strictSuccess": 1,
+            "finalGate": 1,
+            "goalProgress": 1,
+            "testReality": 1
+          }
+        },
+        {
+          "variantId": "google-flights-preflight-full39-current3",
+          "scenarioId": "wv-Google Flights--18",
+          "meanScore": 15.338527666666666,
+          "meanCost": 0.03452,
+          "meanDurationMs": 29239,
+          "okRate": 1,
+          "trials": 1,
+          "metrics": {
+            "strictSuccess": 1,
+            "finalGate": 1,
+            "goalProgress": 1,
+            "testReality": 1
+          }
+        },
+        {
+          "variantId": "google-flights-preflight-full39-current3",
+          "scenarioId": "wv-Google Flights--19",
+          "meanScore": 15.339723124999999,
+          "meanCost": 0.0352775,
+          "meanDurationMs": 25539,
+          "okRate": 1,
+          "trials": 1,
+          "metrics": {
+            "strictSuccess": 1,
+            "finalGate": 1,
+            "goalProgress": 1,
+            "testReality": 1
+          }
+        },
+        {
+          "variantId": "google-flights-preflight-full39-current3",
+          "scenarioId": "wv-Google Flights--21",
+          "meanScore": 15.339911124999999,
+          "meanCost": 0.0333575,
+          "meanDurationMs": 25263,
+          "okRate": 1,
+          "trials": 1,
+          "metrics": {
+            "strictSuccess": 1,
+            "finalGate": 1,
+            "goalProgress": 1,
+            "testReality": 1
+          }
+        },
+        {
+          "variantId": "google-flights-preflight-full39-current3",
+          "scenarioId": "wv-Google Flights--22",
+          "meanScore": 15.321431541666668,
+          "meanCost": 0.0666625,
+          "meanDurationMs": 75706,
+          "okRate": 1,
+          "trials": 1,
+          "metrics": {
+            "strictSuccess": 1,
+            "finalGate": 1,
+            "goalProgress": 1,
+            "testReality": 1
+          }
+        },
+        {
+          "variantId": "google-flights-preflight-full39-current3",
+          "scenarioId": "wv-Google Flights--23",
+          "meanScore": 15.075432166666666,
+          "meanCost": 0.16241,
+          "meanDurationMs": 49342,
+          "okRate": 1,
+          "trials": 1,
+          "metrics": {
+            "strictSuccess": 1,
+            "finalGate": 1,
+            "goalProgress": 1,
+            "testReality": 1
+          }
+        },
+        {
+          "variantId": "google-flights-preflight-full39-current3",
+          "scenarioId": "wv-Google Flights--24",
+          "meanScore": 15.340241666666666,
+          "meanCost": 0.0318,
+          "meanDurationMs": 24505,
+          "okRate": 1,
+          "trials": 1,
+          "metrics": {
+            "strictSuccess": 1,
+            "finalGate": 1,
+            "goalProgress": 1,
+            "testReality": 1
+          }
+        },
+        {
+          "variantId": "google-flights-preflight-full39-current3",
+          "scenarioId": "wv-Google Flights--25",
+          "meanScore": 15.076099291666665,
+          "meanCost": 0.11916750000000001,
+          "meanDurationMs": 53827,
+          "okRate": 1,
+          "trials": 1,
+          "metrics": {
+            "strictSuccess": 1,
+            "finalGate": 1,
+            "goalProgress": 1,
+            "testReality": 1
+          }
+        },
+        {
+          "variantId": "google-flights-preflight-full39-current3",
+          "scenarioId": "wv-Google Flights--26",
+          "meanScore": 15.339239749999999,
+          "meanCost": 0.036205,
+          "meanDurationMs": 26850,
+          "okRate": 1,
+          "trials": 1,
+          "metrics": {
+            "strictSuccess": 1,
+            "finalGate": 1,
+            "goalProgress": 1,
+            "testReality": 1
+          }
+        },
+        {
+          "variantId": "google-flights-preflight-full39-current3",
+          "scenarioId": "wv-Google Flights--27",
+          "meanScore": 2.7955546666666664,
+          "meanCost": 0,
+          "meanDurationMs": 13336,
+          "okRate": 0,
+          "trials": 1,
+          "metrics": {
+            "strictSuccess": 0,
+            "finalGate": 0,
+            "goalProgress": 0.35,
+            "testReality": 1
+          }
+        },
+        {
+          "variantId": "google-flights-preflight-full39-current3",
+          "scenarioId": "wv-Google Flights--28",
+          "meanScore": 15.090170749999999,
+          "meanCost": 0.029605,
+          "meanDurationMs": 25047,
+          "okRate": 1,
+          "trials": 1,
+          "metrics": {
+            "strictSuccess": 1,
+            "finalGate": 1,
+            "goalProgress": 1,
+            "testReality": 1
+          }
+        },
+        {
+          "variantId": "google-flights-preflight-full39-current3",
+          "scenarioId": "wv-Google Flights--29",
+          "meanScore": 15.340347,
+          "meanCost": 0.030680000000000002,
+          "meanDurationMs": 24357,
+          "okRate": 1,
+          "trials": 1,
+          "metrics": {
+            "strictSuccess": 1,
+            "finalGate": 1,
+            "goalProgress": 1,
+            "testReality": 1
+          }
+        },
+        {
+          "variantId": "google-flights-preflight-full39-current3",
+          "scenarioId": "wv-Google Flights--30",
+          "meanScore": 15.339595708333333,
+          "meanCost": 0.030072500000000002,
+          "meanDurationMs": 26702,
+          "okRate": 1,
+          "trials": 1,
+          "metrics": {
+            "strictSuccess": 1,
+            "finalGate": 1,
+            "goalProgress": 1,
+            "testReality": 1
+          }
+        },
+        {
+          "variantId": "google-flights-preflight-full39-current3",
+          "scenarioId": "wv-Google Flights--31",
+          "meanScore": 15.320880041666667,
+          "meanCost": 0.05533250000000001,
+          "meanDurationMs": 79060,
+          "okRate": 1,
+          "trials": 1,
+          "metrics": {
+            "strictSuccess": 1,
+            "finalGate": 1,
+            "goalProgress": 1,
+            "testReality": 1
+          }
+        },
+        {
+          "variantId": "google-flights-preflight-full39-current3",
+          "scenarioId": "wv-Google Flights--32",
+          "meanScore": 15.331088458333333,
+          "meanCost": 0.11759750000000002,
+          "meanDurationMs": 39095,
+          "okRate": 1,
+          "trials": 1,
+          "metrics": {
+            "strictSuccess": 1,
+            "finalGate": 1,
+            "goalProgress": 1,
+            "testReality": 1
+          }
+        },
+        {
+          "variantId": "google-flights-preflight-full39-current3",
+          "scenarioId": "wv-Google Flights--33",
+          "meanScore": 15.338892791666666,
+          "meanCost": 0.0314175,
+          "meanDurationMs": 28609,
+          "okRate": 1,
+          "trials": 1,
+          "metrics": {
+            "strictSuccess": 1,
+            "finalGate": 1,
+            "goalProgress": 1,
+            "testReality": 1
+          }
+        },
+        {
+          "variantId": "google-flights-preflight-full39-current3",
+          "scenarioId": "wv-Google Flights--34",
+          "meanScore": 15.290938958333331,
+          "meanCost": 0.3409475,
+          "meanDurationMs": 126041,
+          "okRate": 1,
+          "trials": 1,
+          "metrics": {
+            "strictSuccess": 1,
+            "finalGate": 1,
+            "goalProgress": 1,
+            "testReality": 1
+          }
+        },
+        {
+          "variantId": "google-flights-preflight-full39-current3",
+          "scenarioId": "wv-Google Flights--35",
+          "meanScore": 15.340274833333332,
+          "meanCost": 0.030670000000000003,
+          "meanDurationMs": 24575,
+          "okRate": 1,
+          "trials": 1,
+          "metrics": {
+            "strictSuccess": 1,
+            "finalGate": 1,
+            "goalProgress": 1,
+            "testReality": 1
+          }
+        },
+        {
+          "variantId": "google-flights-preflight-full39-current3",
+          "scenarioId": "wv-Google Flights--36",
+          "meanScore": 2.8457939999999997,
+          "meanCost": 0,
+          "meanDurationMs": 12618,
+          "okRate": 0,
+          "trials": 1,
+          "metrics": {
+            "strictSuccess": 0,
+            "finalGate": 0,
+            "goalProgress": 0.25,
+            "testReality": 1
+          }
+        },
+        {
+          "variantId": "google-flights-preflight-full39-current3",
+          "scenarioId": "wv-Google Flights--37",
+          "meanScore": 15.051131041666666,
+          "meanCost": 0.1143725,
+          "meanDurationMs": 129451,
+          "okRate": 1,
+          "trials": 1,
+          "metrics": {
+            "strictSuccess": 1,
+            "finalGate": 1,
+            "goalProgress": 1,
+            "testReality": 1
+          }
+        },
+        {
+          "variantId": "google-flights-preflight-full39-current3",
+          "scenarioId": "wv-Google Flights--38",
+          "meanScore": 15.338318291666665,
+          "meanCost": 0.0334275,
+          "meanDurationMs": 30031,
+          "okRate": 1,
+          "trials": 1,
+          "metrics": {
+            "strictSuccess": 1,
+            "finalGate": 1,
+            "goalProgress": 1,
+            "testReality": 1
+          }
+        },
+        {
+          "variantId": "google-flights-preflight-full39-current3",
+          "scenarioId": "wv-Google Flights--39",
+          "meanScore": 2.781232333333333,
+          "meanCost": 0.75302,
+          "meanDurationMs": 93350,
+          "okRate": 0,
+          "trials": 1,
+          "metrics": {
+            "strictSuccess": 0,
+            "finalGate": 0,
+            "goalProgress": 0.25,
+            "testReality": 1
+          }
+        },
+        {
+          "variantId": "google-flights-preflight-full39-current3",
+          "scenarioId": "wv-Google Flights--40",
+          "meanScore": 14.393637624999998,
+          "meanCost": 0.22498750000000003,
+          "meanDurationMs": 135339,
+          "okRate": 1,
+          "trials": 1,
+          "metrics": {
+            "strictSuccess": 1,
+            "finalGate": 1,
+            "goalProgress": 1,
+            "testReality": 1
+          }
+        },
+        {
+          "variantId": "google-flights-preflight-full39-current3",
+          "scenarioId": "wv-Google Flights--41",
+          "meanScore": 15.313975916666667,
+          "meanCost": 0.27925500000000003,
+          "meanDurationMs": 66184,
+          "okRate": 1,
+          "trials": 1,
+          "metrics": {
+            "strictSuccess": 1,
+            "finalGate": 1,
+            "goalProgress": 1,
+            "testReality": 1
+          }
+        }
+      ],
+      "metrics": {
+        "strictSuccess": 0.8974358974358975,
+        "finalGate": 0.8974358974358975,
+        "goalProgress": 0.9320512820512821,
+        "testReality": 0.9743589743589743
+      }
+    },
+    "generations": [
+      {
+        "generation": 0,
+        "winnerId": "google-flights-preflight-full39-current3",
+        "paretoFrontIds": [
+          "google-flights-preflight-parser3",
+          "google-flights-preflight-case15-compareguard",
+          "google-flights-preflight-full39-current3",
+          "google-flights-preflight-holdout8",
+          "google-flights-preflight-fp5"
+        ],
+        "aggregates": [
+          {
+            "variantId": "baseline-gpt-5.4-fast-explore",
+            "meanScore": 2.469923158119658,
+            "meanCost": 0.5370951282051284,
+            "meanDurationMs": 163512.41025641025,
+            "okRate": 0.02564102564102564,
+            "scenarios": [
+              {
+                "variantId": "baseline-gpt-5.4-fast-explore",
+                "scenarioId": "wv-Google Flights--1",
+                "meanScore": 2.7281734999999996,
+                "meanCost": 0.5412100000000001,
+                "meanDurationMs": 134298,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "baseline-gpt-5.4-fast-explore",
+                "scenarioId": "wv-Google Flights--2",
+                "meanScore": 2.695117333333333,
+                "meanCost": 0.41600000000000004,
+                "meanDurationMs": 252248,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "baseline-gpt-5.4-fast-explore",
+                "scenarioId": "wv-Google Flights--3",
+                "meanScore": 2.7301059166666666,
+                "meanCost": 0.5724950000000001,
+                "meanDurationMs": 123808,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "baseline-gpt-5.4-fast-explore",
+                "scenarioId": "wv-Google Flights--4",
+                "meanScore": 2.6983360416666664,
+                "meanCost": 0.49087250000000004,
+                "meanDurationMs": 231361,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "baseline-gpt-5.4-fast-explore",
+                "scenarioId": "wv-Google Flights--5",
+                "meanScore": 2.7432956249999996,
+                "meanCost": 0.42594750000000003,
+                "meanDurationMs": 106221,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "baseline-gpt-5.4-fast-explore",
+                "scenarioId": "wv-Google Flights--6",
+                "meanScore": 2.7301769166666667,
+                "meanCost": 0.45555500000000004,
+                "meanDurationMs": 141136,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "baseline-gpt-5.4-fast-explore",
+                "scenarioId": "wv-Google Flights--8",
+                "meanScore": 2.7462936666666664,
+                "meanCost": 0.445,
+                "meanDurationMs": 94369,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "baseline-gpt-5.4-fast-explore",
+                "scenarioId": "wv-Google Flights--9",
+                "meanScore": 2.7401845000000002,
+                "meanCost": 0.53315,
+                "meanDurationMs": 99474,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "baseline-gpt-5.4-fast-explore",
+                "scenarioId": "wv-Google Flights--10",
+                "meanScore": -0.37438224999999997,
+                "meanCost": 2.6519450000000004,
+                "meanDurationMs": 125355,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 0
+                }
+              },
+              {
+                "variantId": "baseline-gpt-5.4-fast-explore",
+                "scenarioId": "wv-Google Flights--11",
+                "meanScore": 2.717135958333333,
+                "meanCost": 0.5707475000000001,
+                "meanDurationMs": 162980,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "baseline-gpt-5.4-fast-explore",
+                "scenarioId": "wv-Google Flights--12",
+                "meanScore": 1.8089018333333338,
+                "meanCost": 0.50049,
+                "meanDurationMs": 198221,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "baseline-gpt-5.4-fast-explore",
+                "scenarioId": "wv-Google Flights--13",
+                "meanScore": 1.826179041666667,
+                "meanCost": 0.4431725,
+                "meanDurationMs": 154987,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "baseline-gpt-5.4-fast-explore",
+                "scenarioId": "wv-Google Flights--14",
+                "meanScore": 1.807294791666667,
+                "meanCost": 0.48533750000000003,
+                "meanDurationMs": 205315,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "baseline-gpt-5.4-fast-explore",
+                "scenarioId": "wv-Google Flights--15",
+                "meanScore": 2.7330154583333335,
+                "meanCost": 0.47229750000000004,
+                "meanDurationMs": 130109.00000000001,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "baseline-gpt-5.4-fast-explore",
+                "scenarioId": "wv-Google Flights--16",
+                "meanScore": 1.8060801250000005,
+                "meanCost": 0.5999375000000001,
+                "meanDurationMs": 191769,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "baseline-gpt-5.4-fast-explore",
+                "scenarioId": "wv-Google Flights--17",
+                "meanScore": 2.69027225,
+                "meanCost": 0.471495,
+                "meanDurationMs": 258459,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "baseline-gpt-5.4-fast-explore",
+                "scenarioId": "wv-Google Flights--18",
+                "meanScore": 1.8024620833333338,
+                "meanCost": 0.48440500000000003,
+                "meanDurationMs": 219953,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "baseline-gpt-5.4-fast-explore",
+                "scenarioId": "wv-Google Flights--19",
+                "meanScore": 2.70396725,
+                "meanCost": 0.6050150000000001,
+                "meanDurationMs": 197346,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "baseline-gpt-5.4-fast-explore",
+                "scenarioId": "wv-Google Flights--21",
+                "meanScore": 2.7362220833333333,
+                "meanCost": 0.5846850000000001,
+                "meanDurationMs": 103631,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "baseline-gpt-5.4-fast-explore",
+                "scenarioId": "wv-Google Flights--22",
+                "meanScore": 2.7271977916666668,
+                "meanCost": 0.5127775000000001,
+                "meanDurationMs": 141490,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "baseline-gpt-5.4-fast-explore",
+                "scenarioId": "wv-Google Flights--23",
+                "meanScore": 2.737385333333333,
+                "meanCost": 0.53752,
+                "meanDurationMs": 107216,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "baseline-gpt-5.4-fast-explore",
+                "scenarioId": "wv-Google Flights--24",
+                "meanScore": -1.1975673333333332,
+                "meanCost": 0.40230000000000005,
+                "meanDurationMs": 232357,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 0
+                }
+              },
+              {
+                "variantId": "baseline-gpt-5.4-fast-explore",
+                "scenarioId": "wv-Google Flights--25",
+                "meanScore": 2.7394778333333334,
+                "meanCost": 0.59843,
+                "meanDurationMs": 91802,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "baseline-gpt-5.4-fast-explore",
+                "scenarioId": "wv-Google Flights--26",
+                "meanScore": -0.29444154166666664,
+                "meanCost": 0.4732575,
+                "meanDurationMs": 212336,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 0
+                }
+              },
+              {
+                "variantId": "baseline-gpt-5.4-fast-explore",
+                "scenarioId": "wv-Google Flights--27",
+                "meanScore": -0.25931099999999996,
+                "meanCost": 0.45162,
+                "meanDurationMs": 110190,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 0
+                }
+              },
+              {
+                "variantId": "baseline-gpt-5.4-fast-explore",
+                "scenarioId": "wv-Google Flights--28",
+                "meanScore": -0.24329116666666664,
+                "meanCost": 0.26859,
+                "meanDurationMs": 89585,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 0
+                }
+              },
+              {
+                "variantId": "baseline-gpt-5.4-fast-explore",
+                "scenarioId": "wv-Google Flights--29",
+                "meanScore": 2.724287791666667,
+                "meanCost": 0.4438375,
+                "meanDurationMs": 160561,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "baseline-gpt-5.4-fast-explore",
+                "scenarioId": "wv-Google Flights--30",
+                "meanScore": 2.737257291666667,
+                "meanCost": 0.5091475,
+                "meanDurationMs": 111856,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "baseline-gpt-5.4-fast-explore",
+                "scenarioId": "wv-Google Flights--31",
+                "meanScore": 2.5813139166666668,
+                "meanCost": 0.3512350000000001,
+                "meanDurationMs": 153373,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.15,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "baseline-gpt-5.4-fast-explore",
+                "scenarioId": "wv-Google Flights--32",
+                "meanScore": 2.72466125,
+                "meanCost": 0.459855,
+                "meanDurationMs": 157038,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "baseline-gpt-5.4-fast-explore",
+                "scenarioId": "wv-Google Flights--33",
+                "meanScore": 2.735136958333333,
+                "meanCost": 0.47658750000000005,
+                "meanDurationMs": 273101,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.25,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "baseline-gpt-5.4-fast-explore",
+                "scenarioId": "wv-Google Flights--34",
+                "meanScore": 2.7212102499999995,
+                "meanCost": 0.600655,
+                "meanDurationMs": 146271,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "baseline-gpt-5.4-fast-explore",
+                "scenarioId": "wv-Google Flights--35",
+                "meanScore": 2.7391485,
+                "meanCost": 0.5130100000000001,
+                "meanDurationMs": 105603,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "baseline-gpt-5.4-fast-explore",
+                "scenarioId": "wv-Google Flights--36",
+                "meanScore": 2.710462958333333,
+                "meanCost": 0.44736750000000003,
+                "meanDurationMs": 201506,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "baseline-gpt-5.4-fast-explore",
+                "scenarioId": "wv-Google Flights--37",
+                "meanScore": 2.6992530833333332,
+                "meanCost": 0.509745,
+                "meanDurationMs": 225779,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "baseline-gpt-5.4-fast-explore",
+                "scenarioId": "wv-Google Flights--38",
+                "meanScore": 2.7284169999999994,
+                "meanCost": 0.43154000000000003,
+                "meanDurationMs": 300018,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.25,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "baseline-gpt-5.4-fast-explore",
+                "scenarioId": "wv-Google Flights--39",
+                "meanScore": 1.830866666666667,
+                "meanCost": 0.50348,
+                "meanDurationMs": 131878,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "baseline-gpt-5.4-fast-explore",
+                "scenarioId": "wv-Google Flights--40",
+                "meanScore": 14.388103583333333,
+                "meanCost": 0.19925500000000002,
+                "meanDurationMs": 155801,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "baseline-gpt-5.4-fast-explore",
+                "scenarioId": "wv-Google Flights--41",
+                "meanScore": 2.728601875,
+                "meanCost": 0.5067425,
+                "meanDurationMs": 138183,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 1
+                }
+              }
+            ],
+            "metrics": {
+              "strictSuccess": 0.02564102564102564,
+              "finalGate": 0.02564102564102564,
+              "goalProgress": 0.35641025641025625,
+              "testReality": 0.8717948717948718
+            }
+          },
+          {
+            "variantId": "verifier-guard-fp5",
+            "meanScore": 0.5887088846153846,
+            "meanCost": 0.05458384615384616,
+            "meanDurationMs": 21839.615384615383,
+            "okRate": 0.02564102564102564,
+            "scenarios": [
+              {
+                "variantId": "verifier-guard-fp5",
+                "scenarioId": "wv-Google Flights--1",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "verifier-guard-fp5",
+                "scenarioId": "wv-Google Flights--2",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "verifier-guard-fp5",
+                "scenarioId": "wv-Google Flights--3",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "verifier-guard-fp5",
+                "scenarioId": "wv-Google Flights--4",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "verifier-guard-fp5",
+                "scenarioId": "wv-Google Flights--5",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "verifier-guard-fp5",
+                "scenarioId": "wv-Google Flights--6",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "verifier-guard-fp5",
+                "scenarioId": "wv-Google Flights--8",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "verifier-guard-fp5",
+                "scenarioId": "wv-Google Flights--9",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "verifier-guard-fp5",
+                "scenarioId": "wv-Google Flights--10",
+                "meanScore": 2.714960375,
+                "meanCost": 0.4124125,
+                "meanDurationMs": 193257,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "verifier-guard-fp5",
+                "scenarioId": "wv-Google Flights--11",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "verifier-guard-fp5",
+                "scenarioId": "wv-Google Flights--12",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "verifier-guard-fp5",
+                "scenarioId": "wv-Google Flights--13",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "verifier-guard-fp5",
+                "scenarioId": "wv-Google Flights--14",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "verifier-guard-fp5",
+                "scenarioId": "wv-Google Flights--15",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "verifier-guard-fp5",
+                "scenarioId": "wv-Google Flights--16",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "verifier-guard-fp5",
+                "scenarioId": "wv-Google Flights--17",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "verifier-guard-fp5",
+                "scenarioId": "wv-Google Flights--18",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "verifier-guard-fp5",
+                "scenarioId": "wv-Google Flights--19",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "verifier-guard-fp5",
+                "scenarioId": "wv-Google Flights--21",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "verifier-guard-fp5",
+                "scenarioId": "wv-Google Flights--22",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "verifier-guard-fp5",
+                "scenarioId": "wv-Google Flights--23",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "verifier-guard-fp5",
+                "scenarioId": "wv-Google Flights--24",
+                "meanScore": 2.7169869999999996,
+                "meanCost": 0.5832600000000001,
+                "meanDurationMs": 161550,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "verifier-guard-fp5",
+                "scenarioId": "wv-Google Flights--25",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "verifier-guard-fp5",
+                "scenarioId": "wv-Google Flights--26",
+                "meanScore": -0.25003537499999995,
+                "meanCost": 0.25622750000000005,
+                "meanDurationMs": 111672,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 0
+                }
+              },
+              {
+                "variantId": "verifier-guard-fp5",
+                "scenarioId": "wv-Google Flights--27",
+                "meanScore": 15.045818916666667,
+                "meanCost": 0.5153150000000001,
+                "meanDurationMs": 85246,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "verifier-guard-fp5",
+                "scenarioId": "wv-Google Flights--28",
+                "meanScore": 2.731915583333333,
+                "meanCost": 0.361555,
+                "meanDurationMs": 300020,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.25,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "verifier-guard-fp5",
+                "scenarioId": "wv-Google Flights--29",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "verifier-guard-fp5",
+                "scenarioId": "wv-Google Flights--30",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "verifier-guard-fp5",
+                "scenarioId": "wv-Google Flights--31",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "verifier-guard-fp5",
+                "scenarioId": "wv-Google Flights--32",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "verifier-guard-fp5",
+                "scenarioId": "wv-Google Flights--33",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "verifier-guard-fp5",
+                "scenarioId": "wv-Google Flights--34",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "verifier-guard-fp5",
+                "scenarioId": "wv-Google Flights--35",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "verifier-guard-fp5",
+                "scenarioId": "wv-Google Flights--36",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "verifier-guard-fp5",
+                "scenarioId": "wv-Google Flights--37",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "verifier-guard-fp5",
+                "scenarioId": "wv-Google Flights--38",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "verifier-guard-fp5",
+                "scenarioId": "wv-Google Flights--39",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "verifier-guard-fp5",
+                "scenarioId": "wv-Google Flights--40",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "verifier-guard-fp5",
+                "scenarioId": "wv-Google Flights--41",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              }
+            ],
+            "metrics": {
+              "strictSuccess": 0.2,
+              "finalGate": 0.2,
+              "goalProgress": 0.45999999999999996,
+              "testReality": 0.8
+            }
+          },
+          {
+            "variantId": "google-flights-preflight-fp5",
+            "meanScore": 1.5592569700854702,
+            "meanCost": 0.01970025641025641,
+            "meanDurationMs": 7735.589743589743,
+            "okRate": 0.10256410256410256,
+            "scenarios": [
+              {
+                "variantId": "google-flights-preflight-fp5",
+                "scenarioId": "wv-Google Flights--1",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-fp5",
+                "scenarioId": "wv-Google Flights--2",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-fp5",
+                "scenarioId": "wv-Google Flights--3",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-fp5",
+                "scenarioId": "wv-Google Flights--4",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-fp5",
+                "scenarioId": "wv-Google Flights--5",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-fp5",
+                "scenarioId": "wv-Google Flights--6",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-fp5",
+                "scenarioId": "wv-Google Flights--8",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-fp5",
+                "scenarioId": "wv-Google Flights--9",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-fp5",
+                "scenarioId": "wv-Google Flights--10",
+                "meanScore": 15.09032575,
+                "meanCost": 0.030285000000000003,
+                "meanDurationMs": 24480,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-fp5",
+                "scenarioId": "wv-Google Flights--11",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-fp5",
+                "scenarioId": "wv-Google Flights--12",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-fp5",
+                "scenarioId": "wv-Google Flights--13",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-fp5",
+                "scenarioId": "wv-Google Flights--14",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-fp5",
+                "scenarioId": "wv-Google Flights--15",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-fp5",
+                "scenarioId": "wv-Google Flights--16",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-fp5",
+                "scenarioId": "wv-Google Flights--17",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-fp5",
+                "scenarioId": "wv-Google Flights--18",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-fp5",
+                "scenarioId": "wv-Google Flights--19",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-fp5",
+                "scenarioId": "wv-Google Flights--21",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-fp5",
+                "scenarioId": "wv-Google Flights--22",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-fp5",
+                "scenarioId": "wv-Google Flights--23",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-fp5",
+                "scenarioId": "wv-Google Flights--24",
+                "meanScore": 15.321101541666668,
+                "meanCost": 0.0727425,
+                "meanDurationMs": 75784,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-fp5",
+                "scenarioId": "wv-Google Flights--25",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-fp5",
+                "scenarioId": "wv-Google Flights--26",
+                "meanScore": 15.339555541666666,
+                "meanCost": 0.0359225,
+                "meanDurationMs": 25945,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-fp5",
+                "scenarioId": "wv-Google Flights--27",
+                "meanScore": -0.280264125,
+                "meanCost": 0.6001225,
+                "meanDurationMs": 150774,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 0
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-fp5",
+                "scenarioId": "wv-Google Flights--28",
+                "meanScore": 15.340303124999998,
+                "meanCost": 0.0292375,
+                "meanDurationMs": 24705,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-fp5",
+                "scenarioId": "wv-Google Flights--29",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-fp5",
+                "scenarioId": "wv-Google Flights--30",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-fp5",
+                "scenarioId": "wv-Google Flights--31",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-fp5",
+                "scenarioId": "wv-Google Flights--32",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-fp5",
+                "scenarioId": "wv-Google Flights--33",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-fp5",
+                "scenarioId": "wv-Google Flights--34",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-fp5",
+                "scenarioId": "wv-Google Flights--35",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-fp5",
+                "scenarioId": "wv-Google Flights--36",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-fp5",
+                "scenarioId": "wv-Google Flights--37",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-fp5",
+                "scenarioId": "wv-Google Flights--38",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-fp5",
+                "scenarioId": "wv-Google Flights--39",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-fp5",
+                "scenarioId": "wv-Google Flights--40",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-fp5",
+                "scenarioId": "wv-Google Flights--41",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              }
+            ],
+            "metrics": {
+              "strictSuccess": 0.8,
+              "finalGate": 0.8,
+              "goalProgress": 0.8699999999999999,
+              "testReality": 0.8
+            }
+          },
+          {
+            "variantId": "google-flights-preflight-holdout8",
+            "meanScore": 1.8398033985042734,
+            "meanCost": 0.034944679487179484,
+            "meanDurationMs": 21501.94871794872,
+            "okRate": 0.10256410256410256,
+            "scenarios": [
+              {
+                "variantId": "google-flights-preflight-holdout8",
+                "scenarioId": "wv-Google Flights--1",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-holdout8",
+                "scenarioId": "wv-Google Flights--2",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-holdout8",
+                "scenarioId": "wv-Google Flights--3",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-holdout8",
+                "scenarioId": "wv-Google Flights--4",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-holdout8",
+                "scenarioId": "wv-Google Flights--5",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-holdout8",
+                "scenarioId": "wv-Google Flights--6",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-holdout8",
+                "scenarioId": "wv-Google Flights--8",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-holdout8",
+                "scenarioId": "wv-Google Flights--9",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-holdout8",
+                "scenarioId": "wv-Google Flights--10",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-holdout8",
+                "scenarioId": "wv-Google Flights--11",
+                "meanScore": 15.089795708333332,
+                "meanCost": 0.0338525,
+                "meanDurationMs": 25535,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-holdout8",
+                "scenarioId": "wv-Google Flights--12",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-holdout8",
+                "scenarioId": "wv-Google Flights--13",
+                "meanScore": 2.71218075,
+                "meanCost": 0.45882500000000004,
+                "meanDurationMs": 194634,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-holdout8",
+                "scenarioId": "wv-Google Flights--14",
+                "meanScore": 2.7392919166666667,
+                "meanCost": 0.214015,
+                "meanDurationMs": 300022,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.25,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-holdout8",
+                "scenarioId": "wv-Google Flights--15",
+                "meanScore": 2.587033916666667,
+                "meanCost": 0.279355,
+                "meanDurationMs": 146995,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.15,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-holdout8",
+                "scenarioId": "wv-Google Flights--16",
+                "meanScore": 15.340884125,
+                "meanCost": 0.030257500000000003,
+                "meanDurationMs": 22809,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-holdout8",
+                "scenarioId": "wv-Google Flights--17",
+                "meanScore": 15.340541958333333,
+                "meanCost": 0.0327475,
+                "meanDurationMs": 23462,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-holdout8",
+                "scenarioId": "wv-Google Flights--18",
+                "meanScore": 2.6020053750000005,
+                "meanCost": 0.2789325,
+                "meanDurationMs": 102144,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.15,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-holdout8",
+                "scenarioId": "wv-Google Flights--19",
+                "meanScore": 15.340598791666666,
+                "meanCost": 0.0348575,
+                "meanDurationMs": 22975,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-holdout8",
+                "scenarioId": "wv-Google Flights--21",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-holdout8",
+                "scenarioId": "wv-Google Flights--22",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-holdout8",
+                "scenarioId": "wv-Google Flights--23",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-holdout8",
+                "scenarioId": "wv-Google Flights--24",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-holdout8",
+                "scenarioId": "wv-Google Flights--25",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-holdout8",
+                "scenarioId": "wv-Google Flights--26",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-holdout8",
+                "scenarioId": "wv-Google Flights--27",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-holdout8",
+                "scenarioId": "wv-Google Flights--28",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-holdout8",
+                "scenarioId": "wv-Google Flights--29",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-holdout8",
+                "scenarioId": "wv-Google Flights--30",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-holdout8",
+                "scenarioId": "wv-Google Flights--31",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-holdout8",
+                "scenarioId": "wv-Google Flights--32",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-holdout8",
+                "scenarioId": "wv-Google Flights--33",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-holdout8",
+                "scenarioId": "wv-Google Flights--34",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-holdout8",
+                "scenarioId": "wv-Google Flights--35",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-holdout8",
+                "scenarioId": "wv-Google Flights--36",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-holdout8",
+                "scenarioId": "wv-Google Flights--37",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-holdout8",
+                "scenarioId": "wv-Google Flights--38",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-holdout8",
+                "scenarioId": "wv-Google Flights--39",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-holdout8",
+                "scenarioId": "wv-Google Flights--40",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-holdout8",
+                "scenarioId": "wv-Google Flights--41",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              }
+            ],
+            "metrics": {
+              "strictSuccess": 0.5,
+              "finalGate": 0.5,
+              "goalProgress": 0.6125,
+              "testReality": 1
+            }
+          },
+          {
+            "variantId": "google-flights-preflight-parser3",
+            "meanScore": 1.17287191025641,
+            "meanCost": 0.004972051282051282,
+            "meanDurationMs": 3715.3846153846152,
+            "okRate": 0.07692307692307693,
+            "scenarios": [
+              {
+                "variantId": "google-flights-preflight-parser3",
+                "scenarioId": "wv-Google Flights--1",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-parser3",
+                "scenarioId": "wv-Google Flights--2",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-parser3",
+                "scenarioId": "wv-Google Flights--3",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-parser3",
+                "scenarioId": "wv-Google Flights--4",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-parser3",
+                "scenarioId": "wv-Google Flights--5",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-parser3",
+                "scenarioId": "wv-Google Flights--6",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-parser3",
+                "scenarioId": "wv-Google Flights--8",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-parser3",
+                "scenarioId": "wv-Google Flights--9",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-parser3",
+                "scenarioId": "wv-Google Flights--10",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-parser3",
+                "scenarioId": "wv-Google Flights--11",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-parser3",
+                "scenarioId": "wv-Google Flights--12",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-parser3",
+                "scenarioId": "wv-Google Flights--13",
+                "meanScore": 15.070623166666666,
+                "meanCost": 0.07169,
+                "meanDurationMs": 77377,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-parser3",
+                "scenarioId": "wv-Google Flights--14",
+                "meanScore": 15.3399925,
+                "meanCost": 0.037290000000000004,
+                "meanDurationMs": 24429,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-parser3",
+                "scenarioId": "wv-Google Flights--15",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-parser3",
+                "scenarioId": "wv-Google Flights--16",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-parser3",
+                "scenarioId": "wv-Google Flights--17",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-parser3",
+                "scenarioId": "wv-Google Flights--18",
+                "meanScore": 15.331388833333332,
+                "meanCost": 0.08493,
+                "meanDurationMs": 43094,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-parser3",
+                "scenarioId": "wv-Google Flights--19",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-parser3",
+                "scenarioId": "wv-Google Flights--21",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-parser3",
+                "scenarioId": "wv-Google Flights--22",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-parser3",
+                "scenarioId": "wv-Google Flights--23",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-parser3",
+                "scenarioId": "wv-Google Flights--24",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-parser3",
+                "scenarioId": "wv-Google Flights--25",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-parser3",
+                "scenarioId": "wv-Google Flights--26",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-parser3",
+                "scenarioId": "wv-Google Flights--27",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-parser3",
+                "scenarioId": "wv-Google Flights--28",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-parser3",
+                "scenarioId": "wv-Google Flights--29",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-parser3",
+                "scenarioId": "wv-Google Flights--30",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-parser3",
+                "scenarioId": "wv-Google Flights--31",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-parser3",
+                "scenarioId": "wv-Google Flights--32",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-parser3",
+                "scenarioId": "wv-Google Flights--33",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-parser3",
+                "scenarioId": "wv-Google Flights--34",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-parser3",
+                "scenarioId": "wv-Google Flights--35",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-parser3",
+                "scenarioId": "wv-Google Flights--36",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-parser3",
+                "scenarioId": "wv-Google Flights--37",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-parser3",
+                "scenarioId": "wv-Google Flights--38",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-parser3",
+                "scenarioId": "wv-Google Flights--39",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-parser3",
+                "scenarioId": "wv-Google Flights--40",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-parser3",
+                "scenarioId": "wv-Google Flights--41",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              }
+            ],
+            "metrics": {
+              "strictSuccess": 1,
+              "finalGate": 1,
+              "goalProgress": 1,
+              "testReality": 1
+            }
+          },
+          {
+            "variantId": "google-flights-preflight-case15-compareguard",
+            "meanScore": 0.38589559829059833,
+            "meanCost": 0.010914871794871796,
+            "meanDurationMs": 2214.4358974358975,
+            "okRate": 0.02564102564102564,
+            "scenarios": [
+              {
+                "variantId": "google-flights-preflight-case15-compareguard",
+                "scenarioId": "wv-Google Flights--1",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-case15-compareguard",
+                "scenarioId": "wv-Google Flights--2",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-case15-compareguard",
+                "scenarioId": "wv-Google Flights--3",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-case15-compareguard",
+                "scenarioId": "wv-Google Flights--4",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-case15-compareguard",
+                "scenarioId": "wv-Google Flights--5",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-case15-compareguard",
+                "scenarioId": "wv-Google Flights--6",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-case15-compareguard",
+                "scenarioId": "wv-Google Flights--8",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-case15-compareguard",
+                "scenarioId": "wv-Google Flights--9",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-case15-compareguard",
+                "scenarioId": "wv-Google Flights--10",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-case15-compareguard",
+                "scenarioId": "wv-Google Flights--11",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-case15-compareguard",
+                "scenarioId": "wv-Google Flights--12",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-case15-compareguard",
+                "scenarioId": "wv-Google Flights--13",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-case15-compareguard",
+                "scenarioId": "wv-Google Flights--14",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-case15-compareguard",
+                "scenarioId": "wv-Google Flights--15",
+                "meanScore": 15.049928333333334,
+                "meanCost": 0.42568000000000006,
+                "meanDurationMs": 86363,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-case15-compareguard",
+                "scenarioId": "wv-Google Flights--16",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-case15-compareguard",
+                "scenarioId": "wv-Google Flights--17",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-case15-compareguard",
+                "scenarioId": "wv-Google Flights--18",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-case15-compareguard",
+                "scenarioId": "wv-Google Flights--19",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-case15-compareguard",
+                "scenarioId": "wv-Google Flights--21",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-case15-compareguard",
+                "scenarioId": "wv-Google Flights--22",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-case15-compareguard",
+                "scenarioId": "wv-Google Flights--23",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-case15-compareguard",
+                "scenarioId": "wv-Google Flights--24",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-case15-compareguard",
+                "scenarioId": "wv-Google Flights--25",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-case15-compareguard",
+                "scenarioId": "wv-Google Flights--26",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-case15-compareguard",
+                "scenarioId": "wv-Google Flights--27",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-case15-compareguard",
+                "scenarioId": "wv-Google Flights--28",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-case15-compareguard",
+                "scenarioId": "wv-Google Flights--29",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-case15-compareguard",
+                "scenarioId": "wv-Google Flights--30",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-case15-compareguard",
+                "scenarioId": "wv-Google Flights--31",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-case15-compareguard",
+                "scenarioId": "wv-Google Flights--32",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-case15-compareguard",
+                "scenarioId": "wv-Google Flights--33",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-case15-compareguard",
+                "scenarioId": "wv-Google Flights--34",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-case15-compareguard",
+                "scenarioId": "wv-Google Flights--35",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-case15-compareguard",
+                "scenarioId": "wv-Google Flights--36",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-case15-compareguard",
+                "scenarioId": "wv-Google Flights--37",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-case15-compareguard",
+                "scenarioId": "wv-Google Flights--38",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-case15-compareguard",
+                "scenarioId": "wv-Google Flights--39",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-case15-compareguard",
+                "scenarioId": "wv-Google Flights--40",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              },
+              {
+                "variantId": "google-flights-preflight-case15-compareguard",
+                "scenarioId": "wv-Google Flights--41",
+                "meanScore": 0,
+                "meanCost": 0,
+                "meanDurationMs": 0,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {}
+              }
+            ],
+            "metrics": {
+              "strictSuccess": 1,
+              "finalGate": 1,
+              "goalProgress": 1,
+              "testReality": 1
+            }
+          },
+          {
+            "variantId": "google-flights-preflight-full39-current2",
+            "meanScore": 13.536998085470081,
+            "meanCost": 0.13503692307692305,
+            "meanDurationMs": 61057.89743589744,
+            "okRate": 0.8717948717948718,
+            "scenarios": [
+              {
+                "variantId": "google-flights-preflight-full39-current2",
+                "scenarioId": "wv-Google Flights--1",
+                "meanScore": 15.088785666666666,
+                "meanCost": 0.034640000000000004,
+                "meanDurationMs": 28447,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current2",
+                "scenarioId": "wv-Google Flights--2",
+                "meanScore": 15.066895208333333,
+                "meanCost": 0.2325425,
+                "meanDurationMs": 64433.00000000001,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current2",
+                "scenarioId": "wv-Google Flights--3",
+                "meanScore": 15.340089625,
+                "meanCost": 0.0294675,
+                "meanDurationMs": 25311,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current2",
+                "scenarioId": "wv-Google Flights--4",
+                "meanScore": 15.323446458333333,
+                "meanCost": 0.1602175,
+                "meanDurationMs": 55628,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current2",
+                "scenarioId": "wv-Google Flights--5",
+                "meanScore": 15.070358041666667,
+                "meanCost": 0.07115250000000001,
+                "meanDurationMs": 78253,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current2",
+                "scenarioId": "wv-Google Flights--6",
+                "meanScore": 15.080255375,
+                "meanCost": 0.1176925,
+                "meanDurationMs": 41580,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current2",
+                "scenarioId": "wv-Google Flights--8",
+                "meanScore": 15.082362083333333,
+                "meanCost": 0.10208500000000001,
+                "meanDurationMs": 37601,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current2",
+                "scenarioId": "wv-Google Flights--9",
+                "meanScore": 15.061988791666666,
+                "meanCost": 0.07047750000000001,
+                "meanDurationMs": 103462,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current2",
+                "scenarioId": "wv-Google Flights--10",
+                "meanScore": 15.0901805,
+                "meanCost": 0.030470000000000004,
+                "meanDurationMs": 24888,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current2",
+                "scenarioId": "wv-Google Flights--11",
+                "meanScore": 15.090169541666667,
+                "meanCost": 0.0332825,
+                "meanDurationMs": 24499,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current2",
+                "scenarioId": "wv-Google Flights--12",
+                "meanScore": 15.326362833333333,
+                "meanCost": 0.13653,
+                "meanDurationMs": 50432,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current2",
+                "scenarioId": "wv-Google Flights--13",
+                "meanScore": 15.089777708333331,
+                "meanCost": 0.0321325,
+                "meanDurationMs": 25847,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current2",
+                "scenarioId": "wv-Google Flights--14",
+                "meanScore": 2.7269112499999997,
+                "meanCost": 0.421335,
+                "meanDurationMs": 156066,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current2",
+                "scenarioId": "wv-Google Flights--15",
+                "meanScore": 15.317696541666667,
+                "meanCost": 0.21690250000000003,
+                "meanDurationMs": 64375,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current2",
+                "scenarioId": "wv-Google Flights--16",
+                "meanScore": 15.340489999999999,
+                "meanCost": 0.030320000000000003,
+                "meanDurationMs": 23982,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current2",
+                "scenarioId": "wv-Google Flights--17",
+                "meanScore": 15.33964775,
+                "meanCost": 0.032845,
+                "meanDurationMs": 26130,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current2",
+                "scenarioId": "wv-Google Flights--18",
+                "meanScore": 15.330084041666666,
+                "meanCost": 0.0822725,
+                "meanDurationMs": 47407,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current2",
+                "scenarioId": "wv-Google Flights--19",
+                "meanScore": 15.340129999999998,
+                "meanCost": 0.03474,
+                "meanDurationMs": 24399,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current2",
+                "scenarioId": "wv-Google Flights--21",
+                "meanScore": 15.340097333333333,
+                "meanCost": 0.031900000000000005,
+                "meanDurationMs": 24923,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current2",
+                "scenarioId": "wv-Google Flights--22",
+                "meanScore": 15.02967775,
+                "meanCost": 0.319425,
+                "meanDurationMs": 163053,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current2",
+                "scenarioId": "wv-Google Flights--23",
+                "meanScore": 15.330702833333332,
+                "meanCost": 0.12879000000000002,
+                "meanDurationMs": 38573,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current2",
+                "scenarioId": "wv-Google Flights--24",
+                "meanScore": 15.320555666666666,
+                "meanCost": 0.07300000000000001,
+                "meanDurationMs": 77383,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current2",
+                "scenarioId": "wv-Google Flights--25",
+                "meanScore": 15.331072791666665,
+                "meanCost": 0.1159575,
+                "meanDurationMs": 39388,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current2",
+                "scenarioId": "wv-Google Flights--26",
+                "meanScore": 15.072362916666666,
+                "meanCost": 0.15529500000000002,
+                "meanDurationMs": 59617,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current2",
+                "scenarioId": "wv-Google Flights--27",
+                "meanScore": 2.7954156666666665,
+                "meanCost": 0,
+                "meanDurationMs": 13753,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current2",
+                "scenarioId": "wv-Google Flights--28",
+                "meanScore": 15.0902555,
+                "meanCost": 0.030430000000000006,
+                "meanDurationMs": 24669,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current2",
+                "scenarioId": "wv-Google Flights--29",
+                "meanScore": 15.339683666666666,
+                "meanCost": 0.0296,
+                "meanDurationMs": 26509,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current2",
+                "scenarioId": "wv-Google Flights--30",
+                "meanScore": 15.340879916666665,
+                "meanCost": 0.022315,
+                "meanDurationMs": 24013,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current2",
+                "scenarioId": "wv-Google Flights--31",
+                "meanScore": 15.299352333333333,
+                "meanCost": 0.23470000000000002,
+                "meanDurationMs": 116738,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current2",
+                "scenarioId": "wv-Google Flights--32",
+                "meanScore": 15.3400775,
+                "meanCost": 0.031170000000000003,
+                "meanDurationMs": 25092,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current2",
+                "scenarioId": "wv-Google Flights--33",
+                "meanScore": 15.337513125,
+                "meanCost": 0.035597500000000004,
+                "meanDurationMs": 32121.000000000004,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current2",
+                "scenarioId": "wv-Google Flights--34",
+                "meanScore": 15.276969833333334,
+                "meanCost": 0.34781,
+                "meanDurationMs": 166919,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current2",
+                "scenarioId": "wv-Google Flights--35",
+                "meanScore": 15.340804458333334,
+                "meanCost": 0.030117500000000005,
+                "meanDurationMs": 23069,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current2",
+                "scenarioId": "wv-Google Flights--36",
+                "meanScore": 2.7217931666666666,
+                "meanCost": 0.5669900000000001,
+                "meanDurationMs": 149572,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current2",
+                "scenarioId": "wv-Google Flights--37",
+                "meanScore": -0.25453937499999996,
+                "meanCost": 0.18104750000000003,
+                "meanDurationMs": 136461,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 0
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current2",
+                "scenarioId": "wv-Google Flights--38",
+                "meanScore": 15.337339833333331,
+                "meanCost": 0.039830000000000004,
+                "meanDurationMs": 32006,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current2",
+                "scenarioId": "wv-Google Flights--39",
+                "meanScore": 2.7305638749999996,
+                "meanCost": 0.6919025000000001,
+                "meanDurationMs": 104523,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current2",
+                "scenarioId": "wv-Google Flights--40",
+                "meanScore": 14.405957749999999,
+                "meanCost": 0.15408500000000003,
+                "meanDurationMs": 109014,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current2",
+                "scenarioId": "wv-Google Flights--41",
+                "meanScore": 15.310757375,
+                "meanCost": 0.1773725,
+                "meanDurationMs": 91122,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              }
+            ],
+            "metrics": {
+              "strictSuccess": 0.8717948717948718,
+              "finalGate": 0.8717948717948718,
+              "goalProgress": 0.9166666666666669,
+              "testReality": 0.9743589743589743
+            }
+          },
+          {
+            "variantId": "google-flights-preflight-full39-current3",
+            "meanScore": 13.888089742521364,
+            "meanCost": 0.10410224358974361,
+            "meanDurationMs": 47038.51282051282,
+            "okRate": 0.8974358974358975,
+            "scenarios": [
+              {
+                "variantId": "google-flights-preflight-full39-current3",
+                "scenarioId": "wv-Google Flights--1",
+                "meanScore": 15.087722041666666,
+                "meanCost": 0.0323125,
+                "meanDurationMs": 31987,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current3",
+                "scenarioId": "wv-Google Flights--2",
+                "meanScore": 15.337188583333333,
+                "meanCost": 0.032675,
+                "meanDurationMs": 33533,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current3",
+                "scenarioId": "wv-Google Flights--3",
+                "meanScore": 15.339182291666665,
+                "meanCost": 0.0303075,
+                "meanDurationMs": 27907,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current3",
+                "scenarioId": "wv-Google Flights--4",
+                "meanScore": 15.320984,
+                "meanCost": 0.16252,
+                "meanDurationMs": 62670,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current3",
+                "scenarioId": "wv-Google Flights--5",
+                "meanScore": 15.088369625,
+                "meanCost": 0.0328475,
+                "meanDurationMs": 29964,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current3",
+                "scenarioId": "wv-Google Flights--6",
+                "meanScore": 15.079422999999998,
+                "meanCost": 0.11918000000000001,
+                "meanDurationMs": 43854,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current3",
+                "scenarioId": "wv-Google Flights--8",
+                "meanScore": 15.081736166666666,
+                "meanCost": 0.06733,
+                "meanDurationMs": 44692,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current3",
+                "scenarioId": "wv-Google Flights--9",
+                "meanScore": 15.321766541666667,
+                "meanCost": 0.0684025,
+                "meanDurationMs": 74440,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current3",
+                "scenarioId": "wv-Google Flights--10",
+                "meanScore": 15.067253458333333,
+                "meanCost": 0.19925750000000003,
+                "meanDurationMs": 68351,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current3",
+                "scenarioId": "wv-Google Flights--11",
+                "meanScore": 15.088874791666667,
+                "meanCost": 0.0332375,
+                "meanDurationMs": 28390,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current3",
+                "scenarioId": "wv-Google Flights--12",
+                "meanScore": 15.321040208333333,
+                "meanCost": 0.2139625,
+                "meanDurationMs": 54785,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current3",
+                "scenarioId": "wv-Google Flights--13",
+                "meanScore": 15.090037541666668,
+                "meanCost": 0.0325825,
+                "meanDurationMs": 25000,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current3",
+                "scenarioId": "wv-Google Flights--14",
+                "meanScore": 15.339986208333332,
+                "meanCost": 0.0370225,
+                "meanDurationMs": 24488,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current3",
+                "scenarioId": "wv-Google Flights--15",
+                "meanScore": 0.3093280000000001,
+                "meanCost": 0.34474000000000005,
+                "meanDurationMs": 70305,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.5,
+                  "testReality": 0
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current3",
+                "scenarioId": "wv-Google Flights--16",
+                "meanScore": 15.340242291666666,
+                "meanCost": 0.0298675,
+                "meanDurationMs": 24793,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current3",
+                "scenarioId": "wv-Google Flights--17",
+                "meanScore": 15.339926458333332,
+                "meanCost": 0.0329575,
+                "meanDurationMs": 25277,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current3",
+                "scenarioId": "wv-Google Flights--18",
+                "meanScore": 15.338527666666666,
+                "meanCost": 0.03452,
+                "meanDurationMs": 29239,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current3",
+                "scenarioId": "wv-Google Flights--19",
+                "meanScore": 15.339723124999999,
+                "meanCost": 0.0352775,
+                "meanDurationMs": 25539,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current3",
+                "scenarioId": "wv-Google Flights--21",
+                "meanScore": 15.339911124999999,
+                "meanCost": 0.0333575,
+                "meanDurationMs": 25263,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current3",
+                "scenarioId": "wv-Google Flights--22",
+                "meanScore": 15.321431541666668,
+                "meanCost": 0.0666625,
+                "meanDurationMs": 75706,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current3",
+                "scenarioId": "wv-Google Flights--23",
+                "meanScore": 15.075432166666666,
+                "meanCost": 0.16241,
+                "meanDurationMs": 49342,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current3",
+                "scenarioId": "wv-Google Flights--24",
+                "meanScore": 15.340241666666666,
+                "meanCost": 0.0318,
+                "meanDurationMs": 24505,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current3",
+                "scenarioId": "wv-Google Flights--25",
+                "meanScore": 15.076099291666665,
+                "meanCost": 0.11916750000000001,
+                "meanDurationMs": 53827,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current3",
+                "scenarioId": "wv-Google Flights--26",
+                "meanScore": 15.339239749999999,
+                "meanCost": 0.036205,
+                "meanDurationMs": 26850,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current3",
+                "scenarioId": "wv-Google Flights--27",
+                "meanScore": 2.7955546666666664,
+                "meanCost": 0,
+                "meanDurationMs": 13336,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.35,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current3",
+                "scenarioId": "wv-Google Flights--28",
+                "meanScore": 15.090170749999999,
+                "meanCost": 0.029605,
+                "meanDurationMs": 25047,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current3",
+                "scenarioId": "wv-Google Flights--29",
+                "meanScore": 15.340347,
+                "meanCost": 0.030680000000000002,
+                "meanDurationMs": 24357,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current3",
+                "scenarioId": "wv-Google Flights--30",
+                "meanScore": 15.339595708333333,
+                "meanCost": 0.030072500000000002,
+                "meanDurationMs": 26702,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current3",
+                "scenarioId": "wv-Google Flights--31",
+                "meanScore": 15.320880041666667,
+                "meanCost": 0.05533250000000001,
+                "meanDurationMs": 79060,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current3",
+                "scenarioId": "wv-Google Flights--32",
+                "meanScore": 15.331088458333333,
+                "meanCost": 0.11759750000000002,
+                "meanDurationMs": 39095,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current3",
+                "scenarioId": "wv-Google Flights--33",
+                "meanScore": 15.338892791666666,
+                "meanCost": 0.0314175,
+                "meanDurationMs": 28609,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current3",
+                "scenarioId": "wv-Google Flights--34",
+                "meanScore": 15.290938958333331,
+                "meanCost": 0.3409475,
+                "meanDurationMs": 126041,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current3",
+                "scenarioId": "wv-Google Flights--35",
+                "meanScore": 15.340274833333332,
+                "meanCost": 0.030670000000000003,
+                "meanDurationMs": 24575,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current3",
+                "scenarioId": "wv-Google Flights--36",
+                "meanScore": 2.8457939999999997,
+                "meanCost": 0,
+                "meanDurationMs": 12618,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.25,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current3",
+                "scenarioId": "wv-Google Flights--37",
+                "meanScore": 15.051131041666666,
+                "meanCost": 0.1143725,
+                "meanDurationMs": 129451,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current3",
+                "scenarioId": "wv-Google Flights--38",
+                "meanScore": 15.338318291666665,
+                "meanCost": 0.0334275,
+                "meanDurationMs": 30031,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current3",
+                "scenarioId": "wv-Google Flights--39",
+                "meanScore": 2.781232333333333,
+                "meanCost": 0.75302,
+                "meanDurationMs": 93350,
+                "okRate": 0,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 0,
+                  "finalGate": 0,
+                  "goalProgress": 0.25,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current3",
+                "scenarioId": "wv-Google Flights--40",
+                "meanScore": 14.393637624999998,
+                "meanCost": 0.22498750000000003,
+                "meanDurationMs": 135339,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              },
+              {
+                "variantId": "google-flights-preflight-full39-current3",
+                "scenarioId": "wv-Google Flights--41",
+                "meanScore": 15.313975916666667,
+                "meanCost": 0.27925500000000003,
+                "meanDurationMs": 66184,
+                "okRate": 1,
+                "trials": 1,
+                "metrics": {
+                  "strictSuccess": 1,
+                  "finalGate": 1,
+                  "goalProgress": 1,
+                  "testReality": 1
+                }
+              }
+            ],
+            "metrics": {
+              "strictSuccess": 0.8974358974358975,
+              "finalGate": 0.8974358974358975,
+              "goalProgress": 0.9320512820512821,
+              "testReality": 0.9743589743589743
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "nextTacticalStep": "Run dev/holdout scoring for the top candidate before any promotion claim.",
+  "bullshitAssessment": {
+    "verdict": "variant-comparison-available",
+    "why": "At least two variants are scored on overlapping scenarios. Pairwise comparison is available; AxGEPA only counts as evidence when it is not skipped. This is still not a promotion claim without dev/holdout coverage.",
+    "evidence": {
+      "variants": 8,
+      "rows": 139,
+      "comparableRows": 139,
+      "totalScenarios": 39,
+      "comparableScenarios": 39,
+      "strictPasses": 83,
+      "strictPassRate": 0.5971223021582733,
+      "falsePositiveRisk": 20,
+      "calendarFailures": 74,
+      "axGepaSkipped": true,
+      "evolutionBest": "google-flights-preflight-full39-current3"
+    },
+    "nextFalsification": "Score a second real code variant on the same scenarios. If strict pass does not improve or dev regresses, this loop has not earned promotion."
+  }
+}

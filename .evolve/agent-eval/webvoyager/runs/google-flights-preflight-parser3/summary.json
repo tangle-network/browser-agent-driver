@@ -1,0 +1,45 @@
+{
+  "generatedAt": "2026-04-29T20:54:23.762Z",
+  "sourceSummaryPath": "/home/drew/code/browser-agent-driver/agent-results/wv-google-flights-holdout-parser3-20260429-145244/track-summary.json",
+  "sourceGeneratedAt": "2026-04-29T20:54:07.671Z",
+  "total": 3,
+  "rawPassed": 3,
+  "strictPassed": 3,
+  "rawPassRate": 1,
+  "strictPassRate": 1,
+  "totalCostUsd": 0.1939,
+  "totalTokens": 65424,
+  "meanTurns": 1.6666666666666667,
+  "labelCounts": {
+    "calendar-date-picker": 1,
+    "apparently-successful": 1,
+    "search-submit-results": 1
+  },
+  "recommendedMutationPrimitives": [
+    {
+      "id": "google-flights-direct-url",
+      "channel": "code",
+      "rationale": "Most failures spend turns in date picker setup. Build Google Flights /travel/flights/search or /travel/explore URLs from parsed route, dates, trip type, cabin, passengers, and stops when task parameters are explicit."
+    },
+    {
+      "id": "google-flights-calendar-jump-apply",
+      "channel": "code",
+      "rationale": "When URL direct-start is incomplete, use a deterministic date-field fill/apply macro instead of repeated month-arrow clicks and full calendar snapshots."
+    },
+    {
+      "id": "google-flights-state-regression-guard",
+      "channel": "prompt+code",
+      "rationale": "Detect reset to empty origin/destination/date fields after navigation and recover immediately from the encoded URL or last known parsed task parameters."
+    },
+    {
+      "id": "completion-false-positive-guard",
+      "channel": "code",
+      "rationale": "Treat completions containing blocked/could-not-complete/not-requested-date language as failed even when script evidence exists."
+    },
+    {
+      "id": "compact-calendar-observation",
+      "channel": "code",
+      "rationale": "Summarize calendar state as selected dates, visible months, and relevant target-date availability instead of sending huge DOM snapshots that trigger token blowups."
+    }
+  ]
+}

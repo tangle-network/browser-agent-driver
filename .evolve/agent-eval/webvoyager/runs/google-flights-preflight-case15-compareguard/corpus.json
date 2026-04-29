@@ -1,0 +1,70 @@
+{
+  "aggregate": {
+    "generatedAt": "2026-04-29T20:57:27.665Z",
+    "sourceSummaryPath": "/home/drew/code/browser-agent-driver/agent-results/wv-google-flights-case15-compareguard-20260429-145541/track-summary.json",
+    "sourceGeneratedAt": "2026-04-29T20:57:16.395Z",
+    "total": 1,
+    "rawPassed": 1,
+    "strictPassed": 1,
+    "rawPassRate": 1,
+    "strictPassRate": 1,
+    "totalCostUsd": 0.4257,
+    "totalTokens": 160207,
+    "meanTurns": 10,
+    "labelCounts": {
+      "calendar-date-picker": 1
+    },
+    "recommendedMutationPrimitives": [
+      {
+        "id": "google-flights-direct-url",
+        "channel": "code",
+        "rationale": "Most failures spend turns in date picker setup. Build Google Flights /travel/flights/search or /travel/explore URLs from parsed route, dates, trip type, cabin, passengers, and stops when task parameters are explicit."
+      },
+      {
+        "id": "google-flights-calendar-jump-apply",
+        "channel": "code",
+        "rationale": "When URL direct-start is incomplete, use a deterministic date-field fill/apply macro instead of repeated month-arrow clicks and full calendar snapshots."
+      },
+      {
+        "id": "google-flights-state-regression-guard",
+        "channel": "prompt+code",
+        "rationale": "Detect reset to empty origin/destination/date fields after navigation and recover immediately from the encoded URL or last known parsed task parameters."
+      },
+      {
+        "id": "completion-false-positive-guard",
+        "channel": "code",
+        "rationale": "Treat completions containing blocked/could-not-complete/not-requested-date language as failed even when script evidence exists."
+      },
+      {
+        "id": "compact-calendar-observation",
+        "channel": "code",
+        "rationale": "Summarize calendar state as selected dates, visible months, and relevant target-date availability instead of sending huge DOM snapshots that trigger token blowups."
+      }
+    ]
+  },
+  "cases": [
+    {
+      "id": "wv-Google Flights--15",
+      "ordinal": 1,
+      "split": "dev",
+      "goal": "Compare the prices and total duration of non-stop flights from New York to Tokyo Narita Airport departing on February 12th, 2026, and returning on February 26th, 2026.",
+      "startUrl": "https://www.google.com/travel/flights/",
+      "rawPassed": true,
+      "strictPassed": true,
+      "agentSuccess": true,
+      "exitCode": 0,
+      "turnsUsed": 10,
+      "tokensUsed": 160207,
+      "inputTokens": 158194,
+      "outputTokens": 2013,
+      "costUsd": 0.42568000000000006,
+      "durationMs": 86363,
+      "labels": [
+        "calendar-date-picker"
+      ],
+      "verdict": "Google Flights is already showing New York to Tokyo NRT results with the Nonstop filter selected for Fri, Feb 12 and Fri, Feb 26 (visible on page as 2027 dates). Visible nonstop option: United, $1,496 round trip, total duration 14 hr 20 min, route EWR → NRT, departure 10:55 AM and arrival 3:15 PM the next day. Comparison: only one nonstop result is visible on the current page, so there are no additional nonstop prices/durations visible to compare against. Additional visible page evidence: the Cheapest tab says from $1,464, but the displayed nonstop card is $1,496. URL: https://www.google.com/travel/flights/search?tfs=CBwQAhomEgoyMDI3LTAyLTEyKABqDQgDEgkvbS8wMl8yODZyBwgBEgNOUlQaJhIKMjAyNy0wMi0yNigAagcIARIDTlJUcg0IAxIJL20vMDJfMjg2QAFIAXABggELCP___________wGYAQE&tfu=EgYIABAAGAA",
+      "reportPath": "/home/drew/code/browser-agent-driver/agent-results/wv-google-flights-case15-compareguard-20260429-145541/wv-google-flights--15/fast-explore/report.json",
+      "summaryPath": "/home/drew/code/browser-agent-driver/agent-results/wv-google-flights-case15-compareguard-20260429-145541/wv-google-flights--15/baseline-summary.json"
+    }
+  ]
+}
