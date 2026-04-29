@@ -34,6 +34,7 @@ import { parsePatches } from './patches/parse.js'
 import { validatePatch } from './patches/validate.js'
 import { enforcePatchPolicy } from './patches/severity-enforcement.js'
 import { generatePatches } from './patches/generate.js'
+import type { AuditOverrides } from './evaluate.js'
 
 export interface BuildAuditResultInput {
   brain: Brain
@@ -48,6 +49,8 @@ export interface BuildAuditResultInput {
   runId?: string
   /** Optional override (e.g. test fixtures). When set, skip the LLM call. */
   precomputedScores?: Record<Dimension, DimensionScore>
+  /** Evolve-aware overrides. Production runs leave this undefined. */
+  overrides?: AuditOverrides
 }
 
 /**
@@ -69,17 +72,22 @@ export async function buildAuditResult(input: BuildAuditResultInput): Promise<Au
 
   let scores: Record<Dimension, DimensionScore>
   let llmTokens = 0
+  let scoreFallbackError: string | undefined
   if (input.precomputedScores) {
     scores = input.precomputedScores
   } else {
     try {
       const llm = await brain.auditDesign(state, 'Multi-dimensional audit', [], prompt)
+      if (llm.parseError) {
+        throw new Error(`brain.auditDesign parse failed: ${llm.parseError}`)
+      }
       llmTokens = llm.tokensUsed ?? 0
       const parsed = parseAuditResponse(llm.raw)
       scores = parsed.scores
-    } catch {
+    } catch (err) {
       // Fall back: synthesize per-dim scores from the v1 result. Conservative —
       // every dim gets the v1 score, range +/- 1, confidence 'low'.
+      scoreFallbackError = err instanceof Error ? err.message : String(err)
       scores = synthesizeScoresFromLegacy(v1Result)
     }
   }
@@ -96,6 +104,7 @@ export async function buildAuditResult(input: BuildAuditResultInput): Promise<Au
         brain,
         snapshot: state.snapshot,
         findings: findings,
+        config: input.overrides?.patchSynthesis,
       })
       findings = generated.findings
       llmTokens += generated.tokensUsed
@@ -134,7 +143,9 @@ export async function buildAuditResult(input: BuildAuditResultInput): Promise<Au
     rubricHash,
     tokensUsed: totalTokens > 0 ? totalTokens : undefined,
     passes: ['multidim'],
-    ...(v1Result.error ? { error: v1Result.error } : {}),
+    ...(scoreFallbackError || v1Result.error
+      ? { error: scoreFallbackError ? `multidim-score-fallback: ${scoreFallbackError}` : v1Result.error }
+      : {}),
   }
 }
 

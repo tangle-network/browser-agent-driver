@@ -64,6 +64,7 @@ export type GepaTargetId =
   | 'conservative-score-weights'
   | 'infer-audit-mode'
   | 'pass-selection-per-classification'
+  | 'patch-synthesis-signature'
 
 export interface PromptVariant {
   id: string
@@ -107,6 +108,14 @@ export interface TrialResult {
   durationMs: number
   /** Findings emitted per pass; only populated when --audit-passes runs >1 pass. */
   passFindings?: Array<{ pass: string; findings: DesignFinding[] }>
+  /** Patch-generation metrics. Populated only for patch-synthesis GEPA target. */
+  patchMetrics?: {
+    eligibleFindings: number
+    rawPatches: number
+    validPatches: number
+    coverage: number
+    validRate: number
+  }
   error?: string
 }
 
@@ -123,6 +132,14 @@ export interface FixtureSummary {
   okRate: number
   /** Cosine similarity between findings across passes; undefined when only one pass ran. */
   passOrthogonality?: number
+  /** Mean patch-generation metrics when evaluating the patch-synthesis target. */
+  patchMetrics?: {
+    eligibleFindings: number
+    rawPatches: number
+    validPatches: number
+    coverage: number
+    validRate: number
+  }
   trials: number
 }
 

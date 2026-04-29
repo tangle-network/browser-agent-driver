@@ -20,9 +20,7 @@
 import { randomUUID } from 'node:crypto'
 import type { FixtureCase, ObjectiveVector, PromptVariant, TrialResult, VariantSummary } from './types.js'
 import { aggregateObjectiveVectors, mean, objectiveVectorFromTrials, stddev, weightedRecall, precision, passOrthogonality } from './metrics.js'
-import { paretoFront, scalarScore, vectorFromSummary as _placeholder } from './pareto.js'
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const _ignore = _placeholder
+import { paretoFront, scalarScore } from './pareto.js'
 import { buildGenerationReport, vectorFromSummary, writeGenerationReport, type GenerationReport } from './scorecard.js'
 
 export interface ScoreAdapter {
@@ -206,17 +204,28 @@ function summarisePopulation(
       const orthVals = okTrials
         .map((t) => (t.passFindings ? passOrthogonality(t.passFindings) : undefined))
         .filter((v): v is number => v !== undefined)
+      const patchTrials = okTrials.filter((t) => t.patchMetrics)
+      const patchMetrics = patchTrials.length > 0
+        ? {
+            eligibleFindings: mean(patchTrials.map((t) => t.patchMetrics?.eligibleFindings ?? 0)),
+            rawPatches: mean(patchTrials.map((t) => t.patchMetrics?.rawPatches ?? 0)),
+            validPatches: mean(patchTrials.map((t) => t.patchMetrics?.validPatches ?? 0)),
+            coverage: mean(patchTrials.map((t) => t.patchMetrics?.coverage ?? 0)),
+            validRate: mean(patchTrials.map((t) => t.patchMetrics?.validRate ?? 0)),
+          }
+        : undefined
       return {
         variantId: variant.id,
         fixtureId: fixture.id,
-        recall: mean(recallVals),
-        precision: mean(precisionVals),
+        recall: patchMetrics?.coverage ?? mean(recallVals),
+        precision: patchMetrics?.validRate ?? mean(precisionVals),
         meanScore: mean(scores),
         scoreStdDev: stddev(scores),
         meanCost: mean(costs),
         meanDurationMs: mean(durations),
         okRate: fixTrials.length === 0 ? 0 : okTrials.length / fixTrials.length,
         passOrthogonality: orthVals.length > 0 ? mean(orthVals) : undefined,
+        ...(patchMetrics ? { patchMetrics } : {}),
         trials: fixTrials.length,
       }
     })

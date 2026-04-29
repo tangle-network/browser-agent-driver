@@ -22,6 +22,7 @@ import {
   type AuditPass,
   type AuditPassId,
 } from '../../../src/design/audit/evaluate.js'
+import { DEFAULT_PATCH_SYNTHESIS_CONFIG, type PatchSynthesisConfig } from '../../../src/design/audit/patches/generate.js'
 import type { GepaTargetId, PromptVariant } from './types.js'
 
 export const KNOWN_TARGETS: GepaTargetId[] = [
@@ -31,6 +32,7 @@ export const KNOWN_TARGETS: GepaTargetId[] = [
   'conservative-score-weights',
   'pass-selection-per-classification',
   'infer-audit-mode',
+  'patch-synthesis-signature',
 ]
 
 export interface SeedSpec {
@@ -53,6 +55,8 @@ export function seedFor(target: GepaTargetId): SeedSpec {
       return defaultVariant(target, 'deep-passes:default', 'Default deep-pass bundles per page type', DEFAULT_DEEP_PASSES_BY_TYPE)
     case 'infer-audit-mode':
       return defaultVariant(target, 'infer-mode:default', 'Default inferAuditMode mappings', defaultInferAuditModeTable())
+    case 'patch-synthesis-signature':
+      return defaultVariant(target, 'patch-synthesis:default', 'Default patch synthesis signature', DEFAULT_PATCH_SYNTHESIS_CONFIG)
   }
 }
 
@@ -122,6 +126,23 @@ export function compileOverrides(variant: PromptVariant): AuditOverrides {
         },
       }
     }
+    case 'patch-synthesis-signature': {
+      const payload = variant.payload as PatchSynthesisConfig
+      return { patchSynthesis: normalizePatchSynthesis(payload) }
+    }
+  }
+}
+
+function normalizePatchSynthesis(payload: PatchSynthesisConfig): PatchSynthesisConfig {
+  const fallback = DEFAULT_PATCH_SYNTHESIS_CONFIG
+  return {
+    system: typeof payload.system === 'string' && payload.system.trim() ? payload.system : fallback.system,
+    groundingRules: Array.isArray(payload.groundingRules) && payload.groundingRules.length > 0
+      ? payload.groundingRules.filter((rule): rule is string => typeof rule === 'string' && rule.trim().length > 0)
+      : fallback.groundingRules,
+    ...(Array.isArray(payload.examples)
+      ? { examples: payload.examples.filter((example): example is string => typeof example === 'string' && example.trim().length > 0) }
+      : {}),
   }
 }
 

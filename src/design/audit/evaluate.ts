@@ -16,6 +16,7 @@
 
 import type { Brain } from '../../brain/index.js'
 import type { PageState, DesignFinding } from '../../types.js'
+import type { PatchSynthesisConfig } from './patches/generate.js'
 import type {
   PageClassification,
   ComposedRubric,
@@ -77,6 +78,8 @@ export interface AuditOverrides {
   conservativeWeights?: { min: number; mean: number }
   /** Override the deep-mode pass bundle per page type. Keyed by classification.type. */
   deepPassesByPageType?: Partial<Record<PageClassification['type'] | 'default', AuditPassId[]>>
+  /** Override the second-call patch synthesis signature/instructions. */
+  patchSynthesis?: PatchSynthesisConfig
 }
 
 export const DEFAULT_NO_BS_RULES: string[] = [
@@ -618,13 +621,19 @@ export async function evaluatePage(
     const reason = passResults.find((r): r is PromiseRejectedResult => r.status === 'rejected')?.reason
     throw reason instanceof Error ? reason : new Error(String(reason ?? 'All audit passes failed'))
   }
+  const unparsable = fulfilled.filter(({ result }) => result.parseError)
+  if (unparsable.length === fulfilled.length) {
+    throw new Error(`All audit passes returned unparsable JSON: ${unparsable.map(({ result }) => result.parseError).join('; ')}`)
+  }
 
   // Parse summary/strengths/designSystemScore from raw LLM response
-  const parsedPasses = fulfilled.map(({ pass, result }) => ({
-    pass,
-    result,
-    parsed: parseAuditResponse(result.raw),
-  }))
+  const parsedPasses = fulfilled
+    .filter(({ result }) => !result.parseError)
+    .map(({ pass, result }) => ({
+      pass,
+      result,
+      parsed: parseAuditResponse(result.raw),
+    }))
   const summary = buildMergedSummary(parsedPasses)
   const strengths = mergeStrengths(parsedPasses.flatMap(p => p.parsed.strengths))
   let designSystemScore = mergeDesignSystemScores(parsedPasses.map(p => p.parsed.designSystemScore))

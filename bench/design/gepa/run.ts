@@ -43,6 +43,7 @@ interface CliArgs {
   fixtures?: string[]
   provider: SupportedProvider
   model?: string
+  baseUrl?: string
   reportDir?: string
   evolveDir: string
   earlyStop: boolean
@@ -75,6 +76,7 @@ async function main(): Promise<void> {
   const adapter = new AuditScoreAdapter({
     provider: args.provider,
     model: args.model,
+    baseUrl: args.baseUrl,
     headless: true,
     screenshotDir: path.join(reportDir, 'screenshots'),
   })
@@ -86,7 +88,7 @@ async function main(): Promise<void> {
     const provider = args.provider
     const modelName = resolveProviderModelName(provider, args.model)
     const apiKey = resolveProviderApiKey(provider)
-    const brain = new Brain({ provider, model: modelName, apiKey, vision: false, llmTimeoutMs: 120_000 })
+    const brain = new Brain({ provider, model: modelName, apiKey, baseUrl: args.baseUrl ?? process.env.LLM_BASE_URL, vision: false, llmTimeoutMs: 120_000 })
     mutateAdapter = new ReflectiveMutator(brain, args.target)
   } else {
     mutateAdapter = new DeterministicMutator(args.target)
@@ -203,6 +205,7 @@ function parseCliArgs(): CliArgs {
       fixtures: { type: 'string' },
       provider: { type: 'string' },
       model: { type: 'string' },
+      'base-url': { type: 'string' },
       'report-dir': { type: 'string' },
       'evolve-dir': { type: 'string' },
       'no-early-stop': { type: 'boolean' },
@@ -232,6 +235,7 @@ function parseCliArgs(): CliArgs {
     fixtures,
     provider,
     ...(values.model ? { model: values.model } : {}),
+    ...(values['base-url'] ? { baseUrl: values['base-url'] } : {}),
     ...(reportDir ? { reportDir } : {}),
     evolveDir,
     earlyStop,

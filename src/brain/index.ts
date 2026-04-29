@@ -2151,7 +2151,7 @@ SUPPLEMENTAL TOOL EVIDENCE / SCRIPT RESULT in claimed results = verified DOM dat
     goal: string,
     checkpoints: string[],
     systemPrompt?: string,
-  ): Promise<{ score: number; findings: DesignFinding[]; raw: string; tokensUsed?: number; designSystemScore?: Record<string, unknown> }> {
+  ): Promise<{ score: number; findings: DesignFinding[]; raw: string; tokensUsed?: number; designSystemScore?: Record<string, unknown>; parseError?: string }> {
     const textContent = `GOAL: ${goal}
 
 CHECKPOINTS to verify:
@@ -2242,12 +2242,13 @@ Audit this page for design quality, UX issues, and visual bugs.`;
         tokensUsed,
         designSystemScore,
       };
-    } catch {
+    } catch (err) {
       return {
         score: 5,
         findings: [],
         raw,
         tokensUsed,
+        parseError: err instanceof Error ? err.message : String(err),
       };
     }
   }

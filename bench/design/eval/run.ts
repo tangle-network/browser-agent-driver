@@ -6,6 +6,7 @@
  * Usage:
  *   pnpm tsx bench/design/eval/run.ts --tier world-class
  *   pnpm tsx bench/design/eval/run.ts --calibration-only --tier world-class
+ *   pnpm tsx bench/design/eval/run.ts --calibration-only --provider openai --model gpt-5.4
  *   pnpm tsx bench/design/eval/run.ts --repro --reps 3 --urls https://stripe.com,https://linear.app
  *   pnpm tsx bench/design/eval/run.ts --patches-only --roots audit-results
  *
@@ -36,6 +37,9 @@ interface CliArgs {
   roots: string[]
   outDir: string
   generation: number
+  provider?: string
+  model?: string
+  baseUrl?: string
   writeScorecardPath?: string
 }
 
@@ -60,6 +64,9 @@ function parseArgs(argv: string[]): CliArgs {
     else if (a === '--roots') args.roots = argv[++i].split(',').map(s => s.trim()).filter(Boolean)
     else if (a === '--out') args.outDir = argv[++i]
     else if (a === '--generation') args.generation = Number(argv[++i])
+    else if (a === '--provider') args.provider = argv[++i]
+    else if (a === '--model') args.model = argv[++i]
+    else if (a === '--base-url') args.baseUrl = argv[++i]
     else if (a === '--write-scorecard') args.writeScorecardPath = argv[++i]
   }
   return args
@@ -81,7 +88,8 @@ async function main(): Promise<void> {
     console.log(`\n=== Calibration ===`)
     const calibOut = path.join(args.outDir, 'calibration')
     const { flow, sites } = await evaluateCalibration({
-      corpus, outputDir: calibOut, tier: args.tier,
+      corpus, outputDir: calibOut, tier: args.tier, urls: args.urls,
+      provider: args.provider, model: args.model, baseUrl: args.baseUrl,
     })
     for (const s of sites) {
       const icon = !Number.isFinite(s.score) ? 'SKIP' : s.inRange ? 'PASS' : 'FAIL'
@@ -96,6 +104,7 @@ async function main(): Promise<void> {
     const reproOut = path.join(args.outDir, 'reproducibility')
     const { flow, sites } = await evaluateReproducibility({
       corpus, outputDir: reproOut, urls: args.urls, reps: args.reps,
+      provider: args.provider, model: args.model, baseUrl: args.baseUrl,
     })
     for (const s of sites) {
       console.log(`  ${s.url}  scores=[${s.scores.map(x => x.toFixed(1)).join(',')}]  mean=${s.mean}  stddev=${s.stddev}`)

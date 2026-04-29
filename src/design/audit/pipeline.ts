@@ -238,6 +238,7 @@ export async function auditOnePage(opts: AuditOnePageOptions): Promise<PageAudit
         v1Result: result,
         anchor,
         runId,
+        overrides,
       })
       result.auditResult = auditResult
       result.ensembleClassification = ensemble
