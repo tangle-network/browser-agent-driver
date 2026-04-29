@@ -23,8 +23,27 @@ import type { Brain } from '../../../brain/index.js'
 import type { DesignFinding } from '../score-types.js'
 import { parsePatches } from './parse.js'
 
-const SYSTEM_OPENER =
+export const DEFAULT_PATCH_SYNTHESIS_SYSTEM =
   'You are a code-mod author. For each finding below, emit ONE Patch the agent can apply literally. Patches that target HTML or page structure must reference verbatim text in the snapshot. Patches that target source files (CSS/TSX/Tailwind) reference selectors only — the agent verifies them at apply-time against the source.'
+
+export interface PatchSynthesisConfig {
+  /** Stable system instruction for the patch-generation call. */
+  system: string
+  /** Snapshot-grounding and omit rules appended after the schema. */
+  groundingRules: string[]
+  /** Few-shot or extra examples appended before the final JSON-only instruction. */
+  examples?: string[]
+}
+
+export const DEFAULT_PATCH_SYNTHESIS_CONFIG: PatchSynthesisConfig = {
+  system: DEFAULT_PATCH_SYNTHESIS_SYSTEM,
+  groundingRules: [
+    'target.scope MUST be "css" by default. Use "html" or "structural" ONLY when you are paste-copying a literal substring from the SNAPSHOT BLOCK above (not from your imagination, not from typical-site assumptions).',
+    'Before setting target.scope to "html", verify diff.before is a verbatim substring of the snapshot block above. If it is not, change target.scope to "css".',
+    'For css / tsx / jsx / tailwind / module-css / styled-component scopes, diff.before is a source-file fragment the agent resolves at apply-time; the audit does not validate it. This is the safe default.',
+    'If a finding does not admit a clean patch, OMIT it (do not invent diffs).',
+  ],
+}
 
 export interface GeneratePatchesOptions {
   brain: Brain
@@ -35,6 +54,8 @@ export interface GeneratePatchesOptions {
   /** Hard cap on the number of findings to send to the LLM. Default 8 — top
    *  major/critical by ROI; cheaper to skip stragglers than blow the prompt. */
   maxFindings?: number
+  /** Evolve/GEPA override for the patch synthesis signature. */
+  config?: PatchSynthesisConfig
 }
 
 export interface GeneratePatchesResult {
@@ -57,11 +78,12 @@ export async function generatePatches(opts: GeneratePatchesOptions): Promise<Gen
     return { findings: opts.findings, tokensUsed: 0, notes: [] }
   }
 
-  const prompt = buildPrompt(opts.snapshot, eligible)
+  const config = opts.config ?? DEFAULT_PATCH_SYNTHESIS_CONFIG
+  const prompt = buildPrompt(opts.snapshot, eligible, config)
   let raw = ''
   let tokensUsed = 0
   try {
-    const llm = await opts.brain.complete(SYSTEM_OPENER, prompt, { maxOutputTokens: 2000 })
+    const llm = await opts.brain.complete(config.system, prompt, { maxOutputTokens: 2000 })
     raw = llm.text ?? ''
     tokensUsed = llm.tokensUsed ?? 0
   } catch (err) {
@@ -101,7 +123,7 @@ export async function generatePatches(opts: GeneratePatchesOptions): Promise<Gen
   return { findings: updated, tokensUsed, notes }
 }
 
-function buildPrompt(snapshot: string, findings: DesignFinding[]): string {
+function buildPrompt(snapshot: string, findings: DesignFinding[], config: PatchSynthesisConfig): string {
   // Trim the snapshot to keep the prompt cheap. The findings reference visible
   // elements; trimming should not cost meaningful context.
   const trimmedSnapshot = snapshot.length > 8000 ? snapshot.slice(0, 8000) + '\n…[truncated]' : snapshot
@@ -142,11 +164,8 @@ For each finding above, emit ONE Patch object. Required shape:
 }
 
 Snapshot-anchoring rule (READ CAREFULLY — most patch failures fail this):
-- target.scope MUST be "css" by default. Use "html" or "structural" ONLY when you are paste-copying a literal substring from the SNAPSHOT BLOCK above (not from your imagination, not from typical-site assumptions).
-- Before setting target.scope to "html", verify diff.before is a verbatim substring of the snapshot block above. If it isn't, change target.scope to "css".
-- For css / tsx / jsx / tailwind / module-css / styled-component scopes, diff.before is a source-file fragment the agent resolves at apply-time; the audit does not validate it. This is the safe default.
-
-If a finding does not admit a clean patch, OMIT it (do not invent diffs).
+${config.groundingRules.map((rule) => `- ${rule}`).join('\n')}
+${config.examples?.length ? `\nEXAMPLES:\n${config.examples.join('\n\n')}\n` : ''}
 
 RESPOND WITH ONLY a JSON object:
 {

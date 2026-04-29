@@ -157,6 +157,24 @@ export function objectiveVectorFromTrials(
   trials: TrialResult[],
 ): ObjectiveVector {
   const okTrials = trials.filter((t) => t.ok)
+  const patchTrials = okTrials.filter((t) => t.patchMetrics)
+  if (patchTrials.length > 0) {
+    const coverage = mean(patchTrials.map((t) => t.patchMetrics?.coverage ?? 0))
+    const validRate = mean(patchTrials.map((t) => t.patchMetrics?.validRate ?? 0))
+    const costs = patchTrials.map((t) => t.tokensUsed)
+    const scores = patchTrials.map((t) => t.score)
+    return {
+      // For the patch-synthesis target, "recall" means "did we emit patches
+      // for eligible major/critical findings"; "precision" means "were the
+      // emitted patches valid". This lets the existing Pareto/scalar machinery
+      // optimize patch behavior without changing the report schema.
+      recall: coverage,
+      precision: validRate,
+      passOrthogonality: 1,
+      scoreStability: Math.max(0, 1 - stddev(scores) / 3),
+      cost: mean(costs),
+    }
+  }
   const recallVals = okTrials.map((t) => weightedRecall(fixture, t.goldenMatches))
   const precisionVals = okTrials.map((t) => precision(fixture, t.findings))
   const scores = okTrials.map((t) => t.score)

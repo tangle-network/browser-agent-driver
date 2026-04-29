@@ -30,6 +30,13 @@ export interface CalibrationOptions {
   outputDir: string
   /** Restrict to one tier (e.g. 'world-class'). Default: all tiers. */
   tier?: string
+  /** Restrict to specific URLs. Useful for cheap provider-health probes. */
+  urls?: string[]
+  /** Provider/model override passed through to `bad design-audit`. */
+  provider?: string
+  model?: string
+  baseUrl?: string
+  apiKey?: string
   /** Minimum target for the in-range rate. Default 0.7 (70% of sites in range). */
   target?: number
   /** Skip sites we already have results for in `outputDir`. Defaults true so a partial run can resume. */
@@ -55,12 +62,14 @@ const FLOW_NAME = 'designAudit_calibration_in_range_rate'
 export async function evaluateCalibration(opts: CalibrationOptions): Promise<{ flow: FlowEnvelope; sites: SiteResult[] }> {
   const target = opts.target ?? 0.7
   const tiers = opts.tier ? { [opts.tier]: opts.corpus.tiers[opts.tier] } : opts.corpus.tiers
+  const urlFilter = opts.urls ? new Set(opts.urls.map(normalizeUrl)) : undefined
   const sites: SiteResult[] = []
   fs.mkdirSync(opts.outputDir, { recursive: true })
 
   for (const [tierName, tier] of Object.entries(tiers)) {
     if (!tier) continue
     for (const site of tier.sites) {
+      if (urlFilter && !urlFilter.has(normalizeUrl(site.url))) continue
       const siteOut = path.join(opts.outputDir, tierName, new URL(site.url).hostname)
       const reportJson = path.join(siteOut, 'report.json')
       let score = NaN
@@ -76,6 +85,10 @@ export async function evaluateCalibration(opts: CalibrationOptions): Promise<{ f
           await runDesignAudit({
             url: site.url, pages: 1, profile: site.profile,
             output: siteOut, json: true, headless: true,
+            provider: opts.provider,
+            model: opts.model,
+            baseUrl: opts.baseUrl,
+            apiKey: opts.apiKey,
           })
           score = readScore(reportJson)
         } catch (err) {
@@ -105,13 +118,21 @@ export async function evaluateCalibration(opts: CalibrationOptions): Promise<{ f
   return { flow, sites }
 }
 
+function normalizeUrl(url: string): string {
+  const u = new URL(url)
+  u.hash = ''
+  if (u.pathname === '/') u.pathname = ''
+  return u.toString().replace(/\/$/, '')
+}
+
 function readScore(reportJson: string): number {
   const data = JSON.parse(fs.readFileSync(reportJson, 'utf-8')) as {
-    pages?: Array<{ score?: number; rollup?: { score?: number }; auditResult?: { rollup?: { score?: number } } }>
+    pages?: Array<{ score?: number; error?: string; rollup?: { score?: number }; auditResult?: { rollup?: { score?: number } } }>
     summary?: { avgScore?: number }
   }
   const page = data.pages?.[0]
   if (!page) throw new Error('report.json has no pages[]')
+  if (page.error) throw new Error(page.error)
   // Calibration uses the holistic LLM score, not the per-dimension rollup.
   // Reasoning: corpus tier-bands ("Stripe should score 8-10") encode human
   // gestalt judgement of design quality. The rollup is a per-page-type

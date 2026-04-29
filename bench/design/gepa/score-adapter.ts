@@ -30,6 +30,8 @@ export interface AuditScoreAdapterOptions {
   model?: string
   /** Same env override CLI uses. */
   apiKey?: string
+  /** Custom OpenAI-compatible base URL, e.g. router.tangle.tools. */
+  baseUrl?: string
   /** When true, run the browser headless (default). */
   headless?: boolean
   /** Viewport WxH; defaults to 1440x900. */
@@ -81,10 +83,12 @@ export class AuditScoreAdapter implements ScoreAdapter {
     const provider = this.opts.provider ?? 'claude-code'
     const model = resolveProviderModelName(provider, this.opts.model)
     const apiKey = this.opts.apiKey ?? resolveProviderApiKey(provider)
+    const baseUrl = this.opts.baseUrl ?? process.env.LLM_BASE_URL
     const brain = new Brain({
       model,
       apiKey,
       provider,
+      baseUrl,
       vision: true,
       llmTimeoutMs: 120_000,
     })
@@ -110,17 +114,19 @@ export class AuditScoreAdapter implements ScoreAdapter {
         model,
       })
 
-      const goldenMatches = matchGoldenFindings(args.fixture, result.findings)
+      const findings = result.auditResult?.findings ?? result.findings
+      const goldenMatches = matchGoldenFindings(args.fixture, findings)
       return {
         variantId: args.variant.id,
         fixtureId: args.fixture.id,
         rep: args.rep,
         ok: !result.error,
         score: result.score,
-        findings: result.findings,
+        findings,
         goldenMatches,
         tokensUsed: result.tokensUsed ?? 0,
         durationMs: Date.now() - startedAt,
+        ...(args.variant.target === 'patch-synthesis-signature' ? { patchMetrics: patchMetrics(findings) } : {}),
         ...(result.error ? { error: result.error } : {}),
       }
     } catch (err) {
@@ -137,5 +143,27 @@ export class AuditScoreAdapter implements ScoreAdapter {
         error: err instanceof Error ? err.message : String(err),
       }
     }
+  }
+}
+
+function patchMetrics(findings: TrialResult['findings']): NonNullable<TrialResult['patchMetrics']> {
+  const eligible = findings.filter((finding) => {
+    const raw = (finding as unknown as { rawPatches?: unknown[] }).rawPatches
+    return finding.severity === 'major'
+      || finding.severity === 'critical'
+      || (Array.isArray(raw) && raw.length > 0)
+      || /\[auto-downgraded: patch required/.test(finding.suggestion ?? '')
+  })
+  const rawPatches = eligible.reduce((sum, finding) => {
+    const raw = (finding as unknown as { rawPatches?: unknown[] }).rawPatches
+    return sum + (Array.isArray(raw) ? raw.length : 0)
+  }, 0)
+  const validPatches = eligible.reduce((sum, finding) => sum + ((finding as { patches?: unknown[] }).patches?.length ?? 0), 0)
+  return {
+    eligibleFindings: eligible.length,
+    rawPatches,
+    validPatches,
+    coverage: eligible.length === 0 ? 1 : Math.min(1, rawPatches / eligible.length),
+    validRate: rawPatches === 0 ? 0 : validPatches / rawPatches,
   }
 }

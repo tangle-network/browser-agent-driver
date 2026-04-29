@@ -15,6 +15,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Brain } from '../../../src/brain/index.js'
 import type { AuditPass, AuditPassId } from '../../../src/design/audit/evaluate.js'
+import type { PatchSynthesisConfig } from '../../../src/design/audit/patches/generate.js'
 import type { MutateAdapter } from './loop.js'
 import { hashPayload } from './targets.js'
 import type { GepaTargetId, PromptVariant, TrialResult, VariantSummary } from './types.js'
@@ -161,6 +162,41 @@ function deterministicProposals(target: GepaTargetId, ctx: MutationContext): Pro
     case 'pass-selection-per-classification': {
       const parent = ctx.parent.payload as Record<string, AuditPassId[]>
       proposals.push(makeVariant(target, ctx.generation, ctx.parent.id, { ...parent, 'saas-app': ['product', 'workflow', 'visual'] }, 'saas-app: product+workflow', 'workflow weight on saas'))
+      break
+    }
+    case 'patch-synthesis-signature': {
+      const parent = ctx.parent.payload as PatchSynthesisConfig
+      proposals.push(
+        makeVariant(
+          target,
+          ctx.generation,
+          ctx.parent.id,
+          {
+            ...parent,
+            groundingRules: [
+              'Use target.scope "css" unless diff.before is copied byte-for-byte from the snapshot block.',
+              'When target.scope is css, jsx, tsx, tailwind, module-css, or styled-component, write diff.before as a plausible source fragment and include a cssSelector or componentName.',
+              'Use target.scope "html" or "structural" only after checking snapshot.includes(diff.before) would be true.',
+              'Prefer a valid css patch over an invalid html patch; omit only when no selector, component, or source fragment can be named.',
+            ],
+          },
+          'css-first anchoring',
+          'reduce before-not-in-snapshot failures by making css the explicit default',
+        ),
+        makeVariant(
+          target,
+          ctx.generation,
+          ctx.parent.id,
+          {
+            ...parent,
+            examples: [
+              'Bad: {"target":{"scope":"html"},"diff":{"before":"<div class=\\"hero\\">","after":"..."}} when that literal HTML is not in the accessibility snapshot. Good: {"target":{"scope":"css","cssSelector":"section[aria-label*=Hero] .primary-cta"},"diff":{"before":"padding: 8px 14px","after":"padding: 12px 20px"}}.',
+            ],
+          },
+          'invalid-html counterexample',
+          'teach the generator to convert ungrounded html patches into source-scoped css patches',
+        ),
+      )
       break
     }
     case 'few-shot-example':

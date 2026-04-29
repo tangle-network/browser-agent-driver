@@ -21,6 +21,11 @@ export interface ReproOptions {
   outputDir: string
   /** Subset of URLs to test. Defaults to all world-class sites (cheapest meaningful). */
   urls?: string[]
+  /** Provider/model override passed through to `bad design-audit`. */
+  provider?: string
+  model?: string
+  baseUrl?: string
+  apiKey?: string
   reps?: number
   /** Pass/fail threshold on max stddev. Default 0.5. */
   target?: number
@@ -47,7 +52,13 @@ export async function evaluateReproducibility(opts: ReproOptions): Promise<{ flo
     for (let r = 0; r < reps; r++) {
       const dir = path.join(opts.outputDir, new URL(url).hostname, `rep-${r + 1}`)
       try {
-        await runDesignAudit({ url, pages: 1, output: dir, json: true, headless: true })
+        await runDesignAudit({
+          url, pages: 1, output: dir, json: true, headless: true,
+          provider: opts.provider,
+          model: opts.model,
+          baseUrl: opts.baseUrl,
+          apiKey: opts.apiKey,
+        })
         const reportJson = path.join(dir, 'report.json')
         if (!fs.existsSync(reportJson)) continue
         const data = JSON.parse(fs.readFileSync(reportJson, 'utf-8')) as {

@@ -14,6 +14,19 @@ function makeBrain(text: string): Brain {
   } as unknown as Brain
 }
 
+function captureBrain(text: string): { brain: Brain; calls: Array<{ system: string; prompt: string }> } {
+  const calls: Array<{ system: string; prompt: string }> = []
+  return {
+    calls,
+    brain: {
+      complete: async (system: string, prompt: string) => {
+        calls.push({ system, prompt })
+        return { text, tokensUsed: 42 }
+      },
+    } as unknown as Brain,
+  }
+}
+
 const sampleFindings: DesignFinding[] = [
   {
     id: 'f-1',
@@ -113,5 +126,23 @@ describe('generatePatches', () => {
     const out = await generatePatches({ brain, snapshot: 'snap', findings: sampleFindings })
     const f1 = out.findings.find(f => f.id === 'f-1')
     expect((f1?.rawPatches?.[0] as { findingId: string }).findingId).toBe('f-1')
+  })
+
+  it('accepts an evolved patch synthesis signature override', async () => {
+    const { brain, calls } = captureBrain('{"patches":[]}')
+    await generatePatches({
+      brain,
+      snapshot: 'snap',
+      findings: sampleFindings,
+      config: {
+        system: 'custom patch system',
+        groundingRules: ['custom grounding rule'],
+        examples: ['custom example'],
+      },
+    })
+
+    expect(calls[0]?.system).toBe('custom patch system')
+    expect(calls[0]?.prompt).toContain('custom grounding rule')
+    expect(calls[0]?.prompt).toContain('custom example')
   })
 })

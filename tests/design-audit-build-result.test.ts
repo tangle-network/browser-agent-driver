@@ -219,6 +219,7 @@ describe('buildAuditResult — Layer 1', () => {
     expect(result.scores.product_intent.score).toBe(6)
     expect(result.scores.product_intent.confidence).toBe('low')
     expect(result.rollup.confidence).toBe('low')
+    expect(result.error).toMatch(/multidim-score-fallback: no brain in tests/)
   })
 
   it('classification carries ensembleConfidence + signalsAgreed', async () => {

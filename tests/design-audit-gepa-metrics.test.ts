@@ -184,6 +184,37 @@ describe('objectiveVectorFromTrials', () => {
     expect(vec.cost).toBe(800)
     expect(vec.recall).toBeCloseTo(0.5)
   })
+
+  it('uses patch coverage and validity for patch-synthesis trials', () => {
+    const fix = fixture()
+    const trials: TrialResult[] = [
+      trial({
+        patchMetrics: {
+          eligibleFindings: 4,
+          rawPatches: 3,
+          validPatches: 2,
+          coverage: 0.75,
+          validRate: 2 / 3,
+        },
+        tokensUsed: 900,
+      }),
+      trial({
+        rep: 1,
+        patchMetrics: {
+          eligibleFindings: 4,
+          rawPatches: 4,
+          validPatches: 4,
+          coverage: 1,
+          validRate: 1,
+        },
+        tokensUsed: 1100,
+      }),
+    ]
+    const vec = objectiveVectorFromTrials(fix, trials)
+    expect(vec.recall).toBeCloseTo(0.875)
+    expect(vec.precision).toBeCloseTo((2 / 3 + 1) / 2)
+    expect(vec.cost).toBe(1000)
+  })
 })
 
 describe('aggregateObjectiveVectors', () => {
