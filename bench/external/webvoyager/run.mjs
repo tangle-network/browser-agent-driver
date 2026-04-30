@@ -122,13 +122,23 @@ function runAgent() {
     if (baseUrlArg) args.push('--base-url', baseUrlArg)
     if (apiKeyArg) args.push('--api-key', apiKeyArg)
 
-    console.log(`\nRunning agent: node ${args.join(' ')}`)
+    console.log(`\nRunning agent: node ${redactArgs(args).join(' ')}`)
     const proc = spawn('node', args, { cwd: rootDir, stdio: 'inherit' })
     proc.on('close', (code) => {
       if (code === 0) resolve()
       else reject(new Error(`Agent run exited with code ${code}`))
     })
   })
+}
+
+function redactArgs(args) {
+  const redacted = [...args]
+  for (let i = 0; i < redacted.length - 1; i += 1) {
+    if (redacted[i] === '--api-key') {
+      redacted[i + 1] = '[redacted]'
+    }
+  }
+  return redacted
 }
 
 // ── Step 5: Evaluate ────────────────────────────────────────────────────────

@@ -27,6 +27,12 @@ describe('containsSelfContradictingCompletion', () => {
     expect(containsSelfContradictingCompletion(
       'Google Flights does not show the exact requested date March 30, 2026 in the currently available calendar view.',
     )).toBe(true);
+    expect(containsSelfContradictingCompletion(
+      'This recipe meets the more-than-30-reviews requirement, but it does NOT meet the less-than-20-minutes preparation-time requirement.',
+    )).toBe(true);
+    expect(containsSelfContradictingCompletion(
+      'The result does not satisfy the requested under-$150 price constraint.',
+    )).toBe(true);
   });
 
   it('does not flag concrete successful completions', () => {

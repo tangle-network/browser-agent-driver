@@ -2028,6 +2028,7 @@ export class BrowserAgent {
 
             if (
               !goalResult.achieved
+              && !selfContradicting
               && shouldAcceptFirstPartyBoundaryCompletion(
                 scenario.goal,
                 state.url,
@@ -2049,6 +2050,7 @@ export class BrowserAgent {
 
             if (
               !goalResult.achieved
+              && !selfContradicting
               && shouldAcceptSearchWorkflowCompletion(
                 scenario.goal,
                 goalResult,
@@ -2070,6 +2072,7 @@ export class BrowserAgent {
 
             if (
               !goalResult.achieved
+              && !selfContradicting
               && shouldAcceptScriptBackedCompletion(
                 scenario.goal,
                 state,
@@ -2092,6 +2095,7 @@ export class BrowserAgent {
 
             if (
               !goalResult.achieved
+              && !selfContradicting
               && shouldAcceptRolledBookingCompletion(
                 directStart,
                 goalResult,
@@ -2113,6 +2117,7 @@ export class BrowserAgent {
 
             if (
               !goalResult.achieved
+              && !selfContradicting
               && shouldAcceptRolledGoogleFlightsCompletion(
                 googleFlightsPreflight,
                 goalResult,
