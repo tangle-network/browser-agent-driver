@@ -6,6 +6,7 @@
  * Usage:
  *   node bench/external/webvoyager/evaluate.mjs --results ./agent-results/wv-run-xxx
  *   node bench/external/webvoyager/evaluate.mjs --results ./agent-results/wv-run-xxx --model gpt-4o
+ *   node bench/external/webvoyager/evaluate.mjs --results ./agent-results/wv-run-xxx --include-text-evidence
  *   node bench/external/webvoyager/evaluate.mjs --results ./agent-results/wv-run-xxx --dry-run
  *
  * Reads track-summary.json from the results directory, extracts trajectory
@@ -37,6 +38,8 @@ const evalModel = getArg('model', 'gpt-4o')
 const dryRun = hasFlag('dry-run')
 const concurrency = Number(getArg('concurrency', '5'))
 const outFile = getArg('out', path.join(resultsDir, 'wv-eval.json'))
+const includeTextEvidence = hasFlag('include-text-evidence') || hasFlag('text-evidence')
+const maxTextEvidenceChars = Number(getArg('max-text-evidence-chars', '14000'))
 
 if (!resultsDir || !fs.existsSync(resultsDir)) {
   console.error('Usage: node evaluate.mjs --results <results-dir>')
@@ -45,22 +48,104 @@ if (!resultsDir || !fs.existsSync(resultsDir)) {
 
 // ── Evaluation prompt (adapted from WebVoyager paper + Magnitude fork) ──────
 
-const EVAL_SYSTEM = `You are an expert evaluator for a web browsing agent. Your task is to assess whether the agent successfully completed the given task based on the trajectory of screenshots and the agent's final answer.
+const EVAL_SYSTEM = (withTextEvidence = false) => `You are an expert evaluator for a web browsing agent. Your task is to assess whether the agent successfully completed the given task based on the trajectory screenshots${withTextEvidence ? ', rendered page text evidence,' : ''} and the agent's final answer.
 
 Rules:
-- Judge based ONLY on what is visible in the screenshots and the agent's stated answer.
+- Judge based ONLY on what is visible in the screenshots${withTextEvidence ? ', the rendered page text evidence,' : ''} and the agent's stated answer.
 - Do NOT make assumptions about information not shown.
 - For multi-step tasks, ALL steps must be completed for SUCCESS.
 - If the agent found the correct information but didn't navigate to the exact right page, that can still be SUCCESS if the answer is correct.
 - If the agent answered with specific data (prices, names, ratings), verify it's plausible given the screenshots.
+- Rendered page text evidence is extracted from the live browser accessibility/DOM snapshot; use it as supporting evidence, but do not treat it as proof if it contradicts screenshots, URLs, or the final answer.
 - Be strict: vague or partial answers are NOT SUCCESS.`
 
 const EVAL_USER = (task) => `TASK: ${task}
 
-Based on the trajectory screenshots and the agent's final answer, classify the outcome.
+Based on the trajectory screenshots, any provided rendered page text evidence, and the agent's final answer, classify the outcome.
 
 Respond with a JSON object:
 {"reasoning": "<your analysis>", "result": "SUCCESS" or "NOT SUCCESS"}`
+
+const STOPWORDS = new Set([
+  'about', 'above', 'after', 'agent', 'answer', 'arbitrary', 'before', 'below', 'between',
+  'browser', 'capture', 'complete', 'completed', 'completion', 'concrete', 'criteria',
+  'current', 'direct', 'evidence', 'exact', 'find', 'focused', 'from', 'goal', 'handle',
+  'include', 'less', 'more', 'navigation', 'objective', 'operator', 'over', 'page',
+  'persona', 'policy', 'prefer', 'primary', 'provide', 'reliable', 'requested', 'result',
+  'return', 'search', 'site', 'specific', 'state', 'steps', 'task', 'than', 'that',
+  'their', 'then', 'there', 'this', 'times', 'under', 'visible', 'with', 'within',
+])
+
+function normalizeEvidenceLine(line) {
+  return String(line || '').replace(/\s+/g, ' ').trim()
+}
+
+function buildEvidenceTerms(text) {
+  const terms = new Set()
+  const source = String(text || '').toLowerCase()
+  for (const match of source.matchAll(/[a-z0-9][a-z0-9.'$%-]*/g)) {
+    const token = match[0].replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, '')
+    if (!token) continue
+    if (/^\d/.test(token) || token.includes('$') || token.includes('%')) {
+      terms.add(token)
+      continue
+    }
+    if (token.length >= 4 && !STOPWORDS.has(token)) terms.add(token)
+  }
+  return [...terms].slice(0, 80)
+}
+
+function lineMatchesEvidenceTerms(line, terms) {
+  const lower = line.toLowerCase()
+  return terms.some((term) => lower.includes(term))
+}
+
+function selectEvidenceLines(snapshot, terms, maxLines = 90) {
+  const rawLines = String(snapshot || '').split('\n').map(normalizeEvidenceLine)
+  const selected = []
+  const seen = new Set()
+
+  for (let i = 0; i < rawLines.length && selected.length < maxLines; i++) {
+    const line = rawLines[i]
+    if (!line || line.length < 3) continue
+    if (!lineMatchesEvidenceTerms(line, terms)) continue
+
+    for (const candidate of [rawLines[i - 1], line, rawLines[i + 1]]) {
+      const clean = normalizeEvidenceLine(candidate)
+      if (!clean || seen.has(clean)) continue
+      seen.add(clean)
+      selected.push(clean.length > 500 ? `${clean.slice(0, 497)}...` : clean)
+      if (selected.length >= maxLines) break
+    }
+  }
+
+  return selected
+}
+
+function buildTextEvidence({ goal, agentAnswer, turns }) {
+  const terms = buildEvidenceTerms(`${goal}\n${agentAnswer}`)
+  if (terms.length === 0) return ''
+
+  const blocks = []
+  const recentTurns = turns.slice(-4)
+  for (const turn of recentTurns) {
+    const state = turn.state || {}
+    const lines = []
+    if (state.url) lines.push(`URL: ${state.url}`)
+    if (state.title) lines.push(`TITLE: ${state.title}`)
+    const selected = selectEvidenceLines(state.snapshot || state.snapshotDiff || '', terms)
+    if (selected.length > 0) lines.push(...selected)
+    if (lines.length > 0) {
+      blocks.push(`TURN ${turn.turn} RENDERED TEXT:\n${lines.join('\n')}`)
+    }
+  }
+
+  let evidence = blocks.join('\n\n')
+  if (evidence.length > maxTextEvidenceChars) {
+    evidence = `${evidence.slice(0, maxTextEvidenceChars)}\n[truncated at ${maxTextEvidenceChars} chars]`
+  }
+  return evidence
+}
 
 // ── Load results ────────────────────────────────────────────────────────────
 
@@ -145,6 +230,7 @@ function extractTrajectory(result) {
     agentAnswer,
     agentPassed: passed,
     screenshots,
+    textEvidence: includeTextEvidence ? buildTextEvidence({ goal, agentAnswer, turns }) : '',
     turns: turns.length,
   }
 }
@@ -161,7 +247,11 @@ async function judgeTask(trajectory) {
   // Add text prompt
   userContent.push({
     type: 'text',
-    text: EVAL_USER(trajectory.goal) + `\n\nAGENT'S FINAL ANSWER: ${trajectory.agentAnswer}`,
+    text: EVAL_USER(trajectory.goal)
+      + `\n\nAGENT'S FINAL ANSWER: ${trajectory.agentAnswer}`
+      + (trajectory.textEvidence
+        ? `\n\nRENDERED PAGE TEXT EVIDENCE:\n${trajectory.textEvidence}`
+        : ''),
   })
 
   // Add up to 10 screenshots (first, last, and evenly sampled middle)
@@ -195,7 +285,7 @@ async function judgeTask(trajectory) {
   const response = await client.chat.completions.create({
     model: evalModel,
     messages: [
-      { role: 'system', content: EVAL_SYSTEM },
+      { role: 'system', content: EVAL_SYSTEM(includeTextEvidence) },
       { role: 'user', content: userContent },
     ],
     temperature: 0,
@@ -238,11 +328,19 @@ async function main() {
 
   console.log(`  With screenshots: ${withScreenshots.length}`)
   console.log(`  Without screenshots (text-only eval): ${withoutScreenshots.length}`)
+  if (includeTextEvidence) {
+    const withEvidence = trajectories.filter((t) => t.textEvidence.length > 0)
+    const meanEvidenceChars = withEvidence.length
+      ? Math.round(withEvidence.reduce((sum, t) => sum + t.textEvidence.length, 0) / withEvidence.length)
+      : 0
+    console.log(`  With rendered text evidence: ${withEvidence.length} (mean ${meanEvidenceChars} chars)`)
+  }
 
   if (dryRun) {
     console.log('\n[DRY RUN] Would evaluate:')
     for (const t of trajectories) {
-      console.log(`  ${t.scenarioId}: ${t.screenshots.length} screenshots, agent=${t.agentPassed ? 'PASS' : 'FAIL'}`)
+      const evidenceSuffix = includeTextEvidence ? `, textEvidence=${t.textEvidence.length} chars` : ''
+      console.log(`  ${t.scenarioId}: ${t.screenshots.length} screenshots${evidenceSuffix}, agent=${t.agentPassed ? 'PASS' : 'FAIL'}`)
     }
     return
   }
@@ -267,6 +365,7 @@ async function main() {
         agree,
         turns: t.turns,
         screenshotCount: t.screenshots.length,
+        textEvidenceChars: t.textEvidence?.length || 0,
       }
     } catch (err) {
       console.error(`  ${label}: ERROR — ${err.message}`)
@@ -279,6 +378,7 @@ async function main() {
         agree: false,
         turns: t.turns,
         screenshotCount: t.screenshots.length,
+        textEvidenceChars: t.textEvidence?.length || 0,
       }
     }
   }, concurrency)
@@ -295,6 +395,8 @@ async function main() {
     evalModel,
     generatedAt: new Date().toISOString(),
     resultsDir,
+    includeTextEvidence,
+    maxTextEvidenceChars: includeTextEvidence ? maxTextEvidenceChars : 0,
     total,
     judgePassRate: judgePass / total,
     agentPassRate: agentPass / total,
