@@ -32,6 +32,10 @@ demos/
 bench/design/eval/results/
 .claude/worktrees/
 
+# Generated autoreserach/autoeval state. Keep source code and reproducible
+# scripts in git; keep run corpora, JSONL trial caches, and optimizer outputs local.
+.evolve/agent-eval/
+
 # Transient WebVoyager run-recovery cases (regenerated per session)
 bench/external/webvoyager/cases-resume*.json
 bench/external/webvoyager/cases-hotspots*.json
