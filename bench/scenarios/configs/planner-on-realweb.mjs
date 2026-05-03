@@ -24,6 +24,11 @@ export default {
   provider: 'openai',
   model: 'gpt-5.4',
   plannerEnabled: true,
+  // Public browser-use comparisons exposed the planner's weak spot:
+  // extraction tasks where the final JSON depends on values read after page
+  // load. In auto mode BAD keeps the planner for workflow/form tasks, but
+  // routes extraction-shaped tasks through the per-action observe-act loop.
+  plannerMode: 'auto',
   // Gen 8: real public-web pages need a settle wait before the planner
   // observes them. SPAs (npmjs.com, github.com PR list, MDN) load their
   // dynamic content via JS after DOMContentLoaded — without this wait the

@@ -379,6 +379,8 @@ export interface Scenario {
   goal: string;
   /** Starting URL (optional - uses current page if not set) */
   startUrl?: string;
+  /** Optional task tags, used by adaptive runtime policies */
+  tags?: string[];
   /** Explicit host allowlist for navigation/result selection (for benchmark and policy constraints) */
   allowedDomains?: string[];
   /** Max turns before giving up */
@@ -470,6 +472,13 @@ export interface AgentConfig {
    * Disable via BAD_PLANNER=0 env override.
    */
   plannerEnabled?: boolean;
+  /**
+   * Planner routing policy. `always` preserves plannerEnabled behavior.
+   * `auto` skips the planner for extraction-style tasks where the final
+   * answer depends on values observed after navigation, using the per-action
+   * observe→act loop instead.
+   */
+  plannerMode?: 'always' | 'auto';
   /**
    * Gen 8: extra wait BEFORE the planner's initial observe, in ms. Used by
    * real-web runs (planner-on-realweb.mjs) to give SPAs time to load their

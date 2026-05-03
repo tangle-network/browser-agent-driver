@@ -94,6 +94,8 @@ export interface DriverConfig {
   goalVerification?: boolean;
   /** Gen 7 plan-then-execute: single LLM call generates the full action sequence */
   plannerEnabled?: boolean;
+  /** Planner routing policy. `auto` skips planner on extraction-shaped tasks. */
+  plannerMode?: 'always' | 'auto';
   /** Gen 8: extra ms wait before the planner's first observe, for SPA settle */
   initialObserveSettleMs?: number;
   qualityThreshold?: number;
@@ -310,6 +312,7 @@ export function toAgentConfig(config: DriverConfig): AgentConfig {
     observationMode: config.observationMode,
     goalVerification: config.goalVerification,
     plannerEnabled: config.plannerEnabled,
+    plannerMode: config.plannerMode,
     initialObserveSettleMs: config.initialObserveSettleMs,
     qualityThreshold: config.qualityThreshold,
     microPlan: config.microPlan

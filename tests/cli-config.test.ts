@@ -193,6 +193,16 @@ describe('CLI config → AgentConfig conversion', () => {
     expect(agent.navProvider).toBe('openai');
   });
 
+  it('maps planner mode', () => {
+    const merged = mergeConfig(DEFAULTS, {
+      plannerEnabled: true,
+      plannerMode: 'auto',
+    });
+    const agent = toAgentConfig(merged);
+    expect(agent.plannerEnabled).toBe(true);
+    expect(agent.plannerMode).toBe('auto');
+  });
+
   it('maps trace scoring from memory config', () => {
     const merged = mergeConfig(DEFAULTS, {
       memory: { traceScoring: true, traceTtlDays: 14 },
