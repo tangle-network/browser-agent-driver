@@ -186,6 +186,7 @@ async function main(): Promise<void> {
       // bad run --planner (Gen 7 plan-then-execute: one LLM call generates
       // the full action sequence, runner executes deterministically)
       planner: { type: 'boolean' },
+      'planner-mode': { type: 'string' },
       // showcase
       script: { type: 'string' },
       capture: { type: 'string' },
@@ -663,6 +664,14 @@ async function main(): Promise<void> {
   if (values['observation-mode']) cliOverrides.observationMode = values['observation-mode'] as DriverConfig['observationMode'];
   if (values['goal-verification'] !== undefined) cliOverrides.goalVerification = values['goal-verification'];
   if (values.planner === true) cliOverrides.plannerEnabled = true;
+  if (values['planner-mode']) {
+    const plannerMode = values['planner-mode'];
+    if (plannerMode !== 'always' && plannerMode !== 'auto') {
+      cliError('--planner-mode must be "always" or "auto"')
+      process.exit(1)
+    }
+    cliOverrides.plannerMode = plannerMode;
+  }
   if (
     values.extension?.length ||
     values['user-data-dir'] ||

@@ -302,6 +302,35 @@ export function isMeaningfulRunScriptOutput(output: string | null | undefined): 
   return true
 }
 
+export function shouldUsePlannerForScenario(
+  scenario: Scenario,
+  mode: 'always' | 'auto' = 'always',
+): boolean {
+  if (mode !== 'auto') return true
+
+  const tags = new Set((scenario.tags ?? []).map((tag) => tag.toLowerCase()))
+  if (tags.has('extraction')) return false
+
+  const goal = scenario.goal.toLowerCase()
+  if (
+    /\breturn\s+only\s+(?:a\s+)?json\b/.test(goal) ||
+    /\bvalid\s+json\s+object\b/.test(goal) ||
+    /\bexactly\s+these?\s+keys?\b/.test(goal)
+  ) {
+    return false
+  }
+
+  if (
+    /\b(?:find|extract|look up|lookup|read|identify)\b/.test(goal) &&
+    /\b(?:return|answer|provide)\b/.test(goal) &&
+    /\b(?:json|number|year|date|price|downloads?|count|signature|metric|value)\b/.test(goal)
+  ) {
+    return false
+  }
+
+  return true
+}
+
 export class BrowserAgent {
   private driver: Driver;
   private brain: Brain;
@@ -637,6 +666,7 @@ export class BrowserAgent {
     let plannerStartTurn = 0
     const plannerEnabled =
       this.config.plannerEnabled === true && process.env.BAD_PLANNER !== '0'
+      && shouldUsePlannerForScenario(scenario, this.config.plannerMode ?? 'always')
     const maxReplans = 3
     if (plannerEnabled && scenario.startUrl) {
       // Need an initial observe so the planner has something to look at.
