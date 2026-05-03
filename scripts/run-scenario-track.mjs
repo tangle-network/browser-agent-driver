@@ -95,6 +95,7 @@ const jobs = cases.map((scenario, index) => {
   };
 });
 
+let fatalAbortReason = null;
 const results = await runPool(jobs, concurrency, async (job) => {
   const { scenario, scenarioSlug, startUrl, scenarioDir } = job;
   const args = [
@@ -147,6 +148,11 @@ const results = await runPool(jobs, concurrency, async (job) => {
   if (fs.existsSync(summaryPath)) {
     summary = JSON.parse(fs.readFileSync(summaryPath, 'utf-8'));
   }
+  const fatalProviderFailure = detectFatalProviderFailure(summary);
+  if (fatalProviderFailure && !fatalAbortReason) {
+    fatalAbortReason = `${scenario.id ?? scenarioSlug}: ${fatalProviderFailure}`;
+    console.error(`Fatal provider failure; stopping remaining scenarios: ${fatalAbortReason}`);
+  }
 
   return {
     scenarioId: scenario.id ?? scenarioSlug,
@@ -156,9 +162,10 @@ const results = await runPool(jobs, concurrency, async (job) => {
     summary,
   };
 });
+const completedResults = results.filter(Boolean);
 
 const artifactRows = [];
-for (const result of results) {
+for (const result of completedResults) {
   const checks = Array.isArray(result.summary?.artifactChecks?.rows) && result.summary.artifactChecks.rows.length > 0
     ? result.summary.artifactChecks.rows
     : verifyScenarioArtifacts({
@@ -171,9 +178,12 @@ for (const result of results) {
 }
 
 const artifactChecks = summarizeArtifactChecks(artifactRows);
-const executionFailures = results
+const executionFailures = completedResults
   .filter((result) => result.exitCode !== 0)
   .map((result) => `${result.scenarioId} exited with code ${result.exitCode}`);
+if (fatalAbortReason) {
+  executionFailures.unshift(`fatal provider failure: ${fatalAbortReason}`);
+}
 const artifactFailures = formatArtifactCheckFailures(artifactRows);
 
 // Compute total cost across all runs
@@ -181,7 +191,7 @@ let totalTokens = 0;
 let totalInputTokens = 0;
 let totalOutputTokens = 0;
 let totalCostUsd = 0;
-for (const result of results) {
+for (const result of completedResults) {
   for (const run of result.summary?.runs ?? []) {
     const m = run?.metrics ?? {};
     totalTokens += Number(m.tokensUsed ?? 0);
@@ -207,12 +217,15 @@ const aggregate = {
     memoryScopeId: memoryScopeId ?? null,
   },
   totalScenarios: results.length,
+  completedScenarios: completedResults.length,
+  aborted: Boolean(fatalAbortReason),
+  abortReason: fatalAbortReason,
   totalTokens,
   totalInputTokens: totalInputTokens || undefined,
   totalOutputTokens: totalOutputTokens || undefined,
   totalCostUsd: totalCostUsd ? Number(totalCostUsd.toFixed(4)) : undefined,
   artifactChecks,
-  results,
+  results: completedResults,
 };
 
 const aggregatePath = path.join(outRoot, 'track-summary.json');
@@ -255,6 +268,7 @@ async function runPool(items, limit, worker) {
 
   async function runner() {
     while (true) {
+      if (fatalAbortReason) return;
       const index = cursor++;
       if (index >= items.length) return;
       results[index] = await worker(items[index], index);
@@ -264,6 +278,17 @@ async function runPool(items, limit, worker) {
   const workerCount = Math.min(limit, Math.max(1, items.length));
   await Promise.all(Array.from({ length: workerCount }, () => runner()));
   return results;
+}
+
+function detectFatalProviderFailure(summary) {
+  const text = JSON.stringify(summary ?? '').toLowerCase();
+  if (/\brequires credits\b/.test(text)) return 'model requires credits';
+  if (/\binsufficient (?:credits|balance|quota)\b/.test(text)) return 'insufficient credits';
+  if (/\bbilling\b.*\b(?:limit|quota|credits?)\b/.test(text)) return 'billing limit';
+  if (/\b(?:invalid|missing|expired|unauthorized)\b.*\b(?:api[-_ ]?key|token|credentials?)\b/.test(text)) return 'invalid credentials';
+  if (/\b401\b.*\b(?:unauthorized|api[-_ ]?key|token|credentials?)\b/.test(text)) return 'unauthorized credentials';
+  if (/\b403\b.*\b(?:forbidden|api[-_ ]?key|token|credentials?)\b/.test(text)) return 'forbidden credentials';
+  return null;
 }
 
 function safeGitSha(cwd) {
