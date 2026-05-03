@@ -20,10 +20,8 @@ describe('RunState', () => {
   });
 
   it('initializes lastProgressTurn at -Infinity (no false-positive extension)', () => {
-    // The 2026-04-28 adaptive-max-turns extension reads
-    // `lastProgressTurn >= maxTurns - PROGRESS_LOOKBACK` to decide whether
-    // to grant +5 turns. Initial value MUST be -Infinity so a brand-new
-    // RunState that never saw an observation cannot accidentally satisfy
+    // Initial value MUST be -Infinity so a brand-new RunState that never saw
+    // an observation cannot accidentally satisfy
     // the predicate (which would grant the extension to every run, even
     // ones that crashed before observing anything).
     const state = new RunState(15);
@@ -112,7 +110,7 @@ describe('RunState', () => {
     expect(state.searchScoutUrls.has('https://example.com')).toBe(true);
   });
 
-  describe('Gen 10 cost cap', () => {
+  describe('cost cap', () => {
     it('defaults to DEFAULT_TOKEN_BUDGET', () => {
       const state = new RunState(20);
       expect(state.tokenBudget).toBe(DEFAULT_TOKEN_BUDGET);
@@ -137,13 +135,9 @@ describe('RunState', () => {
       }
     });
 
-    it('Gen 30 R3: BAD_TOKEN_BUDGET env var wins over explicit budget arg', () => {
-      // Regression defense: before Gen 30 R3, the explicit arg shadowed the
-      // env var, which made BAD_TOKEN_BUDGET effectively dead (runner.ts
-      // always passes an explicit `Math.round(DEFAULT_TOKEN_BUDGET * vis)`).
-      // The fix inverts the precedence so operators can bump the cap at
-      // runtime without a code change — which the SAR / OFAC demos need
-      // because claude-sonnet-4-6 is more verbose than gpt-5.4.
+    it('BAD_TOKEN_BUDGET env var wins over explicit budget arg', () => {
+      // Operators can bump the token cap at runtime even when callers pass
+      // an explicit default budget.
       const original = process.env.BAD_TOKEN_BUDGET;
       try {
         process.env.BAD_TOKEN_BUDGET = '12345';
@@ -155,7 +149,7 @@ describe('RunState', () => {
       }
     });
 
-    it('Gen 30 R3: explicit budget arg used when BAD_TOKEN_BUDGET is unset', () => {
+    it('explicit budget arg used when BAD_TOKEN_BUDGET is unset', () => {
       const original = process.env.BAD_TOKEN_BUDGET;
       try {
         delete process.env.BAD_TOKEN_BUDGET;
@@ -166,7 +160,7 @@ describe('RunState', () => {
       }
     });
 
-    it('Gen 30 R3: explicit budget arg used when BAD_TOKEN_BUDGET is invalid', () => {
+    it('explicit budget arg used when BAD_TOKEN_BUDGET is invalid', () => {
       const original = process.env.BAD_TOKEN_BUDGET;
       try {
         process.env.BAD_TOKEN_BUDGET = 'nonsense';

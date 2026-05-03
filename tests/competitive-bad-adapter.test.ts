@@ -172,7 +172,7 @@ describe('oracle — json-shape-match', () => {
     expect(v.reason).toMatch(/not a JSON object/)
   })
 
-  // Gen 8 array-shape extension
+  // Array-shape extension.
   it('passes when an array key matches a fixed-length spec of regex elements', () => {
     const finalState = {
       finalUrl: '',
@@ -245,7 +245,7 @@ describe('oracle — json-shape-match', () => {
   })
 })
 
-describe('detectAntiBotBlock — Gen 8', () => {
+describe('detectAntiBotBlock', () => {
   // @ts-expect-error mjs without types
   let detectAntiBotBlock: (finalState: object, runResult: object) => string | null
 

@@ -183,8 +183,8 @@ async function main(): Promise<void> {
       'show-cursor': { type: 'boolean' },
       // bad run --live (open SSE-streaming live viewer alongside the run)
       live: { type: 'boolean' },
-      // bad run --planner (Gen 7 plan-then-execute: one LLM call generates
-      // the full action sequence, runner executes deterministically)
+      // bad run --planner: one LLM call generates the full action sequence,
+      // then the runner executes it deterministically.
       planner: { type: 'boolean' },
       'planner-mode': { type: 'string' },
       // showcase
@@ -252,12 +252,12 @@ async function main(): Promise<void> {
       'wait-for': { type: 'string' },
       'wait-timeout': { type: 'string' },
 
-      // Gen 32 — `bad share` flags
+      // `bad share` flags
       visibility: { type: 'string' },
       'bad-app-url': { type: 'string' },
       'no-copy': { type: 'boolean' },
 
-      // Gen 32 — preview / stream / interrupt
+      // preview / stream / interrupt
       'max-steps': { type: 'string' },
       headed: { type: 'boolean' },
       stream: { type: 'string' },
@@ -845,9 +845,8 @@ async function main(): Promise<void> {
     if (values['goal-verification'] === undefined) cliOverrides.goalVerification = true;
   }
 
-  // Gen 13: vision/hybrid observation mode requires vision + screenshots.
-  // Viewport forced to 1024×768 to match Claude's computer-use training
-  // distribution — coordinates map 1:1 with no scaling needed.
+  // Vision and hybrid observation modes require screenshots and a stable
+  // 1024×768 coordinate space.
   if (cliOverrides.observationMode === 'vision' || cliOverrides.observationMode === 'hybrid') {
     if (cliOverrides.vision === undefined) cliOverrides.vision = true;
     if (cliOverrides.visionStrategy === undefined) cliOverrides.visionStrategy = 'always';
@@ -876,11 +875,8 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // Dynamic imports — keeps startup fast and allows tree-shaking.
-  // Gen 27: use patchright (Playwright fork with CDP leak fixes) for ALL
-  // profiles. 13/50 WebbBench sites block standard Playwright via CDP
-  // protocol detection (Runtime.enable leak). Fallback to regular
-  // playwright if patchright isn't installed.
+  // Dynamic imports keep startup fast. Prefer patchright for lower browser
+  // automation fingerprinting, falling back to regular Playwright.
   const isStealthProfile = launchPlan.profile.includes('stealth');
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let browserLib: any;
@@ -899,9 +895,8 @@ async function main(): Promise<void> {
   // Optional live event bus + SSE viewer. Constructed only when `--live` is
   // passed; otherwise the runner uses an internal no-op bus and pays nothing.
   // The bus is shared across the entire suite so a single SSE connection
-  // observes all turns of all test cases. Gen 32: when `--stream <url>` is
-  // passed the bus is always created (even without --live) so the webhook
-  // streamer has something to subscribe to.
+  // observes all turns of all test cases. When `--stream <url>` is passed
+  // the bus is always created so the webhook streamer can subscribe.
   const liveEnabled = values.live === true;
   const streamUrl = typeof values.stream === 'string' && values.stream.length > 0 ? values.stream : undefined;
   const needsBus = liveEnabled || !!streamUrl;
@@ -918,7 +913,7 @@ async function main(): Promise<void> {
     });
   }
 
-  // Gen 32 — webhook streamer. When `--stream <url>` is passed, subscribe
+  // Webhook streamer. When `--stream <url>` is passed, subscribe
   // to the bus and POST every event to <url> as it fires. Auth via
   // `--stream-token` or $BAD_STREAM_TOKEN. Non-fatal on failure — the
   // canonical record is always events.jsonl on disk.
@@ -938,7 +933,7 @@ async function main(): Promise<void> {
     if (!values.json) cliLog('stream', `POST → ${streamUrl} (id ${streamId})`);
   }
 
-  // Gen 32 — interrupt controller. `--interrupt` enables keyboard pause/
+  // Interrupt controller. `--interrupt` enables keyboard pause/
   // resume/abort during a run. No-op in non-TTY (CI, piped output).
   let interruptController: import('./runner/interrupt-controller.js').InterruptController | undefined;
   let detachInterrupt: (() => void) | undefined;
@@ -1000,9 +995,8 @@ async function main(): Promise<void> {
     if (!values.json) cliLog('skills', `domain: ${domainSkillsLoadedCount} loaded`)
   }
 
-  // Gen 29: macros. Loaded alongside domain skills; gated by
-  // BAD_MACROS_DISABLED=1. The registry is passed to PlaywrightDriver
-  // (dispatch) and its promptBlock to the BrowserAgent (visibility).
+  // Macros. Loaded alongside domain skills; gated by BAD_MACROS_DISABLED=1.
+  // The registry is passed to PlaywrightDriver and its promptBlock to BrowserAgent.
   const macrosDisabled = process.env.BAD_MACROS_DISABLED === '1'
   let macroRegistry: import('./skills/macro-loader.js').MacroRegistry | undefined
   if (!macrosDisabled) {
@@ -1672,10 +1666,7 @@ async function main(): Promise<void> {
   let runError: unknown;
 
   try {
-    // Gen 32 — wire interrupt controller. When the user presses `q`,
-    // abort() fires which the runner observes via the suite-level
-    // signal. Runs a check before the runner starts so pressing `q`
-    // BEFORE the first turn still aborts cleanly.
+    // Wire interrupt controller. Pressing `q` aborts via the suite-level signal.
     const interruptSignal = interruptController
       ? (() => {
         const ac = new AbortController();
@@ -1726,10 +1717,8 @@ async function main(): Promise<void> {
     runError = err;
   } finally {
     renderer?.destroy();
-    // Gen 32 — detach interrupt controller first so stdin leaves raw mode
-    // BEFORE we try to write any shutdown logs. Otherwise the user's TTY
-    // stays in raw mode after the run ends and Ctrl-C, arrow keys, etc.
-    // come through as garbage bytes.
+    // Detach interrupt controller first so stdin leaves raw mode before
+    // shutdown logs are written.
     if (detachInterrupt) detachInterrupt();
     // Flush and close the stream webhook so the final events (run-completed,
     // suite-complete) reach the endpoint before the CLI exits.

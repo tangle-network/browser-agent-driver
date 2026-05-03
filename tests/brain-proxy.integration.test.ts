@@ -1,10 +1,7 @@
 /**
  * Real-system integration test for Brain talking to an OpenAI-compatible proxy.
  *
- * The triple `(provider=openai, custom baseUrl, model=gpt-5.x)` was missing from
- * coverage — both the Gen 30 SSE-streaming bug AND the 2026-04-27 Responses-API
- * routing bug shipped because no test exercised it. This test spins up a tiny
- * node:http server that mimics router.tangle.tools's behavior:
+ * This test spins up a tiny node:http server that mimics router.tangle.tools's behavior:
  *   /v1/chat/completions → canonical OpenAI envelope
  *   /v1/responses        → 503 (matches the live router; LiteLLM doesn't proxy
  *                          the Responses API)
@@ -116,7 +113,7 @@ describe('Brain → OpenAI-compatible proxy', () => {
     expect(paths.some((p) => p === '/v1/responses')).toBe(false)
   })
 
-  it('chat-completions body has stream:false (Gen 30 force-non-streaming fix)', async () => {
+  it('chat-completions body has stream:false', async () => {
     const brain = new Brain({
       provider: 'openai',
       model: 'gpt-5.4',

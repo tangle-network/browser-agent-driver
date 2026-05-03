@@ -1,5 +1,5 @@
 /**
- * Gen 32 — overlay narration parsing.
+ * Overlay narration parsing.
  *
  * The runner parses LLM reasoning text to drive three overlay channels:
  * reasoning panel, progress label, verdict badges. These tests pin the

@@ -1,5 +1,5 @@
 /**
- * Tests for the Gen 6 batch action verbs (fill, clickSequence) — pin the
+ * Tests for the batch action verbs (fill, clickSequence) — pin the
  * JSON parser, the validateAction shape, and the supervisor signature.
  *
  * The driver's actual `fill` execution is covered by an integration test in

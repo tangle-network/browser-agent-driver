@@ -107,9 +107,7 @@ export async function detectCaptcha(page: Page): Promise<CaptchaDetection | null
 // Solvability
 // ---------------------------------------------------------------------------
 
-// Gen 27: turnstile is "solvable" in the sense that we can attempt the
-// checkbox click. With patchright (CDP leak fixes), Turnstile's behavioral
-// check often passes on the first click without further challenge.
+// Turnstile is "solvable" in the sense that we can attempt the checkbox click.
 const SOLVABLE_TYPES = new Set<CaptchaType>(['recaptcha-v2', 'turnstile'])
 
 /** Whether we have a solver implementation for this CAPTCHA type */

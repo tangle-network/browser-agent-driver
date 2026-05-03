@@ -1,5 +1,5 @@
 /**
- * Gen 33 — fan-out executor.
+ * Fan-out executor.
  *
  * Pure-function tests for formatFeedback + concurrency cap. The
  * end-to-end spawning path is covered by integration tests under

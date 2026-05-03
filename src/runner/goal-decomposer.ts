@@ -2,7 +2,6 @@
  * Goal Decomposer — detects compound goals and splits them into
  * parallel-executable sub-goals.
  *
- * Gen 21: the intelligence layer for parallel tab exploration.
  * One cheap LLM call classifies the goal and splits if needed.
  * Conservative by default — only splits when the pattern is clear.
  */

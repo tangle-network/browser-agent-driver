@@ -1,6 +1,5 @@
 /**
- * Integration tests for BrowserAgent.executePlan — the Gen 7 deterministic
- * step executor. We construct a synthesized Plan (no LLM call) and execute
+ * Integration tests for BrowserAgent.executePlan. We construct a synthesized Plan (no LLM call) and execute
  * it against a real Chromium page, verifying:
  *
  *   1. Happy-path: every step executes + verifies → return 'completed'
@@ -247,12 +246,9 @@ describe('BrowserAgent.executePlan', () => {
     await setup.browser.close()
   })
 
-  // Gen 7.2: when the planner emits runScript→complete with placeholder
-  // values in the complete result, the runner substitutes the runScript's
-  // actual output as the final result. Without this, extraction tasks
-  // would always return the planner's fabricated values (null, etc.) and
-  // fail their oracles. See task #108 / docs/COMPETITIVE-EVAL.md.
-  it('Gen 7.2: substitutes runScript output when complete.result has placeholder pattern', async () => {
+  // When the planner emits runScript→complete with placeholder values, the
+  // runner substitutes the runScript output as the final result.
+  it('substitutes runScript output when complete.result has placeholder pattern', async () => {
     const setup = await setupAgent()
     const internals = setup.agent as unknown as AgentInternals
     const plan: Plan = {
@@ -287,19 +283,16 @@ describe('BrowserAgent.executePlan', () => {
     expect(result.finalResult).toContain('3,421')
     expect(result.finalResult).toContain('$48,290')
     expect(result.finalResult).not.toMatch(/:\s*null\b/)
-    // The complete-step turn should be flagged as substituted in its reasoning
-    // for forensics.
+    // The complete-step turn should be flagged as substituted in its reasoning.
     const completeTurn = turns[turns.length - 1]
     expect(completeTurn.action.action).toBe('complete')
-    expect(completeTurn.reasoning).toMatch(/Gen 7.2 substituted/)
+    expect(completeTurn.reasoning).toMatch(/substituted runScript output/)
     await setup.browser.close()
   })
 
-  // Gen 7.2: when the planner correctly emits ONLY runScript (no complete)
-  // for an extraction task, the runner should auto-emit a complete with the
-  // runScript output instead of falling through to the per-action loop.
-  // This is the supply side of the planner-prompt rule #7 in src/brain/index.ts.
-  it('Gen 7.2: auto-completes with runScript output when plan ends with successful runScript', async () => {
+  // When a plan ends with a successful runScript, the runner auto-emits a
+  // complete with the runScript output.
+  it('auto-completes with runScript output when plan ends with successful runScript', async () => {
     const setup = await setupAgent()
     const internals = setup.agent as unknown as AgentInternals
     const plan: Plan = {
@@ -310,7 +303,7 @@ describe('BrowserAgent.executePlan', () => {
             script: '(() => JSON.stringify({totalUsers: "12,847", revenue: "$48,290"}))()',
           },
           expectedEffect: 'extracted JSON values',
-          rationale: 'extract metrics — no complete step per Gen 7.2 prompt rule',
+          rationale: 'extract metrics — no complete step needed',
         },
       ],
     }
@@ -323,19 +316,18 @@ describe('BrowserAgent.executePlan', () => {
     expect(result.finalResult).toContain('$48,290')
     // turnsConsumed should be plan.steps.length + 1 (the synthesized complete turn)
     expect(result.turnsConsumed).toBe(2)
-    // The synthesized complete turn should be in the shared turns array with
-    // a Gen 7.2 marker for forensics.
+    // The synthesized complete turn should be in the shared turns array.
     const lastTurn = turns[turns.length - 1]
     expect(lastTurn.action.action).toBe('complete')
-    expect(lastTurn.reasoning).toMatch(/Gen 7.2 auto-complete/)
+    expect(lastTurn.reasoning).toMatch(/Auto-complete/)
     await setup.browser.close()
   })
 
   // Negative: if a runScript-only plan returns empty output, we should NOT
   // auto-complete. Fall through to the per-action loop (deviated).
-  // Gen 9: the deviation reason now mentions "no meaningful output" so the
-  // per-action loop's [REPLAN] context can act on it.
-  it('Gen 7.2/9: does NOT auto-complete when runScript output is empty', async () => {
+  // The deviation reason mentions "no meaningful output" so the per-action
+  // loop's [REPLAN] context can act on it.
+  it('does not auto-complete when runScript output is empty', async () => {
     const setup = await setupAgent()
     const internals = setup.agent as unknown as AgentInternals
     const plan: Plan = {
@@ -350,18 +342,13 @@ describe('BrowserAgent.executePlan', () => {
     const result = await internals.executePlan(plan, SCENARIO, 'run_test_no_auto_empty', turns, new RunState(10), 0)
     expect(result.kind).toBe('deviated')
     if (result.kind !== 'deviated') throw new Error('narrow')
-    // Gen 9: empty runScript output produces a "no meaningful output" reason
-    // (not "exhausted"), so the per-action loop's [REPLAN] context names
-    // the actual failure mode.
+    // Empty runScript output produces a "no meaningful output" reason.
     expect(result.reason).toMatch(/no meaningful output|exhausted/)
     await setup.browser.close()
   })
 
-  // Gen 9: when runScript returns a placeholder JSON like {"x": null},
-  // the auto-complete should DECLINE and fall through with a "no meaningful
-  // output" reason. This is the npm/mdn/w3c failure mode that browser-use
-  // recovers from via per-action iteration.
-  it('Gen 9: declines auto-complete when runScript returns {"x": null} placeholder', async () => {
+  // Placeholder JSON should decline auto-complete and fall through.
+  it('declines auto-complete when runScript returns {"x": null} placeholder', async () => {
     const setup = await setupAgent()
     const internals = setup.agent as unknown as AgentInternals
     const plan: Plan = {
@@ -383,8 +370,8 @@ describe('BrowserAgent.executePlan', () => {
     await setup.browser.close()
   })
 
-  // Gen 9: when runScript returns the literal string "null", same fall-through.
-  it('Gen 9: declines auto-complete when runScript returns the literal string "null"', async () => {
+  // Literal "null" should fall through too.
+  it('declines auto-complete when runScript returns the literal string "null"', async () => {
     const setup = await setupAgent()
     const internals = setup.agent as unknown as AgentInternals
     const plan: Plan = {
@@ -404,7 +391,7 @@ describe('BrowserAgent.executePlan', () => {
   })
 
   // Positive control: meaningful output still auto-completes correctly.
-  it('Gen 9: auto-completes when runScript output IS meaningful (positive control)', async () => {
+  it('auto-completes when runScript output is meaningful', async () => {
     const setup = await setupAgent()
     const internals = setup.agent as unknown as AgentInternals
     const plan: Plan = {
@@ -428,7 +415,7 @@ describe('BrowserAgent.executePlan', () => {
 
   // Negative test: a complete with a clean (non-placeholder) result should
   // pass through unchanged even if there was a runScript earlier.
-  it('Gen 7.2: leaves complete.result unchanged when there are no placeholders', async () => {
+  it('leaves complete.result unchanged when there are no placeholders', async () => {
     const setup = await setupAgent()
     const internals = setup.agent as unknown as AgentInternals
     const plan: Plan = {
@@ -455,10 +442,9 @@ describe('BrowserAgent.executePlan', () => {
     await setup.browser.close()
   })
 
-  // Gen 10: extractWithIndex in a plan should run the extraction (capturing
-  // the formatted match list as turn data), then deviate with the match list
-  // in the reason so the per-action loop can pick by index.
-  it('Gen 10: extractWithIndex plan step captures matches and deviates with the list', async () => {
+  // extractWithIndex in a plan captures the formatted match list, then
+  // deviates with that list so the per-action loop can pick by index.
+  it('extractWithIndex plan step captures matches and deviates with the list', async () => {
     const setup = await setupAgent()
     const { agent: localAgent, page: localPage, browser: localBrowser } = setup
     // Use a content-rich page so extractWithIndex has something to find
@@ -477,7 +463,7 @@ describe('BrowserAgent.executePlan', () => {
         {
           action: { action: 'extractWithIndex', query: 'p, dd, code', contains: 'downloads' },
           expectedEffect: 'extracted matches for the downloads paragraph',
-          rationale: 'Gen 10: pick by content',
+          rationale: 'pick by content',
         },
       ],
     }
@@ -495,9 +481,9 @@ describe('BrowserAgent.executePlan', () => {
     await localBrowser.close()
   })
 
-  // Gen 10: when extractWithIndex returns zero matches, the plan still
-  // deviates (the per-action loop must observe and try a wider query)
-  it('Gen 10: extractWithIndex with no matches deviates with empty match list', async () => {
+  // When extractWithIndex returns zero matches, the plan still deviates so
+  // the per-action loop can observe and try a wider query.
+  it('extractWithIndex with no matches deviates with empty match list', async () => {
     const setup = await setupAgent()
     await setup.page.setContent('<h1>Empty page with no matching content</h1>')
     await new PlaywrightDriver(setup.page, { showCursor: false }).observe()
@@ -519,8 +505,8 @@ describe('BrowserAgent.executePlan', () => {
     await setup.browser.close()
   })
 
-  // Gen 10: cost cap fires when totalTokensUsed exceeds tokenBudget
-  it('Gen 10 cost cap: RunState reports exhausted when tokens exceed budget', () => {
+  // Cost cap fires when totalTokensUsed exceeds tokenBudget.
+  it('RunState reports exhausted when tokens exceed budget', () => {
     const state = new RunState(20, 1000)
     state.recordTokens(800)
     expect(state.isTokenBudgetExhausted).toBe(false)
@@ -573,9 +559,8 @@ describe('hasPlaceholderPattern', () => {
     expect(detect('[1, 2, 3]')).toBe(false)
   })
 
-  // Gen 9: isMeaningfulRunScriptOutput catches the runScript outputs that
-  // SHOULD trigger a fall-through to the per-action loop.
-  describe('isMeaningfulRunScriptOutput (Gen 9)', () => {
+  // isMeaningfulRunScriptOutput catches outputs that should fall through.
+  describe('isMeaningfulRunScriptOutput', () => {
     it('rejects null / undefined / empty / whitespace', () => {
       expect(isMeaningful(null)).toBe(false)
       expect(isMeaningful(undefined)).toBe(false)

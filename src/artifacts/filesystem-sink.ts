@@ -6,7 +6,7 @@
  *   ├── {testId}/
  *   │   ├── turn-05.jpg
  *   │   ├── recording.webm
- *   │   ├── events.jsonl    ← Gen 5: sub-turn TurnEvents from the bus
+ *   │   ├── events.jsonl    ← sub-turn TurnEvents from the bus
  *   │   └── trajectory.json
  *   ├── suite/
  *   │   ├── report.json

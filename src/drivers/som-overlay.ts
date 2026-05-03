@@ -3,9 +3,8 @@
  * before taking a screenshot. The LLM sees labeled elements and outputs
  * "click [N]" instead of guessing pixel coordinates.
  *
- * Gen 23: eliminates coordinate guessing on complex UIs (Google Flights date
- * pickers, Booking form fields). The overlay is injected, screenshot taken,
- * then removed — it never persists in the page.
+ * The overlay is injected, screenshot taken, then removed; it never persists
+ * in the page.
  *
  * Returns a mapping of label number → element bounding box center so the
  * runner can translate "click [3]" → mouse.click(x, y).

@@ -1,8 +1,8 @@
 /**
  * Fleet telemetry envelope.
  *
- * One envelope per meaningful unit of work — a page audit, an evolve round, a
- * full bad run. Envelopes are append-only and JSONL-friendly. Schema is
+ * One envelope per meaningful unit of work such as a page audit, design
+ * iteration, or full bad run. Envelopes are append-only and JSONL-friendly. Schema is
  * deliberately a superset of agent-eval's Run/Span trace shape so a future
  * rollup script can promote these into agent-eval traces without translation.
  *

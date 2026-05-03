@@ -98,9 +98,7 @@ async function humanMouseMove(page: Page, targetX: number, targetY: number): Pro
   }
 }
 
-// Gen 13: Virtual screen dimensions for vision-first coordinate actions.
-// Claude's computer-use training uses 1024x768. Screenshots are resized to
-// this before being sent, and coordinate outputs are in this space.
+// Virtual screen dimensions for vision-first coordinate actions.
 const VIRTUAL_SCREEN = { width: 1024, height: 768 } as const;
 
 /** Phase-level timing breakdown for observe() */
@@ -148,7 +146,7 @@ export interface PlaywrightDriverOptions {
    * screenshot lands wherever the transition has reached by then.
    */
   showCursor?: boolean;
-  /** Gen 29: registry of user-defined macros the agent can invoke via
+  /** Registry of user-defined macros the agent can invoke via
    * `{action:"macro", name:..., args:...}`. When omitted, macro calls fail
    * with an error message referencing the missing name. */
   macros?: MacroRegistry;
@@ -166,7 +164,7 @@ export class PlaywrightDriver implements Driver {
    * the init script. Undefined if showCursor is off.
    */
   private cursorInstallPromise?: Promise<void>;
-  /** Gen 23: SoM element map from last observe — used to resolve clickLabel/typeLabel */
+  /** SoM element map from last observe — used to resolve clickLabel/typeLabel */
   private somElements: SomElement[] = [];
 
   constructor(
@@ -373,7 +371,7 @@ export class PlaywrightDriver implements Driver {
     await this.callOverlay('pushBadge', [kind, text])
   }
 
-  // ── Gen 34 Hydra API ───────────────────────────────────────────────
+  // ── Fan-out overlay API ────────────────────────────────────────────
 
   /** Start the fan-out overlay: dim backdrop + grid of N labeled cells. */
   async fanOutStart(labels: string[]): Promise<void> {
@@ -574,8 +572,7 @@ export class PlaywrightDriver implements Driver {
       }
     }
 
-    // Gen 23: SoM overlay — inject numbered labels, screenshot, remove.
-    // Only when visionStrategy is 'always' (vision/hybrid mode).
+    // SoM overlay: inject numbered labels, screenshot, remove.
     const useSom = captureScreenshot && this.options.visionStrategy === 'always';
     if (useSom) {
       try {
@@ -857,11 +854,7 @@ export class PlaywrightDriver implements Driver {
         }
 
         case 'extractWithIndex': {
-          // Gen 10: numbered DOM-index extraction. Returns the formatted match
-          // list as `data` so executePlan can capture it like runScript does.
-          // The per-action loop has its own intercept (runner.ts) so this
-          // path is only hit when extractWithIndex appears in a planner-
-          // emitted Plan step.
+          // Numbered DOM-index extraction for planner-emitted plan steps.
           const matches = await runExtractWithIndex(this.page, action.query, action.contains);
           const formatted = formatExtractWithIndexResult(matches, action.query, action.contains);
           return { success: true, error: undefined, data: formatted };
@@ -916,9 +909,7 @@ export class PlaywrightDriver implements Driver {
                   el.dispatchEvent(new Event('change', { bubbles: true }));
                 });
               });
-              // Gen 27: settle delay between fields. Complex forms (Google
-              // Flights, Booking) use framework-managed state that needs time
-              // to process each field before the next one is filled.
+              // Settle delay between fields lets framework-managed form state process.
               if (fi < fieldEntries.length - 1) {
                 await this.page.waitForTimeout(150);
               }
@@ -949,9 +940,7 @@ export class PlaywrightDriver implements Driver {
               return { success: false, error: `fill check ${ref}: ${message}` };
             }
           }
-          // Gen 27: post-fill verification. Read back field values to detect
-          // silent form resets (e.g., Google Flights wiping fields on state change).
-          // Report mismatches so the agent can switch to keyboard-only filling.
+          // Post-fill verification reads field values to detect silent resets.
           if (fieldEntries.length > 0) {
             await this.page.waitForTimeout(200); // let framework settle
             const mismatches: string[] = [];
@@ -1038,7 +1027,7 @@ export class PlaywrightDriver implements Driver {
           return { success: true, ...(lastBounds ? { bounds: lastBounds } : {}) };
         }
 
-        // Gen 13: Vision-first coordinate-based actions.
+        // Vision-first coordinate-based actions.
         // Bounds use a 40×40 box centered on the click point so the
         // bad-app ClickOverlay renders a visible highlight + ripple.
         case 'clickAt': {
@@ -1062,7 +1051,7 @@ export class PlaywrightDriver implements Driver {
           return { success: true, bounds: { x: actualX - 20, y: actualY - 20, width: 40, height: 40 } };
         }
 
-        // Gen 23: SoM label-based actions — resolve label → element center → click
+        // SoM label-based actions — resolve label → element center → click.
         case 'clickLabel': {
           const el = this.somElements.find(e => e.label === action.label);
           if (!el) return { success: false, error: `SoM label [${action.label}] not found (${this.somElements.length} elements available)` };
@@ -1082,10 +1071,7 @@ export class PlaywrightDriver implements Driver {
         }
 
         case 'macro': {
-          // Gen 29: expand a named macro into its composed safe-primitive
-          // steps and execute each via this.execute. Flat-only (the loader
-          // forbids macro-in-macro), so recursion depth is bounded at 1.
-          // A step failure short-circuits the macro with a contextual error.
+          // Expand a named macro into safe primitive steps and execute them.
           const registry = this.options.macros;
           if (!registry) {
             return { success: false, error: `No macro registry loaded; cannot invoke "${action.name}"` };

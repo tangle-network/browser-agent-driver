@@ -143,9 +143,7 @@ function applyProfileBrowserArgs(
   profile: NonNullable<DriverConfig['profile']>,
   browserArgs: string[],
 ): void {
-  // Gen 27: apply stealth args to ALL profiles. 13/50 WebbBench sites
-  // block default Chromium. These flags are low-risk and reduce automation
-  // fingerprints without side effects.
+  // Apply stealth args to all profiles to reduce common automation fingerprints.
   const stealthArgs = [
     '--disable-blink-features=AutomationControlled',
     '--disable-infobars',

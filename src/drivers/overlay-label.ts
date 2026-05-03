@@ -6,10 +6,9 @@
  * anyone watching a recorded video — it needs to read like a human
  * narrator, not like a debug log.
  *
- * Gen 34 rewrite: natural-English sentences.
- *
- *   Before:   `type "JOHN SMITH" · Last Name: insert criteria`
- *   After:    `Typing "JOHN SMITH" into Last Name`
+ * Examples:
+ *   `type "JOHN SMITH" · Last Name: insert criteria` becomes
+ *   `Typing "JOHN SMITH" into Last Name`
  *
  * Design rules:
  *   - Labels MUST fit on one line at ~13px. Target max 56 chars rendered.

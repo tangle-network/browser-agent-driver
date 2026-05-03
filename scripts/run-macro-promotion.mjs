@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Macro promotion script — Gen 29 eval-gated mutable tool surface.
+ * Macro promotion script — eval-gated mutable tool surface.
  *
  * Reads a candidate under `.evolve/candidates/macros/*.json`, stages its
  * macro into a tmpdir (so the canonical `skills/macros/` tree is never
@@ -326,11 +326,10 @@ function renderComparisonTable(name, comparison, verdict) {
   lines.push(row('costUsd', b.costUsd.mean, t.costUsd.mean, comparison.deltas.costMean, t.reps, `$${t.costUsd.min.toFixed(4)}/${t.costUsd.max.toFixed(4)}`))
   lines.push(row('durationMs', b.durationMs.mean, t.durationMs.mean, comparison.deltas.durationMeanMs, t.reps, `${t.durationMs.min}/${t.durationMs.max}`))
 
-  // Gen 30: surface the bootstrap CI + Cohen's d that drove the verdict so
-  // the rejection/promotion record carries the statistics, not just means.
+  // Surface the bootstrap CI and Cohen's d behind the verdict.
   if (comparison.stats) {
     lines.push('')
-    lines.push('## Bootstrap CI + effect size (Gen 30)')
+    lines.push('## Bootstrap CI + effect size')
     lines.push('')
     lines.push('| metric | 95% CI of Δ (treatment−baseline) | Cohen\'s d | magnitude |')
     lines.push('|---|---|---|---|')

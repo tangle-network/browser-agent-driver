@@ -91,7 +91,7 @@ const DATA_EXTRACTION_RULES = `
 21. EFFICIENT COMPLETION: When you have enough data to answer the goal, complete immediately. Do not navigate to additional pages for "confirmation" if the data was already extracted or is visible in the current a11y tree. Include all extracted data in the completion result
 22. EXTRACT BEFORE NAVIGATING: On search results, directory listings, or any page showing multiple items, ALWAYS extract ALL needed data BEFORE clicking into individual items. Use extractWithIndex with a wide query for unknown structure, or runScript with document.querySelectorAll('.result-card') if the structure is well-known. Many sites use anti-bot protection on detail pages but leave listing pages accessible. If you can answer the goal from list-level data, do so without navigating deeper.
 23. FILTER vs SEARCH: When a goal asks to filter results (e.g., "under $50", "4+ stars"), look for filter controls (sliders, dropdowns, checkboxes in a sidebar or toolbar) rather than typing filter values into the search box. Search boxes are for keyword queries, not numeric filters. After applying a filter: (1) wait 2-3 seconds for results to update, (2) verify the filter took effect by checking the updated results, (3) extract the filtered data. Do NOT keep searching for more filter controls after one is applied — extract and complete
-25. EXTRACTWITHINDEX RECOVERY: If a previous runScript returned null/empty/{x:null} on an extraction task, the selector was wrong. DO NOT retry the same runScript or guess a similar selector — the LLM cannot guess CSS class names that aren't visible in the snapshot. Switch to extractWithIndex with a WIDE query: \`'p, span, dd, code, strong, em'\` plus a \`contains\` filter naming the expected text fragment (e.g. contains: "downloads" for npm download counts, contains: "callbackFn" for MDN method signatures). The response shows you the actual text per element so you can pick by content match. This is the Gen 10 recovery pattern — pick-by-content beats pick-by-selector on every page where the planner couldn't see the data at plan time.`;
+25. EXTRACTWITHINDEX RECOVERY: If a previous runScript returned null/empty/{x:null} on an extraction task, the selector was wrong. DO NOT retry the same runScript or guess a similar selector — the LLM cannot guess CSS class names that aren't visible in the snapshot. Switch to extractWithIndex with a WIDE query: \`'p, span, dd, code, strong, em'\` plus a \`contains\` filter naming the expected text fragment (e.g. contains: "downloads" for npm download counts, contains: "callbackFn" for MDN method signatures). The response shows you the actual text per element so you can pick by content match. Pick-by-content beats pick-by-selector on pages where the planner couldn't see the data at plan time.`;
 
 /** Heavy page rules (19-20, 24): injected when snapshot is large or turn count is high */
 const HEAVY_PAGE_RULES = `
@@ -99,7 +99,7 @@ const HEAVY_PAGE_RULES = `
 20. SECTION NAVIGATION: When you need to find a specific section (e.g., rugby, sports, travel) and the nav links aren't in the truncated a11y tree, use runScript to discover navigation: JSON.stringify(Array.from(document.querySelectorAll('nav a, header a, [role="navigation"] a, .nav a')).slice(0, 30).map(a => ({text: a.textContent.trim(), href: a.href}))). Then navigate directly to the matching section URL
 24. HEAVY PAGE RECOVERY: If a page takes very long to load or seems stuck, do NOT wait — use runScript to check document.readyState and extract whatever content is already in the DOM. Partial data is better than a timeout. If the page is completely blank, try navigating to a simpler version (mobile site, search page) instead of waiting`;
 
-/** Gen 24: URL-first navigation — GENERAL PURPOSE, not site-specific.
+/** URL-first navigation rules for complex forms and search pages.
  * Teaches the agent to construct search/results URLs from goal text
  * instead of fighting form UIs. Works on any site with URL parameters. */
 const URL_FIRST_RULES = `
@@ -157,7 +157,7 @@ EXAMPLE 3 — Batch fill a multi-field form (one turn instead of ten):
 /** Full static prompt (all rules) — used as default when config.systemPrompt is not set */
 const SYSTEM_PROMPT = CORE_RULES + SEARCH_RULES + DATA_EXTRACTION_RULES + HEAVY_PAGE_RULES + REASONING_SUFFIX;
 
-// Gen 13: Vision-first system prompt (pure coordinate actions).
+// Vision-first system prompt for pure coordinate actions.
 const VISION_FIRST_PROMPT = `You are a browser automation agent. You operate by looking at screenshots and clicking on elements using pixel coordinates.
 
 The screenshot shows the current page state at 1024×768 resolution. You identify elements visually and specify where to click using (x, y) coordinates in this coordinate space.
@@ -258,7 +258,7 @@ REASONING FRAMEWORK:
 3. What is the smallest action that makes progress toward the goal?
 4. If my last action failed, WHY did it fail? Try a different location or strategy.`;
 
-// Gen 15: Unified vision+DOM prompt. The model sees BOTH the screenshot AND
+// Unified vision+DOM prompt. The model sees BOTH the screenshot AND
 // the ARIA snapshot with @refs. It can use EITHER coordinate actions (clickAt/
 // typeAt for visual targets) OR ref actions (click/type/fill for DOM elements).
 // This lets it pick the best tool per interaction: vision for visual layout,
@@ -499,7 +499,7 @@ export class Brain {
   private scoutModelName?: string;
   private scoutProvider?: 'openai' | 'anthropic' | 'google' | 'cli-bridge' | 'codex-cli' | 'claude-code' | 'sandbox-backend' | 'zai-coding-plan';
   private scoutUseVision: boolean;
-  // Gen 28: per-role model overrides
+  // Per-role model overrides.
   private plannerModel?: string;
   private plannerProvider?: string;
   private verifierModel?: string;
@@ -539,7 +539,7 @@ export class Brain {
     this.scoutModelName = config.scout?.model;
     this.scoutProvider = config.scout?.provider;
     this.scoutUseVision = config.scout?.useVision === true;
-    // Gen 28: per-role model overrides
+    // Per-role model overrides.
     this.plannerModel = config.models?.planner?.model;
     this.plannerProvider = config.models?.planner?.provider;
     this.verifierModel = config.models?.verifier?.model;
@@ -614,9 +614,8 @@ export class Brain {
    * non-streaming — that every OpenAI-compatible proxy is guaranteed to serve.
    *
    * The single source of truth for "we're talking to a proxy, be conservative
-   * about API features" — both `createForceNonStreamingFetch()` (the Gen 30
-   * streaming-default fix) and the `forceReasoning` gate above route through
-   * this predicate.
+   * about API features"; both `createForceNonStreamingFetch()` and the
+   * `forceReasoning` gate route through this predicate.
    */
   private isProxiedOpenAI(providerName: string): boolean {
     return providerName === 'openai' && Boolean(this.baseUrl);
@@ -936,9 +935,8 @@ export class Brain {
     turnInfo?: { current: number; max: number },
   ): boolean {
     if (!this.adaptiveModelRouting || !this.navModelName) return false;
-    // Gen 22: use cheap model for DOM-only same-page turns (form filling,
-    // clicking known elements). Keep expensive model for first turn, new
-    // pages, and error recovery where reasoning matters.
+    // Use the navigation model for DOM-only same-page turns. Keep the primary
+    // model for first turns, new pages, and error recovery.
     const isFirstTurn = !turnInfo || turnInfo.current <= 1;
     const samePageAsPrevious = this.lastDecisionUrl === state.url;
     const hasError = extraContext?.includes('REJECTED') || extraContext?.includes('ERROR');
@@ -1187,8 +1185,7 @@ export class Brain {
     //   Zone 1 (intact):         last 2 turns — full content
     //   Zone 2 (standard):       turns 3-5 back — ELEMENTS stripped from user msgs
     //   Zone 3 (deep compact):   turns 6+ back — both user and assistant ultra-compacted
-    // REVERTED from aggressive 8/20 — the hard prune at 20 messages caused
-    // Google Flights to lose essential history on 30-turn runs.
+    // Keep enough older history for long multi-step travel workflows.
     const deepCompactBefore = Math.max(0, this.history.length - 10);
 
     return this.history.map((msg, idx) => {
@@ -1320,7 +1317,7 @@ export class Brain {
     turnInfo?: { current: number; max: number },
     options?: { forceVision?: boolean }
   ): Promise<BrainDecision> {
-    // Gen 13: vision-first or hybrid mode — delegate to the vision path
+    // Vision-first and hybrid modes delegate to the vision path.
     if (this.observationMode === 'vision' || this.observationMode === 'hybrid') {
       return this.decideVision(goal, state, extraContext, turnInfo);
     }
@@ -1342,10 +1339,8 @@ export class Brain {
       && diffTotal > 0
       && diffChanges / diffTotal < 0.3;
 
-    // Tighter snapshot budget on same-page turns — agent already saw the full page.
-    // Gen 10C: raised new-page budget from 16k to 24k so extraction tasks (MDN/Python
-    // docs/W3C spec) get the full <dl>/<code>/<pre> content the LLM needs to write
-    // a working runScript on the first try.
+    // Tighter snapshot budget on same-page turns; new pages keep enough
+    // content for extraction from docs/spec pages.
     const snapshotBudget = samePageAsPrevious ? 8_000 : 24_000;
     let visibleSnapshot: string;
     let elementsHeader: string;
@@ -1518,7 +1513,7 @@ ${visibleSnapshot}`;
   }
 
   /**
-   * Gen 13: Vision-first decision path. The screenshot is the primary
+   * Vision-first decision path. The screenshot is the primary
    * observation; DOM snapshot is minimal context (URL, title only in pure
    * vision mode, or compact DOM in hybrid mode). The LLM outputs
    * coordinate-based actions (clickAt, typeAt) in 1024×768 virtual space.
@@ -1531,10 +1526,8 @@ ${visibleSnapshot}`;
   ): Promise<BrainDecision> {
     this.lastDecisionUrl = state.url;
 
-    // Gen 18: adaptive observation — diff-focused on same-page turns.
-    // When the page changed slightly after an action (modal opened, dropdown
-    // expanded, content loaded), the DIFF is the signal. Send only what
-    // changed instead of the full snapshot. Saves 3-5k tokens per turn.
+    // Adaptive observation: on same-page hybrid turns, send only changed
+    // elements when the diff is small.
     const isHybrid = this.observationMode === 'hybrid';
     const samePageAsPrevious = this.lastDecisionUrl === state.url;
     const isFirstTurn = !turnInfo || turnInfo.current <= 1;
@@ -1602,10 +1595,8 @@ Title: ${state.title}`;
       { type: 'image' as const, image: state.screenshot, mediaType: 'image/jpeg' },
     ];
 
-    // Gen 14: strip ALL screenshots from history. The current turn's
-    // screenshot is the only image the model needs — old screenshots are
-    // dead weight that pushes cumulative token count past the cost cap.
-    // This alone fixes 3/5 Gen 13 failures (cost_cap at 101-106k).
+    // Strip old screenshots from history; the current screenshot is the only
+    // image the model needs for this turn.
     const compacted = this.compactHistory().map((msg) => {
       if (msg.role !== 'user' || !Array.isArray(msg.content)) return msg;
       const textOnly = (msg.content as Array<{ type: string }>)
@@ -1619,13 +1610,12 @@ Title: ${state.title}`;
       { role: 'user', content: userContent },
     ];
 
-    // REVERTED: vision model cascade to gpt-4.1-mini caused 14x token
-    // inflation (99k/turn vs 6.8k/turn). gpt-4.1-mini counts image tokens
-    // differently, hitting cost cap in 3 turns. Vision turns stay on main model.
+    // Vision turns stay on the main model because smaller model routes can
+    // count image tokens differently and exhaust the token budget.
     const modelOpts = { provider: this.provider, model: this.modelName };
     const nearingEnd = turnInfo && turnInfo.current >= turnInfo.max - 3;
     const maxTokens = nearingEnd ? 1200 : 600;
-    // Gen 15: hybrid uses the unified prompt with both action vocabularies
+    // Hybrid mode uses the unified prompt with both action vocabularies.
     const systemPrompt = isHybrid ? UNIFIED_VISION_DOM_PROMPT : VISION_FIRST_PROMPT;
     const result = await this.generate(systemPrompt, messages, modelOpts, maxTokens);
 
@@ -1661,14 +1651,10 @@ Title: ${state.title}`;
   }
 
   /**
-   * Gen 7: ONE LLM call generates a structured plan for the entire task.
+   * Generate a structured plan for the entire task with one LLM call.
    *
    * The runner executes the plan deterministically (no LLM between steps),
    * falling back to per-action `decide()` only when verification fails.
-   * This is the architectural shift that breaks the "1 LLM call per
-   * action" assumption — a 9-action task becomes 1 plan call + 9
-   * deterministic executes instead of 9 LLM calls.
-   *
    * Returns null when:
    *   - the LLM response is unparseable JSON (fall through to per-action)
    *   - the plan has zero steps
@@ -1696,11 +1682,8 @@ Title: ${state.title}`;
     const maxSteps = options?.maxSteps ?? 12
     const extraContext = options?.extraContext
 
-    // Snapshot budget for the planner: Gen 10C raised from 12k to 24k. The
-    // planner is the most important caller for extraction tasks because it
-    // writes the runScript that runs on the first observation. Without enough
-    // snapshot context (especially `<dl>/<dt>/<code>/<pre>` content lines that
-    // Gen 10C now preserves), the planner emits selectors that don't exist.
+    // Planner snapshots keep enough context for extraction tasks, especially
+    // docs/spec pages with data in `<dl>`, `<code>`, and `<pre>` blocks.
     const snapshot = budgetSnapshot(state.snapshot, 24_000)
 
     const planSystemPrompt = `You are a planning engine for a browser automation agent.
@@ -1774,10 +1757,8 @@ ${snapshot}
 ${extraContext ? `\n${extraContext}\n` : ''}
 What is the complete plan?`
 
-    // Gen 20: vision-aware planner. When hybrid mode is active AND a
-    // screenshot is available, send the screenshot alongside the DOM so
-    // the planner can see the visual layout. This helps on sites like
-    // Google Flights where the DOM doesn't convey form structure well.
+    // In vision-capable modes, include the screenshot so the planner can use
+    // visual layout when the DOM does not capture form structure.
     const isVisionPlanner = (this.observationMode === 'hybrid' || this.observationMode === 'vision') && !!state.screenshot;
     const userContent: UserContent = isVisionPlanner
       ? [
@@ -1786,7 +1767,7 @@ What is the complete plan?`
         ]
       : userText;
 
-    // Gen 28: planner can use a different model (e.g., Claude Opus for reasoning)
+    // Planner can use its own model override.
     const planModelOpts = this.plannerModel
       ? { provider: (this.plannerProvider || this.provider) as typeof this.provider, model: this.plannerModel }
       : { provider: this.provider, model: this.modelName };
@@ -2092,7 +2073,7 @@ Was the goal actually achieved? Analyze the current page state carefully.`;
 
     const userContent = this.buildUserContent(textContent, state.screenshot, true);
 
-    // Gen 28: verifier can use its own model, falls back to nav model, then main
+    // Verifier can use its own model, then the navigation model, then main.
     const verifyProvider = this.verifierProvider
       ? this.verifierProvider as typeof this.provider
       : (this.adaptiveModelRouting && this.navModelName ? (this.navProvider || this.provider) : undefined);
@@ -2217,7 +2198,7 @@ Audit this page for design quality, UX issues, and visual bugs.`;
             suggestion: String(f.suggestion ?? ''),
             ...(f.cssSelector ? { cssSelector: String(f.cssSelector) } : {}),
             ...(f.cssFix ? { cssFix: String(f.cssFix) } : {}),
-            // Gen 3 ROI fields
+            // Optional ROI fields.
             ...(clampScore(f.impact) !== undefined ? { impact: clampScore(f.impact) } : {}),
             ...(clampScore(f.effort) !== undefined ? { effort: clampScore(f.effort) } : {}),
             ...(VALID_BLAST.has(f.blast as string)
@@ -2352,11 +2333,9 @@ Only include facts that are genuinely useful. Quality over quantity. Max 10 fact
       'fill', 'clickSequence',
       'clickAt', 'typeAt',
       'clickLabel', 'typeLabel',
-      // Gen 29: macro dispatch. The driver validates the macro name at
-      // execute time; here we just accept the shape.
+      // Macro dispatch. The driver validates the macro name at execute time.
       'macro',
-      // Gen 33: parallel fan-out. Runner handles dispatch; validator
-      // only checks shape (subGoals[] or baseUrl+goalTemplate+items).
+      // Parallel fan-out. Runner handles dispatch; validator checks shape.
       'fanOut',
     ]);
 
@@ -2549,9 +2528,8 @@ function deduplicateSnapshot(snapshot: string): string {
  *      like MDN, Python docs, W3C spec where the value the agent needs lives in
  *      a `<dl>/<code>/<pre>` block, not in an interactive element)
  *
- * Gen 10C raised the default from 16k to 24k to give planners on extraction
- * pages more room before truncation kicks in. The 8k same-page budget remains
- * unchanged because by then the LLM has already seen the full snapshot once.
+ * New-page callers use a larger default budget; same-page callers can pass a
+ * tighter budget after the model has already seen the full snapshot once.
  */
 export function budgetSnapshot(snapshot: string, maxChars = 24_000): string {
   // Skip dedup on small snapshots — not enough repetition to justify the O(n) scan
@@ -2738,19 +2716,18 @@ function validateAction(actionType: string, data: Record<string, unknown>): Acti
         ...(typeof data.intervalMs === 'number' ? { intervalMs: data.intervalMs } : {}),
       };
     }
-    // Gen 13: Vision-first coordinate actions
+    // Vision-first coordinate actions.
     case 'clickAt':
       return { action: 'clickAt', x: num(data.x, 0), y: num(data.y, 0) };
     case 'typeAt':
       return { action: 'typeAt', x: num(data.x, 0), y: num(data.y, 0), text: optStr('text') };
-    // Gen 23: SoM label-based actions
+    // Set-of-Marks label-based actions.
     case 'clickLabel':
       return { action: 'clickLabel', label: num(data.label, 0) };
     case 'typeLabel':
       return { action: 'typeLabel', label: num(data.label, 0), text: optStr('text') };
-    // Gen 29: macro invocation. The driver validates the name + required
-    // args at execute time. We only require `name` here because args may
-    // legitimately be omitted for macros that declare no params.
+    // Macro invocation. The driver validates the name and required args at
+    // execute time; macros without params may omit args.
     case 'macro': {
       const args: Record<string, string> = {};
       if (data.args && typeof data.args === 'object' && !Array.isArray(data.args)) {
@@ -2811,11 +2788,8 @@ function isStringRecord(value: unknown): value is Record<string, string> {
 }
 
 /**
- * Gen 30: build a fetch-replacement that forces `"stream": false` on every
- * /chat/completions body. Necessary for OpenAI-compatible gateways that
- * default to SSE streaming when the client omits the field (observed on
- * router.tangle.tools). The AI SDK's generateText path does not handle
- * SSE, and we can't rely on the gateway respecting the absence of `stream`.
+ * Build a fetch replacement that forces `"stream": false` on chat completions
+ * bodies for OpenAI-compatible gateways that default to SSE streaming.
  */
 function createForceNonStreamingFetch(): typeof fetch {
   return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {

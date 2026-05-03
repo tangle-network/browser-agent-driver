@@ -1,11 +1,7 @@
 /**
- * Tests for the Gen 6.1 batch-fill opportunity detector — runner-side
- * enforcement that injects a "must batch next turn" hint when the agent
- * has done 3+ consecutive single-step type actions on the same form.
- *
- * The detector is the steering layer that finally makes Gen 6 batch verbs
- * fire reliably. Without it, the agent often falls back to single-step
- * type/click after a single batch failure.
+ * Tests for the batch-fill opportunity detector. The runner injects a
+ * "must batch next turn" hint when the agent starts filling a multi-field
+ * form one field at a time.
  */
 
 import { describe, expect, it } from 'vitest'
@@ -76,7 +72,7 @@ describe('detectBatchFillOpportunity', () => {
     expect(detectBatchFillOpportunity(turns, makeState(SNAPSHOT_FORM))).toBeNull()
   })
 
-  it('fires after a SINGLE type action when 2+ unused fields remain (the key Gen 6.1 trigger)', () => {
+  it('fires after a single type action when 2+ unused fields remain', () => {
     // The agent just typed into firstname. The form has 4 more fillable
     // fields visible. Detector should fire on this very turn.
     const turns = [makeTurn({ action: 'type', selector: '@t1', text: 'Jordan' })]

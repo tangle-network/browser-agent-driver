@@ -115,7 +115,7 @@ describe('RunState', () => {
 });
 
 describe('shouldUsePlannerForScenario', () => {
-  it('preserves planner behavior in always mode', () => {
+  it('uses planner in always mode', () => {
     expect(shouldUsePlannerForScenario({
       goal: 'Return ONLY a JSON object with weekly downloads',
       tags: ['extraction'],

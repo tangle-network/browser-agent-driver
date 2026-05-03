@@ -114,9 +114,7 @@ for (let rep = 1; rep <= reps; rep++) {
   if (configPath) args.push('--config', path.resolve(configPath));
   if (planner) args.push('--planner');
   if (fixtureBaseUrl) args.push('--fixture-base-url', fixtureBaseUrl);
-  // Gen 30 R2: forward provider/base-url/api-key to the per-rep baseline
-  // so custom LLM endpoints (router.tangle.tools, LiteLLM, local models)
-  // reach the child bad run.
+  // Forward provider/base-url/api-key to each child bad run.
   if (providerOverride) args.push('--provider', providerOverride);
   if (baseUrlOverride) args.push('--base-url', baseUrlOverride);
   if (apiKeyOverride) args.push('--api-key', apiKeyOverride);

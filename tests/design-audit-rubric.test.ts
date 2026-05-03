@@ -262,7 +262,7 @@ Universal body`,
     })
   })
 
-  describe('Gen 3 — dynamic dimensions', () => {
+  describe('dynamic dimensions', () => {
     it('parses optional dimension field from frontmatter', () => {
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rubric-'))
       const file = path.join(dir, 'dim-fragment.md')

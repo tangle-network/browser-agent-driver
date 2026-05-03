@@ -151,11 +151,11 @@ interface PageAuditResult {
   tokensUsed?: number
   error?: string
   designSystemScore?: Record<string, number>
-  /** Gen 2: page classification (auto-detected) */
+  /** Auto-detected page classification */
   classification?: Gen2PageAuditResult['classification']
-  /** Gen 2: rubric fragments applied */
+  /** Rubric fragments applied */
   rubricFragments?: string[]
-  /** Gen 2: deterministic measurements */
+  /** Deterministic measurements */
   measurements?: Gen2PageAuditResult['measurements']
   /** Layer 7: ethics violations that capped the rollup, if any. */
   ethicsViolations?: EthicsViolation[]
@@ -190,7 +190,7 @@ function generateReport(
   if (profile) {
     lines.push(`**Profile:** ${profile}`)
   }
-  // Surface per-page classification when present (Gen 2)
+  // Surface per-page classification when present.
   const classifications = results
     .filter(r => r.classification)
     .map(r => `${r.url}: ${r.classification!.type}/${r.classification!.domain} (${r.classification!.maturity})`)
@@ -367,9 +367,9 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
     modality: parseTagList(opts.modality) as never,
   }
 
-  // Telemetry: every design-audit invocation gets a stable runId. Children
-  // (per-page, evolve rounds) link back via parentRunId so a fleet rollup can
-  // reconstruct the tree.
+  // Telemetry: every design-audit invocation gets a stable runId. Child
+  // envelopes link back via parentRunId so fleet rollups can reconstruct
+  // the run tree.
   const runId = randomUUID()
   const runStartedAt = Date.now()
   const invocation = opts.evolve ? 'design-audit:evolve' : opts.reproducibility ? 'design-audit:reproducibility' : 'design-audit'
@@ -562,8 +562,8 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
     const evolveMode = opts.evolve === true || opts.evolve === 'true' || opts.evolve === 'css' ? 'css' : opts.evolve
     let evolveResult: DesignEvolveResult
 
-    // Evolve loops still use the legacy single-profile re-audit. When Gen 2 auto-classified,
-    // synthesize a profile name from the first page's classification (or fall back to 'general').
+    // Evolve loops use a single-profile re-audit. When auto-classified,
+    // synthesize the profile from the first page classification.
     const evolveProfile = profile
       ?? results[0]?.classification?.type
       ?? 'general'

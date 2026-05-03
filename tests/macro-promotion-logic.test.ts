@@ -27,7 +27,7 @@ function makeSummary(mode: string, stats: {
   }
 }
 
-/** Build a summary with rawRuns populated — exercises the Gen 30 bootstrap
+/** Build a summary with rawRuns populated — exercises the bootstrap
  * path. The per-rep arrays must be literal so bootstrapDiff95 + cohenD
  * produce realistic stats. */
 function makeSummaryWithRaw(mode: string, runs: Array<{ turns: number; cost: number; passed?: boolean }>, opts: { passRate?: number } = {}) {
@@ -162,7 +162,7 @@ describe('macro-promotion — decideVerdict', () => {
   })
 })
 
-describe('macro-promotion — bootstrap CI path (Gen 30)', () => {
+describe('macro-promotion — bootstrap CI path', () => {
   it('populates comparison.stats when both sides carry rawRuns', () => {
     const baseline = makeSummaryWithRaw('m', [
       { turns: 8, cost: 0.05 },

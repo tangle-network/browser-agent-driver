@@ -1,13 +1,9 @@
 /**
- * Tests for Brain.plan() — the Gen 7 single-LLM-call planner.
+ * Tests for Brain.plan() — the single-LLM-call planner.
  *
  * The actual LLM call requires an API key, so these tests stub the
  * `generate` private method to return canned plan JSON. We're testing
  * the parser, validator, and the contract for null returns on bad input.
- *
- * The end-to-end planner verification (against a real LLM + real
- * Chromium) lives in the long-form benchmark — see
- * .evolve/pursuits/2026-04-08-plan-then-execute-gen7.md.
  */
 
 import { describe, expect, it } from 'vitest'
@@ -214,7 +210,7 @@ describe('Brain.plan — token usage', () => {
   })
 })
 
-describe('Brain.plan — Gen 7.1 replan extraContext', () => {
+describe('Brain.plan — replan extraContext', () => {
   // Capture the user message body that the planner sends to the LLM, so
   // we can verify the deviation context flows through to the prompt.
   function spyGenerate(

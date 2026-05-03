@@ -74,10 +74,8 @@ function seedWorktree(tmp: string) {
     path.join(repoRoot, 'scripts', 'lib', 'macro-promotion.mjs'),
     path.join(tmp, 'scripts', 'lib', 'macro-promotion.mjs'),
   )
-  // Gen 30: macro-promotion.mjs now imports from ./stats.mjs so the test
-  // worktree needs a sibling copy. Without this, Node's resolver fails
-  // with ERR_MODULE_NOT_FOUND and the promotion script exits non-zero
-  // before any candidate is processed.
+  // macro-promotion.mjs imports from ./stats.mjs, so the fake worktree needs
+  // a sibling copy for Node resolution.
   fs.cpSync(
     path.join(repoRoot, 'scripts', 'lib', 'stats.mjs'),
     path.join(tmp, 'scripts', 'lib', 'stats.mjs'),

@@ -1,5 +1,5 @@
 /**
- * Integration test for Gen 29 macro dispatch inside PlaywrightDriver.
+ * Integration test for macro dispatch inside PlaywrightDriver.
  * Drives a real Chromium page with a small HTML fixture and asserts that
  * a macro composed of safe primitives executes end-to-end, including arg
  * interpolation, error propagation, and the missing-registry / missing-name

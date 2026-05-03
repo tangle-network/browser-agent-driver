@@ -72,17 +72,15 @@ export interface RunScriptAction {
 }
 
 /**
- * Gen 10 — Extract a numbered, text-rich index of elements matching a CSS
+ * Extract a numbered, text-rich index of elements matching a CSS
  * selector. Returns the visible textContent + tag + key attributes + a stable
  * selector for each match. The agent then picks elements by index in the next
  * turn (e.g., complete with `result: extracted[3].text`).
  *
- * This is the **capability change** Gen 10 ships: rather than asking the LLM
- * to guess a precise selector that returns one element, the agent gets a wide
- * net (e.g. `'p, span, dd, code'`) and reads the actual text content of every
- * match. Pick-by-content is dramatically more reliable than selector-by-name
- * on real-web pages where data lives in `<dl>/<dt>/<dd>/<code>/<pre>` or
- * inside obscurely-classed wrapper divs.
+ * The agent gets a broad selector (e.g. `'p, span, dd, code'`) and reads the
+ * actual text content of every match. Pick-by-content is more reliable than
+ * selector-by-name on pages where data lives in `<dl>/<dt>/<dd>/<code>/<pre>`
+ * or inside obscure wrapper divs.
  *
  * Example payload for npm weekly downloads:
  *   {
@@ -155,7 +153,7 @@ export interface ClickSequenceAction {
   intervalMs?: number;
 }
 
-// Gen 13: Vision-first coordinate-based actions
+// Vision-first coordinate-based actions.
 export interface ClickAtAction {
   action: 'clickAt';
   /** X coordinate in virtual screen space (0-1024) */
@@ -174,7 +172,7 @@ export interface TypeAtAction {
   text: string;
 }
 
-// Gen 23: SoM (Set-of-Marks) label-based action
+// Set-of-Marks label-based actions.
 export interface ClickLabelAction {
   action: 'clickLabel';
   /** Label number from the SoM overlay (e.g., 3 for element [3]) */
@@ -190,8 +188,8 @@ export interface TypeLabelAction {
 }
 
 /**
- * Gen 29: invoke a named macro defined in `skills/macros/<name>.json`. The
- * macro expands into a sequence of existing primitive actions. The driver
+ * Invoke a named macro defined in `skills/macros/<name>.json`. The macro
+ * expands into a sequence of existing primitive actions. The driver
  * executes each step in order; the first failure aborts the macro and its
  * error is surfaced as the macro's ActionResult error.
  *
@@ -209,7 +207,7 @@ export interface MacroAction {
 }
 
 /**
- * Gen 33 — mid-run parallel fan-out. Spawns N sub-agents in fresh tabs,
+ * Mid-run parallel fan-out. Spawns N sub-agents in fresh tabs,
  * each with its own URL + goal, collects the results as structured
  * feedback. Used when the agent sees "10 candidates, investigate each
  * in parallel" — search result fan-out, roster screening, N-way
@@ -298,7 +296,7 @@ export type Action =
   | FanOutAction;
 
 // ============================================================================
-// Plan - Structured action sequence (Gen 7)
+// Plan - Structured action sequence
 // ============================================================================
 
 /**
@@ -309,8 +307,8 @@ export type Action =
  */
 export interface PlanStep {
   /**
-   * The action to execute deterministically. Use Gen 6 batch verbs
-   * (`fill`, `clickSequence`) wherever possible to minimize step count.
+   * The action to execute deterministically. Use batch verbs (`fill`,
+   * `clickSequence`) wherever possible to minimize step count.
    */
   action: Action;
   /**
@@ -410,7 +408,7 @@ export interface AgentConfig {
   /** Provider for navModel (defaults to provider) */
   navProvider?: 'openai' | 'anthropic' | 'google' | 'cli-bridge' | 'codex-cli' | 'claude-code' | 'sandbox-backend' | 'zai-coding-plan';
 
-  /** Gen 28: per-role model overrides. Each role falls back to the main model/provider. */
+  /** Per-role model overrides. Each role falls back to the main model/provider. */
   models?: {
     /** Planner — needs best reasoning. Default: main model. */
     planner?: { model: string; provider?: string };
@@ -439,7 +437,7 @@ export interface AgentConfig {
   vision?: boolean;
   /** Vision policy: always, never, or auto-escalate on ambiguous/stalled states */
   visionStrategy?: 'always' | 'never' | 'auto';
-  /** Gen 13: observation mode — 'dom' (default), 'vision', or 'hybrid' */
+  /** Observation mode — 'dom' (default), 'vision', or 'hybrid' */
   observationMode?: 'dom' | 'vision' | 'hybrid';
   /** Max conversation history turns to keep (default: 10) */
   maxHistoryTurns?: number;
@@ -462,7 +460,7 @@ export interface AgentConfig {
   /** Optional micro-planning: execute small follow-up actions within a turn */
   microPlan?: MicroPlanConfig;
   /**
-   * Gen 7 plan-then-execute. When true, BrowserAgent.run() makes a single
+   * Plan-then-execute. When true, BrowserAgent.run() makes a single
    * `Brain.plan()` LLM call up front, then executes the plan steps
    * deterministically without re-entering the LLM until verification fails.
    * On the first plan deviation, the runner falls back to the existing
@@ -473,19 +471,12 @@ export interface AgentConfig {
    */
   plannerEnabled?: boolean;
   /**
-   * Planner routing policy. `always` preserves plannerEnabled behavior.
-   * `auto` skips the planner for extraction-style tasks where the final
-   * answer depends on values observed after navigation, using the per-action
-   * observe→act loop instead.
+   * Planner routing policy. `always` uses the planner whenever plannerEnabled
+   * is true. `auto` routes extraction-style tasks through the per-action
+   * observe→act loop.
    */
   plannerMode?: 'always' | 'auto';
-  /**
-   * Gen 8: extra wait BEFORE the planner's initial observe, in ms. Used by
-   * real-web runs (planner-on-realweb.mjs) to give SPAs time to load their
-   * dynamic content before the planner snapshots the page. Without this,
-   * the planner sees a half-loaded SPA and emits runScript queries against
-   * selectors that don't exist yet, returning null/empty. Default: 0.
-   */
+  /** Extra wait before the planner's initial observe, in ms. Default: 0. */
   initialObserveSettleMs?: number;
   /** Optional scout that ranks ambiguous link choices before the actor decides */
   scout?: ScoutConfig;
@@ -504,7 +495,7 @@ export interface AgentConfig {
     maxAttempts?: number;
   };
 
-  /** Gen 21: parallel tab execution for compound goals */
+  /** Parallel tab execution for compound goals */
   parallelTabs?: {
     /** Enable goal decomposition + parallel tab execution (default: false) */
     enabled?: boolean;
@@ -909,7 +900,7 @@ export interface DesignFinding {
   cssSelector?: string;
   /** Concrete CSS property:value fix */
   cssFix?: string;
-  // ── Gen 3 ROI fields ────────────────────────────────────────────────
+  // ── ROI fields ──────────────────────────────────────────────────────
   /** 1-10: how much this hurts the user experience */
   impact?: number;
   /** 1-10: how hard the fix is (1 = trivial CSS change, 10 = architectural rework) */

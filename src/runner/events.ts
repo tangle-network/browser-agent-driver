@@ -177,7 +177,7 @@ export interface RunCompletedEvent extends BaseEvent {
   reason?: string
 }
 
-// ── Plan-then-execute events (Gen 7) ───────────────────────────────────
+// ── Plan-then-execute events ───────────────────────────────────────────
 
 /** Brain.plan() LLM call started */
 export interface PlanStartedEvent extends BaseEvent {
@@ -237,12 +237,9 @@ export interface PlanFallbackEnteredEvent extends BaseEvent {
 }
 
 /**
- * Gen 7.1 — runner is calling Brain.plan() AGAIN after a previous plan
- * deviated. The replan attempt re-observes the page and asks the planner
- * for a fresh plan from the new state, with the deviation summary attached
- * as extraContext so the planner can avoid the same trap. Capped at
- * `maxReplans` per run; on cap-reached the runner falls through to the
- * per-action loop instead.
+ * Runner is calling Brain.plan() again after a previous plan deviated.
+ * The replan attempt observes the current page and asks for a fresh plan
+ * with deviation context attached.
  */
 export interface PlanReplanStartedEvent extends BaseEvent {
   type: 'plan-replan-started'

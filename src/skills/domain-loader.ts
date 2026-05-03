@@ -4,8 +4,7 @@
  * the existing `setExtensionRules` path at brain/index.ts:899 picks up the
  * per-domain rules without a second injection site.
  *
- * Inspired by browser-use/browser-harness's `domain-skills/` layout.
- * The differences that matter:
+ * Domain-skill files have a constrained shape:
  *
  *   1. Every skill carries YAML frontmatter with `host` + optional
  *      `aliases` so one file covers www.amazon.com + smile.amazon.com.

@@ -7,7 +7,7 @@
  * matches what every other adapter must produce.
  *
  * Why we don't trust `agentSuccess` directly: each framework has its own
- * notion of success. A fair head-to-head needs an EXTERNAL oracle that
+ * notion of success. A fair comparison needs an EXTERNAL oracle that
  * checks the same observable state regardless of which framework ran.
  * `bad`'s `agentSuccess` is reported alongside but is not the verdict.
  */
@@ -23,7 +23,7 @@ export const FRAMEWORK_ID = 'bad'
  * Anti-bot / unreachable-site detection. When a real-web task hits cloudflare,
  * recaptcha, "Verifying you are human", or chrome-error://, this is NOT a
  * `bad` failure — it's the site refusing the bot. Mark it as `blocked` so
- * the gauntlet reports it separately from genuine architectural failures.
+ * the benchmark reports it separately from genuine architectural failures.
  *
  * Returns null if not blocked, otherwise a string reason.
  */
@@ -163,7 +163,7 @@ export async function runTask(task, options) {
   const eventTotals = aggregateLlmEvents(eventsPath)
 
   // Anti-bot detection: if the site refused us, mark `blocked` so the
-  // gauntlet reports it separately from architectural failures.
+  // Report anti-bot blocks separately from architectural failures.
   const blockReason = detectAntiBotBlock(finalState, result)
   const oracleVerdict = blockReason
     ? { passed: false, reason: 'blocked by site (anti-bot / unreachable)', detail: blockReason }

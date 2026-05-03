@@ -1,9 +1,8 @@
 /**
  * Parallel Runner — executes compound goals across multiple browser tabs.
  *
- * Gen 21: takes decomposed sub-goals from GoalDecomposer, creates one
- * BrowserAgent per sub-goal in separate Pages (shared BrowserContext),
- * runs them concurrently, and merges results via EvidenceMerger.
+ * Takes decomposed sub-goals from GoalDecomposer, creates one BrowserAgent
+ * per sub-goal in separate Pages, runs them concurrently, and merges results.
  *
  * Uses the same PlaywrightDriver + BrowserAgent stack as single-page runs.
  * The parallel execution layer is thin — the intelligence is in the
@@ -58,9 +57,7 @@ export interface ParallelRunOptions {
   driverOptions?: PlaywrightDriverOptions
   /** Project store for memory */
   projectStore?: ProjectStore
-  /** Gen 29: rendered macro catalog forwarded to each sub-agent's brain so
-   * the LLM sees the available macros in parallel tabs, matching the
-   * top-level agent's capability surface. */
+  /** Rendered macro catalog forwarded to each sub-agent's brain. */
   macroPromptBlock?: string
   /** Total timeout in ms (default: 600000) */
   timeoutMs?: number

@@ -1,5 +1,5 @@
 /**
- * Gen 32 — pause / resume / abort via keyboard in interactive runs.
+ * Pause, resume, and abort via keyboard in interactive runs.
  *
  * Registers a raw-mode stdin handler that maps three keys:
  *
