@@ -379,6 +379,8 @@ export interface Scenario {
   goal: string;
   /** Starting URL (optional - uses current page if not set) */
   startUrl?: string;
+  /** Optional task tags, used by adaptive runtime policies */
+  tags?: string[];
   /** Explicit host allowlist for navigation/result selection (for benchmark and policy constraints) */
   allowedDomains?: string[];
   /** Max turns before giving up */
@@ -460,7 +462,7 @@ export interface AgentConfig {
   /** Optional micro-planning: execute small follow-up actions within a turn */
   microPlan?: MicroPlanConfig;
   /**
-   * Gen 7 plan-then-execute. When true, BrowserAgent.run() makes a single
+   * Plan-then-execute. When true, BrowserAgent.run() makes a single
    * `Brain.plan()` LLM call up front, then executes the plan steps
    * deterministically without re-entering the LLM until verification fails.
    * On the first plan deviation, the runner falls back to the existing
@@ -471,12 +473,12 @@ export interface AgentConfig {
    */
   plannerEnabled?: boolean;
   /**
-   * Gen 8: extra wait BEFORE the planner's initial observe, in ms. Used by
-   * real-web runs (planner-on-realweb.mjs) to give SPAs time to load their
-   * dynamic content before the planner snapshots the page. Without this,
-   * the planner sees a half-loaded SPA and emits runScript queries against
-   * selectors that don't exist yet, returning null/empty. Default: 0.
+   * Planner routing policy. `always` uses the planner whenever plannerEnabled
+   * is true. `auto` routes extraction-style tasks through the per-action
+   * observe→act loop.
    */
+  plannerMode?: 'always' | 'auto';
+  /** Extra wait before the planner's initial observe, in ms. Default: 0. */
   initialObserveSettleMs?: number;
   /** Optional scout that ranks ambiguous link choices before the actor decides */
   scout?: ScoutConfig;

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { RunState } from '../src/run-state.js';
+import { shouldUsePlannerForScenario } from '../src/runner/runner.js';
 
 /**
  * Tests for BrowserAgent-supporting classes and runner state management.
@@ -110,6 +111,35 @@ describe('RunState', () => {
     state.goalVerificationEvidence.push('Evidence A');
     state.goalVerificationEvidence.push('Evidence B');
     expect(state.goalVerificationEvidence).toEqual(['Evidence A', 'Evidence B']);
+  });
+});
+
+describe('shouldUsePlannerForScenario', () => {
+  it('uses planner in always mode', () => {
+    expect(shouldUsePlannerForScenario({
+      goal: 'Return ONLY a JSON object with weekly downloads',
+      tags: ['extraction'],
+    }, 'always')).toBe(true);
+  });
+
+  it('skips planner for tagged extraction tasks in auto mode', () => {
+    expect(shouldUsePlannerForScenario({
+      goal: 'Open the package page and return the weekly downloads',
+      tags: ['extraction'],
+    }, 'auto')).toBe(false);
+  });
+
+  it('skips planner for JSON extraction-shaped goals in auto mode', () => {
+    expect(shouldUsePlannerForScenario({
+      goal: 'Find the Weekly Downloads number. Return ONLY a JSON object with exactly this key: weekly_downloads.',
+    }, 'auto')).toBe(false);
+  });
+
+  it('keeps planner for workflow tasks in auto mode', () => {
+    expect(shouldUsePlannerForScenario({
+      goal: 'Fill out the onboarding form, switch to the export tab, and download the report.',
+      tags: ['workflow'],
+    }, 'auto')).toBe(true);
   });
 });
 

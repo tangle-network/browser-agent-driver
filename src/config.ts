@@ -92,9 +92,11 @@ export interface DriverConfig {
    *  'hybrid': both screenshot and DOM snapshot at full weight */
   observationMode?: 'dom' | 'vision' | 'hybrid';
   goalVerification?: boolean;
-  /** Gen 7 plan-then-execute: single LLM call generates the full action sequence */
+  /** Plan-then-execute: single LLM call generates the full action sequence */
   plannerEnabled?: boolean;
-  /** Gen 8: extra ms wait before the planner's first observe, for SPA settle */
+  /** Planner routing policy. `auto` skips planner on extraction-shaped tasks. */
+  plannerMode?: 'always' | 'auto';
+  /** Extra wait before the planner's first observe, for dynamic page settle */
   initialObserveSettleMs?: number;
   qualityThreshold?: number;
   microPlan?: {
@@ -310,6 +312,7 @@ export function toAgentConfig(config: DriverConfig): AgentConfig {
     observationMode: config.observationMode,
     goalVerification: config.goalVerification,
     plannerEnabled: config.plannerEnabled,
+    plannerMode: config.plannerMode,
     initialObserveSettleMs: config.initialObserveSettleMs,
     qualityThreshold: config.qualityThreshold,
     microPlan: config.microPlan

@@ -193,6 +193,8 @@ describe('toAgentConfig', () => {
       retryDelayMs: 250,
       vision: true,
       goalVerification: false,
+      plannerEnabled: true,
+      plannerMode: 'auto',
       qualityThreshold: 7,
       // These should NOT appear in AgentConfig
       concurrency: 4,
@@ -209,6 +211,8 @@ describe('toAgentConfig', () => {
     expect(agentConfig.retryDelayMs).toBe(250);
     expect(agentConfig.vision).toBe(true);
     expect(agentConfig.goalVerification).toBe(false);
+    expect(agentConfig.plannerEnabled).toBe(true);
+    expect(agentConfig.plannerMode).toBe('auto');
     expect(agentConfig.qualityThreshold).toBe(7);
     // Verify no extra keys leaked through
     expect('concurrency' in agentConfig).toBe(false);
