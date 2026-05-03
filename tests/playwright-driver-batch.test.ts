@@ -1,5 +1,5 @@
 /**
- * Integration test for the Gen 6 batch action verbs (fill, clickSequence)
+ * Integration test for the batch action verbs (fill, clickSequence)
  * against a real Chromium page. The pure-JS parser tests are in
  * tests/batch-action-parse.test.ts; this file pins end-to-end execution.
  */

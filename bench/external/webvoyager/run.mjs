@@ -44,9 +44,7 @@ const site = getArg('site')
 const maxTasks = getArg('max-tasks', '0')
 const concurrency = getArg('concurrency', '3')
 const scenarioConcurrency = getArg('scenario-concurrency', '2')
-// Gen 30 R3: let callers route LLM calls through a custom endpoint
-// (e.g. router.tangle.tools) with a non-OpenAI model id. These flags pass
-// straight through to scenario-track → bad run.
+// Forward custom LLM routing flags through scenario-track to bad run.
 const providerArg = getArg('provider')
 const baseUrlArg = getArg('base-url')
 const apiKeyArg = getArg('api-key')
@@ -55,9 +53,8 @@ const evalOnly = hasFlag('eval-only')
 const evalResults = getArg('results')
 const estimate = hasFlag('estimate')
 const outDir = getArg('out', path.resolve(rootDir, `agent-results/wv-${Date.now()}`))
-// Gen 11: --cases-file lets the master comparison runner pass a curated
-// subset (e.g. bench/external/webvoyager/curated-30.json) without overwriting
-// the canonical converted cases.json.
+// --cases-file lets callers pass a curated subset without overwriting the
+// canonical converted cases.json.
 const casesFileOverride = getArg('cases-file')
 
 const TASKS_URL = 'https://raw.githubusercontent.com/MinorJerry/WebVoyager/main/data/WebVoyager_data.jsonl'
@@ -162,9 +159,7 @@ function evaluate(dir) {
 
 // ── Main ────────────────────────────────────────────────────────────────────
 
-// Gen 11: when --cases-file is given, point cases.json at the override file
-// for the duration of this run by writing a sibling cases-active.json. The
-// runner downstream uses casesPath, so we just point that variable.
+// When --cases-file is given, point downstream runners at the override file.
 let activeCasesPath = casesPath
 if (casesFileOverride) {
   activeCasesPath = path.resolve(casesFileOverride)

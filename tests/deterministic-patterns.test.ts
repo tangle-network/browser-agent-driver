@@ -29,10 +29,8 @@ banner [ref=b1]
   })
 
   it('matches the REAL ARIA snapshot format (ref AFTER quoted name, YAML-list indent)', () => {
-    // This is the actual format the runner produces — captured live from
-    // bench/fixtures/cookie-banner.html during evolve round 1. Earlier
-    // versions of the matcher used a positional regex that required the
-    // ref BEFORE the quoted name and missed every real cookie banner.
+    // This is the actual format the runner produces: ref after quoted name
+    // with YAML-list indentation.
     const state = makeState(`- banner "Cookie consent":
   - link "privacy policy" [ref=lcfb]
   - button "Accept all" [ref=bfba]

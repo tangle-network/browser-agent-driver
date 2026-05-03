@@ -127,9 +127,7 @@ const results = await runPool(jobs, concurrency, async (job) => {
   if (traceScoring) args.push('--trace-scoring');
   if (traceTtlDays) args.push('--trace-ttl-days', traceTtlDays);
   if (headless) args.push('--headless');
-  // Gen 30 R3: forward provider/base-url/api-key so scenario-track can route
-  // through a custom LLM endpoint (router.tangle.tools, LiteLLM, etc.).
-  // Mirrors the fix Gen 30 R2 shipped to run-multi-rep and run-mode-baseline.
+  // Forward provider/base-url/api-key so child runs use the requested LLM endpoint.
   if (providerOverride) args.push('--provider', providerOverride);
   if (baseUrlOverride) args.push('--base-url', baseUrlOverride);
   if (apiKeyOverride) args.push('--api-key', apiKeyOverride);

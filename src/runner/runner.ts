@@ -57,8 +57,8 @@ import { containsSelfContradictingCompletion } from './completion-language.js';
 import type { ResolvedExtensions } from '../extensions/types.js';
 
 /**
- * Gen 6.1: detect that the agent is filling a multi-field form one input at
- * a time and inject a hint that demands a `fill` batch on the next turn.
+ * Detect when the agent is filling a multi-field form one input at a time and
+ * inject a hint that demands a `fill` batch on the next turn.
  *
  * Trigger conditions (all must hold):
  *   1. The agent's most recent action was a single-step `type` on the
@@ -68,12 +68,9 @@ import type { ResolvedExtensions } from '../extensions/types.js';
  *   3. We haven't already injected this hint in the last turn (to avoid
  *      hint loops if the agent ignores it)
  *
- * Why threshold of 1 type + 2 unused (not 3 consecutive types):
- *   Multi-step forms often have 2 fields per step before the user clicks
- *   "Next". Waiting for 3 consecutive types means the detector never fires
- *   on a typical 2-field-per-step form. Firing on the FIRST type action
- *   when the form clearly has more fields catches every multi-field form
- *   the moment the agent starts on it.
+ * The detector fires after one type action when two or more unused fields
+ * remain, which catches common two-field-per-step forms before the agent
+ * burns extra turns.
  *
  * The hint is high-priority (100) so it survives ctxBudget truncation, and
  * it explicitly lists the unused @refs from the current snapshot so the LLM
@@ -150,8 +147,7 @@ const DEFAULT_MAX_TURNS = 20;
 const DEFAULT_RETRIES = 3;
 const DEFAULT_RETRY_DELAY_MS = 1000;
 const DEFAULT_MICRO_PLAN_ACTIONS = 2;
-// Gen 18: clickAt/typeAt added so vision-mode can emit multi-action turns
-// Gen 23: clickLabel/typeLabel for SoM-based actions
+// Safe action verbs for micro-plans emitted by the model.
 const SAFE_MICRO_ACTIONS = new Set<Action['action']>(['click', 'type', 'press', 'hover', 'select', 'scroll', 'wait', 'clickAt', 'typeAt', 'clickLabel', 'typeLabel']);
 const DEFAULT_SUPERVISOR: Required<Pick<SupervisorConfig, 'enabled' | 'useVision' | 'minTurnsBeforeInvoke' | 'cooldownTurns' | 'maxInterventions' | 'hardStallWindow'>> = {
   enabled: true,
@@ -179,11 +175,8 @@ export interface BrowserAgentOptions {
   /** Called after each turn */
   onTurn?: (turn: Turn) => void;
   /**
-   * Gen 32 — called at the top of every turn BEFORE observe().
-   * Used by the interrupt controller to block the loop while the user
-   * has the run paused (`p` keypress in an interactive attach). The
-   * promise resolves on resume or rejects with an abort signal to
-   * bail out cleanly.
+   * Called at the top of every turn before observe().
+   * Used by the interrupt controller to pause or abort interactive runs.
    */
   beforeTurn?: (turn: number) => Promise<void>;
   /** Called when a first-time phase timing is observed */
@@ -211,15 +204,15 @@ export interface BrowserAgentOptions {
    */
   extensions?: ResolvedExtensions;
   /**
-   * Gen 29: macro registry loaded from skills/macros/*.json. When provided,
-   * the rendered promptBlock is injected into the system prompt so the agent
-   * knows which macros exist; macro dispatch happens in the driver.
+   * Macro registry loaded from skills/macros/*.json. When provided, the
+   * rendered promptBlock is injected into the system prompt; macro dispatch
+   * happens in the driver.
    */
   macroPromptBlock?: string;
 }
 
 /**
- * Gen 7.2: detect placeholder patterns in a planner-generated complete.result.
+ * Detect placeholder patterns in a planner-generated complete.result.
  *
  * The planner has to commit to its `complete.result` text BEFORE any prior
  * runScript step actually runs, so on extraction tasks it fabricates
@@ -253,26 +246,7 @@ export function hasPlaceholderPattern(text: string): boolean {
   return false
 }
 
-/**
- * Gen 9 — runtime two-pass extraction. When the planner emits a single
- * runScript step (per Gen 7.2 rule #7) and that script returns null /
- * empty / whitespace / `{x: null}` / a placeholder pattern, the auto-
- * complete-from-runScript path should NOT fire. Instead the runner should
- * mark the plan as deviated and fall through to the per-action loop where
- * Brain.decide can re-observe the loaded page and emit a smarter action
- * (different selector, click+wait, scroll, etc.).
- *
- * This addresses the failure mode the Gen 8 head-to-head gauntlet
- * surfaced: bad's planner-only path lost to browser-use's per-action loop
- * on tasks where the first runScript pick was wrong (npm, mdn signature,
- * w3c, github, wikipedia variance). Two-pass gives bad's per-action loop
- * the same recovery surface browser-use uses, with the planner's speed
- * advantage on the cases where runScript succeeds first try.
- *
- * "Meaningful" means: not empty/whitespace, not the literal string `null`
- * or `undefined`, and not matching `hasPlaceholderPattern` (which already
- * detects JSON null fields, "<from prior step>" markers, etc.).
- */
+/** Returns true only when runScript output contains usable extracted data. */
 export function isMeaningfulRunScriptOutput(output: string | null | undefined): boolean {
   if (typeof output !== 'string') return false
   const trimmed = output.trim()
@@ -352,7 +326,7 @@ export class BrowserAgent {
   // persists, never crosses runs.
   private decisionCache?: DecisionCache;
   private extensions?: ResolvedExtensions;
-  /** Gen 29: cached so compound-goal sub-tabs inherit the macro catalog. */
+  /** Cached so compound-goal sub-tabs inherit the macro catalog. */
   private macroPromptBlock?: string;
 
   constructor(options: BrowserAgentOptions) {
@@ -386,8 +360,7 @@ export class BrowserAgent {
   }
 
   async run(scenario: Scenario): Promise<AgentResult> {
-    // Gen 21: parallel tab execution for compound goals.
-    // Pre-flight: check if the goal should be decomposed into parallel sub-goals.
+    // Pre-flight compound goals into parallel sub-goals when enabled.
     if (this.config.parallelTabs?.enabled && scenario.goal && scenario.startUrl) {
       const context = this.driver.getPage?.()?.context();
       if (context) {
@@ -405,8 +378,7 @@ export class BrowserAgent {
           const { runParallel } = await import('./parallel-runner.js');
           // Inherit the top-level macro catalog + driver's macro registry so
           // sub-tab agents see the same capability surface. Without this the
-          // sub-agents emit macro actions (their brain still has the block)
-          // into a driver that rejects them — a silent failure mode.
+          // sub-agents emit macro actions into a driver that rejects them.
           const topDriverOptions = this.driver.getDriverOptions?.() as
             | import('../drivers/playwright.js').PlaywrightDriverOptions
             | undefined;
@@ -431,22 +403,12 @@ export class BrowserAgent {
       }
     }
 
-    // Gen 14: vision mode gets more turns — each turn takes ~15s (screenshot
-    // encode + image tokens) vs ~5s for DOM-first. Without the boost, vision
-    // runs out of turns before completing multi-step tasks.
+    // Vision and hybrid modes get more turns because screenshot turns are
+    // slower and multi-step tasks need more wall-clock budget.
     const isVisionMode = this.config.observationMode === 'vision' || this.config.observationMode === 'hybrid';
     const baseMaxTurns = scenario.maxTurns || DEFAULT_MAX_TURNS;
-    // Gen 26: 30 turn minimum for vision. 15/51 failures were turn budget
-    // exhaustion at 20. The cost cap (200k tokens) is the real bound.
-    //
-    // 2026-04-28 update: `maxTurns` is now `let`, not `const`, because the
-    // adaptive-extension logic at the top of each iteration may bump it
-    // by EXTENSION_TURNS_GRANTED when the agent shows recent progress at
-    // the cap. WebVoyager-590 baseline showed 21/54 fails were
-    // "agent_gave_up_at_max_turns" mid-flow; the extension converts those
-    // near-misses into successes without rewarding stuck loops (extension
-    // requires URL-or-DOM progress in the prior 3 turns; capped absolute
-    // at EXTENSION_HARD_CAP).
+    // maxTurns is mutable because active runs can receive a one-time extension
+    // when they reach the configured cap while still making page progress.
     let maxTurns = isVisionMode ? Math.max(baseMaxTurns, 30) : baseMaxTurns;
     let extensionGranted = false;
     const EXTENSION_TURNS_GRANTED = 5;
@@ -457,9 +419,8 @@ export class BrowserAgent {
     const turns: Turn[] = [];
     const startTime = Date.now();
     const phaseTimings: import('../types.js').RunPhaseTimings = {};
-    // Gen 27: vision+planner mode gets 3× token budget (300k). Gen 26 showed
-    // 4 cost_cap failures and 18 turn-exhausted tasks (now getting 30 turns
-    // but hitting 200k cap). The timeout (600s) is the real safety net.
+    // Vision modes get a larger token budget; the wall-clock timeout remains
+    // the outer safety bound.
     const visionBudgetMultiplier = isVisionMode ? 3 : 1;
     const runState = new RunState(maxTurns, Math.round(DEFAULT_TOKEN_BUDGET * visionBudgetMultiplier));
     const directStart = deriveDirectStartUrl(scenario);
@@ -516,7 +477,7 @@ export class BrowserAgent {
     };
 
     // Wrap onTurn to include mid-run manifest updates (every 3 turns) and to
-    // accumulate per-turn token usage for the Gen 10 cost cap.
+    // accumulate per-turn token usage for the cost cap.
     const originalOnTurn = this.onTurn
     this.onTurn = (turn: Turn) => {
       originalOnTurn?.(turn)
@@ -582,10 +543,6 @@ export class BrowserAgent {
       phaseTimings.initialNavigateMs = Date.now() - navigateStartedAt;
       this.onPhaseTiming?.('navigate', phaseTimings.initialNavigateMs);
 
-      // REVERTED: page warm-up delay caused pre-first-turn timeouts on Google
-      // Flights (0-turn failures at 600s) and click timeouts on Allrecipes.
-      // DataDome bypass needs a different approach — not blocking the main loop.
-
       googleFlightsPreflight = await prepareGoogleFlightsSearch(
         this.driver.getPage?.(),
         scenario,
@@ -637,7 +594,7 @@ export class BrowserAgent {
 
     const supervisorConfig = {
       enabled: this.config.supervisor?.enabled ?? DEFAULT_SUPERVISOR.enabled,
-      // Gen 28: models.supervisor overrides supervisor.model, falls back to main
+      // Per-role supervisor model overrides the supervisor default, then falls back to main.
       model: this.config.models?.supervisor?.model || this.config.supervisor?.model || this.config.model || 'gpt-5.4',
       provider: (this.config.models?.supervisor?.provider || this.config.supervisor?.provider || this.config.provider || 'openai') as 'openai' | 'anthropic' | 'google' | 'codex-cli' | 'claude-code' | 'sandbox-backend',
       useVision: this.config.supervisor?.useVision ?? DEFAULT_SUPERVISOR.useVision,
@@ -647,18 +604,10 @@ export class BrowserAgent {
       hardStallWindow: this.config.supervisor?.hardStallWindow ?? DEFAULT_SUPERVISOR.hardStallWindow,
     } as const;
 
-    // Gen 7 / 7.1: planner-first path. When `plannerEnabled: true` (and not
-    // disabled via BAD_PLANNER=0), make a single LLM call to generate a
-    // plan, then execute it deterministically.
-    //
-    // Gen 7.1 (replan-on-deviation): when a plan deviates, instead of
-    // immediately falling through to the per-action loop, call Brain.plan()
-    // AGAIN with the current page state and a deviation context. Cap at
-    // `maxReplans` total replan attempts (= initial plan + maxReplans
-    // additional plan calls). The system prompt is byte-stable so prompt
-    // cache still hits — only the user message carries the deviation
-    // history. On exhaustion, fall through to the per-action loop with a
-    // [REPLAN] hint, exactly like Gen 7 did.
+    // Planner-first path: make one LLM call to generate a plan, then execute
+    // it deterministically. On deviation, replan from the current page state
+    // with deviation context; after the retry budget is exhausted, fall back
+    // to the per-action loop with a [REPLAN] hint.
     //
     // Plan execution writes to the same `turns` array, so post-run analysis
     // sees a unified timeline regardless of which path completed the run.
@@ -674,11 +623,7 @@ export class BrowserAgent {
       // primes the planner. The result is also stashed as cachedPostState
       // so the per-action fallback's first observe is short-circuited.
       //
-      // Gen 8: on real-web tasks (planner-on-realweb config), wait for
-      // the page to settle BEFORE the planner observes. SPA pages like
-      // npmjs.com load their data via JS after DOMContentLoaded — without
-      // a settle wait the planner snapshots a half-loaded page and emits
-      // runScript queries against selectors that don't exist yet.
+      // Give dynamic pages time to populate before the planner observes.
       const settleMs = this.config.initialObserveSettleMs ?? 0
       if (settleMs > 0) {
         const page = this.driver.getPage?.()
@@ -691,7 +636,7 @@ export class BrowserAgent {
           await new Promise<void>((resolve) => setTimeout(resolve, settleMs))
         }
         if (this.config.debug) {
-          console.log(`[Runner] Gen 8 initial settle: waited ${settleMs}ms (or networkidle) before planner observe`)
+            console.log(`[Runner] Initial settle: waited ${settleMs}ms (or networkidle) before planner observe`)
         }
       }
       const initialState = await this.driver.observe().catch(() => undefined)
@@ -831,10 +776,8 @@ export class BrowserAgent {
           })
         }
 
-        // All replan attempts (or initial plan) deviated. Fall through to
-        // the per-action loop with a [REPLAN] hint that names the final
-        // deviation. The per-action loop with Gen 6.1 batch detection will
-        // finish the work.
+        // All replan attempts deviated. Fall through to the per-action loop
+        // with a [REPLAN] hint that names the final deviation.
         if (lastDeviationReason) {
           plannerStartTurn = cumulativeTurnsConsumed
           planFallbackContext = `\n[REPLAN] After ${attempt} planner attempt${attempt === 1 ? '' : 's'} (1 initial + ${attempt - 1} replan${attempt === 2 ? '' : 's'}), the planner could not produce a working plan. Final deviation: ${lastDeviationReason}\nThe runner has fallen back to per-action mode. Continue toward the original goal from the current page state.\n`
@@ -853,19 +796,12 @@ export class BrowserAgent {
       }
     }
 
-    // Gen 32 — overlay narration tracker. Per-session; accumulates verdict
-    // markers so a ledger the agent keeps re-emitting doesn't spam badges.
+    // Per-session overlay narration tracker; suppresses duplicate verdict badges.
     const verdictTracker = new VerdictTracker();
 
     for (let i = 1 + plannerStartTurn; i <= maxTurns; i++) {
-      // 2026-04-28: adaptive-max-turns extension. When we hit the
-      // configured cap AND the agent has shown progress in the last
-      // EXTENSION_PROGRESS_LOOKBACK turns, grant a one-time extension up
-      // to EXTENSION_HARD_CAP. Triggers only on the original maxTurns
-      // boundary (extensionGranted guards against cascading); the
-      // recovery-fired event is emitted so the trace is honest about the
-      // turns being borrowed. No-op for vision-mode (already gets +5
-      // baseline boost) and for explicitly-large maxTurns settings.
+      // Grant a one-time max-turns extension when the run reaches its cap
+      // while still making recent progress.
       if (
         i === maxTurns
         && !extensionGranted
@@ -888,9 +824,7 @@ export class BrowserAgent {
         }
       }
 
-      // Gen 32 — honor user-driven pause from the interrupt controller.
-      // Blocks until `r` is pressed (resume) or `q` is pressed (abort).
-      // A rejected beforeTurn is treated as an abort.
+      // Honor user-driven pause or abort from the interrupt controller.
       if (this.beforeTurn) {
         try {
           await this.beforeTurn(i);
@@ -912,10 +846,8 @@ export class BrowserAgent {
         });
       }
 
-      // Gen 10: hard cost cap. Stops the per-action loop from burning unbounded
-      // tokens on cases where recovery isn't converging (the Gen 9 death-spiral
-      // failure mode where reddit hit $0.32 / 173K tokens). The cap is enforced
-      // BEFORE the next LLM call so the case aborts cleanly with a reason.
+      // Enforce the token budget before the next LLM call so stalled recovery
+      // loops abort cleanly with a reason.
       if (runState.isTokenBudgetExhausted) {
         return buildResult({
           success: false,
@@ -930,10 +862,7 @@ export class BrowserAgent {
 
       try {
         // -- 1. Check for recovery before observing --
-        // Only run analyzeRecovery when there's a non-zero error trail. Used
-        // to run unconditionally; lazy-skipping it when there are no recent
-        // errors avoids the per-turn cost on the happy path. (Gen 5 lazy
-        // decision graph computation, change #20 in the pursuit spec.)
+        // Only run analyzeRecovery when recent turns show errors.
         const hasErrorTrail = turns.length >= 2
           && (runState.consecutiveErrors > 0
             || turns.slice(-5).some((t) => t.error || t.verified === false));
@@ -1045,16 +974,8 @@ export class BrowserAgent {
           durationMs: observeDurationMs,
         });
 
-        // 2026-04-28: progress-turn tracking for the adaptive-max-turns
-        // extension at the end of the loop. We mark this turn as
-        // "progress" when the URL changed from the prior turn, OR the
-        // snapshot byte size moved more than 5% (which filters out
-        // decorative animations + dynamic-id reshuffles but catches
-        // real DOM changes from clicks/typing/navigation). The 5% floor
-        // is intentionally loose — false positives just keep the run
-        // alive longer; false negatives cut off agents mid-flow on
-        // hot-spot sites (booking, google-flights), which is the
-        // failure mode we're trying to fix.
+        // Track page progress for the one-time max-turns extension. URL
+        // changes or >5% snapshot-size movement count as progress.
         const priorTurn = turns[turns.length - 1];
         if (priorTurn) {
           const urlChanged = priorTurn.state?.url !== state.url;
@@ -1179,16 +1100,8 @@ export class BrowserAgent {
           }
         }
 
-        // Gen 6.1: Mandatory batch fill detection.
-        //
-        // If the agent has done 3+ consecutive single-step `type` actions on
-        // the same URL (i.e., it's filling a multi-field form one input at a
-        // time), inject a high-priority hint into extraContext that DEMANDS
-        // the next action be a `fill` covering the remaining fields.
-        //
-        // This is the runner-side enforcement layer for Gen 6 batch verbs.
-        // Prompt rules alone (Gen 6) didn't reliably steer the agent toward
-        // batch fill — runtime feedback does.
+        // Enforce batch fill when the agent starts filling a multi-field form
+        // one input at a time.
         const batchFillHint = detectBatchFillOpportunity(turns, state);
         if (batchFillHint && process.env.BAD_BATCH_HINT !== '0') {
           ctxBudget.add('mandatory-batch-fill', batchFillHint, 100);
@@ -1254,9 +1167,7 @@ export class BrowserAgent {
         if (searchScoutFeedback) {
           ctxBudget.add('search-scout', `\n${searchScoutFeedback}\n`, 50);
         }
-        // Lazy supervisor signal: only compute when supervisor is enabled
-        // AND we're past the minimum-turns gate. Used to run unconditionally
-        // every turn even when supervisor was disabled. Gen 5 evolve round 1.
+        // Compute supervisor signals only after the supervisor is eligible.
         const supervisorEligible =
           supervisorConfig.enabled &&
           i >= supervisorConfig.minTurnsBeforeInvoke &&
@@ -1464,12 +1375,8 @@ export class BrowserAgent {
             '\nData extracted. If it answers the goal, complete now.\n', 80);
         }
 
-        // REVERTED: form stall → DDG/external search fallback. Caused the agent
-        // to navigate to Priceline, Expedia, DuckDuckGo which all block with
-        // anti-bot. Worse than staying on the original site and grinding.
-        // The stall detection idea is sound but the fallback destination is wrong.
-        // TODO: revisit with a same-site strategy (runScript extraction, URL
-        // construction from current state) instead of cross-site navigation.
+        // Cross-site fallbacks are intentionally disabled here; stay on the
+        // original site and recover with same-site extraction/navigation.
         {
         }
 
@@ -1493,10 +1400,8 @@ export class BrowserAgent {
         const aiTangleOutputContext = aiTangleOutputCompletion
           ? `\nVERIFIED OUTPUT STATE DETECTED:\n${aiTangleOutputCompletion.feedback}\nReturn a terminal \`complete\` action now with concrete evidence.\n`
           : '';
-        // Gen 7: include the plan fallback hint on the FIRST per-action turn
-        // after a plan deviation. The hint tells the LLM what failed and from
-        // what point to recover. We only inject it once (consume it after
-        // first use) so it doesn't pollute every subsequent turn.
+        // Include the plan fallback hint on the first per-action turn after
+        // a plan deviation, then consume it.
         const planFallbackHint = planFallbackContext
         if (planFallbackContext) planFallbackContext = ''
         const finalExtraContext = [extraContext, aiTanglePartnerContext, aiTangleOutputContext, planFallbackHint].filter(Boolean).join('');
@@ -1589,11 +1494,6 @@ export class BrowserAgent {
             console.log(`[Runner] Decision cache HIT (turn ${i}, key ${cached.hash.slice(0, 8)}…) — skipping LLM`);
           }
         } else {
-          // REVERTED: micro-movements during LLM thinking caused interference
-          // with page state on interactive sites. The mouse.move calls during
-          // decide() could trigger hover states, tooltips, or dismiss elements
-          // the agent was about to click.
-
           decision = await withRetry(
             () => this.brain.decide(
               scenario.goal,
@@ -1660,9 +1560,8 @@ export class BrowserAgent {
           });
         }
 
-        // -- 4a. Gen 32 — narrate to the cursor overlay. Fire-and-forget.
-        // Four signals pushed to the page-context overlay so a viewer of
-        // the recorded video can READ the agent's work, not just watch it:
+        // -- 4a. Narrate to the cursor overlay. Fire-and-forget.
+        // Signals pushed to the page-context overlay:
         //   1. Reasoning panel (top-right) — the agent's own text
         //   2. Progress bar + chip (top) — turn N with optional ledger marker
         //   3. Verdict badges (bottom-left) — POSITIVE/CLEARED/REVIEW events
@@ -1863,13 +1762,11 @@ export class BrowserAgent {
           continue;
         }
 
-        // -- 5d. Handle extractWithIndex action (Gen 10) --
+        // -- 5d. Handle extractWithIndex action --
         // Returns a numbered list of every visible element matching `query`,
         // each with its tag, textContent, key attributes, and a stable
         // selector. The agent picks elements by index in the next turn.
-        // This is the Gen 10 capability change: pick-by-content instead of
-        // pick-by-selector. Works on data the planner couldn't see at plan
-        // time (XHR-loaded content, dl/dt/dd, deeply-nested wrappers).
+        // Pick by visible content instead of brittle selectors.
         if (action.action === 'extractWithIndex') {
           const page = this.driver.getPage?.();
           if (page) {
@@ -1905,11 +1802,9 @@ export class BrowserAgent {
           continue;
         }
 
-        // -- Gen 33: mid-run parallel fan-out. Agent picked N candidates
-        // from the current page and wants to explore each in its own tab.
-        // We spawn sub-agents in the same BrowserContext, collect their
-        // verdicts, and inject the merged result as feedback for the next
-        // turn. Parent page state is untouched.
+        // -- Mid-run parallel fan-out --
+        // Explore independent candidates in sibling tabs, then inject the
+        // merged result as feedback for the next turn.
         if (action.action === 'fanOut') {
           const page = this.driver.getPage?.();
           const context = page?.context();
@@ -1930,10 +1825,8 @@ export class BrowserAgent {
             context,
             config: this.config,
             currentUrl: state.url,
-            // Gen 34 — give the executor a handle on the parent driver so
-            // it can drive the Hydra overlay (grid init, live thumbnail
-            // streaming, verdict chips, collapse animation) on the
-            // parent page for the whole fan-out duration.
+            // Parent driver lets the executor drive the fan-out overlay for
+            // the whole fan-out duration.
             parentDriver: this.driver,
             ...(topDriverOptions
               ? { driverOptions: (() => { const { showCursor: _sc, ...rest } = topDriverOptions; return rest; })() }
@@ -1989,20 +1882,14 @@ export class BrowserAgent {
             // (>50 chars) combined with script-extracted evidence means the
             // verifier almost always agrees — save the round-trip.
             //
-            // Gen 12: content-aware gate. gpt-5.4 writes verbose narratives
-            // that admit failure ("could not complete", "not visible", "did
-            // not take effect") yet marks success. The old heuristic (length
-            // + evidence + no errors) rubber-stamped these. Now we scan the
-            // result text for self-contradicting phrases and force LLM
-            // verification when found. This fixes the 6/8 judge disagreement
-            // cases from Gen 11 evolve R2.
+            // Content-aware gate: self-contradicting completion text forces
+            // LLM verification instead of using the fast path.
             const agentResult = action.result || '';
             const recentErrors = turns.slice(-2).filter(t => t.error).length;
             const hasScriptEvidence = verificationEvidence.some(e => e.startsWith('SCRIPT RESULT:'));
 
-            // Content-aware gate: detect when the agent's own text admits
-            // failure despite claiming success. These phrases were found in
-            // 6 of 8 false-pass cases on WebVoyager with gpt-5.4.
+            // Detect when the agent's own text admits failure despite
+            // claiming success.
             const selfContradicting = containsSelfContradictingCompletion(agentResult);
             const fastPathEligible =
               agentResult.length > 50 &&
@@ -2025,7 +1912,7 @@ export class BrowserAgent {
               // own text suggests failure. The LLM verifier reads the actual
               // content and makes the right call.
               if (this.config.debug) {
-                console.log('[Runner] Gen 12: fast-path BLOCKED — agent result contains self-contradicting language, forcing LLM verification');
+                console.log('[Runner] Fast-path blocked: agent result contains self-contradicting language, forcing LLM verification');
               }
               goalResult = await this.brain.verifyGoalCompletion(
                 state,
@@ -2219,9 +2106,8 @@ export class BrowserAgent {
               turn.verificationFailure = goalResult.missing.join('; ') || 'Goal verification failed';
               runState.firstSufficientEvidenceTurn ??= i;
 
-              // Gen 24b: checkpoint replay on 2nd rejection. Navigate back
-              // to a previous page where the agent had correct data, instead
-              // of continuing from the wrong-path state.
+              // On the second rejection, roll back to a previous checkpoint
+              // before trying a different path.
               let replayNote = '';
               if (runState.verificationRejectionCount === 2 && runState.checkpoints.length >= 2) {
                 // Go back to the second-to-last checkpoint (before the wrong path)
@@ -2234,7 +2120,7 @@ export class BrowserAgent {
                 }
               }
 
-              // Gen 19: progressive strategy-shift escalation on rejection.
+              // Escalate recovery guidance after repeated verification rejects.
               let escalation: string;
               if (runState.verificationRejectionCount >= 3) {
                 escalation = ' STRATEGY SHIFT REQUIRED: Your previous approaches have failed 3 times. Try a COMPLETELY different method: use navigate to go to a different search engine or URL, try extractWithIndex instead of runScript, or scroll to look for the data in a different part of the page. Do NOT repeat what you just tried.';
@@ -2443,7 +2329,7 @@ export class BrowserAgent {
           runState.clearConsecutiveErrors();
           executeTimeoutRecoveries = 0; // Reset on successful action
 
-          // Gen 27: surface form reset warnings from batch fill verification
+          // Surface form reset warnings from batch fill verification.
           if ('warning' in execResult && typeof (execResult as { warning?: string }).warning === 'string') {
             const warning = (execResult as { warning: string }).warning;
             this.brain.injectFeedback(warning);
@@ -2452,8 +2338,7 @@ export class BrowserAgent {
             }
           }
 
-          // Gen 24b: save checkpoint when URL changes after successful action.
-          // These are rollback points for wrong-path recovery.
+          // Save URL checkpoints after successful navigation for rollback.
           const postUrl = this.driver.getPage?.()?.url() || '';
           const lastCheckpointUrl = runState.checkpoints[runState.checkpoints.length - 1]?.url;
           if (postUrl && postUrl !== 'about:blank' && postUrl !== lastCheckpointUrl) {
@@ -2688,9 +2573,7 @@ export class BrowserAgent {
       if (this.knowledge && scenario && result) {
         this.knowledge.recordSession(buildSession(scenario, result))
 
-        // Gen 26b: extract reusable patterns from successful runs.
-        // Patterns gain confidence with repeated observation and auto-decay
-        // when contradicted. Low-confidence facts are pruned automatically.
+        // Extract reusable patterns from successful runs.
         if (result.success && turns && turns.length > 0) {
           const domain = safeHostname(scenario.startUrl || '') || ''
           if (domain) {
@@ -2731,7 +2614,7 @@ export class BrowserAgent {
    * - Generic text match -> check if text appears in snapshot
    */
   /**
-   * Gen 7: execute a Plan deterministically without re-entering the LLM
+   * Execute a Plan deterministically without re-entering the LLM
    * between steps. Each step:
    *   1. Drives the action via driver.execute (existing path, gets bus events)
    *   2. Verifies the post-condition via verifyExpectedEffect
@@ -2763,8 +2646,7 @@ export class BrowserAgent {
      * one plan call per N steps. To make the run-level cost tally honest,
      * we attribute the plan call to the FIRST step's Turn artifact so the
      * downstream sum (in baseline-summary.json / report.json) reflects the
-     * real LLM spend. This was the metric bug that caused Gen 7.1 runs to
-     * report $0 cost while Gen 7 baseline runs reported $0.50.
+     * real LLM spend.
      */
     planCallTokens?: {
       tokensUsed?: number
@@ -2781,19 +2663,12 @@ export class BrowserAgent {
     let lastState: PageState = turns[turns.length - 1]?.state
       ?? { url: '', title: '', snapshot: '' }
 
-    // Gen 7.2: track the last successful `runScript` output across plan steps
-    // so a downstream `complete` step with placeholder values (null,
-    // "<from prior step>", etc.) can be substituted with the real script
-    // output. The planner has to commit to its `complete.result` text BEFORE
-    // runScript runs, so on extraction tasks it fabricates placeholders.
-    // This deterministic substitution fixes that without an extra LLM call.
+    // Track the last successful runScript output so placeholder complete
+    // results can be substituted with the real script output.
     let lastRunScriptOutput: string | null = null
 
-    // Gen 10: track the last extractWithIndex match list. Unlike runScript,
-    // we do NOT auto-substitute this into a placeholder complete — the LLM
-    // must read the formatted match list and pick by index. When the plan
-    // ends with extractWithIndex (or runs out of valid steps), we fall
-    // through to the per-action loop with the match list as feedback.
+    // Track extractWithIndex matches for per-action fallback; the LLM must
+    // read the list and pick by index.
     let lastExtractOutput: string | null = null
 
     for (let stepIdx = 0; stepIdx < plan.steps.length; stepIdx++) {
@@ -2824,10 +2699,8 @@ export class BrowserAgent {
       // timeline regardless of whether the runner used the planner or the
       // per-action loop.
       //
-      // Token attribution: the FIRST step of each plan carries the
-      // Brain.plan() LLM call's token usage. Without this, runs that stay
-      // in plan-mode (Gen 7.1) report $0 cost while their Brain.plan()
-      // calls actually spent real tokens.
+      // Token attribution: the first step carries the Brain.plan() LLM call's
+      // token usage so run-level cost includes planning.
       const isFirstStep = stepIdx === 0
       const turn: Turn = {
         turn: turnNumber,
@@ -2848,12 +2721,7 @@ export class BrowserAgent {
       // Terminal actions: complete and abort don't go through driver.execute
       // — the runner handles them as the end of the plan.
       if (step.action.action === 'complete') {
-        // Gen 7.2 placeholder substitution: if the planner emitted a complete
-        // with placeholder values AND we have a real runScript output from
-        // earlier in the plan, use the runScript output as the final result.
-        // Detection is conservative: only substitute when the planner clearly
-        // didn't know real values at planning time (null literals, "<from
-        // prior step>", "{{...}}" templates, "<placeholder>", etc.).
+        // Substitute placeholder complete results with prior runScript output.
         let resolvedResult = step.action.result
         if (
           lastRunScriptOutput
@@ -2861,10 +2729,10 @@ export class BrowserAgent {
           && hasPlaceholderPattern(resolvedResult)
         ) {
           if (this.config.debug) {
-            console.log(`[Runner] Gen 7.2: substituting placeholder complete.result with runScript output (${lastRunScriptOutput.length} chars)`)
+            console.log(`[Runner] Substituting placeholder complete.result with runScript output (${lastRunScriptOutput.length} chars)`)
           }
           resolvedResult = lastRunScriptOutput
-          turn.reasoning = `${turn.reasoning ?? ''} [Gen 7.2 substituted runScript output]`.trim()
+          turn.reasoning = `${turn.reasoning ?? ''} [substituted runScript output]`.trim()
         }
         turn.durationMs = Date.now() - stepStartedAt
         turns.push(turn)
@@ -2912,12 +2780,8 @@ export class BrowserAgent {
       // execute-started / execute-completed events on the bus exactly
       // like the per-action loop does.
       //
-      // CRITICAL: each plan step gets a 10s wall-clock cap (vs the driver's
-      // default 30s). Plan steps assume every selector was just observed in
-      // the snapshot at planning time — a missing element should fail
-      // FAST and trigger fallback to per-action mode, NOT block the run for
-      // 30s. Batch verbs already enforce a 5s per-field cap internally,
-      // but single-step type/click/press/select use the full 30s default.
+      // Cap each plan step at 10s so missing selectors fail quickly and hand
+      // control back to per-action mode.
       this.bus.emitNow({ type: 'execute-started', runId, turn: turnNumber, action: step.action })
       const execStartedAt = Date.now()
       const planStepTimeoutMs = 10_000
@@ -2988,9 +2852,7 @@ export class BrowserAgent {
       runState.clearConsecutiveErrors()
       if (execResult.bounds) turn.actionBounds = execResult.bounds
 
-      // Gen 7.2: capture runScript output so a downstream complete step
-      // with placeholder values can be substituted with the real output.
-      // This is the supply side of the placeholder-substitution fix above.
+      // Capture runScript output for placeholder substitution and evidence.
       if (step.action.action === 'runScript' && typeof execResult.data === 'string' && execResult.data.length > 0) {
         lastRunScriptOutput = execResult.data
         if (execResult.data.length > 10) {
@@ -2998,9 +2860,7 @@ export class BrowserAgent {
         }
       }
 
-      // Gen 10: capture extractWithIndex match list for fall-through to the
-      // per-action loop. The LLM must read the list and pick by index — we
-      // do not auto-complete with the raw match list.
+      // Capture extractWithIndex output for per-action fallback.
       if (step.action.action === 'extractWithIndex' && typeof execResult.data === 'string' && execResult.data.length > 0) {
         lastExtractOutput = execResult.data
         // Also push as goal verification evidence so the verifier sees what
@@ -3015,8 +2875,7 @@ export class BrowserAgent {
       // Verify the post-condition. We re-observe to get the post-action
       // state, then run the same verifyExpectedEffect helper the per-action
       // loop uses. The fresh observe is also stashed in cachedPostState so
-      // the next step's pre-step observe is short-circuited (Gen 4 lazy
-      // observe optimization).
+      // the next step's pre-step observe can reuse it.
       this.bus.emitNow({
         type: 'verify-started',
         runId,
@@ -3143,18 +3002,7 @@ export class BrowserAgent {
       }
     }
 
-    // Gen 7.2 auto-complete-from-runScript: if the plan ended without an
-    // explicit complete BUT the last successful step was a runScript with
-    // non-empty output, treat the runScript output as the final result and
-    // synthesize a complete turn. This handles the planner-prompt path where
-    // the planner correctly emits ONLY runScript on extraction tasks (per
-    // rule #7) — without this, we'd fall through to a 4-5 turn per-action
-    // loop that's much slower than necessary.
-    //
-    // Detection: the LAST step in the plan was a `runScript` AND we captured
-    // a non-empty output for it. We don't check intermediate steps because
-    // a plan like [navigate, click, runScript] where runScript is last is
-    // exactly the extraction-task shape we want to short-circuit.
+    // Auto-complete when the plan ends with meaningful runScript output.
     const lastStep = plan.steps[plan.steps.length - 1]
     if (
       lastStep
@@ -3166,7 +3014,7 @@ export class BrowserAgent {
         turn: synthTurnNumber,
         state: lastState,
         action: { action: 'complete', result: lastRunScriptOutput! },
-        reasoning: 'Gen 7.2 auto-complete: plan ended after runScript, runner emitted complete with the runScript output',
+        reasoning: 'Auto-complete: plan ended after runScript, runner emitted complete with the runScript output',
         durationMs: 0,
       }
       turns.push(synthTurn)
@@ -3183,7 +3031,7 @@ export class BrowserAgent {
         durationMs: 0,
       })
       if (this.config.debug) {
-        console.log(`[Runner] Gen 7.2: auto-emitted complete with runScript output (${lastRunScriptOutput!.length} chars) after plan exhausted`)
+        console.log(`[Runner] Auto-emitted complete with runScript output (${lastRunScriptOutput!.length} chars) after plan exhausted`)
       }
       return {
         kind: 'completed',
@@ -3193,12 +3041,8 @@ export class BrowserAgent {
       }
     }
 
-    // Gen 10: if the plan ended with extractWithIndex, fall through to the
-    // per-action loop with the match list as feedback. The LLM must read
-    // the matches and pick by index — we do NOT auto-complete with the raw
-    // match list. This is the planner-emits-extract path for extraction
-    // tasks like npm/mdn/python-docs where the planner used the new
-    // extractWithIndex action.
+    // If the plan produced extractWithIndex matches, fall through with the
+    // match list so the LLM can choose the correct index.
     if (lastExtractOutput) {
       return {
         kind: 'deviated',
@@ -3209,22 +3053,15 @@ export class BrowserAgent {
       }
     }
 
-    // Gen 9 (cherry-picked into Gen 10): if the last step WAS a runScript
-    // but the output was NOT meaningful (null, empty, placeholder), DO NOT
-    // auto-complete with garbage. Fall through to the per-action loop with
-    // a deviation reason that names the empty output. In Gen 10 the per-
-    // action loop has TWO new tools that make this recovery actually work:
-    //   1. extractWithIndex (the wide-query content-match action) — see
-    //      data-extraction rule #25
-    //   2. cost cap (100k tokens) — bounds any death-spiral if the LLM
-    //      can't recover, preventing the Gen 9.1 reddit failure mode
+    // If the plan ends with runScript but output is empty or placeholder-like,
+    // fall through to per-action mode instead of completing with bad data.
     if (
       lastStep
       && lastStep.action.action === 'runScript'
       && !isMeaningfulRunScriptOutput(lastRunScriptOutput)
     ) {
       if (this.config.debug) {
-        console.log(`[Runner] Gen 9: runScript returned no meaningful output (${JSON.stringify(lastRunScriptOutput).slice(0, 100)}); falling through to per-action loop for two-pass extraction`)
+        console.log(`[Runner] runScript returned no meaningful output (${JSON.stringify(lastRunScriptOutput).slice(0, 100)}); falling through to per-action loop for two-pass extraction`)
       }
       return {
         kind: 'deviated',

@@ -169,10 +169,7 @@ function runMode(mode) {
   if (traceTtlDays) args.push('--trace-ttl-days', traceTtlDays);
   if (headless) args.push('--headless');
   if (debug) args.push('--debug');
-  // Gen 30 R2: forward provider/base-url/api-key so multi-rep can route
-  // through a custom LLM endpoint (e.g. router.tangle.tools). Without
-  // this, the child uses OPENAI_API_KEY against api.openai.com and
-  // ignores the caller's --base-url.
+  // Forward provider/base-url/api-key so child runs use the requested LLM endpoint.
   if (providerOverride) args.push('--provider', providerOverride);
   if (baseUrlOverride) args.push('--base-url', baseUrlOverride);
   if (apiKeyOverride) args.push('--api-key', apiKeyOverride);

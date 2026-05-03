@@ -10,8 +10,8 @@
  *      design system coherence. It sees the screenshot, the composed rubric,
  *      and a summary of the deterministic findings as context.
  *
- * This split is the whole point of Gen 2: stop asking the LLM to estimate
- * things that are computable.
+ * Computable checks stay deterministic; the LLM only evaluates subjective
+ * design quality.
  */
 
 import type { Brain } from '../../brain/index.js'

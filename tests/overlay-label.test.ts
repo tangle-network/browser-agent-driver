@@ -3,7 +3,7 @@
  * format so regressions (verbose labels like `type JOHN SMITH · last
  * name insert criteria, required *`) get caught at CI time.
  *
- * Gen 34 rewrite: natural-English sentences, aggressive suffix cleanup.
+ * Natural-English sentences with aggressive suffix cleanup.
  */
 import { describe, it, expect } from 'vitest'
 import { formatOverlayLabel } from '../src/drivers/overlay-label.js'

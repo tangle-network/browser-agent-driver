@@ -1,5 +1,5 @@
 /**
- * Gen 10C — budgetSnapshot must preserve content lines (term, definition,
+ * budgetSnapshot must preserve content lines (term, definition,
  * code, pre, paragraph) when budget allows. Without this fix, MDN-style
  * `<dl>/<dt>/<dd>` content and Python docs `<code>` blocks get dropped from
  * the snapshot, leaving the LLM with no way to write a working runScript.

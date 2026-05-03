@@ -1,8 +1,8 @@
 /**
  * Attach mode — connect to the user's already-running Chrome via CDP.
  *
- * Inspired by browser-use/browser-harness. The agent drives the user's
- * real browser instead of launching a fresh Chromium, which preserves
+ * The agent drives the user's real browser instead of launching a fresh
+ * Chromium, which preserves
  * login state, cookies, SSO — the workflows that "automate anything
  * I'm already logged into" need.
  *

@@ -1,5 +1,5 @@
 /**
- * Gen 32 — agent narration hooks for the cursor overlay.
+ * Agent narration hooks for the cursor overlay.
  *
  * The runner emits `decide-completed` each turn with the LLM's raw
  * reasoning text. That text carries three distinct signals the overlay

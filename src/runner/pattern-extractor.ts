@@ -1,8 +1,8 @@
 /**
  * Pattern Extractor — learns reusable navigation patterns from completed runs.
  *
- * Gen 26b: after a successful run, mechanically extract domain-level patterns
- * from the turn log and record them as AppKnowledge facts. No LLM call needed —
+ * After a successful run, mechanically extract domain-level patterns from the
+ * turn log and record them as AppKnowledge facts. No LLM call needed —
  * patterns are detected by observing action/state sequences.
  *
  * Extracted patterns:

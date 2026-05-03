@@ -1,10 +1,10 @@
 /**
- * Audit pipeline — orchestrates the full Gen 2 audit for one page.
+ * Audit pipeline — orchestrates the full design audit for one page.
  *
  *   load page → classify → compose rubric → measure → evaluate → result
  *
  * The pipeline is the only place that knows about all stages. Each stage is
- * a pure function elsewhere in this module — easy to unit test in isolation.
+ * a pure function elsewhere in this module.
  */
 
 import * as fs from 'node:fs'
@@ -89,7 +89,7 @@ async function dismissCookieBanners(page: Page): Promise<void> {
 }
 
 /**
- * Audit one page through the full Gen 2 pipeline.
+ * Audit one page through the full design-audit pipeline.
  */
 export async function auditOnePage(opts: AuditOnePageOptions): Promise<PageAuditResult> {
   const {

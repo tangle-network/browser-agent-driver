@@ -55,27 +55,21 @@ export interface Driver {
   /** Optional run-time diagnostics for startup and browser/session setup */
   getDiagnostics?(): Record<string, unknown>;
 
-  /** Gen 29: expose the driver's construction options so the runner can
-   * hand them to sub-drivers (compound-goal parallel tabs). Drivers that
-   * don't support compound goals can omit this. Return shape is driver-
-   * specific (cast at the caller). */
+  /** Expose construction options so the runner can hand them to sub-drivers. */
   getDriverOptions?(): unknown;
 
   /** Close/cleanup the driver */
   close?(): Promise<void>;
 
   /**
-   * Gen 32 — overlay narration hooks. No-op when the overlay is off.
-   * Drivers without a cursor overlay can omit these entirely; callers
-   * check for presence and skip when absent.
+   * Overlay narration hooks. Drivers without a cursor overlay can omit these.
    */
   setOverlayReasoning?(text: string): Promise<void>;
   setOverlayProgress?(current: number, total: number, label?: string): Promise<void>;
   pushOverlayBadge?(kind: 'positive' | 'cleared' | 'review' | 'info', text: string): Promise<void>;
 
   /**
-   * Gen 34 — Hydra view for mid-run fanOut. Optional; drivers without a
-   * cursor overlay can omit. All cosmetic — errors swallowed.
+   * Fan-out overlay hooks. Optional and cosmetic.
    */
   fanOutStart?(labels: string[]): Promise<void>;
   fanOutUpdateCell?(index: number, dataUrl?: string): Promise<void>;

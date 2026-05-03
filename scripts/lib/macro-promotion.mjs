@@ -13,11 +13,8 @@
  *                   estimatedCostUsd }, …],
  *     reps: number }
  *
- * Gen 30: verdict is now driven by bootstrap CI + Cohen's d on the
- * per-rep raw values, not by a first-order spread-dominance heuristic.
- * This is the proper fix for the B-H2 audit finding. We still fall back
- * to the first-order rule when rawRuns is missing (e.g., legacy summaries
- * from before run-multi-rep started emitting rawRuns).
+ * Verdict uses bootstrap CI + Cohen's d on per-rep raw values when available.
+ * Falls back to the first-order rule when rawRuns is missing.
  */
 import { bootstrapDiff95, cohenD, classifyEffectSize } from './stats.mjs'
 
@@ -44,10 +41,7 @@ export function compare(baseline, treatment) {
       durationMeanMs: roundNum(treatmentMode.durationMs.mean - baselineMode.durationMs.mean, 0),
     },
   }
-  // Gen 30: compute bootstrap CIs + Cohen's d on the per-rep raw values
-  // when both sides have rawRuns. Absent rawRuns (legacy summaries), the
-  // caller falls back to the first-order spread-dominance rule in
-  // decideVerdict.
+  // Compute bootstrap CIs + Cohen's d when both sides have per-rep rawRuns.
   const baselineRaw = Array.isArray(baselineMode.rawRuns) ? baselineMode.rawRuns : null
   const treatmentRaw = Array.isArray(treatmentMode.rawRuns) ? treatmentMode.rawRuns : null
   if (baselineRaw && treatmentRaw && baselineRaw.length > 0 && treatmentRaw.length > 0) {
@@ -72,8 +66,8 @@ export function compare(baseline, treatment) {
 }
 
 /**
- * Gen 30: Promotion verdict using bootstrap CI + Cohen's d when raw
- * per-rep data is available. Reject/pass-rate gates come first (those
+ * Promotion verdict using bootstrap CI + Cohen's d when raw per-rep data is
+ * available. Reject/pass-rate gates come first (those
  * are binary outcomes, not continuous), then the efficiency comparison
  * uses the CI's upper bound and the effect size.
  *
@@ -90,15 +84,15 @@ export function compare(baseline, treatment) {
  * **Inconclusive** when the data neither promotes nor rejects: the CI
  * straddles zero or the effect size is trivial.
  *
- * When rawRuns is missing from one side (legacy summaries), falls back to
- * the first-order spread-dominance rule from Gen 29.
+ * When rawRuns is missing from one side, falls back to the first-order
+ * spread-dominance rule.
  */
 export function decideVerdict(comparison, successCriteria = {}) {
   if (!comparison.baseline || !comparison.treatment || !comparison.deltas) return 'inconclusive'
   const { passRate } = comparison.deltas
   const treatment = comparison.treatment
 
-  // Gate 1: binary-outcome checks (same as Gen 29)
+  // Gate 1: binary-outcome checks.
   const passRateOK = treatment.passRate >= (successCriteria.minPassRate ?? 0)
   const passRateRegress = passRate < -0.0001
   const turnsCap = successCriteria.maxTurnsMean !== undefined
@@ -130,9 +124,7 @@ function decideFromBootstrap(stats) {
 }
 
 function decideFromSpread(comparison) {
-  // Legacy first-order rule (Gen 29). Kept for backward-compat with
-  // summaries that don't carry rawRuns. New summaries should never fall
-  // into this branch.
+  // First-order fallback for summaries that do not carry rawRuns.
   const { turnsMean, costMean } = comparison.deltas
   const baseline = comparison.baseline
   const treatment = comparison.treatment

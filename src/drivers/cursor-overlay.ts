@@ -241,7 +241,7 @@ export const CURSOR_OVERLAY_INIT_SCRIPT = `
     overflow: 'hidden',
   });
 
-  // ── Gen 34 Hydra View — fan-out grid (live thumbnails of sub-tabs) ─────
+  // ── Fan-out view — live thumbnails of sub-tabs ──────────────────────
   // Full-viewport dim overlay + grid of live sub-tab screenshot cells.
   // Cells lay out based on count: 1→1, 2→1x2, 3-4→2x2, 5-6→2x3, 7-8→2x4.
   // Each cell background updates via updateFanOutCell(i, dataUrl, meta).
@@ -470,7 +470,7 @@ export const CURSOR_OVERLAY_INIT_SCRIPT = `
       } catch { /* cosmetic */ }
     },
 
-    // ── Gen 34 Hydra API ─────────────────────────────────────────────
+    // ── Fan-out overlay API ──────────────────────────────────────────
     /**
      * Begin a fan-out: render the dim overlay + grid of N labeled cells.
      * Cells start in "queued" state (empty). Call updateFanOutCell(i, ...)
@@ -695,4 +695,3 @@ export const CURSOR_OVERLAY_INIT_SCRIPT = `
   };
 })();
 `
-

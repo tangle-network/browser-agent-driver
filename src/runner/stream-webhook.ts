@@ -1,5 +1,5 @@
 /**
- * Gen 32 — live event streaming to a webhook.
+ * Live event streaming to a webhook.
  *
  * Subscribes to the run's TurnEventBus and POSTs each event as JSON to a
  * user-specified URL. Used by `bad run --stream <url>` so a remote

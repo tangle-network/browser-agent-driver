@@ -84,9 +84,8 @@ export interface TestRunnerOptions {
   /** Called after each agent turn */
   onTurn?: (tc: TestCase, turn: Turn) => void;
   /**
-   * Gen 32 — called at the top of every turn before observe(). Returns
-   * a promise the runner awaits; used by the interrupt controller to
-   * block while paused. Rejection triggers a clean abort.
+   * Called at the top of every turn before observe(). Returns a promise the
+   * runner awaits; used by the interrupt controller to block while paused.
    */
   beforeTurn?: (turn: number) => Promise<void>;
 
@@ -103,8 +102,8 @@ export interface TestRunnerOptions {
    */
   extensions?: import('./extensions/types.js').ResolvedExtensions;
   /**
-   * Gen 29: rendered macro prompt block from skills/macros. Forwarded to
-   * every BrowserAgent so macros are visible in the system prompt.
+   * Rendered macro prompt block from skills/macros. Forwarded to every
+   * BrowserAgent so macros are visible in the system prompt.
    */
   macroPromptBlock?: string;
   /**
@@ -992,9 +991,7 @@ export class TestRunner {
 
   private resolveTimeoutMs(testCase: TestCase): number | undefined {
     const base = testCase.timeoutMs ?? this.defaultTimeoutMs;
-    // Gen 26: vision mode gets 5× timeout (600s for 120s base cases).
-    // The cost cap (200k tokens) is the real safety net. Timeout was
-    // artificially killing 7 tasks that were making progress.
+    // Vision mode gets a larger timeout because screenshot turns are slower.
     if (base && (this.config?.observationMode === 'vision' || this.config?.observationMode === 'hybrid')) {
       return Math.round(base * 5);
     }

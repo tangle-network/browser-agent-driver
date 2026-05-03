@@ -86,17 +86,17 @@ export interface DriverConfig {
   screenshotInterval?: number;
   vision?: boolean;
   visionStrategy?: 'always' | 'never' | 'auto';
-  /** Gen 13: observation mode — controls primary input to Brain.decide.
+  /** Observation mode — controls primary input to Brain.decide.
    *  'dom' (default): ARIA snapshot primary, screenshot secondary
    *  'vision': screenshot primary, minimal DOM context
    *  'hybrid': both screenshot and DOM snapshot at full weight */
   observationMode?: 'dom' | 'vision' | 'hybrid';
   goalVerification?: boolean;
-  /** Gen 7 plan-then-execute: single LLM call generates the full action sequence */
+  /** Plan-then-execute: single LLM call generates the full action sequence */
   plannerEnabled?: boolean;
   /** Planner routing policy. `auto` skips planner on extraction-shaped tasks. */
   plannerMode?: 'always' | 'auto';
-  /** Gen 8: extra ms wait before the planner's first observe, for SPA settle */
+  /** Extra wait before the planner's first observe, for dynamic page settle */
   initialObserveSettleMs?: number;
   qualityThreshold?: number;
   microPlan?: {

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Competitive bench harness — head-to-head comparison of `bad` against
- * other browser agent frameworks (browser-use, Stagehand, ...).
+ * Competitive bench harness for comparing `bad` against other browser agent
+ * frameworks.
  *
  * Single entry point for the unified, statistically-rigorous cross-tool
  * comparison. Per the rigor protocol in docs/EVAL-RIGOR.md it enforces
@@ -372,7 +372,7 @@ fs.writeFileSync(path.join(outRoot, 'summary.json'), JSON.stringify(summary, nul
 fs.writeFileSync(path.join(outRoot, 'comparison.md'), renderMarkdown(summary))
 writeCsv(path.join(outRoot, 'runs.csv'), allRuns)
 
-// Gen 8: gauntlet-summary.json + dashboard.html
+// Write rollup summary and dashboard artifacts.
 const gauntletSummary = buildGauntletSummary(summary, allRuns)
 fs.writeFileSync(
   path.join(outRoot, 'gauntlet-summary.json'),
@@ -387,10 +387,8 @@ console.log(`Per-rep CSV:         ${path.join(outRoot, 'runs.csv')}`)
 console.log(`Gauntlet summary:    ${path.join(outRoot, 'gauntlet-summary.json')}`)
 console.log(`Dashboard HTML:      ${path.join(outRoot, 'dashboard.html')}`)
 
-// Gen 8: an "exit non-zero on any failure" gate is too strict for the
-// gauntlet because real-web blocks aren't architectural failures. Exit
-// non-zero only when the CLEAN pass rate (excluding blocked runs) is < 1.0
-// for any cell, OR if there were no successful runs at all.
+// Real-web blocks are reported separately. Exit non-zero only when the clean
+// pass rate, excluding blocked runs, is below 1.0 for any cell.
 const anyArchFail = Object.values(cellStats).some((cell) => cell.passRate.cleanRate < 1)
 process.exit(anyArchFail ? 1 : 0)
 
@@ -527,10 +525,10 @@ function csvEscape(value) {
   return s
 }
 
-// ── Gen 8: gauntlet rollup + HTML dashboard ─────────────────────────────
+// ── Rollup + HTML dashboard ─────────────────────────────────────────────
 
 /**
- * Build the gauntlet rollup. One headline number per framework.
+ * Build the rollup. One headline number per framework.
  * Excludes blocked runs from the pass-rate denominator (clean pass rate)
  * because anti-bot blocks aren't architectural failures.
  */

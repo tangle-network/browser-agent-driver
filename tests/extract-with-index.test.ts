@@ -1,5 +1,5 @@
 /**
- * Gen 10 — extractWithIndex action tests.
+ * extractWithIndex action tests.
  *
  * Two layers:
  *   1. Parser unit tests (Brain.parse → ExtractWithIndexAction object)

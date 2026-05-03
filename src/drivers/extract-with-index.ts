@@ -1,17 +1,14 @@
 /**
- * Gen 10 — extractWithIndex implementation.
+ * extractWithIndex implementation.
  *
  * Runs in page context via page.evaluate() and returns a numbered list of
  * every visible element matching `query`, each with its tag, textContent,
  * key attributes, and a stable selector. The agent picks elements by index
  * in the next turn.
  *
- * Why this is the Gen 10 capability fix: rather than asking the LLM to
- * write a precise CSS selector that returns exactly one element (the
- * approach that fails on real-web pages where data lives in obscurely-classed
- * wrapper divs or `<dl>/<dt>/<dd>` blocks), the LLM emits a wide query and
- * READS the actual text content of every match. Pick-by-content beats
- * pick-by-selector on every failing task in the Gen 8 gauntlet.
+ * The model emits a broad query and reads the actual text content of every
+ * match, which is more reliable than precise selectors for pages where data
+ * lives in obscure wrappers or `<dl>/<dt>/<dd>` blocks.
  */
 
 import type { Page } from 'playwright';

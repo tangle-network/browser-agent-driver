@@ -1,6 +1,6 @@
 /**
- * Tests for the TurnEventBus — the foundation primitive for Gen 5
- * observability + extension hooks + decision cache observability.
+ * Tests for the TurnEventBus — the foundation primitive for observability,
+ * extension hooks, and decision-cache observability.
  *
  * The bus must be: synchronous, bounded, fault-isolated, and replay-capable
  * for late subscribers. These tests pin all four properties.

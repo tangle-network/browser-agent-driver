@@ -1,5 +1,5 @@
 /**
- * Gen 33 — mid-run parallel fan-out executor.
+ * Mid-run parallel fan-out executor.
  *
  * When the agent emits a `fanOut` action in the middle of a run, this
  * module spawns N sub-agents in fresh tabs of the same BrowserContext,
@@ -22,10 +22,9 @@
  *     the parent sees "BRANCH 3: error: …" as part of the structured
  *     feedback and can choose to retry / ignore / incorporate
  *
- * This is different from Gen 21's parallel-runner.ts, which runs the
- * ENTIRE run as parallel sub-goals decided up front. FanOut is called
- * from inside a turn, with whatever sub-goals the agent synthesized on
- * the fly from the current page's content.
+ * This differs from parallel-runner.ts, which decomposes the whole run up
+ * front. FanOut is called inside a turn with sub-goals synthesized from the
+ * current page's content.
  */
 
 import type { BrowserContext, Page } from 'playwright'
@@ -85,10 +84,8 @@ export interface FanOutExecutorOptions {
   /** Parent's currentURL — used as a default for any sub-goal that didn't set one. */
   currentUrl?: string
   /**
-   * Gen 34 — the parent's driver. When present, the executor drives the
-   * Hydra overlay on the parent page: grid init, live screenshot
-   * streaming per branch, verdict chips, final collapse animation.
-   * Pass undefined to skip Hydra (no cursor / headless / etc.).
+   * Parent driver used to drive the fan-out overlay on the parent page.
+   * Pass undefined to skip overlay updates.
    */
   parentDriver?: Driver
   /**
@@ -174,9 +171,7 @@ export async function executeFanOut(
     }
   }
 
-  // Gen 34 — kick off the Hydra overlay on the parent page. All driver
-  // methods are optional; absence of any is a no-op (headless / no
-  // cursor). Errors never propagate — overlay is cosmetic.
+  // Kick off the fan-out overlay on the parent page. Overlay errors are cosmetic.
   const labels = subGoals.map((sg, i) => sg.label ?? `branch-${i + 1}`)
   if (opts.parentDriver?.fanOutStart) {
     await opts.parentDriver.fanOutStart(labels).catch(() => { /* cosmetic */ })
@@ -203,9 +198,7 @@ export async function executeFanOut(
     }))
   })
 
-  // Gen 34 — choreography: minimum 3s visible floor so fast fan-outs
-  // don't flash past the viewer, then collapse (~520ms) + dismiss
-  // (~400ms). Total ≤ 4s of overlay time beyond actual work.
+  // Keep fast fan-outs visible long enough to be legible, then collapse and dismiss.
   if (opts.parentDriver?.fanOutCollapse) {
     const elapsed = Date.now() - startedAt
     if (elapsed < 3000) {
@@ -245,10 +238,7 @@ async function runBranch(
   opts.onBranchStart?.(index, label)
 
   let page: Page | undefined
-  // Gen 34 — Hydra screenshot streamer. Fires at 2.5 FPS while this
-  // branch is running; stops on completion/error/page-close. Each tick
-  // pushes a base64 JPEG into the parent's overlay cell. Fire-and-forget;
-  // late frames after completion are dropped by the cell dedup logic.
+  // Screenshot streamer: update the branch overlay cell while the branch runs.
   let streamer: ReturnType<typeof setInterval> | undefined
   const startStreamer = (pageRef: Page): void => {
     if (!opts.parentDriver?.fanOutUpdateCell) return
