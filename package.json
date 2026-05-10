@@ -132,7 +132,7 @@
     "@ai-sdk/google": "^3.0.33",
     "@changesets/changelog-github": "^0.6.0",
     "@changesets/cli": "^2.30.0",
-    "@tangle-network/agent-eval": "0.20.12",
+    "@tangle-network/agent-eval": "^0.23.0",
     "@types/node": "^20.10.0",
     "@types/pngjs": "^6.0.5",
     "classic-level": "^3.0.0",
