@@ -1,5 +1,18 @@
 # @tangle-network/browser-agent-driver
 
+## 0.33.1
+
+### Patch Changes
+
+- Omit `temperature` for reasoning models that reject it. The temperature guard
+  only knew the GPT-5 family, so design-audit and supervisor calls to newer
+  reasoning models failed at the provider (Anthropic Opus 4.8: "temperature is
+  deprecated for this model"; Moonshot Kimi K2.6: "only 1 is allowed for this
+  model"). A single shared `shouldSendTemperature` in `provider-defaults` now
+  covers GPT-5, OpenAI o-series, Claude Opus 4.8+, Kimi K2.6+/thinking, and
+  DeepSeek reasoner; non-reasoning siblings (opus-4-1, deepseek-v4, gpt-4o,
+  sonnet, kimi-k2) are unchanged.
+
 ## 0.33.0
 
 ### Minor Changes

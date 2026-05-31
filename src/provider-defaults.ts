@@ -106,3 +106,29 @@ export function resolveProviderApiKey(
       return env.OPENAI_API_KEY;
   }
 }
+
+/**
+ * Whether an explicit `temperature` may be sent to a model.
+ *
+ * Reasoning / thinking models fix temperature internally and REJECT an explicit
+ * value — passing one errors (Anthropic: "temperature is deprecated for this
+ * model"; Moonshot: "only 1 is allowed for this model"; OpenAI o-series/GPT-5:
+ * unsupported_value). Return false for those so callers OMIT the param;
+ * everything else still gets the deterministic `temperature: 0`.
+ *
+ * Matched by family (with an optional `provider/` prefix) so dated snapshots
+ * like `claude-opus-4-8-20250805` are covered. Non-reasoning siblings that DO
+ * accept temperature (claude-opus-4-1, deepseek-v4/chat, gpt-4o, sonnet, kimi-k2)
+ * are intentionally not matched, so their behavior is unchanged.
+ */
+const TEMPERATURE_UNSUPPORTED: RegExp[] = [
+  /(^|\/)gpt-5(?:[.-]|$)/i, // OpenAI GPT-5 family
+  /(^|\/)o[1-9](?:[.-]|$)/i, // OpenAI o-series reasoning (o1, o3, o4…)
+  /claude-opus-4-(?:[89]|\d{2,})/i, // Claude Opus 4.8+ (temperature deprecated)
+  /kimi-(?:k2\.(?:[6-9]|\d{2,})|thinking)/i, // Moonshot Kimi K2.6+ / thinking
+  /deepseek-(?:reasoner|r\d)/i, // DeepSeek reasoning (deepseek-reasoner, r1)
+];
+
+export function shouldSendTemperature(modelName: string): boolean {
+  return !TEMPERATURE_UNSUPPORTED.some((re) => re.test(modelName));
+}
