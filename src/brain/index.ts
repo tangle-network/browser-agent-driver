@@ -13,6 +13,7 @@ import {
   resolveProviderApiKey,
   resolveProviderModelName,
   isClaudeCodeRoutedModel,
+  shouldSendTemperature,
   ZAI_OPENAI_BASE_URL,
   ZAI_ANTHROPIC_BASE_URL,
 } from '../provider-defaults.js';
@@ -564,8 +565,10 @@ export class Brain {
   }
 
   private shouldSendTemperature(modelName = this.modelName): boolean {
-    // OpenAI GPT-5 reasoning family currently rejects explicit temperature.
-    return !/(^|\/)gpt-5(?:[.-]|$)/i.test(modelName);
+    // Reasoning models reject an explicit temperature — see the shared
+    // capability check (GPT-5, o-series, Opus 4.8+, Kimi K2.6+, DeepSeek
+    // reasoner).
+    return shouldSendTemperature(modelName);
   }
 
   private generationOptions(

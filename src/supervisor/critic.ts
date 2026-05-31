@@ -7,7 +7,7 @@ import type {
   SupervisorSignal,
   Turn,
 } from '../types.js';
-import { resolveProviderApiKey, resolveProviderModelName } from '../provider-defaults.js';
+import { resolveProviderApiKey, resolveProviderModelName, shouldSendTemperature } from '../provider-defaults.js';
 import { generateWithSandboxBackend } from '../providers/sandbox-backend.js';
 
 export interface SupervisorCriticInput {
@@ -274,10 +274,6 @@ function validateSelectorRefs(action: Action, snapshot: string): boolean {
     Array.from(snapshot.matchAll(/\[ref=([^\]]+)\]/g)).map((match) => `@${match[1]}`),
   );
   return knownRefs.has(selector);
-}
-
-function shouldSendTemperature(modelName: string): boolean {
-  return !/(^|\/)gpt-5(?:[.-]|$)/i.test(modelName);
 }
 
 async function getModel(config: {
