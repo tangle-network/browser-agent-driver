@@ -1251,7 +1251,10 @@ async function main(): Promise<void> {
       args: launchPlan.browserArgs,
       viewport,
       recordVideo: { dir: videoDir, size: viewport },
-      ...(launchPlan.proxyServer ? { proxy: { server: launchPlan.proxyServer } } : {}),
+      ...(launchPlan.proxyServer
+        ? { proxy: { server: launchPlan.proxyServer, ...(launchPlan.proxyBypass ? { bypass: launchPlan.proxyBypass } : {}) } }
+        : {}),
+      ...(launchPlan.ignoreHTTPSErrors ? { ignoreHTTPSErrors: true } : {}),
     });
     launchDiagnostics.browserLaunchMs = Date.now() - persistentLaunchStartedAt;
     await applyStorageStateToPersistentContext(persistentContext, storageStatePath);
@@ -1385,7 +1388,9 @@ async function main(): Promise<void> {
       // layout shifts), so only enable when anti-bot evasion is needed.
       ...(isStealthProfile && browserName === 'chromium' ? { channel: 'chrome' } : {}),
       // Residential/SOCKS5/HTTP proxy — routes all traffic through the proxy
-      ...(launchPlan.proxyServer ? { proxy: { server: launchPlan.proxyServer } } : {}),
+      ...(launchPlan.proxyServer
+        ? { proxy: { server: launchPlan.proxyServer, ...(launchPlan.proxyBypass ? { bypass: launchPlan.proxyBypass } : {}) } }
+        : {}),
     })
     launchDiagnostics.browserLaunchMs = Date.now() - browserLaunchStartedAt
   }
@@ -1416,7 +1421,12 @@ async function main(): Promise<void> {
     if (cdpConnected) {
       // Reuse the user's existing browser context — cookies, localStorage, extensions intact
       const contexts = browser!.contexts()
-      context = contexts[0] ?? await browser!.newContext({ viewport })
+      // A freshly-created CDP context still honors egress; the reused contexts[0] is the user's own
+      // browser context (see the --cdp-url egress warning in buildBrowserLaunchPlan), left untouched.
+      context = contexts[0] ?? await browser!.newContext({
+        viewport,
+        ...(launchPlan.ignoreHTTPSErrors ? { ignoreHTTPSErrors: true } : {}),
+      })
     } else if (persistentContext) {
       context = persistentContext
     } else {
@@ -1427,6 +1437,8 @@ async function main(): Promise<void> {
         locale: 'en-US',
         timezoneId: 'America/New_York',
         ...(headlessUserAgent ? { userAgent: headlessUserAgent } : {}),
+        // Accept the managed egress proxy's MITM cert (its CA isn't in Chromium's trust store).
+        ...(launchPlan.ignoreHTTPSErrors ? { ignoreHTTPSErrors: true } : {}),
         extraHTTPHeaders: {
           'Accept-Language': 'en-US,en;q=0.9',
         },

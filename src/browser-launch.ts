@@ -15,6 +15,17 @@ export interface BrowserLaunchPlan {
   userDataDir?: string;
   /** Residential/SOCKS5/HTTP proxy URL (e.g. http://user:pass@proxy:port) */
   proxyServer?: string;
+  /** Comma-separated host bypass list for the proxy (from NO_PROXY, managed-egress only). */
+  proxyBypass?: string;
+  /**
+   * Relax Chromium TLS validation for the run. Set ONLY when we auto-detect the sandbox's managed
+   * egress proxy (iron-proxy MITM), whose CA is trusted by CLI tools via NODE_EXTRA_CA_CERTS but is
+   * not installed in Chromium's trust store. Playwright has no "trust one CA" option, so this accepts
+   * ALL cert errors for the run — acceptable only because it is gated on the EGRESS_PROXY_IP sentinel,
+   * never set for a user-supplied --proxy/BAD_PROXY_URL, and all egress already goes through the proxy.
+   * Optional so external consumers constructing a plan literal aren't type-broken by this field.
+   */
+  ignoreHTTPSErrors?: boolean;
   warnings: string[];
   errors: string[];
 }
@@ -120,7 +131,33 @@ export function buildBrowserLaunchPlan(
     warnings.push('--cdp-url connects to an existing browser; --profile-dir and wallet options are ignored.')
   }
 
-  const proxyServer = config.proxy || process.env.BAD_PROXY_URL || undefined;
+  // Explicit user proxy (residential/SOCKS5/custom) always wins and keeps cert validation on.
+  const explicitProxy = config.proxy || env.BAD_PROXY_URL || undefined;
+  // Otherwise, auto-wire the sandbox's managed egress proxy (iron-proxy) if present. Playwright's
+  // Chromium ignores HTTP_PROXY/HTTPS_PROXY env, so without this the browser connects directly and
+  // the host egress firewall drops it (ERR_NAME_NOT_RESOLVED → chrome-error).
+  const managedEgressProxy = explicitProxy ? undefined : resolveManagedEgressProxy(env);
+  const proxyServer = explicitProxy ?? managedEgressProxy?.server;
+  const proxyBypass = managedEgressProxy?.bypass;
+  // Accept the proxy's MITM cert (see BrowserLaunchPlan.ignoreHTTPSErrors) — egress proxy only.
+  const ignoreHTTPSErrors = Boolean(managedEgressProxy);
+  if (managedEgressProxy) {
+    warnings.push(
+      `Routing the browser through the managed egress proxy (${managedEgressProxy.server}) and accepting its TLS-interception certificate; outbound is otherwise blocked by the sandbox egress firewall.`,
+    );
+    if (cdpUrl) {
+      // CDP attaches to a browser we didn't launch, so the proxy/cert wiring never reaches it.
+      warnings.push(
+        '--cdp-url connects to an existing browser; the managed egress proxy is NOT applied to it, so its pages may be blocked by the sandbox egress firewall.',
+      );
+    }
+  } else if (!explicitProxy && env.EGRESS_PROXY_IP?.trim()) {
+    // Sentinel present but no HTTPS_PROXY/HTTP_PROXY to route through — surface the misconfig instead
+    // of silently letting the browser connect directly and hit ERR_NAME_NOT_RESOLVED (the bug this fixes).
+    warnings.push(
+      'EGRESS_PROXY_IP is set but neither HTTPS_PROXY nor HTTP_PROXY is; the browser will connect directly and may be blocked by the sandbox egress firewall.',
+    );
+  }
 
   return {
     profile,
@@ -134,9 +171,29 @@ export function buildBrowserLaunchPlan(
     extensionPaths,
     userDataDir: userDataDir ?? (walletMode ? undefined : profileDir),
     proxyServer,
+    proxyBypass,
+    ignoreHTTPSErrors,
     warnings,
     errors,
   };
+}
+
+/**
+ * Detect the sandbox's managed egress proxy. Sandbox hosts running iron-proxy inject
+ * `EGRESS_PROXY_IP` plus `HTTPS_PROXY`/`HTTP_PROXY` to force all outbound traffic through a
+ * per-sandbox TLS-intercepting proxy. We gate on `EGRESS_PROXY_IP` (the managed-egress sentinel)
+ * so we only auto-wire — and only relax cert validation for — the trusted in-sandbox proxy, never
+ * an arbitrary ambient `HTTP_PROXY` a user happens to have exported.
+ */
+function resolveManagedEgressProxy(
+  env: NodeJS.ProcessEnv,
+): { server: string; bypass?: string } | undefined {
+  if (!env.EGRESS_PROXY_IP?.trim()) return undefined;
+  // Prefer the CONNECT listener (HTTPS_PROXY) — browser traffic is predominantly HTTPS.
+  const server = (env.HTTPS_PROXY ?? env.HTTP_PROXY ?? '').trim();
+  if (!server) return undefined;
+  const bypass = env.NO_PROXY?.trim() || undefined;
+  return { server, bypass };
 }
 
 function applyProfileBrowserArgs(
