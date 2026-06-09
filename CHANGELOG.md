@@ -1,5 +1,11 @@
 # @tangle-network/browser-agent-driver
 
+## 0.33.2
+
+### Patch Changes
+
+- [#103](https://github.com/tangle-network/browser-agent-driver/pull/103) [`c98785b`](https://github.com/tangle-network/browser-agent-driver/commit/c98785bdc30cdb2a12b3ffdbcc0207c9ee8312ba) Thanks [@AtelyPham](https://github.com/AtelyPham)! - Route the browser through the sandbox's managed egress proxy (iron-proxy). When `EGRESS_PROXY_IP` + `HTTPS_PROXY`/`HTTP_PROXY` are present and no explicit `--proxy`/`BAD_PROXY_URL` is set, Chromium is now launched through the proxy (honoring `NO_PROXY`) and accepts its TLS-interception certificate, so browser runs work under egress isolation instead of failing every navigation with `chrome-error://`. Explicit user proxies are unchanged and keep certificate validation on.
+
 ## 0.33.1
 
 ### Patch Changes
