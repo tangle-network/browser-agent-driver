@@ -1421,7 +1421,12 @@ async function main(): Promise<void> {
     if (cdpConnected) {
       // Reuse the user's existing browser context — cookies, localStorage, extensions intact
       const contexts = browser!.contexts()
-      context = contexts[0] ?? await browser!.newContext({ viewport })
+      // A freshly-created CDP context still honors egress; the reused contexts[0] is the user's own
+      // browser context (see the --cdp-url egress warning in buildBrowserLaunchPlan), left untouched.
+      context = contexts[0] ?? await browser!.newContext({
+        viewport,
+        ...(launchPlan.ignoreHTTPSErrors ? { ignoreHTTPSErrors: true } : {}),
+      })
     } else if (persistentContext) {
       context = persistentContext
     } else {

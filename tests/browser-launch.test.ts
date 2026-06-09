@@ -243,6 +243,7 @@ describe('buildBrowserLaunchPlan', () => {
         env: { ...egressEnv, BAD_PROXY_URL: 'http://baduser:badpass@res:7000' },
       });
       expect(plan.proxyServer).toBe('http://baduser:badpass@res:7000');
+      expect(plan.proxyBypass).toBeUndefined();
       expect(plan.ignoreHTTPSErrors).toBe(false);
     });
 
@@ -251,6 +252,36 @@ describe('buildBrowserLaunchPlan', () => {
       expect(plan.proxyServer).toBeUndefined();
       expect(plan.proxyBypass).toBeUndefined();
       expect(plan.ignoreHTTPSErrors).toBe(false);
+    });
+
+    it('warns (and wires nothing) when EGRESS_PROXY_IP is set but HTTP(S)_PROXY is absent', () => {
+      // The sentinel alone is insufficient — otherwise the browser silently connects direct and hits
+      // ERR_NAME_NOT_RESOLVED, reproducing the very bug this feature prevents.
+      const plan = buildBrowserLaunchPlan({}, { env: { EGRESS_PROXY_IP: '172.18.0.7' } });
+      expect(plan.proxyServer).toBeUndefined();
+      expect(plan.ignoreHTTPSErrors).toBe(false);
+      expect(plan.warnings).toContainEqual(
+        expect.stringContaining('EGRESS_PROXY_IP is set but neither HTTPS_PROXY nor HTTP_PROXY'),
+      );
+    });
+
+    it('treats a whitespace-only EGRESS_PROXY_IP as absent', () => {
+      const plan = buildBrowserLaunchPlan({}, {
+        env: { EGRESS_PROXY_IP: '   ', HTTPS_PROXY: 'http://172.18.0.7:1080' },
+      });
+      expect(plan.proxyServer).toBeUndefined();
+      expect(plan.ignoreHTTPSErrors).toBe(false);
+      expect(plan.warnings).not.toContainEqual(expect.stringContaining('managed egress proxy'));
+    });
+
+    it('warns that --cdp-url bypasses the managed egress proxy', () => {
+      const plan = buildBrowserLaunchPlan(
+        { cdpUrl: 'ws://127.0.0.1:9222/devtools/browser/abc' },
+        { env: egressEnv },
+      );
+      expect(plan.warnings).toContainEqual(
+        expect.stringContaining('managed egress proxy is NOT applied'),
+      );
     });
   });
 });

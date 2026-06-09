@@ -18,11 +18,14 @@ export interface BrowserLaunchPlan {
   /** Comma-separated host bypass list for the proxy (from NO_PROXY, managed-egress only). */
   proxyBypass?: string;
   /**
-   * Accept the proxy's TLS-interception certificate. Set ONLY when we auto-detect the sandbox's
-   * managed egress proxy (iron-proxy MITM), whose CA is trusted by CLI tools via NODE_EXTRA_CA_CERTS
-   * but is not installed in Chromium's trust store. Never set for a user-supplied --proxy/BAD_PROXY_URL.
+   * Relax Chromium TLS validation for the run. Set ONLY when we auto-detect the sandbox's managed
+   * egress proxy (iron-proxy MITM), whose CA is trusted by CLI tools via NODE_EXTRA_CA_CERTS but is
+   * not installed in Chromium's trust store. Playwright has no "trust one CA" option, so this accepts
+   * ALL cert errors for the run — acceptable only because it is gated on the EGRESS_PROXY_IP sentinel,
+   * never set for a user-supplied --proxy/BAD_PROXY_URL, and all egress already goes through the proxy.
+   * Optional so external consumers constructing a plan literal aren't type-broken by this field.
    */
-  ignoreHTTPSErrors: boolean;
+  ignoreHTTPSErrors?: boolean;
   warnings: string[];
   errors: string[];
 }
@@ -136,13 +139,23 @@ export function buildBrowserLaunchPlan(
   const managedEgressProxy = explicitProxy ? undefined : resolveManagedEgressProxy(env);
   const proxyServer = explicitProxy ?? managedEgressProxy?.server;
   const proxyBypass = managedEgressProxy?.bypass;
-  // The managed egress proxy is a TLS-terminating MITM whose CA is trusted by CLI tools via
-  // NODE_EXTRA_CA_CERTS but NOT installed in Chromium's trust store, so the browser would reject
-  // every leaf cert. Accept its certs — only for the auto-detected egress proxy, never a user proxy.
+  // Accept the proxy's MITM cert (see BrowserLaunchPlan.ignoreHTTPSErrors) — egress proxy only.
   const ignoreHTTPSErrors = Boolean(managedEgressProxy);
   if (managedEgressProxy) {
     warnings.push(
       `Routing the browser through the managed egress proxy (${managedEgressProxy.server}) and accepting its TLS-interception certificate; outbound is otherwise blocked by the sandbox egress firewall.`,
+    );
+    if (cdpUrl) {
+      // CDP attaches to a browser we didn't launch, so the proxy/cert wiring never reaches it.
+      warnings.push(
+        '--cdp-url connects to an existing browser; the managed egress proxy is NOT applied to it, so its pages may be blocked by the sandbox egress firewall.',
+      );
+    }
+  } else if (!explicitProxy && env.EGRESS_PROXY_IP?.trim()) {
+    // Sentinel present but no HTTPS_PROXY/HTTP_PROXY to route through — surface the misconfig instead
+    // of silently letting the browser connect directly and hit ERR_NAME_NOT_RESOLVED (the bug this fixes).
+    warnings.push(
+      'EGRESS_PROXY_IP is set but neither HTTPS_PROXY nor HTTP_PROXY is; the browser will connect directly and may be blocked by the sandbox egress firewall.',
     );
   }
 
