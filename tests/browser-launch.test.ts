@@ -188,4 +188,69 @@ describe('buildBrowserLaunchPlan', () => {
     expect(plan.browserArgs).toContain('--no-first-run');
     expect(plan.browserArgs).toContain('--use-gl=desktop');
   });
+
+  // Regression: bad-app run 75e8f39c (browser.tangle.tools) — "Terminal blocker: destination is
+  // unreachable from the current browser environment. (signals: chrome-error-url)". The sandbox's
+  // iron-proxy egress forces all outbound through a per-sandbox MITM proxy via HTTP(S)_PROXY env,
+  // but Playwright's Chromium ignores those env vars, so the browser connected directly and the
+  // host egress firewall dropped it (ERR_NAME_NOT_RESOLVED). These pin the auto-wiring + the
+  // narrow conditions under which we relax cert validation.
+  describe('managed egress proxy (iron-proxy)', () => {
+    const egressEnv = {
+      EGRESS_PROXY_IP: '172.18.0.7',
+      HTTPS_PROXY: 'http://172.18.0.7:1080',
+      HTTP_PROXY: 'http://172.18.0.7:80',
+      NO_PROXY: 'localhost,127.0.0.1',
+    };
+
+    it('auto-wires the egress proxy (CONNECT listener) and accepts its MITM cert', () => {
+      const plan = buildBrowserLaunchPlan({}, { env: egressEnv });
+      expect(plan.proxyServer).toBe('http://172.18.0.7:1080'); // prefers HTTPS_PROXY
+      expect(plan.proxyBypass).toBe('localhost,127.0.0.1');
+      expect(plan.ignoreHTTPSErrors).toBe(true);
+      expect(plan.warnings).toContainEqual(expect.stringContaining('managed egress proxy'));
+    });
+
+    it('falls back to HTTP_PROXY when HTTPS_PROXY is unset', () => {
+      const plan = buildBrowserLaunchPlan({}, {
+        env: { EGRESS_PROXY_IP: '10.0.0.5', HTTP_PROXY: 'http://10.0.0.5:80' },
+      });
+      expect(plan.proxyServer).toBe('http://10.0.0.5:80');
+      expect(plan.ignoreHTTPSErrors).toBe(true);
+    });
+
+    it('does NOT hijack ambient HTTP(S)_PROXY without the EGRESS_PROXY_IP sentinel', () => {
+      const plan = buildBrowserLaunchPlan({}, {
+        env: { HTTP_PROXY: 'http://corp-proxy:8080', HTTPS_PROXY: 'http://corp-proxy:8080' },
+      });
+      expect(plan.proxyServer).toBeUndefined();
+      expect(plan.ignoreHTTPSErrors).toBe(false);
+      expect(plan.warnings).not.toContainEqual(expect.stringContaining('managed egress proxy'));
+    });
+
+    it('explicit --proxy wins over the egress proxy and keeps cert validation on', () => {
+      const plan = buildBrowserLaunchPlan(
+        { proxy: 'http://user:pass@residential:9000' },
+        { env: egressEnv },
+      );
+      expect(plan.proxyServer).toBe('http://user:pass@residential:9000');
+      expect(plan.proxyBypass).toBeUndefined();
+      expect(plan.ignoreHTTPSErrors).toBe(false);
+    });
+
+    it('BAD_PROXY_URL (env) wins over the egress proxy and keeps cert validation on', () => {
+      const plan = buildBrowserLaunchPlan({}, {
+        env: { ...egressEnv, BAD_PROXY_URL: 'http://baduser:badpass@res:7000' },
+      });
+      expect(plan.proxyServer).toBe('http://baduser:badpass@res:7000');
+      expect(plan.ignoreHTTPSErrors).toBe(false);
+    });
+
+    it('no proxy configured → no proxy, cert validation on', () => {
+      const plan = buildBrowserLaunchPlan({}, { env: {} });
+      expect(plan.proxyServer).toBeUndefined();
+      expect(plan.proxyBypass).toBeUndefined();
+      expect(plan.ignoreHTTPSErrors).toBe(false);
+    });
+  });
 });

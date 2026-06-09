@@ -15,6 +15,14 @@ export interface BrowserLaunchPlan {
   userDataDir?: string;
   /** Residential/SOCKS5/HTTP proxy URL (e.g. http://user:pass@proxy:port) */
   proxyServer?: string;
+  /** Comma-separated host bypass list for the proxy (from NO_PROXY, managed-egress only). */
+  proxyBypass?: string;
+  /**
+   * Accept the proxy's TLS-interception certificate. Set ONLY when we auto-detect the sandbox's
+   * managed egress proxy (iron-proxy MITM), whose CA is trusted by CLI tools via NODE_EXTRA_CA_CERTS
+   * but is not installed in Chromium's trust store. Never set for a user-supplied --proxy/BAD_PROXY_URL.
+   */
+  ignoreHTTPSErrors: boolean;
   warnings: string[];
   errors: string[];
 }
@@ -120,7 +128,23 @@ export function buildBrowserLaunchPlan(
     warnings.push('--cdp-url connects to an existing browser; --profile-dir and wallet options are ignored.')
   }
 
-  const proxyServer = config.proxy || process.env.BAD_PROXY_URL || undefined;
+  // Explicit user proxy (residential/SOCKS5/custom) always wins and keeps cert validation on.
+  const explicitProxy = config.proxy || env.BAD_PROXY_URL || undefined;
+  // Otherwise, auto-wire the sandbox's managed egress proxy (iron-proxy) if present. Playwright's
+  // Chromium ignores HTTP_PROXY/HTTPS_PROXY env, so without this the browser connects directly and
+  // the host egress firewall drops it (ERR_NAME_NOT_RESOLVED → chrome-error).
+  const managedEgressProxy = explicitProxy ? undefined : resolveManagedEgressProxy(env);
+  const proxyServer = explicitProxy ?? managedEgressProxy?.server;
+  const proxyBypass = managedEgressProxy?.bypass;
+  // The managed egress proxy is a TLS-terminating MITM whose CA is trusted by CLI tools via
+  // NODE_EXTRA_CA_CERTS but NOT installed in Chromium's trust store, so the browser would reject
+  // every leaf cert. Accept its certs — only for the auto-detected egress proxy, never a user proxy.
+  const ignoreHTTPSErrors = Boolean(managedEgressProxy);
+  if (managedEgressProxy) {
+    warnings.push(
+      `Routing the browser through the managed egress proxy (${managedEgressProxy.server}) and accepting its TLS-interception certificate; outbound is otherwise blocked by the sandbox egress firewall.`,
+    );
+  }
 
   return {
     profile,
@@ -134,9 +158,29 @@ export function buildBrowserLaunchPlan(
     extensionPaths,
     userDataDir: userDataDir ?? (walletMode ? undefined : profileDir),
     proxyServer,
+    proxyBypass,
+    ignoreHTTPSErrors,
     warnings,
     errors,
   };
+}
+
+/**
+ * Detect the sandbox's managed egress proxy. Sandbox hosts running iron-proxy inject
+ * `EGRESS_PROXY_IP` plus `HTTPS_PROXY`/`HTTP_PROXY` to force all outbound traffic through a
+ * per-sandbox TLS-intercepting proxy. We gate on `EGRESS_PROXY_IP` (the managed-egress sentinel)
+ * so we only auto-wire — and only relax cert validation for — the trusted in-sandbox proxy, never
+ * an arbitrary ambient `HTTP_PROXY` a user happens to have exported.
+ */
+function resolveManagedEgressProxy(
+  env: NodeJS.ProcessEnv,
+): { server: string; bypass?: string } | undefined {
+  if (!env.EGRESS_PROXY_IP?.trim()) return undefined;
+  // Prefer the CONNECT listener (HTTPS_PROXY) — browser traffic is predominantly HTTPS.
+  const server = (env.HTTPS_PROXY ?? env.HTTP_PROXY ?? '').trim();
+  if (!server) return undefined;
+  const bypass = env.NO_PROXY?.trim() || undefined;
+  return { server, bypass };
 }
 
 function applyProfileBrowserArgs(
