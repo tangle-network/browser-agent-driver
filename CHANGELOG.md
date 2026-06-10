@@ -1,5 +1,19 @@
 # @tangle-network/browser-agent-driver
 
+## 0.33.3
+
+### Patch Changes
+
+- [#105](https://github.com/tangle-network/browser-agent-driver/pull/105) [`098f301`](https://github.com/tangle-network/browser-agent-driver/commit/098f301cbbff8ce6cf0e5a31b6bbb8f86c6be3d0) Thanks [@AtelyPham](https://github.com/AtelyPham)! - Bump patchright 1.58.2 → 1.60.2 to align the bundled Chromium revision with the sandbox build cache.
+
+  patchright 1.58.2 pinned chromium-headless-shell revision **1208**, but the sidecar runtime's shared `tangle-npm-cache` now carries revision **1223** (downloaded by a newer patchright). The driver launched its own 1208 patchright, which wasn't in the cache, so the browser failed at launch:
+
+  ```
+  browserType.launch: Executable doesn't exist at .../chromium_headless_shell-1208/chrome-headless-shell-linux64/chrome-headless-shell
+  ```
+
+  patchright 1.60.2 pins revision **1223**, which is present in the cache, so the browser launches. No driver code changes — typecheck and the browser-launch suite pass unchanged.
+
 ## 0.33.2
 
 ### Patch Changes
