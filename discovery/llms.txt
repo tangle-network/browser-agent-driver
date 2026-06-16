@@ -1,0 +1,27 @@
+# Tangle Browser Agent
+
+Tangle Browser Agent is the `@tangle-network/browser-agent-driver` package and `bad` CLI for agentic browser automation, UI testing, wallet flows, extraction, and evidence capture.
+
+## Canonical discovery
+
+- Live manifest: https://tangle.tools/.well-known/tangle-browser-agent.json
+- Product page: https://tangle.tools/services/browser-agent
+- Source: https://github.com/tangle-network/browser-agent-driver
+- npm: https://www.npmjs.com/package/@tangle-network/browser-agent-driver
+
+## Install
+
+```bash
+npm install -g @tangle-network/browser-agent-driver
+npx playwright install chromium
+```
+
+Do not install the unscoped `bad` package from npm. It is unrelated to Tangle.
+
+## Safe discovery commands
+
+```bash
+bad --help
+bad run --help
+bad snapshot --help
+```

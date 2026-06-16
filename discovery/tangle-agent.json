@@ -1,0 +1,36 @@
+{
+  "schema_version": "2026-06-16",
+  "name": "Tangle Browser Agent",
+  "description": "Browser automation driver and bad CLI for agentic web tasks, UI regression testing, wallet flows, and evidence capture.",
+  "homepage": "https://tangle.tools/services/browser-agent",
+  "manifest": "https://tangle.tools/.well-known/tangle-browser-agent.json",
+  "llms": "https://tangle.tools/llms.txt",
+  "repo": "https://github.com/tangle-network/browser-agent-driver",
+  "npm": "@tangle-network/browser-agent-driver",
+  "install": [
+    "npm install -g @tangle-network/browser-agent-driver",
+    "npx playwright install chromium"
+  ],
+  "cli": {
+    "bin": "bad",
+    "safe_discovery_commands": [
+      "bad --help",
+      "bad run --help",
+      "bad snapshot --help"
+    ]
+  },
+  "sdk": {
+    "package": "@tangle-network/browser-agent-driver",
+    "exports": [
+      "BrowserAgent",
+      "PlaywrightDriver"
+    ],
+    "peer_dependency": "playwright"
+  },
+  "environment": {
+    "openai_key": "OPENAI_API_KEY",
+    "anthropic_key": "ANTHROPIC_API_KEY",
+    "google_key": "GOOGLE_GENERATIVE_AI_API_KEY",
+    "proxy_url": "BAD_PROXY_URL"
+  }
+}
