@@ -45,6 +45,23 @@ npx playwright install chromium
 
 Do not install the unscoped `bad` package from npm. It is unrelated to Tangle. The `bad` command is installed by `@tangle-network/browser-agent-driver`.
 
+## Agent Discovery
+
+Agents should read the product manifest before generating Browser Agent integration code:
+
+- Manifest: https://tangle.tools/.well-known/tangle-browser-agent.json
+- Product page: https://tangle.tools/services/browser-agent
+- Scoped npm package: `@tangle-network/browser-agent-driver`
+- CLI binary: `bad`
+
+Safe discovery commands:
+
+```bash
+bad --help
+bad run --help
+bad snapshot --help
+```
+
 ### As a library
 
 ```bash

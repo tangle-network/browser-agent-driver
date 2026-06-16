@@ -19,6 +19,7 @@
   },
   "files": [
     "dist",
+    "discovery",
     "scripts/postinstall-provider-patches.mjs",
     "README.md",
     "LICENSE"
