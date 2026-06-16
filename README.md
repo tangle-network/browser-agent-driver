@@ -39,9 +39,11 @@ Installs the `bad` command, downloads Chromium, adds PATH. Requires Node.js 20+.
 Or via npm:
 
 ```bash
-npm i -g @tangle-network/browser-agent-driver
+npm install -g @tangle-network/browser-agent-driver
 npx playwright install chromium
 ```
+
+Do not install the unscoped `bad` package from npm. It is unrelated to Tangle. The `bad` command is installed by `@tangle-network/browser-agent-driver`.
 
 ### As a library
 
