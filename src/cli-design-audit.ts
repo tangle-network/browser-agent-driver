@@ -13,7 +13,7 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 import { Brain } from './brain/index.js'
 import type { DesignFinding, PageState, DesignTokens, ColorToken, FontFamily, TypeScaleEntry, LogoAsset, SvgIcon, ViewportTokens, SpacingToken, BorderToken, ShadowToken, ComponentFingerprint, NavPattern, AnimationToken, FontFile, ImageAsset } from './types.js'
 import { PlaywrightDriver } from './drivers/playwright.js'
-import { resolveProviderApiKey, resolveProviderModelName, type SupportedProvider } from './provider-defaults.js'
+import { resolveDefaultProvider, resolveProviderApiKey, resolveProviderModelName, type SupportedProvider } from './provider-defaults.js'
 import { loadLocalEnvFiles } from './env-loader.js'
 import { cliError } from './cli-ui.js'
 import { auditOnePage } from './design/audit/pipeline.js'
@@ -163,6 +163,8 @@ interface PageAuditResult {
   preEthicsScore?: number
   /** Layer 1: opaque result attached for backwards-compat dual-emit. */
   auditResult?: unknown
+  /** Reference-grounded mode only: the rich engine artifact (all ranked directions). */
+  referenceArtifact?: RedesignArtifact
 }
 
 // ---------------------------------------------------------------------------
@@ -173,6 +175,7 @@ function generateReport(
   results: PageAuditResult[],
   profile: string | undefined,
   topFixes: DesignFinding[] = [],
+  redesignSection?: string,
 ): string {
   const lines: string[] = []
   const avgScore = results.length > 0
@@ -232,6 +235,17 @@ function generateReport(
       }
       lines.push('')
     }
+    lines.push('---')
+    lines.push('')
+  }
+
+  // ── Redesign directions (reference-grounded mode only) — a pre-rendered,
+  // compact projection of the rich artifact: winner in brief + ranked alternates,
+  // pointing at the full `<slug>.redesign.md`. Undefined on the v1 path, so the
+  // default report stays byte-identical. ──
+  if (redesignSection) {
+    lines.push(redesignSection)
+    lines.push('')
     lines.push('---')
     lines.push('')
   }
@@ -333,6 +347,34 @@ export interface DesignAuditOptions {
   audienceVulnerability?: string
   /** Single modality: mobile, tablet, desktop, tv, kiosk */
   modality?: string
+  // ── Reference-grounded eval (opt-in; default OFF → evalMode 'v1') ──
+  /** Operator reference page (URL or local ripped-site path) to ground against. */
+  reference?: string
+  /** Force reference-grounded mode without an explicit `--reference`. */
+  referenceGrounded?: boolean
+}
+
+// Type-only — erased at runtime; the reference engine is loaded lazily, and only
+// when a reference-grounded run is requested (default audits never touch it).
+import type {
+  EvalMode,
+  ReferenceContext,
+  Exemplar,
+  ReferenceGroundedConfig,
+  RedesignArtifact,
+} from './design/audit/reference/index.js'
+
+/**
+ * The reference-grounded eval bundle, acquired ONCE and spread into every
+ * `auditOnePage` call site (including the evolve re-audit loops) so a
+ * `--reference-grounded` run never silently falls back to v1 scoring on any path.
+ * Default OFF carries only `evalMode:'v1'`, leaving those call sites byte-identical.
+ */
+type ReferenceCommonOpts = {
+  evalMode: EvalMode
+  reference?: ReferenceContext
+  corpus?: Exemplar[]
+  referenceConfig?: ReferenceGroundedConfig
 }
 
 export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
@@ -349,7 +391,7 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
   const profile = opts.profile
 
   const maxPages = opts.pages ?? 5
-  const provider = (opts.provider ?? 'claude-code') as SupportedProvider
+  const provider = (opts.provider ?? resolveDefaultProvider()) as SupportedProvider
   const modelName = resolveProviderModelName(provider, opts.model)
   const apiKey = opts.apiKey ?? resolveProviderApiKey(provider)
   const auditPasses = resolveAuditPasses(opts.auditPasses)
@@ -365,6 +407,33 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
     regulatoryContext: parseTagList(opts.regulatoryContext) as never,
     audienceVulnerability: parseTagList(opts.audienceVulnerability) as never,
     modality: parseTagList(opts.modality) as never,
+  }
+
+  // ── Reference-grounded eval — acquire-once. Default OFF: evalMode 'v1' and an
+  // empty bundle, so spreading `...referenceCommonOpts` adds only `evalMode:'v1'`
+  // to each auditOnePage call and the pipeline's stage-6 branch is never entered
+  // (default behaviour byte-identical). When ON, resolve the operator reference
+  // and load the exemplar corpus a SINGLE time here — before the page/rep loops —
+  // so a multi-page / multi-rep run never re-reads them (protects the ±0.5
+  // reproducibility gate). The engine is imported lazily so default audits never
+  // load it. ──
+  const evalMode: EvalMode = opts.referenceGrounded || opts.reference ? 'reference-grounded' : 'v1'
+  let referenceCommonOpts: ReferenceCommonOpts = { evalMode }
+  if (evalMode === 'reference-grounded') {
+    const { resolveReferenceConfig, createFileCorpusStore, resolveReferenceContext } = await import(
+      './design/audit/reference/index.js'
+    )
+    const { createPageDnaExtractor } = await import('./design/audit/reference/dna/page-adapter.js')
+    const referenceConfig = resolveReferenceConfig({ model: modelName })
+    const reference = await resolveReferenceContext(
+      opts.reference,
+      { extractor: createPageDnaExtractor() },
+      { headless: opts.headless ?? true },
+    )
+    const corpus = await createFileCorpusStore(referenceConfig.corpusDir).load()
+    referenceCommonOpts = { evalMode, reference, corpus, referenceConfig }
+    const refLabel = reference ? `, reference ${opts.reference ?? ''}` : ''
+    console.log(`  ${chalk.cyan('reference-grounded')} ${chalk.dim('—')} corpus ${chalk.bold(String(corpus.length))} exemplar${corpus.length !== 1 ? 's' : ''}${refLabel}`)
   }
 
   // Telemetry: every design-audit invocation gets a stable runId. Child
@@ -445,6 +514,7 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
       provider,
       model: modelName,
       ...ethicsCommonOpts,
+      ...referenceCommonOpts,
     })
     const result = gen2 as PageAuditResult
     results.push(result)
@@ -469,8 +539,32 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
     topFixes = topByRoi(deduped, 5)
   }
 
+  // ── Reference-grounded: surface the rich redesign brief. Reference mode only —
+  // v1 results carry no `referenceArtifact`, so this block is skipped and both the
+  // report and the on-disk output are byte-identical to the legacy path. The
+  // render module is imported lazily (and is already module-cached in this mode),
+  // so a default audit never loads the reference engine. ──
+  let redesignSection: string | undefined
+  if (evalMode === 'reference-grounded') {
+    const withArtifact = results.filter((r) => r.referenceArtifact)
+    if (withArtifact.length > 0) {
+      const { renderArtifactMarkdown, renderRedesignDirectionsSummary, artifactSlug } = await import(
+        './design/audit/reference/index.js'
+      )
+      const sections: string[] = ['## Redesign directions', '']
+      for (const r of withArtifact) {
+        const artifact = r.referenceArtifact as RedesignArtifact
+        const briefFile = `${artifactSlug(r.url)}.redesign.md`
+        fs.writeFileSync(path.join(outputDir, briefFile), renderArtifactMarkdown(artifact))
+        sections.push(renderRedesignDirectionsSummary(artifact, briefFile))
+        console.log(`  ${chalk.dim('Redesign brief →')} ${path.join(outputDir, briefFile)}`)
+      }
+      redesignSection = sections.join('\n').trimEnd()
+    }
+  }
+
   // Generate report
-  const report = generateReport(results, profile, topFixes)
+  const report = generateReport(results, profile, topFixes, redesignSection)
   const reportPath = path.join(outputDir, 'report.md')
   fs.writeFileSync(reportPath, report)
 
@@ -534,6 +628,7 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
           model: modelName,
           parentRunId: runId,
           ...ethicsCommonOpts,
+          ...referenceCommonOpts,
         })
         repResults.push(gen2 as PageAuditResult)
       }
@@ -574,13 +669,13 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
       evolveResult = await runAgentEvolveLoop(
         brain, driver, page, pages, evolveProfile, results, outputDir,
         opts.evolveRounds ?? 3, evolveMode, projectDir, opts.debug, auditPasses,
-        runId, provider, modelName,
+        runId, provider, modelName, referenceCommonOpts,
       )
     } else {
       // CSS-injection evolve — ephemeral fixes injected into the browser page
       evolveResult = await runEvolveLoop(
         brain, driver, page, pages, evolveProfile, results, outputDir,
-        opts.evolveRounds ?? 3, auditPasses, runId, provider, modelName,
+        opts.evolveRounds ?? 3, auditPasses, runId, provider, modelName, referenceCommonOpts,
       )
     }
 
@@ -678,6 +773,7 @@ async function runEvolveLoop(
   parentRunId?: string,
   provider?: SupportedProvider,
   model?: string,
+  referenceCommonOpts?: ReferenceCommonOpts,
 ): Promise<DesignEvolveResult> {
   const telemetry = parentRunId ? getTelemetry() : undefined
   const initialAvg = initialResults.reduce((s, r) => s + r.score, 0) / initialResults.length
@@ -799,6 +895,7 @@ async function runEvolveLoop(
           ...(parentRunId ? { runId: parentRunId, parentRunId } : {}),
           ...(provider ? { provider } : {}),
           ...(model ? { model } : {}),
+          ...(referenceCommonOpts ?? {}),
         })) as PageAuditResult
         roundResults.push(result)
       } catch {
@@ -1031,6 +1128,7 @@ async function runAgentEvolveLoop(
   parentRunId?: string,
   provider?: SupportedProvider,
   model?: string,
+  referenceCommonOpts?: ReferenceCommonOpts,
 ): Promise<DesignEvolveResult> {
   const telemetry = parentRunId ? getTelemetry() : undefined
   const initialAvg = initialResults.reduce((s, r) => s + r.score, 0) / initialResults.length
@@ -1134,6 +1232,7 @@ async function runAgentEvolveLoop(
         ...(parentRunId ? { runId: parentRunId, parentRunId } : {}),
         ...(provider ? { provider } : {}),
         ...(model ? { model } : {}),
+        ...(referenceCommonOpts ?? {}),
       })) as PageAuditResult
       roundResults.push(result)
     }

@@ -78,6 +78,23 @@ export function resolveProviderModelName(
   return model || 'gpt-5.4';
 }
 
+/**
+ * Pick a default provider when the CLI passed none. Honours a present
+ * `OPENAI_API_KEY` (→ `'openai'`, which resolves to `gpt-5.4` + the OpenAI key)
+ * before falling back to the keyless `'claude-code'` engine. Mirrors the `run`
+ * command's `driverConfig.provider || 'openai'` precedent so design-audit no
+ * longer silently overrides a present OpenAI key with claude-code/sonnet.
+ *
+ * Fail-open offline: with no `OPENAI_API_KEY` the result is still
+ * `'claude-code'`, preserving the zero-key path the engine was designed to run
+ * on. Only the design-audit default site consumes this; explicit `--provider`
+ * still wins, so no other command's behaviour changes.
+ */
+export function resolveDefaultProvider(env: NodeJS.ProcessEnv = process.env): SupportedProvider {
+  if (env.OPENAI_API_KEY) return 'openai';
+  return 'claude-code';
+}
+
 export function resolveProviderApiKey(
   provider: SupportedProvider,
   explicitApiKey?: string,

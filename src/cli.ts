@@ -167,6 +167,9 @@ async function main(): Promise<void> {
       reproducibility: { type: 'boolean' },
       'rubrics-dir': { type: 'string' },
       'audit-passes': { type: 'string' },
+      // design-audit reference-grounded eval (opt-in; default v1)
+      reference: { type: 'string' },
+      'reference-grounded': { type: 'boolean' },
       // Layer 7 — domain ethics gate. --skip-ethics bypasses the rollup floor
       // for testing scenarios; --ethics-rules-dir overrides the builtin rule set.
       'skip-ethics': { type: 'boolean' },
@@ -371,6 +374,8 @@ async function main(): Promise<void> {
       regulatoryContext: values['regulatory-context'],
       audienceVulnerability: values['audience-vulnerability'],
       modality: values.modality,
+      reference: values.reference,
+      referenceGrounded: values['reference-grounded'],
     });
     process.exit(0);
   }

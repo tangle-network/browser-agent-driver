@@ -30,7 +30,17 @@ import type {
   AudienceVulnerabilityTag,
   EthicsViolation,
   EnsembleClassification,
+  Dimension,
+  DimensionScore,
 } from './score-types.js'
+// Type-only — erased at runtime, so v1 (default) never loads the reference
+// engine. The engine modules are pulled in lazily inside the stage-6 branch.
+import type {
+  EvalMode,
+  ReferenceContext,
+  Exemplar,
+  ReferenceGroundedConfig,
+} from './reference/index.js'
 
 export interface AuditOnePageOptions {
   brain: Brain
@@ -56,6 +66,17 @@ export interface AuditOnePageOptions {
    * candidate prompts; production runs leave them undefined.
    */
   overrides?: AuditOverrides
+  /**
+   * Reference-grounded eval wiring (opt-in). When `evalMode` is
+   * `'reference-grounded'`, stage 6 routes to the reference engine instead of
+   * `evaluatePage`; absent/`'v1'` leaves the existing path byte-identical. The
+   * `reference`, `corpus`, and `referenceConfig` are acquired ONCE upstream and
+   * threaded in (siblings of `overrides`, never inside `AuditOverrides`).
+   */
+  evalMode?: EvalMode
+  reference?: ReferenceContext
+  corpus?: Exemplar[]
+  referenceConfig?: ReferenceGroundedConfig
   /**
    * Layer 7 — bypass the ethics gate entirely. Audited + warned. Test-only.
    */
@@ -184,16 +205,44 @@ export async function auditOnePage(opts: AuditOnePageOptions): Promise<PageAudit
     const measurements = await gatherMeasurements(page)
 
     // ── 6. Evaluate ──
-    const result = await evaluatePage(brain, {
-      url,
-      state,
-      classification,
-      rubric,
-      measurements,
-      screenshotPath,
-      auditPasses,
-      overrides,
-    })
+    // Single flag-gated branch: reference-grounded mode routes to the engine,
+    // which returns a `PageAuditResult` so stages 7-9 run unchanged. The default
+    // path (`evalMode` absent/'v1') is the original `evaluatePage` call, untouched.
+    // The engine is imported lazily here so v1 never loads it.
+    let result: PageAuditResult
+    // Engine-computed per-dimension scores, surfaced from the reference branch and
+    // handed to stage 8 as `precomputedScores` so the engine is the SINGLE scoring
+    // authority (no second `brain.auditDesign` pass). Undefined in v1 ⇒ stage 8 is
+    // byte-identical to the legacy path.
+    let precomputedScores: Record<Dimension, DimensionScore> | undefined
+    if (opts.evalMode === 'reference-grounded') {
+      const { evaluateReferenceGrounded, resolveReferenceConfig } = await import('./reference/index.js')
+      const evaluation = await evaluateReferenceGrounded(brain, {
+        url,
+        classification,
+        measurements,
+        ...(screenshotPath ? { screenshotPath } : {}),
+        ...(opts.reference ? { reference: opts.reference } : {}),
+        corpus: opts.corpus ?? [],
+        config: opts.referenceConfig ?? resolveReferenceConfig(),
+      })
+      result = evaluation.result
+      precomputedScores = evaluation.dimensionScores
+      // Surface the rich artifact so the CLI can render the full redesign brief.
+      // Reference branch only — v1 results never carry this field.
+      result.referenceArtifact = evaluation.artifact
+    } else {
+      result = await evaluatePage(brain, {
+        url,
+        state,
+        classification,
+        rubric,
+        measurements,
+        screenshotPath,
+        auditPasses,
+        overrides,
+      })
+    }
 
     // ── 7. Ethics gate (Layer 7) — apply rollup floor when rules fire ──
     if (skipEthics) {
@@ -239,6 +288,9 @@ export async function auditOnePage(opts: AuditOnePageOptions): Promise<PageAudit
         anchor,
         runId,
         overrides,
+        // Reference mode only: the engine already scored every dimension, so pass
+        // them through and skip stage 8's `brain.auditDesign` + `generatePatches`.
+        ...(precomputedScores ? { precomputedScores } : {}),
       })
       result.auditResult = auditResult
       result.ensembleClassification = ensemble

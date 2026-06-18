@@ -1,5 +1,30 @@
 import { describe, expect, it } from 'vitest';
-import { resolveProviderApiKey, resolveProviderModelName } from '../src/provider-defaults.js';
+import { resolveDefaultProvider, resolveProviderApiKey, resolveProviderModelName } from '../src/provider-defaults.js';
+
+describe('resolveDefaultProvider', () => {
+  it('picks openai when OPENAI_API_KEY is present', () => {
+    expect(
+      resolveDefaultProvider({ OPENAI_API_KEY: 'openai-key' } as NodeJS.ProcessEnv),
+    ).toBe('openai');
+  });
+
+  it('falls back to claude-code when no OpenAI key is set', () => {
+    expect(resolveDefaultProvider({} as NodeJS.ProcessEnv)).toBe('claude-code');
+  });
+
+  it('does not let an ANTHROPIC_API_KEY alone flip the default off claude-code', () => {
+    expect(
+      resolveDefaultProvider({ ANTHROPIC_API_KEY: 'anthropic-key' } as NodeJS.ProcessEnv),
+    ).toBe('claude-code');
+  });
+
+  it('resolves a default-provider audit to gpt-5.4 + the OpenAI key end-to-end', () => {
+    const env = { OPENAI_API_KEY: 'openai-key' } as NodeJS.ProcessEnv;
+    const provider = resolveDefaultProvider(env);
+    expect(resolveProviderModelName(provider)).toBe('gpt-5.4');
+    expect(resolveProviderApiKey(provider, undefined, env)).toBe('openai-key');
+  });
+});
 
 describe('resolveProviderModelName', () => {
   it('defaults claude-code to sonnet when model is omitted', () => {

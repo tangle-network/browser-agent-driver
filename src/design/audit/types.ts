@@ -236,5 +236,13 @@ export interface PageAuditResult {
    * pipeline used `--audit-passes auto` (the new default).
    */
   ensembleClassification?: unknown
+  /**
+   * Reference-grounded mode only — the rich engine artifact (all ranked redesign
+   * directions with ASCII layout, type/colour/motion systems, hierarchy, copy).
+   * Set by the stage-6 reference branch; undefined on the v1 path. Typed as
+   * `unknown` here so v1 consumers never pull in the reference engine's contracts;
+   * the concrete shape is `import('./reference/contracts.js').RedesignArtifact`.
+   */
+  referenceArtifact?: unknown
   error?: string
 }
