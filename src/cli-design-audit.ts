@@ -1061,7 +1061,7 @@ function resolveAgentCommand(agent: string, prompt: string, projectDir: string):
   return { cmd: parts[0], args: [...parts.slice(1), prompt], cwd: projectDir }
 }
 
-function buildAgentFixPrompt(results: PageAuditResult[], profile: string, round: number): string {
+function buildAgentFixPrompt(results: PageAuditResult[], profile: string, round: number, redesignTarget?: string): string {
   const allFindings = results.flatMap(r => r.findings)
   const critical = allFindings.filter(f => f.severity === 'critical')
   const major = allFindings.filter(f => f.severity === 'major')
@@ -1086,7 +1086,18 @@ function buildAgentFixPrompt(results: PageAuditResult[], profile: string, round:
     })
     .join('\n')
 
-  return `You are fixing design issues found by an automated design audit.
+  // Reference-grounded: lead with the coherent redesign TARGET (the winning
+  // direction, grounded in world-class exemplars) so the agent implements a
+  // cohesive redesign, with findings as secondary issues. Absent in v1.
+  const intro = redesignTarget
+    ? `You are applying a world-class, reference-grounded REDESIGN to a real app's source code.
+
+${redesignTarget}
+
+Realize the REDESIGN TARGET above as a COHERENT SYSTEM — its type scale, colour tokens, layout structure, motion, hierarchy, and copy — adapted to this project's stack. The findings below are secondary issues to also resolve as you redesign.`
+    : `You are fixing design issues found by an automated design audit.`
+
+  return `${intro}
 
 AUDIT PROFILE: ${profile}
 ROUND: ${round} (${round === 1 ? 'initial fixes' : 'fixing remaining issues from previous round'})
@@ -1094,17 +1105,17 @@ CURRENT SCORES:
   Overall: ${(results.reduce((s, r) => s + r.score, 0) / results.length).toFixed(1)}/10
 ${scoreBreakdowns}
 
-FINDINGS TO FIX (${critical.length} critical, ${major.length} major, ${minor.length} minor):
+FINDINGS ${redesignTarget ? '(secondary — resolve while you redesign)' : 'TO FIX'} (${critical.length} critical, ${major.length} major, ${minor.length} minor):
 
 ${findingsList}
 
 INSTRUCTIONS:
 1. Read the project's source files to understand the styling approach (Tailwind, CSS modules, plain CSS, styled-components, etc.)
-2. Fix the findings by editing the ACTUAL SOURCE FILES — not by creating new CSS override files
-3. Match the project's existing styling conventions
-4. Fix the design SYSTEM (shared components, tokens, globals) not individual instances
-5. Prioritize critical and major findings
-6. Only change visual/styling properties — never change business logic, state, or event handlers
+2. ${redesignTarget ? 'Implement the redesign target by editing the ACTUAL SOURCE FILES' : 'Fix the findings by editing the ACTUAL SOURCE FILES'} — not by creating new CSS override files
+3. Match the project's existing styling conventions and stack
+4. Work at the design-SYSTEM level (shared components, tokens, globals) — not one-off instances
+5. ${redesignTarget ? 'Realise the type scale, colour tokens, layout, motion and copy cohesively, not piecemeal' : 'Prioritize critical and major findings'}
+6. Only change visual/styling/layout/copy — never change business logic, state, or event handlers
 7. After making changes, verify the dev server is still running (no build errors)
 
 Do NOT:
@@ -1155,8 +1166,24 @@ async function runAgentEvolveLoop(
   for (let round = 1; round <= maxRounds; round++) {
     console.log(`  ${chalk.dim(`Round ${round}/${maxRounds}`)}`)
 
+    // Reference-grounded: render the winning redesign direction so the agent
+    // prompt leads with a coherent, grounded TARGET (not just findings). Lazy
+    // import keeps the v1 path from loading the engine; best-effort.
+    let redesignTarget: string | undefined
+    const artifactResult = currentResults.find((r) => (r as { referenceArtifact?: unknown }).referenceArtifact)
+    if (artifactResult) {
+      try {
+        const { renderRedesignTarget } = await import('./design/audit/reference/index.js')
+        redesignTarget = renderRedesignTarget(
+          (artifactResult as { referenceArtifact: RedesignArtifact }).referenceArtifact,
+        )
+      } catch {
+        // fall back to the findings-only prompt
+      }
+    }
+
     // Build the prompt for the agent
-    const prompt = buildAgentFixPrompt(currentResults, profile, round)
+    const prompt = buildAgentFixPrompt(currentResults, profile, round, redesignTarget)
 
     // Write the prompt to a file for debugging
     const promptPath = path.join(outputDir, `agent-prompt-round-${round}.txt`)

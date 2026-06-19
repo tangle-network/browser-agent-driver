@@ -24,7 +24,7 @@ export type { EvaluateReferenceInput, ReferenceEvaluation } from './pipeline/eva
 // Human-facing renderers for the redesign brief surfaced in the audit report:
 // the full rich brief and a compact report-section projection, plus the shared
 // slug used to name the brief file.
-export { renderArtifactMarkdown, renderRedesignDirectionsSummary, artifactSlug } from './artifact/render.js'
+export { renderArtifactMarkdown, renderRedesignDirectionsSummary, renderRedesignTarget, artifactSlug } from './artifact/render.js'
 
 // CLI plumbing: resolve `--reference <url|path>` into a ReferenceContext once.
 export { resolveReferenceContext } from './reference-context.js'

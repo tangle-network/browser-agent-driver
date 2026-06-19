@@ -14,6 +14,7 @@ import {
   renderArtifactMarkdown,
   renderArtifactJson,
   renderRedesignDirectionsSummary,
+  renderRedesignTarget,
   writeArtifact,
 } from '../src/design/audit/reference/artifact/render.js'
 import { measurementsToFindings } from '../src/design/audit/evaluate.js'
@@ -648,6 +649,25 @@ describe('renderRedesignDirectionsSummary', () => {
       baseBuildInput({ directions: [], ranking: ranking([]), retrieval: [], verdicts: [] }),
     )
     expect(renderRedesignDirectionsSummary(empty)).toContain('_No ranked direction was produced._')
+  })
+})
+
+describe('renderRedesignTarget', () => {
+  const artifact: RedesignArtifact = buildRedesignArtifact(baseBuildInput({ referenceId: 'ref-stripe' }))
+
+  it('renders the winning direction as an apply-ready, grounded target', () => {
+    const out = renderRedesignTarget(artifact)
+    expect(out).toContain('REDESIGN TARGET')
+    expect(out).toContain('Direction d-b') // winner (ranking d-b, d-a, d-c)
+    expect(out).toContain('| hero |') // the winning direction's ascii layout
+    expect(out).toContain('Grounded in real reference designs:')
+  })
+
+  it('returns empty string when there is no direction to apply', () => {
+    const empty = buildRedesignArtifact(
+      baseBuildInput({ directions: [], ranking: ranking([]), retrieval: [], verdicts: [] }),
+    )
+    expect(renderRedesignTarget(empty)).toBe('')
   })
 })
 

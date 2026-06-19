@@ -64,6 +64,25 @@ export function renderArtifactMarkdown(a: RedesignArtifact): string {
   return `${lines.join('\n').trimEnd()}\n`
 }
 
+/**
+ * Agent-ready "apply this" spec for the WINNING direction — the single coherent,
+ * grounded redesign the `--evolve` coding agent should implement (not a pile of
+ * piecemeal findings). Names the grounding exemplars so the agent knows the bar.
+ */
+export function renderRedesignTarget(a: RedesignArtifact): string {
+  const winner = a.directions.find((d) => d.id === a.ranking.winnerId) ?? a.directions[0]
+  if (!winner) return ''
+  const grounded = a.retrieval
+    .slice(0, 3)
+    .map((r) => r.exemplar.url || r.exemplar.id)
+    .filter(Boolean)
+    .join(', ')
+  const lines: string[] = ['REDESIGN TARGET — implement this single, coherent, world-class direction holistically.']
+  if (grounded) lines.push(`Grounded in real reference designs: ${grounded}`)
+  lines.push('', renderDirection(winner, true))
+  return lines.join('\n')
+}
+
 export function renderArtifactJson(a: RedesignArtifact): string {
   return `${JSON.stringify(a, null, 2)}\n`
 }
