@@ -18,7 +18,7 @@ import { cliError } from './cli-ui.js'
 import { auditOnePage } from './design/audit/pipeline.js'
 import type { PageAuditResult as Gen2PageAuditResult, EthicsViolation } from './design/audit/types.js'
 import { extractDesignTokens, createZipBundle } from './design/audit/tokens/extract.js'
-import { runEvolveLoop, runAgentEvolveLoop, generateEvolveReport } from './design/audit/evolve/index.js'
+import { runEvolveLoop, runAgentEvolveLoop, generateEvolveReport, buildApplyPrompt } from './design/audit/evolve/index.js'
 import type { ReferenceCommonOpts } from './design/audit/evolve/index.js'
 import {
   parseTagList,
@@ -340,9 +340,8 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
   if (evalMode === 'reference-grounded') {
     const withArtifact = results.filter((r) => r.referenceArtifact)
     if (withArtifact.length > 0) {
-      const { renderArtifactMarkdown, renderRedesignDirectionsSummary, artifactSlug } = await import(
-        './design/audit/reference/index.js'
-      )
+      const { renderArtifactMarkdown, renderRedesignDirectionsSummary, renderRedesignTarget, artifactSlug } =
+        await import('./design/audit/reference/index.js')
       const sections: string[] = ['## Redesign directions', '']
       for (const r of withArtifact) {
         const artifact = r.referenceArtifact as RedesignArtifact
@@ -350,6 +349,15 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
         fs.writeFileSync(path.join(outputDir, briefFile), renderArtifactMarkdown(artifact))
         sections.push(renderRedesignDirectionsSummary(artifact, briefFile))
         console.log(`  ${chalk.dim('Redesign brief →')} ${path.join(outputDir, briefFile)}`)
+        // Default (non-spawning) apply path: emit the implementation prompt a
+        // coding agent reads and runs ITSELF to apply this grounded redesign in
+        // its project. Spawning a coding agent stays opt-in (`--evolve --agent`).
+        const applyFile = `${artifactSlug(r.url)}.apply-prompt.md`
+        fs.writeFileSync(
+          path.join(outputDir, applyFile),
+          buildApplyPrompt([r], profile, renderRedesignTarget(artifact)),
+        )
+        console.log(`  ${chalk.dim('Apply prompt →')} ${path.join(outputDir, applyFile)}`)
       }
       redesignSection = sections.join('\n').trimEnd()
     }

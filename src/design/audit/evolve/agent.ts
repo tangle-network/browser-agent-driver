@@ -104,6 +104,21 @@ Do NOT:
 - Change component structure or HTML semantics unless a finding specifically requires it`
 }
 
+/**
+ * The self-contained implementation prompt a CODING AGENT (Claude Code, Codex,
+ * Cursor, …) reads and executes to apply the reference-grounded redesign in its
+ * OWN project — the default, non-spawning output of a reference-grounded audit
+ * (the agent calls `bad`, not the other way around). Same content as the
+ * spawn-mode round-1 prompt, surfaced as a portable, re-usable artifact.
+ */
+export function buildApplyPrompt(
+  results: PageAuditResult[],
+  profile: string | undefined,
+  redesignTarget?: string,
+): string {
+  return buildAgentFixPrompt(results, profile ?? 'auto', 1, redesignTarget)
+}
+
 export async function runAgentEvolveLoop(
   brain: Brain,
   driver: PlaywrightDriver,
