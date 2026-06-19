@@ -146,7 +146,7 @@ export async function runRedesignCore(
     dnaSummary: summarizeDNA(dna),
     ...(input.screenshotPath ? { screenshotPath: input.screenshotPath } : {}),
   }
-  const exemplarSubjects = hits.map(exemplarSubject)
+  const exemplarSubjects = hits.map((hit) => exemplarSubject(hit, (e) => deps.store.resolveScreenshot(e)))
   // Bound the quality leg to the exemplar count the budget actually paid for
   // (qualityPairs already folds in the per-dimension expansion).
   const qualityExemplarCount = Math.floor(plan.qualityPairs / Math.max(1, plan.qualityDimensions))
@@ -231,16 +231,28 @@ async function judgeDirectionLeg(
   )
 }
 
-/** A retrieved exemplar as a judge subject (DNA spec dump, optional screenshot). */
-function exemplarSubject(hit: RetrievalResult): JudgeSubject {
+/**
+ * A retrieved exemplar as a judge subject (DNA spec dump, optional screenshot).
+ * The corpus stores `screenshotPath` RELATIVE to the corpus dir, so it is resolved
+ * to an absolute path through the store before reaching a vision judge that reads
+ * it off disk; the reference hit's already-absolute path passes through unchanged.
+ * Byte-neutral for the text judge, which never reads the field.
+ */
+function exemplarSubject(hit: RetrievalResult, resolveScreenshot: (e: Exemplar) => string): JudgeSubject {
+  const screenshotPath = resolveScreenshot(hit.exemplar)
   return {
     id: hit.exemplar.id,
     dnaSummary: summarizeDNA(hit.exemplar.dna),
-    ...(hit.exemplar.screenshotPath ? { screenshotPath: hit.exemplar.screenshotPath } : {}),
+    ...(screenshotPath ? { screenshotPath } : {}),
   }
 }
 
-/** A generated direction as a judge subject: evocative headline + spec dump. */
+/**
+ * A generated direction as a judge subject: evocative headline + spec dump. NO
+ * `screenshotPath` — directions are unrendered specs, so the direction-ranking
+ * leg stays text-only (a vision judge falls back to text here). Future lever:
+ * render each direction to a screenshot to make this leg vision-judgeable too.
+ */
 function directionSubject(direction: RedesignDirection): JudgeSubject {
   return {
     id: direction.id,

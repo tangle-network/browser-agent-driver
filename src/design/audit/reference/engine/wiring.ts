@@ -31,6 +31,8 @@ import { HashEmbeddingProvider } from '../retrieval/embedding-hash.js'
 import { retrieve } from '../retrieval/matcher.js'
 import { createBrainGenerator, type GenerationModel } from '../generate/generator.js'
 import { createTextJudge, type JudgeModel } from '../judge/text-judge.js'
+import { createVisionJudge } from '../judge/vision-judge.js'
+import { buildVisionModels } from '../judge/vision-model.js'
 import { rankDirections } from '../judge/rank.js'
 
 /**
@@ -51,15 +53,29 @@ function selectEmbedder(config: ReferenceGroundedConfig): EmbeddingProvider {
 }
 
 /**
- * Pick the concrete taste judge. `'text'` is the shipped default; `'vision'` is
- * reserved for a future clean visual-compare seam and fails closed rather than
- * silently degrading to text.
+ * Pick the concrete taste judge. `'text'` is the shipped default (judges from DNA
+ * summaries via `brain.complete`). `'vision'` builds the screenshot-grounded
+ * ensemble from `config.visionModels`: ONE Brain per `{ provider, model }` ref
+ * (each with its own provider key, constructed in `buildVisionModels`), wrapped
+ * in the pure `createVisionJudge`. The injected text `brain` is reused as the
+ * fallback for screenshot-less subjects (the direction-ranking leg), so the
+ * vision judge stays a single drop-in for both legs. Fails closed: an empty
+ * `visionModels` list throws rather than silently degrading to text.
+ *
+ * This is the composition root, so constructing concrete vision Brains here is by
+ * design — the engine core only ever sees the narrow `TasteJudge`. Unit tests
+ * inject `deps.judge` (or call `createVisionJudge` with stub models) and never
+ * reach this Brain construction.
  */
 function selectJudge(brain: ReferenceBrain, config: ReferenceGroundedConfig): TasteJudge {
-  if (config.judge === 'vision') {
-    throw new Error('reference engine: vision judge is not yet implemented — use judge: "text"')
+  if (config.judge !== 'vision') return createTextJudge(brain)
+  const refs = config.visionModels ?? []
+  if (refs.length === 0) {
+    throw new Error(
+      'reference engine: judge "vision" requires at least one visionModels ref — none resolved',
+    )
   }
-  return createTextJudge(brain)
+  return createVisionJudge(buildVisionModels(refs), { textFallback: createTextJudge(brain) })
 }
 
 /**

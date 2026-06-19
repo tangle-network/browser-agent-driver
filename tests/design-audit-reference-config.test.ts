@@ -38,6 +38,7 @@ describe('resolveReferenceConfig (clamped merge)', () => {
       k: DEFAULT_REFERENCE_CONFIG.k,
       directionCount: DEFAULT_REFERENCE_CONFIG.directionCount,
       judge: DEFAULT_REFERENCE_CONFIG.judge,
+      visionModels: DEFAULT_REFERENCE_CONFIG.visionModels,
       embedder: DEFAULT_REFERENCE_CONFIG.embedder,
       budget: { ...DEFAULT_REFERENCE_CONFIG.budget },
       reference: DEFAULT_REFERENCE_CONFIG.reference,

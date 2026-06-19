@@ -311,8 +311,16 @@ describe('buildDefaultDeps', () => {
     expect(deps.judge.id).toBe('text-judge')
   })
 
-  it('fails closed on the not-yet-built vision judge', () => {
+  it('builds the screenshot-grounded vision judge from the default visionModels', () => {
+    // Brain construction is lazy (no network on ctor), so the composition root
+    // assembles the vision ensemble without a live model.
     const config = resolveReferenceConfig({ corpusDir: '/tmp/corpus', judge: 'vision' })
-    expect(() => buildDefaultDeps(stubBrain, config)).toThrow(/vision judge/)
+    const deps = buildDefaultDeps(stubBrain, config)
+    expect(deps.judge.id).toBe('vision-judge[openai:gpt-5.4]')
+  })
+
+  it('fails closed when judge is vision but visionModels is empty', () => {
+    const config = resolveReferenceConfig({ corpusDir: '/tmp/corpus', judge: 'vision', visionModels: [] })
+    expect(() => buildDefaultDeps(stubBrain, config)).toThrow(/at least one visionModels ref/)
   })
 })

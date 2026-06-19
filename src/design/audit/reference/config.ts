@@ -21,6 +21,7 @@ import type {
   ReferenceGroundedConfig,
   EngineBudget,
   RetrieveWeights,
+  ModelRef,
 } from './contracts.js'
 
 /**
@@ -64,6 +65,10 @@ export const DEFAULT_REFERENCE_CONFIG: ReferenceGroundedConfig = Object.freeze({
   k: 4,
   directionCount: 3,
   judge: 'text',
+  // A single sensible default vision model ⇒ a single-judge vision run when
+  // `judge: 'vision'` is selected without `--judge-models`. Ignored under the
+  // default `judge: 'text'`. One ref ⇒ single judge; many ⇒ ensemble.
+  visionModels: Object.freeze([{ provider: 'openai', model: 'gpt-5.4' }]) as ModelRef[],
   embedder: 'deterministic',
   budget: DEFAULT_ENGINE_BUDGET,
   reference: undefined,
@@ -114,6 +119,7 @@ export function resolveReferenceConfig(
     k: clampMin(partial.k, 1, base.k),
     directionCount: clampMin(partial.directionCount, 1, base.directionCount),
     judge: partial.judge ?? base.judge,
+    visionModels: partial.visionModels ?? base.visionModels,
     embedder: partial.embedder ?? base.embedder,
     budget,
     reference: partial.reference ?? base.reference,

@@ -160,6 +160,35 @@ export interface DesignAuditOptions {
   reference?: string
   /** Force reference-grounded mode without an explicit `--reference`. */
   referenceGrounded?: boolean
+  /** Reference-grounded taste judge backend: `text` (default) or `vision`. */
+  judge?: string
+  /** Vision-judge ensemble, e.g. `"openai:gpt-5.4,anthropic:claude-opus-4-8"`. */
+  judgeModels?: string
+}
+
+/**
+ * Parse a `--judge-models` list (`"prov:model,prov:model"` or bare `"model"`)
+ * into `ModelRef[]`. Splits on `,` then the FIRST `:` (model names never contain
+ * one); a colon-less entry leaves `provider` unset so the wiring fills the
+ * ambient default. Blank entries are skipped; an empty/absent string ⇒ `[]`.
+ */
+function parseModelRefs(spec: string | undefined): ReferenceModelRef[] {
+  if (!spec) return []
+  const refs: ReferenceModelRef[] = []
+  for (const raw of spec.split(',')) {
+    const entry = raw.trim()
+    if (!entry) continue
+    const colon = entry.indexOf(':')
+    if (colon < 0) {
+      refs.push({ model: entry })
+      continue
+    }
+    const provider = entry.slice(0, colon).trim()
+    const model = entry.slice(colon + 1).trim()
+    if (!model) continue
+    refs.push(provider ? { provider: provider as SupportedProvider, model } : { model })
+  }
+  return refs
 }
 
 // Type-only — erased at runtime; the reference engine is loaded lazily, and only
@@ -167,6 +196,7 @@ export interface DesignAuditOptions {
 import type {
   EvalMode,
   RedesignArtifact,
+  ModelRef as ReferenceModelRef,
 } from './design/audit/reference/index.js'
 
 export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
@@ -216,7 +246,20 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
       './design/audit/reference/index.js'
     )
     const { createPageDnaExtractor } = await import('./design/audit/reference/dna/page-adapter.js')
-    const referenceConfig = resolveReferenceConfig({ model: modelName })
+    // Vision judge: `--judge vision` selects it; `--judge-models` customises the
+    // ensemble (and implies vision when `--judge` is omitted). With vision on but
+    // no explicit models, default to the audit's OWN provider/model so the screenshot
+    // judge "just works" with whatever key the run already uses. Subjects without a
+    // screenshot (unrendered directions) fall back to the text judge inside the engine.
+    const visionRefs = parseModelRefs(opts.judgeModels)
+    const wantsVision = opts.judge === 'vision' || (!opts.judge && visionRefs.length > 0)
+    const referenceConfig = resolveReferenceConfig({
+      model: modelName,
+      ...(wantsVision ? { judge: 'vision' as const } : opts.judge === 'text' ? { judge: 'text' as const } : {}),
+      ...(wantsVision
+        ? { visionModels: visionRefs.length > 0 ? visionRefs : [{ provider, model: modelName }] }
+        : {}),
+    })
     const reference = await resolveReferenceContext(
       opts.reference,
       { extractor: createPageDnaExtractor() },

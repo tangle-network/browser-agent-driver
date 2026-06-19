@@ -439,6 +439,16 @@ export interface AgentConfig {
   visionStrategy?: 'always' | 'never' | 'auto';
   /** Observation mode — 'dom' (default), 'vision', or 'hybrid' */
   observationMode?: 'dom' | 'vision' | 'hybrid';
+  /**
+   * Force `streamingInput: 'always'` on the `claude-code` provider (default:
+   * false). The Claude Code SDK omits image parts unless streaming input is
+   * enabled, so a `completeVision` round-trip through `claude-code` silently
+   * drops its screenshots without this. Set ONLY by the vision-judge wiring
+   * (`buildVisionModels`), whose Brains exist solely to send images — every
+   * other claude-code path is left on the default single-shot prompt and is
+   * unaffected. Ignored for non-`claude-code` providers.
+   */
+  claudeCodeStreamingInput?: boolean;
   /** Max conversation history turns to keep (default: 10) */
   maxHistoryTurns?: number;
   /** Number of retries on transient failures (default: 3) */

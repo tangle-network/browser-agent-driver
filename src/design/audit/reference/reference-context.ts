@@ -44,9 +44,16 @@ function classifyReference(ref: string): { kind: ReferenceKind; url: string } {
   return { kind: 'rip', url: pathToFileURL(abs).href }
 }
 
-/** Prefer the desktop capture; otherwise any captured viewport, else none. */
+/**
+ * Prefer the desktop capture; otherwise any captured viewport, else none.
+ * Returned ABSOLUTE so a downstream consumer (e.g. the vision judge reading the
+ * screenshot off disk) resolves it independent of the process cwd — the
+ * extractor yields a path relative to its outputDir.
+ */
 function firstScreenshot(paths: Record<string, string>): string | undefined {
-  return paths['desktop'] ?? Object.values(paths)[0]
+  const p = paths['desktop'] ?? Object.values(paths)[0]
+  if (!p) return undefined
+  return path.isAbsolute(p) ? p : path.resolve(p)
 }
 
 /**

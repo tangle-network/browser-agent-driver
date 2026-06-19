@@ -10,6 +10,10 @@ import {
   calibrateAgainstVotes,
 } from '../src/design/audit/reference/judge/rank.js'
 import { createTextJudge } from '../src/design/audit/reference/judge/text-judge.js'
+import { parseVerdictOrNull } from '../src/design/audit/reference/judge/parse.js'
+import { createVisionJudge, aggregateVerdicts } from '../src/design/audit/reference/judge/vision-judge.js'
+import { clampPngLongestEdge, VISION_MAX_EDGE_PX } from '../src/design/audit/reference/judge/image-clamp.js'
+import { PNG } from 'pngjs'
 import type {
   JudgePairInput,
   JudgeSubject,
@@ -18,6 +22,8 @@ import type {
   TasteVerdict,
   Dimension,
   DesignDNA,
+  VisionJudgeModel,
+  VisionImageRef,
 } from '../src/design/audit/reference/contracts.js'
 
 // ── fixtures ─────────────────────────────────────────────────────────────────
@@ -398,5 +404,236 @@ describe('createTextJudge', () => {
     expect(out.winnerSlot).toBe('B')
     expect(out.dimension).toBeUndefined()
     expect(calls[0].system).toContain('art director')
+  })
+})
+
+// ── strict parse (the ensemble drop signal) ──────────────────────────────────
+
+describe('parseVerdictOrNull', () => {
+  it('returns the verdict for an unambiguous winner', () => {
+    expect(parseVerdictOrNull('{"winner":"A","confidence":0.7,"reasons":["x"]}')).toEqual({
+      winnerSlot: 'A',
+      confidence: 0.7,
+      reasons: ['x'],
+    })
+  })
+
+  it('returns null (not a tie) for garbage or a missing winner', () => {
+    expect(parseVerdictOrNull('the model rambled with no json')).toBeNull()
+    expect(parseVerdictOrNull('{"confidence":0.5,"reasons":["x"]}')).toBeNull()
+  })
+
+  it('leaves parseRawVerdict failing closed to a tie (text judge unchanged)', () => {
+    expect(parseRawVerdict('the model rambled with no json').winnerSlot).toBe('tie')
+    expect(parseRawVerdict('{"confidence":0.5}').reasons[0]).toMatch(/missing a valid winner/)
+  })
+})
+
+// ── vision-image clamp (the 8000px-limit guard) ──────────────────────────────
+
+describe('clampPngLongestEdge', () => {
+  /** A solid-colour PNG of the given size, as the on-disk bytes would be. */
+  const pngBytes = (w: number, h: number, rgb: [number, number, number] = [120, 60, 30]): Buffer => {
+    const png = new PNG({ width: w, height: h })
+    for (let i = 0; i < w * h; i++) {
+      const o = i << 2
+      png.data[o] = rgb[0]
+      png.data[o + 1] = rgb[1]
+      png.data[o + 2] = rgb[2]
+      png.data[o + 3] = 255
+    }
+    return PNG.sync.write(png)
+  }
+
+  it('returns an in-bounds image byte-for-byte unchanged (no re-encode)', () => {
+    const buf = pngBytes(400, 300)
+    const out = clampPngLongestEdge(buf)
+    expect(out).toBe(buf) // identity — not just equal bytes
+  })
+
+  it('clamps a tall full-page capture to the longest-edge limit, preserving aspect ratio', () => {
+    // 144×1473 mirrors the 1440×14739 corpus shape at 1/10 scale: long edge 10× over.
+    const out = clampPngLongestEdge(pngBytes(144, 1473), 157)
+    const decoded = PNG.sync.read(out)
+    expect(Math.max(decoded.width, decoded.height)).toBeLessThanOrEqual(157)
+    expect(decoded.height).toBe(157) // the long edge hits the cap
+    expect(decoded.width).toBe(15) // 144 * 157/1473 ≈ 15, aspect ratio held
+  })
+
+  it('keeps the averaged colour of a solid image after downscaling', () => {
+    const out = clampPngLongestEdge(pngBytes(100, 9000, [200, 100, 50]), VISION_MAX_EDGE_PX)
+    const decoded = PNG.sync.read(out)
+    expect(Math.max(decoded.width, decoded.height)).toBeLessThanOrEqual(VISION_MAX_EDGE_PX)
+    // Area-average of a uniform field is that same field (±rounding).
+    expect(decoded.data[0]).toBeGreaterThanOrEqual(199)
+    expect(decoded.data[1]).toBeGreaterThanOrEqual(99)
+    expect(decoded.data[2]).toBeGreaterThanOrEqual(49)
+  })
+
+  it('passes non-PNG bytes through untouched (size guard, not a validator)', () => {
+    const notPng = Buffer.from('plainly not a png', 'utf8')
+    expect(clampPngLongestEdge(notPng)).toBe(notPng)
+  })
+})
+
+// ── vision ensemble: pure tally ──────────────────────────────────────────────
+
+describe('aggregateVerdicts (pure ensemble tally)', () => {
+  const rv = (winnerSlot: RawVerdict['winnerSlot']): RawVerdict => ({ winnerSlot, confidence: 0.9, reasons: [] })
+
+  it('the unique-max bucket wins with vote-share (agreement) confidence', () => {
+    const agg = aggregateVerdicts([rv('A'), rv('A'), rv('B')])
+    expect(agg.winnerSlot).toBe('A')
+    expect(agg.confidence).toBeCloseTo(2 / 3, 4)
+  })
+
+  it('counts a genuine tie vote as its own bucket (it can win outright)', () => {
+    const agg = aggregateVerdicts([rv('tie'), rv('tie'), rv('A')])
+    expect(agg.winnerSlot).toBe('tie')
+    expect(agg.confidence).toBeCloseTo(2 / 3, 4)
+  })
+
+  it('a top-count split is undecided ⇒ tie at confidence 0', () => {
+    expect(aggregateVerdicts([rv('A'), rv('B')])).toMatchObject({ winnerSlot: 'tie', confidence: 0 })
+    expect(aggregateVerdicts([rv('A'), rv('B'), rv('tie')])).toMatchObject({ winnerSlot: 'tie', confidence: 0 })
+  })
+
+  it('throws on an empty set rather than fabricating a verdict', () => {
+    expect(() => aggregateVerdicts([])).toThrow()
+  })
+})
+
+// ── vision ensemble: the drop-in TasteJudge ──────────────────────────────────
+
+type Vote = 'A' | 'B' | 'tie' | 'garbage' | 'throw'
+
+/** A deterministic `VisionJudgeModel` stub — no live model, no disk read. */
+function visionModel(
+  id: string,
+  vote: Vote,
+  opts: { confidence?: number; tokens?: number; onCall?: (images: VisionImageRef[]) => void } = {},
+): VisionJudgeModel {
+  return {
+    id,
+    async completeVision(_system, _user, images, _options) {
+      opts.onCall?.(images)
+      if (vote === 'throw') throw new Error(`${id} exploded`)
+      if (vote === 'garbage') return { text: 'the model rambled with no json', tokensUsed: opts.tokens }
+      return {
+        text: JSON.stringify({ winner: vote, confidence: opts.confidence ?? 0.9, reasons: [`${id}:${vote}`] }),
+        tokensUsed: opts.tokens,
+      }
+    },
+  }
+}
+
+/** A judge subject that carries a screenshot (so the vision path fires). */
+const shot = (id: string): JudgeSubject => ({ id, dnaSummary: `dna of ${id}`, screenshotPath: `${id}.png` })
+
+describe('createVisionJudge', () => {
+  it('rejects an empty ensemble at construction', () => {
+    expect(() => createVisionJudge([])).toThrow(/at least one vision model/)
+  })
+
+  it('single model ⇒ the verdict carries the AGREEMENT fraction, not self-confidence', async () => {
+    const judge = createVisionJudge([visionModel('m1', 'A', { confidence: 0.8 })])
+    const out = await judge.compare({ a: shot('page'), b: shot('ex') })
+    expect(out.winnerSlot).toBe('A')
+    expect(out.confidence).toBe(1) // 1/1 models agree — independent of the model's reported 0.8
+  })
+
+  it('majority winner across models with honest agreement → confidence', async () => {
+    const judge = createVisionJudge([
+      visionModel('m1', 'A'),
+      visionModel('m2', 'A'),
+      visionModel('m3', 'B'),
+    ])
+    const out = await judge.compare({ a: shot('page'), b: shot('ex') })
+    expect(out.winnerSlot).toBe('A')
+    expect(out.confidence).toBeCloseTo(2 / 3, 4)
+  })
+
+  it('a 1-1 split collapses to a tie at confidence 0', async () => {
+    const judge = createVisionJudge([visionModel('m1', 'A'), visionModel('m2', 'B')])
+    const out = await judge.compare({ a: shot('page'), b: shot('ex') })
+    expect(out.winnerSlot).toBe('tie')
+    expect(out.confidence).toBe(0)
+  })
+
+  it('drops a no-verdict model (throw or garbage) from the tally + denominator', async () => {
+    // {A, A, garbage, throw} ⇒ survivors {A:2} ⇒ winner A, confidence 2/2 = 1.
+    const judge = createVisionJudge([
+      visionModel('m1', 'A'),
+      visionModel('m2', 'A'),
+      visionModel('m3', 'garbage'),
+      visionModel('m4', 'throw'),
+    ])
+    const out = await judge.compare({ a: shot('page'), b: shot('ex') })
+    expect(out.winnerSlot).toBe('A')
+    expect(out.confidence).toBe(1)
+  })
+
+  it('throws when every model is dropped (never a fabricated tie)', async () => {
+    const judge = createVisionJudge([visionModel('m1', 'garbage'), visionModel('m2', 'throw')])
+    await expect(judge.compare({ a: shot('page'), b: shot('ex') })).rejects.toThrow(/fabricate a tie/)
+  })
+
+  it('runs each model exactly ONCE per compare and attaches screenshots in slot order A,B', async () => {
+    let calls = 0
+    let seen: VisionImageRef[] = []
+    const judge = createVisionJudge([
+      visionModel('m1', 'A', {
+        onCall: (imgs) => {
+          calls++
+          seen = imgs
+        },
+      }),
+    ])
+    await judge.compare({ a: shot('page'), b: shot('ex') })
+    expect(calls).toBe(1) // single slot order — the position-swap is the outer judgePair's job
+    expect(seen).toEqual([{ screenshotPath: 'page.png' }, { screenshotPath: 'ex.png' }])
+  })
+
+  it('the surrounding judgePair cancels a slot-biased ensemble (no internal double-swap)', async () => {
+    // Both models always vote SLOT A ⇒ compare() returns A on either order ⇒ the
+    // outer debias core reconciles A-vs-A to a tie. Proves compare() stays single
+    // slot order and the order-bias cancellation still works around the ensemble.
+    const slotBiased = createVisionJudge([visionModel('s1', 'A'), visionModel('s2', 'A')])
+    const r = await judgePair(slotBiased, { a: shot('x'), b: shot('y') })
+    expect(r.winner).toBe('tie')
+    expect(r.margin).toBe(0)
+  })
+
+  it('echoes the dimension scope and sums tokens across the ensemble', async () => {
+    const judge = createVisionJudge([
+      visionModel('m1', 'A', { tokens: 10 }),
+      visionModel('m2', 'A', { tokens: 5 }),
+    ])
+    const out = await judge.compare({ a: shot('page'), b: shot('ex'), dimension: 'workflow' })
+    expect(out.dimension).toBe('workflow')
+    expect(out.tokensUsed).toBe(15)
+  })
+
+  it('delegates to the injected text fallback for screenshot-less subjects', async () => {
+    let fellBack = 0
+    const fallback: TasteJudge = {
+      id: 'fb',
+      async compare() {
+        fellBack++
+        return verdict('A', 0.5, ['text fallback'])
+      },
+    }
+    const judge = createVisionJudge([visionModel('m1', 'B')], { textFallback: fallback })
+    const out = await judge.compare({
+      a: subject('dir-a', { directionSummary: 'Editorial Calm' }),
+      b: subject('dir-b', { directionSummary: 'Dense Control Room' }),
+    })
+    expect(fellBack).toBe(1) // the vision models were not consulted
+    expect(out.winnerSlot).toBe('A')
+  })
+
+  it('throws on screenshot-less subjects when no text fallback was injected', async () => {
+    const judge = createVisionJudge([visionModel('m1', 'A')])
+    await expect(judge.compare({ a: subject('dir-a'), b: subject('dir-b') })).rejects.toThrow(/lack screenshots/)
   })
 })

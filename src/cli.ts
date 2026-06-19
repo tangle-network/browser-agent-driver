@@ -170,6 +170,9 @@ async function main(): Promise<void> {
       // design-audit reference-grounded eval (opt-in; default v1)
       reference: { type: 'string' },
       'reference-grounded': { type: 'boolean' },
+      // reference-grounded taste judge: text (default) | vision, + ensemble list
+      judge: { type: 'string' },
+      'judge-models': { type: 'string' },
       // Layer 7 — domain ethics gate. --skip-ethics bypasses the rollup floor
       // for testing scenarios; --ethics-rules-dir overrides the builtin rule set.
       'skip-ethics': { type: 'boolean' },
@@ -376,6 +379,8 @@ async function main(): Promise<void> {
       modality: values.modality,
       reference: values.reference,
       referenceGrounded: values['reference-grounded'],
+      judge: values.judge,
+      judgeModels: values['judge-models'],
     });
     process.exit(0);
   }

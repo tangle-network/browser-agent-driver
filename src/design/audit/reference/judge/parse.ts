@@ -71,21 +71,41 @@ function normalizeReasons(raw: unknown): string[] {
 }
 
 /**
- * Parse a judge response into a slot-relative `RawVerdict`. Garbage in →
- * `{ winnerSlot: 'tie', confidence: 0, reasons: [<why>] }`.
+ * STRICT parse: return a `RawVerdict` ONLY when the response carries an
+ * unambiguous winner token, else `null` ("no usable verdict"). This is the
+ * single source of truth for the happy path; both consumers build on it:
+ *  - the text judge wraps it with a fail-closed tie (see `parseRawVerdict`), so a
+ *    garbage single-model response is treated as "no signal" and the outer
+ *    position-swap can cancel it;
+ *  - the vision ENSEMBLE judge uses the `null` to DROP a non-responding model
+ *    (exclude it from the majority tally + denominator), rather than diluting the
+ *    agreement fraction with a phantom tie vote.
  */
-export function parseRawVerdict(raw: string): RawVerdict {
+export function parseVerdictOrNull(raw: string): RawVerdict | null {
   const obj = extractObject(stripFences(raw))
-  if (!obj) {
-    return { winnerSlot: 'tie', confidence: 0, reasons: ['unparseable judge response'] }
-  }
+  if (!obj) return null
   const winnerSlot = normalizeWinner(obj.winner ?? obj.winnerSlot ?? obj.choice)
-  if (!winnerSlot) {
-    return { winnerSlot: 'tie', confidence: 0, reasons: ['judge response missing a valid winner'] }
-  }
+  if (!winnerSlot) return null
   return {
     winnerSlot,
     confidence: normalizeConfidence(obj.confidence),
     reasons: normalizeReasons(obj.reasons ?? obj.reason),
+  }
+}
+
+/**
+ * Parse a judge response into a slot-relative `RawVerdict`. Garbage in →
+ * `{ winnerSlot: 'tie', confidence: 0, reasons: [<why>] }`.
+ */
+export function parseRawVerdict(raw: string): RawVerdict {
+  const verdict = parseVerdictOrNull(raw)
+  if (verdict) return verdict
+  // No usable winner ⇒ fail closed to a tie, preserving the specific reason: an
+  // object with no valid winner vs. a response with no object at all.
+  const hasObject = extractObject(stripFences(raw)) !== null
+  return {
+    winnerSlot: 'tie',
+    confidence: 0,
+    reasons: [hasObject ? 'judge response missing a valid winner' : 'unparseable judge response'],
   }
 }

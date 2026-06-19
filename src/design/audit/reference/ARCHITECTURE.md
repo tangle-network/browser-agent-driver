@@ -290,7 +290,8 @@ Phases 1-5 ship the entire engine with **zero** edits to existing files; it is e
 | `buildAuditResult` (`build-result.ts:61`) | exported | pipeline STAGE 8, via `precomputedScores: Record<Dimension, DimensionScore>` (supplied by `score-core.toDimensionScores`) | Multidim result without a second LLM call. The engine's flat `DesignSystemScore` is NOT type-compatible here — `dimensionScores` is. |
 | `checkEthics` (`ethics/check.ts:60`) | exported | pipeline STAGE 7, unchanged | Score cap on the engine's numeric score. |
 | `brain.complete` (`brain/index.ts:2309`) | public | `generate/generator`, `judge/text-judge` | Text generation + default judge. No Brain edit. |
-| `brain.auditDesign` (`brain/index.ts:2133`) | public | **NOT used by the judge** | Deliberately avoided — overloading it is contract abuse (see §9). A vision judge waits for a clean Brain seam. |
+| `brain.auditDesign` (`brain/index.ts:2133`) | public | **NOT used by the judge** | Deliberately avoided — overloading it is contract abuse (see §9). The vision judge uses the clean sibling seam `brain.completeVision` instead. |
+| `brain.completeVision` (`brain/index.ts`) | public | `judge/vision-model.createBrainVisionModel` → `judge/vision-judge` | Multimodal sibling of `complete`: one Brain per `ModelRef`, screenshots in → verdict text out. The clean vision seam (NOT `auditDesign`). |
 | `diffTokens` (`compare.ts:62`) | **private — promote** | optional rendered before/after only | Token-altitude delta; the engine's `dnaDelta` does NOT depend on it. |
 | `pixelDiff` (`compare.ts:24`) | **private — promote** | optional rendered before/after | Pixel scoring of rendered directions. |
 | `DesignTokens`/`ColorToken`/`ViewportTokens`/`TypeScaleEntry`/`FontFamily` (`src/types.ts`) | exported | `contracts` re-export, `dna/derive` | DNA derives purely from these (clusters + gridBaseUnit precomputed). |

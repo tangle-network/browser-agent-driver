@@ -41,6 +41,10 @@ import type {
   PageAuditResult,
 } from '../types.js'
 import type { Dimension, DimensionScore } from '../score-types.js'
+// The provider union the Brain layer already resolves (openai/anthropic/google/
+// claude-code/…). `ModelRef.provider` reuses it so the vision-judge ensemble can
+// only name backends the provider abstraction can actually instantiate.
+import type { SupportedProvider } from '../../../provider-defaults.js'
 
 // Re-export the canonical contracts so engine modules import shapes from ONE
 // place and never redefine the authoritative enums (DesignFinding.category,
@@ -711,8 +715,14 @@ export interface RedesignGenerator {
 
 /**
  * One side of a comparison. Carries the summaries the judge reasons over and an
- * optional screenshot path (used only by a future vision judge — the default
- * text judge ignores it).
+ * optional screenshot path.
+ *
+ * `screenshotPath` is the image source for the vision judge: page subjects and
+ * corpus exemplars carry an on-disk screenshot, so a vision `TasteJudge` compares
+ * them visually. Unrendered `RedesignDirection` specs have no screenshot and omit
+ * it, which is why direction ranking stays text-only. The default text judge
+ * ignores this field on every subject, so its presence never changes text
+ * scoring — adding/threading it is byte-neutral for `judge: 'text'`.
  */
 export interface JudgeSubject {
   id: string
@@ -720,6 +730,11 @@ export interface JudgeSubject {
   dnaSummary: string
   /** Direction summary, when comparing generated directions. */
   directionSummary?: string
+  /**
+   * Adapter-readable path to this subject's screenshot (absolute, or resolved by
+   * the wiring root). Present for pages/exemplars; absent for unrendered
+   * directions. Read only by a vision judge; the text judge never touches it.
+   */
   screenshotPath?: string
 }
 
@@ -810,6 +825,80 @@ export interface DirectionRanker {
 export interface TasteJudge {
   readonly id: string
   compare(input: JudgePairInput): Promise<RawVerdict>
+}
+
+/**
+ * A provider-agnostic handle to one model: the `{ provider, model }` pair the
+ * vision-judge ensemble keys on. Provider-agnostic by construction — `provider`
+ * reuses `SupportedProvider`, so any vision-capable backend the Brain provider
+ * layer already resolves (openai/gpt-5.4, anthropic/claude-opus-4-8, google
+ * gemini, claude-code, …) is a legal target and selection goes through the
+ * existing abstraction, never a bespoke per-provider path. `provider` is optional:
+ * when omitted the wiring root fills it from the ambient default. A list of one
+ * ref ⇒ a single judge; a list of many ⇒ an ensemble (see `visionModels`).
+ */
+export interface ModelRef {
+  provider?: SupportedProvider
+  model: string
+}
+
+/**
+ * One image handed to a vision judge for a single comparison — each comparison
+ * side contributes one. Two interchangeable forms, exactly one set:
+ *  - `{ screenshotPath }`: an on-disk image the adapter reads (the common case —
+ *    `JudgeSubject.screenshotPath` for pages/exemplars; PNG or JPEG, mediaType
+ *    inferred from the file extension);
+ *  - `{ base64, mediaType }`: already-encoded image bytes, for an in-memory
+ *    screenshot that was never written to disk.
+ * The disjoint required keys make the two mutually exclusive at the type level.
+ */
+export type VisionImageRef =
+  | { screenshotPath: string }
+  | { base64: string; mediaType: string }
+
+/**
+ * The narrow vision-capable model seam — the visual analogue of the text judge's
+ * `JudgeModel`. ONE instance is bound to ONE resolved `ModelRef` (its `id` is that
+ * ref rendered as `provider:model`, e.g. `'openai:gpt-5.4'`), so an ensemble is
+ * simply a LIST of these seams. `completeVision` is a single multimodal
+ * round-trip: a system prompt + a user prompt + one-or-more `VisionImageRef`s
+ * (the compared subjects' screenshots) → raw model text, which the judge parses
+ * with the same `parseRawVerdict` the text judge uses.
+ *
+ * The wiring root binds ONE Brain per `ModelRef` and wraps it in a thin
+ * Brain-backed adapter (`createBrainVisionModel`) that supplies the
+ * `provider:model` id, reads each `VisionImageRef` off disk, and routes the
+ * encoded images through Brain's multimodal round-trip — a SIBLING of
+ * `brain.complete`, NOT an overload of `brain.auditDesign` (the page-audit seam
+ * stays off-limits to taste comparison by contract). Unit tests inject
+ * deterministic stubs with no live model.
+ *
+ * Ensemble aggregation (how a LIST of these seams collapses to ONE `RawVerdict`
+ * per `compare`, on a single slot order — position-swap is the outer debias
+ * core's job and is never re-done here):
+ *  - each model casts ONE vote ∈ {A, B, tie}; a genuine `tie` vote is a real
+ *    verdict, tallied in its own bucket;
+ *  - a model that yields NO usable verdict — its call throws, or the response
+ *    carries no parseable winner token — is DROPPED: excluded from BOTH the tally
+ *    and the denominator (never silently recounted as a tie). If EVERY model is
+ *    dropped, `compare` throws — an empty ensemble result is an explicit error,
+ *    never a fabricated tie (and an empty model list is rejected at construction);
+ *  - `winnerSlot` = the bucket (A, B, OR tie) holding the STRICT maximum count;
+ *    `confidence` = that bucket's votes ÷ surviving votes (the honest agreement
+ *    fraction, never a constant). When ≥2 buckets share the top count the
+ *    ensemble is undecided ⇒ `winnerSlot: 'tie'`, `confidence: 0`;
+ *  - `tokensUsed` = the sum over every model call that reported a count;
+ *    `dimension` echoes `JudgePairInput.dimension` when the comparison was scoped.
+ */
+export interface VisionJudgeModel {
+  /** The bound `ModelRef` rendered as `provider:model`. */
+  readonly id: string
+  completeVision(
+    system: string,
+    user: string,
+    images: VisionImageRef[],
+    options?: { maxOutputTokens?: number },
+  ): Promise<{ text: string; tokensUsed?: number }>
 }
 
 /** A recorded human pairwise preference, for judge calibration. */
@@ -949,8 +1038,32 @@ export interface ReferenceGroundedConfig {
   k: number
   /** Number of redesign directions to generate (2-3). */
   directionCount: number
-  /** Judge backend. 'vision' is reserved for a future clean Brain seam. */
+  /**
+   * Judge backend. `'text'` (default) judges from DNA/direction summaries via
+   * `brain.complete`. `'vision'` selects the screenshot-grounded ensemble judge
+   * built from `visionModels`; it scores the subjects that HAVE a screenshot —
+   * the audited page and the corpus exemplars (the quality leg) — and falls back
+   * to the text judge for screenshot-less subjects, so the unrendered
+   * direction-ranking leg stays text-only either way.
+   */
   judge: 'text' | 'vision'
+  /**
+   * The vision-judge ensemble: the list of `{ provider, model }` refs run when
+   * `judge: 'vision'` (ignored when `judge: 'text'`). ONE ref ⇒ a single judge;
+   * MANY ⇒ an ensemble that, for each comparison, runs every model in parallel
+   * on the SAME slot order, then aggregates across models — see
+   * {@link VisionJudgeModel} for the EXACT tally/drop/confidence rules (majority
+   * bucket wins, agreement fraction → confidence, a split → tie, a no-verdict
+   * model is dropped, an all-dropped result throws). Position-swap (A-vs-B and
+   * B-vs-A, to cancel order bias) is supplied by the surrounding pure debias core
+   * that calls the judge twice, so the ensemble layer varies MODELS only and
+   * never re-swaps order. Provider-agnostic: each ref resolves through the Brain
+   * provider abstraction, so a mixed openai+anthropic+google ensemble is legal —
+   * though `provider` admits non-vision backends too (`cli-bridge`,
+   * `sandbox-backend`, …): vision-capability is a RUNTIME precondition the wiring
+   * assumes, not something the type guarantees.
+   */
+  visionModels?: ModelRef[]
   /** Embedding backend; falls back to 'deterministic' when no key is present. */
   embedder: 'deterministic' | 'provider'
   budget: EngineBudget
