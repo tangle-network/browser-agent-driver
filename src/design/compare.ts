@@ -285,7 +285,7 @@ export async function runDesignCompare(opts: CompareOptions): Promise<CompareRes
   const interactiveReveal = opts.interactiveReveal !== false
 
   // We need tokens for diff — import extractDesignTokens lazily to avoid circular deps
-  const { extractDesignTokens } = await import('../cli-design-audit.js')
+  const { extractDesignTokens } = await import('./audit/tokens/extract.js')
 
   console.log(`  ${chalk.dim('Extracting tokens from A…')}`)
   const tokensA = await extractDesignTokens({

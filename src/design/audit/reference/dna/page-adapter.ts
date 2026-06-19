@@ -19,7 +19,7 @@ import { toDesignDNA } from './derive.js'
 export function createPageDnaExtractor(): DesignDnaExtractor {
   return {
     async extract(opts: ExtractPageDnaOptions): Promise<DnaCapture> {
-      const { extractDesignTokens } = await import('../../../../cli-design-audit.js')
+      const { extractDesignTokens } = await import('../../tokens/extract.js')
       const { tokens, outputDir, screenshotPaths, scrollMotion } = await extractDesignTokens({
         url: opts.url,
         headless: opts.headless,
