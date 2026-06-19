@@ -86,6 +86,54 @@ describe('aestheticDescriptor', () => {
     expect(clipped.length).toBeLessThanOrEqual(40)
     expect(clipped.endsWith('…')).toBe(true)
   })
+
+  it('omits scroll keywords when no scroll pass was captured', () => {
+    expect(aestheticDescriptor(makeDNA())).not.toContain('scroll-driven')
+  })
+
+  it('appends scroll-driven keywords for a scroll-rich page (clusters with scroll-rich peers)', () => {
+    const scrollRich = aestheticDescriptor(
+      makeDNA({
+        motion: {
+          durationsMs: [200],
+          easings: ['ease'],
+          libraries: [],
+          scroll: {
+            pageHeightRatio: 4.2,
+            reveals: { count: 8, kinds: ['fade', 'slide-up'] },
+            stickyCount: 2,
+            parallax: 0.4,
+            scrollDriven: true,
+          },
+        },
+      }),
+    )
+    expect(scrollRich).toContain('scroll-driven')
+    expect(scrollRich).toContain('long-form scroll')
+    expect(scrollRich).toContain('8 scroll reveals')
+    expect(scrollRich).toContain('sticky pinning')
+    expect(scrollRich).toContain('parallax depth')
+  })
+
+  it('omits scroll keywords for a captured-but-quiet page (observed, not scroll-driven)', () => {
+    const quiet = aestheticDescriptor(
+      makeDNA({
+        motion: {
+          durationsMs: [200],
+          easings: ['ease'],
+          libraries: [],
+          scroll: {
+            pageHeightRatio: 1.4,
+            reveals: { count: 0, kinds: [] },
+            stickyCount: 0,
+            parallax: 0,
+            scrollDriven: false,
+          },
+        },
+      }),
+    )
+    expect(quiet).not.toContain('scroll-driven')
+  })
 })
 
 // ── structuralFeatures ───────────────────────────────────────────────────────

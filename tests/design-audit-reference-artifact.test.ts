@@ -349,6 +349,66 @@ describe('directionToFindings', () => {
   })
 })
 
+// ── scroll-motion advisory (honest-signals gate) ──────────────────────────────
+
+describe('directionToFindings — scroll-motion advisory', () => {
+  const winner = direction('d-a', ['ex1'])
+  const scrollDrivenMotion = {
+    pageHeightRatio: 4,
+    reveals: { count: 6, kinds: ['fade', 'slide-up'] },
+    stickyCount: 2,
+    parallax: 0.4,
+    scrollDriven: true,
+  }
+  const staticMotion = {
+    pageHeightRatio: 1.3,
+    reveals: { count: 0, kinds: [] },
+    stickyCount: 0,
+    parallax: 0,
+    scrollDriven: false,
+  }
+  const withScroll = (base: DesignDNA, scroll: typeof scrollDrivenMotion): DesignDNA => ({
+    ...base,
+    motion: { ...base.motion, scroll },
+  })
+  const scrollRichHit = (id: string): RetrievalResult => ({
+    exemplar: exemplar(id, { dna: withScroll(dna(`https://${id}.example`), scrollDrivenMotion) }),
+    score: 0.9,
+    reasons: ['nearest aesthetic neighbour'],
+  })
+  const hasAdvisory = (findings: DesignFinding[]): boolean =>
+    findings.some((f) => f.description.includes('static on scroll'))
+
+  const pageStatic = withScroll(dna('https://under-audit.example'), staticMotion)
+
+  it('emits a minor ux advisory naming peers + interactions when the page is static but peers are scroll-rich', () => {
+    const findings = directionToFindings(winner, delta(), measurements, pageStatic, [scrollRichHit('ex1'), hit('ex2')])
+    const advisory = findings.find((f) => f.description.includes('static on scroll'))
+    expect(advisory).toBeDefined()
+    expect(advisory!.severity).toBe('minor')
+    expect(advisory!.category).toBe('ux')
+    expect(advisory!.description).toContain('ex1')
+    expect(advisory!.description).toContain('scroll reveals')
+  })
+
+  it('does NOT fire when the page scroll was never captured (absent ≠ static)', () => {
+    expect(hasAdvisory(directionToFindings(winner, delta(), measurements, dna('https://x'), [scrollRichHit('ex1')]))).toBe(false)
+  })
+
+  it('does NOT fire when the audited page is itself scroll-driven', () => {
+    const pageRich = withScroll(dna('https://x'), scrollDrivenMotion)
+    expect(hasAdvisory(directionToFindings(winner, delta(), measurements, pageRich, [scrollRichHit('ex1')]))).toBe(false)
+  })
+
+  it('does NOT fire when no retrieved peer is scroll-rich', () => {
+    expect(hasAdvisory(directionToFindings(winner, delta(), measurements, pageStatic, [hit('ex2')]))).toBe(false)
+  })
+
+  it('omitting dna/hits is byte-identical to the prior 3-arg behaviour (no advisory)', () => {
+    expect(hasAdvisory(directionToFindings(winner, delta(), measurements))).toBe(false)
+  })
+})
+
 describe('toReferencePageAuditResult', () => {
   it('returns the PageAuditResult contract shape', () => {
     const r = toReferencePageAuditResult(runResult())

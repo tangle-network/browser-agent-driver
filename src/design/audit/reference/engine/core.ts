@@ -185,7 +185,7 @@ export async function runRedesignCore(
   const winner = artifact.directions[0]
   if (!winner) throw new Error('reference engine: ranking produced no winning direction')
   const gapTarget = resolveGapTarget(config.reference, winner, hits, dna)
-  const findings = directionToFindings(winner, dnaDelta(dna, gapTarget), input.measurements)
+  const findings = directionToFindings(winner, dnaDelta(dna, gapTarget), input.measurements, dna, hits)
 
   return {
     artifact,

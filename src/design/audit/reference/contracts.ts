@@ -165,7 +165,78 @@ export interface RadiiScale {
 }
 
 /**
- * Motion signature: durations, easings, and any detected animation libraries.
+ * One bucket of scroll-triggered reveals: how many distinct elements animated
+ * IN on scroll, and the kinds of reveal observed. Shared by the raw live-page
+ * capture and the normalised DNA so the two stay in lock-step.
+ */
+export interface ScrollRevealSummary {
+  /** Number of elements observed animating IN as they entered the viewport. */
+  count: number
+  /**
+   * Free-form labels for the kinds of reveal observed (e.g. 'fade', 'slide-up',
+   * 'scale-in', 'mask'). Not a closed enum — novel reveal styles get a novel
+   * label rather than a forced bucket. Empty when reveals were counted but not
+   * classified.
+   */
+  kinds: string[]
+}
+
+/**
+ * Scroll-driven motion OBSERVED by replaying a top→bottom stepped scroll on the
+ * LIVE page (the opt-in `captureScrollMotion` pass). It answers "what actually
+ * animates on scroll" — which a static token rip cannot: a static rip can tell a
+ * page loads GSAP/Lenis, but not WHAT those libraries drive as you scroll.
+ *
+ * HONEST SIGNAL. Every field here is a measurement, not a guess. The whole
+ * record is OPTIONAL on {@link MotionDNA} and is present ONLY when the scroll
+ * pass actually ran AND observed motion. Absent (`undefined`) means "NOT
+ * captured", never "no scroll motion" — do not read a missing record as a
+ * static page. A captured-but-quiet page is reported as `scrollDriven: false`,
+ * which is distinct from the record being absent.
+ */
+export interface ScrollMotionDNA {
+  /**
+   * Long-scroll storytelling signal: `document.scrollHeight / viewportHeight`,
+   * a unitless ratio. ~1 = a single viewport; e.g. 4.2 means the page is 4.2
+   * viewports tall. Higher ratios read as long-form scroll narratives.
+   */
+  pageHeightRatio: number
+  /** Elements that animated IN on scroll, with a count and their kinds. */
+  reveals: ScrollRevealSummary
+  /**
+   * Count of `position: sticky` / pinned elements that stayed fixed in the
+   * viewport while their section scrolled past. Integer ≥ 0.
+   */
+  stickyCount: number
+  /**
+   * Parallax strength as a 0–1 score. NORMALISATION (identical to
+   * {@link RawScrollCapture.parallax}, carried through unchanged by the fold):
+   * for each non-pinned layer let `rate = viewportTranslate / scrollDelta` (1 =
+   * rigid with content, 0 = fixed). A genuine parallax layer sits in the slow
+   * band `0.15 < rate < 0.85` or moves faster than content `rate > 1.15`; its
+   * score is `clamp01(|rate − 1|)` (reverse/over-fast layers clamp to 1). The
+   * field is the MAX such score over all layers. `0` = no parallax observed
+   * (doubles as the boolean "no parallax"); higher = stronger layered depth.
+   */
+  parallax: number
+  /**
+   * Rollup verdict: does the page read as a motion-rich scroll experience?
+   * Derived (in the PURE fold, never here) from the reveals / sticky / parallax
+   * / ratio evidence above. `false` is a real observation ("scrolled, saw
+   * little motion"), distinct from the whole record being absent.
+   */
+  scrollDriven: boolean
+}
+
+/**
+ * Motion signature: durations, easings, and any detected animation libraries —
+ * all derived from a STATIC token rip.
+ *
+ * `scroll` is the one LIVE-observed extension. It is OPTIONAL and present ONLY
+ * when the opt-in `captureScrollMotion` extraction pass ran on the live page AND
+ * saw motion (default OFF, so existing rips/exemplars/tests with no scroll data
+ * stay valid). When absent, nothing was captured — never read its absence as
+ * "no scroll motion".
  */
 export interface MotionDNA {
   /** Transition/animation durations in ms. */
@@ -174,6 +245,12 @@ export interface MotionDNA {
   easings: string[]
   /** Detected animation libraries (gsap, framer-motion, lottie, …). */
   libraries: string[]
+  /**
+   * Scroll-driven motion observed on the live page. Present only when the
+   * opt-in `captureScrollMotion` pass ran AND observed motion; otherwise
+   * `undefined` (not captured). See {@link ScrollMotionDNA}.
+   */
+  scroll?: ScrollMotionDNA
 }
 
 /**
@@ -270,6 +347,14 @@ export interface ExtractPageDnaOptions {
    * still works.
    */
   measurements?: MeasurementBundle
+  /**
+   * Opt in to the live scroll-motion capture pass (default OFF). When set, the
+   * extractor replays a stepped top→bottom scroll on the page and folds the
+   * result into `DesignDNA.motion.scroll`. Off by default because it adds page
+   * time and is only meaningful for live audits / corpus authoring — a static
+   * rip never observes scroll motion.
+   */
+  captureScrollMotion?: boolean
 }
 
 /**
@@ -291,6 +376,76 @@ export interface DnaCapture {
  */
 export interface DesignDnaExtractor {
   extract(opts: ExtractPageDnaOptions): Promise<DnaCapture>
+}
+
+// ── Scroll-motion capture seam ───────────────────────────────────────────────
+
+/**
+ * The minimal live-page surface the scroll-capture pass drives: the ability to
+ * run an async function in page context (where it can `scrollTo`, await
+ * `requestAnimationFrame`, and read `getBoundingClientRect` /
+ * `getComputedStyle` across scroll steps). Modelled structurally — a Playwright
+ * `Page` satisfies it — so these pure contracts stay browser-free and the seam
+ * is fakeable in unit tests.
+ */
+export interface ScrollCapturePage {
+  evaluate<R>(pageFunction: () => R | Promise<R>): Promise<R>
+}
+
+/**
+ * Tunables for one scroll-capture pass. All optional; the implementation picks
+ * honest defaults. These affect capture FIDELITY only, never WHETHER the pass
+ * runs — that is the separate, opt-in `captureScrollMotion` extraction flag.
+ */
+export interface ScrollCaptureOptions {
+  /** Number of discrete top→bottom scroll stops to sample. */
+  steps?: number
+  /** Milliseconds to let motion settle after each scroll stop before sampling. */
+  settleMs?: number
+}
+
+/**
+ * The RAW signal a single live-page scroll pass returns, BEFORE the pure fold
+ * normalises it into {@link ScrollMotionDNA}. It reports only directly-measured
+ * quantities (heights in CSS px, observed counts/scores) and leaves the derived
+ * `pageHeightRatio` and the `scrollDriven` rollup to `deriveMotion`, keeping the
+ * browser layer free of judgement.
+ *
+ * The capturer returns `undefined` (not a zeroed record) when the pass could not
+ * observe anything — e.g. a non-scrolling page — so absence stays honest.
+ */
+export interface RawScrollCapture {
+  /** Full document scroll height in CSS px (`document.scrollingElement.scrollHeight`). */
+  scrollHeightPx: number
+  /** Viewport height in CSS px at capture time (`window.innerHeight`). */
+  viewportHeightPx: number
+  /** Number of top→bottom scroll stops actually sampled. */
+  steps: number
+  /** Elements observed animating IN as they entered the viewport. */
+  reveals: ScrollRevealSummary
+  /** Count of `position: sticky` / pinned elements that stayed fixed while their section scrolled. */
+  stickyCount: number
+  /**
+   * Parallax strength as a 0–1 score. For each non-pinned layer let
+   * `rate = viewportTranslate / scrollDelta` (1 = rigid with content, 0 =
+   * fixed). A parallax layer sits in the slow band `0.15 < rate < 0.85` or moves
+   * faster than content `rate > 1.15`; its score is `clamp01(|rate − 1|)`. This
+   * field is the MAX such score over all layers (`0` = none observed). Carried
+   * into `ScrollMotionDNA.parallax` by the fold unchanged.
+   */
+  parallax: number
+}
+
+/**
+ * The narrow capture seam: given an already-open, settled live page, run the
+ * stepped top→bottom scroll pass and return a {@link RawScrollCapture}, or
+ * `undefined` when nothing was observed. The shipped implementation lives in the
+ * browser layer (`cli-design-audit`); tests inject a fake. Pure consumers
+ * (`toDesignDNA` / `deriveMotion`) never touch this — they receive the already
+ * folded result, so the DNA core stays browser-free and deterministic.
+ */
+export interface ScrollCapturer {
+  capture(page: ScrollCapturePage, opts?: ScrollCaptureOptions): Promise<RawScrollCapture | undefined>
 }
 
 // ── Corpus ─────────────────────────────────────────────────────────────────────

@@ -20,13 +20,14 @@ export function createPageDnaExtractor(): DesignDnaExtractor {
   return {
     async extract(opts: ExtractPageDnaOptions): Promise<DnaCapture> {
       const { extractDesignTokens } = await import('../../../../cli-design-audit.js')
-      const { tokens, outputDir, screenshotPaths } = await extractDesignTokens({
+      const { tokens, outputDir, screenshotPaths, scrollMotion } = await extractDesignTokens({
         url: opts.url,
         headless: opts.headless,
         outputDir: opts.outputDir,
+        captureScrollMotion: opts.captureScrollMotion,
       })
       return {
-        dna: toDesignDNA(tokens, opts.measurements),
+        dna: toDesignDNA(tokens, opts.measurements, scrollMotion),
         tokens,
         screenshotPaths,
         outputDir,

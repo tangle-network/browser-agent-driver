@@ -34,6 +34,8 @@ import type {
   PageAuditResult,
   Dimension,
   DimensionScore,
+  DesignDNA,
+  RetrievalResult,
 } from '../contracts.js'
 import { measurementsToFindings } from '../../evaluate.js'
 import { annotateRoi, topByRoi } from '../../roi.js'
@@ -84,6 +86,45 @@ function directionalFinding(over: {
 }
 
 /**
+ * Build the advisory "static page vs scroll-rich peers" finding, or `null`.
+ *
+ * Honest-signals gate: fires ONLY when the audited page's scroll motion was
+ * actually OBSERVED (capture ran) and read as NOT scroll-driven, AND at least one
+ * retrieved world-class exemplar was observed scroll-driven. If the page's scroll
+ * was never captured (`dna.motion.scroll` undefined) nothing fires — absence is
+ * not evidence of a static page. Computed directly from the two DNAs because
+ * `DnaDelta` carries no motion field.
+ */
+function scrollMotionAdvisory(dna?: DesignDNA, hits?: RetrievalResult[]): DesignFinding | null {
+  if (!dna || !hits || hits.length === 0) return null
+  const pageScroll = dna.motion.scroll
+  if (!pageScroll || pageScroll.scrollDriven) return null
+  const scrollRichPeers = hits.filter((h) => h.exemplar.dna.motion.scroll?.scrollDriven === true)
+  if (scrollRichPeers.length === 0) return null
+
+  const peerIds = scrollRichPeers.slice(0, 3).map((h) => h.exemplar.id).join(', ')
+  // Aggregate what the peers actually show, so the advice names real interactions.
+  const cues = new Set<string>()
+  for (const p of scrollRichPeers) {
+    const s = p.exemplar.dna.motion.scroll
+    if (!s) continue
+    if (s.reveals.count >= 2) cues.add('scroll reveals')
+    if (s.stickyCount >= 1) cues.add('sticky section pinning')
+    if (s.parallax >= 0.25) cues.add('parallax depth')
+  }
+  const cueList = [...cues].join(', ') || 'scroll-driven motion'
+  return directionalFinding({
+    category: 'ux',
+    description: `This page reads as static on scroll, but its world-class references (${peerIds}) use ${cueList}. Consider adding grounded scroll interaction.`,
+    location: 'page motion',
+    suggestion: `Introduce scroll-driven motion seen in the references: ${cueList}. Keep it purposeful and accessible (respect prefers-reduced-motion).`,
+    impact: 3,
+    effort: 5,
+    blast: 'page',
+  })
+}
+
+/**
  * Project the winning direction + DNA gap onto `minor` `DesignFinding`s, merge
  * the deterministic measurement findings, and return the ROI-sorted union.
  *
@@ -91,11 +132,17 @@ function directionalFinding(over: {
  * `layout` / `ux` — `contrast` and `accessibility` are reserved for
  * `measurementsToFindings` so a generated recommendation can never masquerade as
  * a measured a11y/contrast fact.
+ *
+ * `dna` + `hits` are optional: when both are supplied an advisory scroll-motion
+ * finding may be minted (see {@link scrollMotionAdvisory}). Omitting them yields
+ * byte-identical output to the prior 3-arg behaviour.
  */
 export function directionToFindings(
   winner: RedesignDirection,
   gap: DnaDelta,
   measurements: MeasurementBundle,
+  dna?: DesignDNA,
+  hits?: RetrievalResult[],
 ): DesignFinding[] {
   const directional: DesignFinding[] = []
 
@@ -218,6 +265,11 @@ export function directionToFindings(
       }),
     )
   }
+
+  // Advisory: audited page is static on scroll but its peers are scroll-rich.
+  // Fires only on observed signals (see scrollMotionAdvisory).
+  const advisory = scrollMotionAdvisory(dna, hits)
+  if (advisory) directional.push(advisory)
 
   // Merge deterministic ground truth, then ROI-annotate + sort the union. Reuse
   // — never reimplement — the v1 measurement→finding and ROI helpers.

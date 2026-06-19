@@ -23,7 +23,9 @@ import type {
   Density,
   MotionDNA,
   ComponentPatternDNA,
+  RawScrollCapture,
 } from '../contracts.js'
+import { foldScrollMotion } from './scroll-capture.js'
 
 // Adjacent type-scale ratios this close to each other (max/min) read as one
 // modular scale; beyond it the scale is irregular and no ratio is reported.
@@ -189,7 +191,11 @@ function detectAnimationLibraries(libs: string[]): string[] {
   return [...out].sort()
 }
 
-function deriveMotion(responsive: Record<string, ViewportTokens>, detectedLibraries: string[]): MotionDNA {
+function deriveMotion(
+  responsive: Record<string, ViewportTokens>,
+  detectedLibraries: string[],
+  scroll?: RawScrollCapture,
+): MotionDNA {
   const durations = new Set<number>()
   const easings = new Set<string>()
   for (const vp of Object.values(responsive)) {
@@ -198,11 +204,15 @@ function deriveMotion(responsive: Record<string, ViewportTokens>, detectedLibrar
       for (const e of parseEasings(a.value)) easings.add(e)
     }
   }
-  return {
+  const motion: MotionDNA = {
     durationsMs: [...durations].sort((a, b) => a - b),
     easings: [...easings].sort(),
     libraries: detectAnimationLibraries(detectedLibraries),
   }
+  // Live-observed scroll motion, when the opt-in capture pass ran. Absent =
+  // not captured (never read as "no scroll motion").
+  if (scroll) motion.scroll = foldScrollMotion(scroll)
+  return motion
 }
 
 function distinctComponentCount(
@@ -238,10 +248,17 @@ function deriveArchetype(c: ComponentPatternDNA): string {
 }
 
 /**
- * Fold a `DesignTokens` record (+ optional measurements) into a `DesignDNA`.
- * Pure and deterministic: identical inputs always yield an identical DNA.
+ * Fold a `DesignTokens` record (+ optional measurements + optional live
+ * `RawScrollCapture`) into a `DesignDNA`. Pure and deterministic: identical
+ * inputs always yield an identical DNA. `scroll` is attached as `motion.scroll`
+ * only when supplied — the browser layer captures it; this fold never observes a
+ * page.
  */
-export function toDesignDNA(tokens: DesignTokens, measurements?: MeasurementBundle): DesignDNA {
+export function toDesignDNA(
+  tokens: DesignTokens,
+  measurements?: MeasurementBundle,
+  scroll?: RawScrollCapture,
+): DesignDNA {
   const steps: TypeStepDNA[] = tokens.typography.scale
     .map((e) => {
       const fontSizePx = round2(parseFloat(e.fontSize))
@@ -319,7 +336,7 @@ export function toDesignDNA(tokens: DesignTokens, measurements?: MeasurementBund
     radii: {
       steps: aggregateRadii(tokens.responsive),
     },
-    motion: deriveMotion(tokens.responsive, tokens.detectedLibraries),
+    motion: deriveMotion(tokens.responsive, tokens.detectedLibraries, scroll),
     layout: {
       columns: undefined,
       gridBaseUnit: baseUnit,
@@ -330,6 +347,21 @@ export function toDesignDNA(tokens: DesignTokens, measurements?: MeasurementBund
     components,
     signals,
   }
+}
+
+/**
+ * Render the observed scroll-motion as a compact clause appended to the motion
+ * line, or '' when no scroll pass was captured (honest absence). Reports the
+ * measured numbers even when `scrollDriven` is false (a captured-but-quiet page),
+ * tagging that case so the reader can distinguish it from a motion-rich one.
+ */
+function scrollMotionClause(scroll: DesignDNA['motion']['scroll']): string {
+  if (!scroll) return ''
+  const parts = [`${scroll.pageHeightRatio}× tall`, `${scroll.reveals.count} reveals`]
+  if (scroll.reveals.kinds.length) parts[parts.length - 1] += ` (${scroll.reveals.kinds.join('/')})`
+  if (scroll.stickyCount > 0) parts.push(`${scroll.stickyCount} sticky`)
+  if (scroll.parallax > 0) parts.push(`parallax ${scroll.parallax}`)
+  return `; scroll: ${parts.join(', ')}${scroll.scrollDriven ? '' : ' (quiet)'}`
 }
 
 /**
@@ -351,7 +383,7 @@ export function summarizeDNA(dna: DesignDNA, opts: { maxChars?: number } = {}): 
     `color: ${colorLine || 'none'}${dna.color.contrastFloor !== undefined ? ` (contrast floor ${dna.color.contrastFloor})` : ''}`,
     `spacing: base ${dna.spacing.baseUnit ?? 'none'} px, steps ${dna.spacing.steps.join('/') || 'none'}, ${dna.spacing.density}`,
     `radii: ${dna.radii.steps.join('/') || 'none'} px`,
-    `motion: ${dna.motion.durationsMs.join('/') || 'none'} ms, ${dna.motion.easings.join(' ') || 'no-easing'}${dna.motion.libraries.length ? `, libs ${dna.motion.libraries.join(' ')}` : ''}`,
+    `motion: ${dna.motion.durationsMs.join('/') || 'none'} ms, ${dna.motion.easings.join(' ') || 'no-easing'}${dna.motion.libraries.length ? `, libs ${dna.motion.libraries.join(' ')}` : ''}${scrollMotionClause(dna.motion.scroll)}`,
     `layout: ${dna.layout.archetype}, ${dna.layout.density}`,
     `components: ${dna.components.buttons}btn ${dna.components.inputs}input ${dna.components.cards}card ${dna.components.nav}nav`,
   ]

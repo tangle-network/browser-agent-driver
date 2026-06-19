@@ -12,6 +12,8 @@ import chalk from 'chalk'
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright'
 import { Brain } from './brain/index.js'
 import type { DesignFinding, PageState, DesignTokens, ColorToken, FontFamily, TypeScaleEntry, LogoAsset, SvgIcon, ViewportTokens, SpacingToken, BorderToken, ShadowToken, ComponentFingerprint, NavPattern, AnimationToken, FontFile, ImageAsset } from './types.js'
+import type { RawScrollCapture } from './design/audit/reference/contracts.js'
+import { createScrollCapturer } from './design/audit/reference/dna/scroll-capture.js'
 import { PlaywrightDriver } from './drivers/playwright.js'
 import { resolveDefaultProvider, resolveProviderApiKey, resolveProviderModelName, type SupportedProvider } from './provider-defaults.js'
 import { loadLocalEnvFiles } from './env-loader.js'
@@ -2064,12 +2066,26 @@ export interface ExtractDesignTokensOptions {
   outputDir?: string
   viewports?: Array<{ name: string; width: number; height: number }>
   onProgress?: (viewport: string, width: number, height: number, stats: { colors: number; fonts: number; buttons: number; inputs: number; cards: number }) => void
+  /**
+   * Opt in to the live scroll-motion capture pass (default OFF). When set, a
+   * stepped top→bottom scroll runs on the desktop viewport after token
+   * extraction and the observed `RawScrollCapture` is returned on
+   * `ExtractionResult.scrollMotion`. Off by default — it adds page time and is
+   * only meaningful for live audits / corpus authoring.
+   */
+  captureScrollMotion?: boolean
 }
 
 export interface ExtractionResult {
   tokens: DesignTokens
   outputDir: string
   screenshotPaths: Record<string, string>
+  /**
+   * Live scroll-motion observation, present only when `captureScrollMotion` was
+   * set AND the desktop page was actually scrollable. `undefined` otherwise
+   * (not captured) — never read its absence as "no scroll motion".
+   */
+  scrollMotion?: RawScrollCapture
 }
 
 /**
@@ -2110,6 +2126,7 @@ export async function extractDesignTokens(opts: ExtractDesignTokensOptions): Pro
   const allDetectedLibraries = new Set<string>()
   const responsiveTokens: Record<string, ViewportTokens> = {}
   const screenshotPaths: Record<string, string> = {}
+  let scrollMotion: RawScrollCapture | undefined
 
   for (const vp of viewports) {
     const context = await browser.newContext({ viewport: { width: vp.width, height: vp.height } })
@@ -2122,6 +2139,14 @@ export async function extractDesignTokens(opts: ExtractDesignTokensOptions): Pro
       await page.waitForTimeout(2000)
       await dismissCookieBanners(page)
       await page.waitForTimeout(500)
+
+      // Opt-in live scroll-motion capture — runs FIRST on the freshly loaded
+      // page, BEFORE the fullPage screenshot scrolls it, so one-shot scroll
+      // reveals are observed as they actually fire. Desktop only (long-scroll is
+      // a desktop signal); the capturer restores scroll to the top when done.
+      if (opts.captureScrollMotion && vp.name === 'desktop') {
+        scrollMotion = await createScrollCapturer().capture(page).catch(() => undefined)
+      }
 
       const screenshotPath = path.join(screenshotDir, `${vp.name}.png`)
       await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() =>
@@ -2362,7 +2387,7 @@ export async function extractDesignTokens(opts: ExtractDesignTokensOptions): Pro
   const tokenPath = path.join(outputDir, 'tokens.json')
   fs.writeFileSync(tokenPath, JSON.stringify(tokens, null, 2))
 
-  return { tokens, outputDir, screenshotPaths }
+  return { tokens, outputDir, screenshotPaths, scrollMotion }
 }
 
 // ---------------------------------------------------------------------------

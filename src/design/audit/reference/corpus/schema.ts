@@ -25,6 +25,7 @@ import type {
   TypeStepDNA,
   FontRoleDNA,
   ComponentPatternDNA,
+  ScrollMotionDNA,
 } from '../contracts.js'
 
 const PAGE_TYPES: readonly PageType[] = [
@@ -47,6 +48,7 @@ const FONT_ROLES: readonly FontRoleDNA['role'][] = ['heading', 'body', 'mono', '
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
 const isString = (v: unknown): v is string => typeof v === 'string'
+const isBoolean = (v: unknown): v is boolean => typeof v === 'boolean'
 const isFiniteNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
 const isStringArray = (v: unknown): v is string[] => Array.isArray(v) && v.every(isString)
 const isFiniteNumberArray = (v: unknown): v is number[] => Array.isArray(v) && v.every(isFiniteNumber)
@@ -103,6 +105,33 @@ function normalizeFontRole(raw: unknown, where: string): FontRoleDNA {
   }
 }
 
+function asBoolean(v: unknown, where: string): boolean {
+  if (!isBoolean(v)) fail(`${where} must be a boolean`)
+  return v
+}
+
+/**
+ * Validate + whitelist an optional live scroll-motion record. Fail-closed (a
+ * malformed field is rejected, never defaulted) and built field by field so the
+ * honest signal round-trips through the corpus instead of being silently dropped
+ * on load.
+ */
+function normalizeScrollMotion(raw: unknown): ScrollMotionDNA {
+  const s = asRecord(raw, 'dna.motion.scroll')
+  const revealsRaw = asRecord(s.reveals, 'dna.motion.scroll.reveals')
+  if (!isStringArray(revealsRaw.kinds)) fail('dna.motion.scroll.reveals.kinds must be a string array')
+  return {
+    pageHeightRatio: asFiniteNumber(s.pageHeightRatio, 'dna.motion.scroll.pageHeightRatio'),
+    reveals: {
+      count: asFiniteNumber(revealsRaw.count, 'dna.motion.scroll.reveals.count'),
+      kinds: [...revealsRaw.kinds],
+    },
+    stickyCount: asFiniteNumber(s.stickyCount, 'dna.motion.scroll.stickyCount'),
+    parallax: asFiniteNumber(s.parallax, 'dna.motion.scroll.parallax'),
+    scrollDriven: asBoolean(s.scrollDriven, 'dna.motion.scroll.scrollDriven'),
+  }
+}
+
 function normalizeDNA(raw: unknown): DesignDNA {
   const d = asRecord(raw, 'dna')
 
@@ -143,6 +172,12 @@ function normalizeDNA(raw: unknown): DesignDNA {
   if (!isFiniteNumberArray(motionRaw.durationsMs)) fail('dna.motion.durationsMs must be a number array')
   if (!isStringArray(motionRaw.easings)) fail('dna.motion.easings must be a string array')
   if (!isStringArray(motionRaw.libraries)) fail('dna.motion.libraries must be a string array')
+  const motion: DesignDNA['motion'] = {
+    durationsMs: [...motionRaw.durationsMs],
+    easings: [...motionRaw.easings],
+    libraries: [...motionRaw.libraries],
+  }
+  if (motionRaw.scroll !== undefined) motion.scroll = normalizeScrollMotion(motionRaw.scroll)
 
   const layoutRaw = asRecord(d.layout, 'dna.layout')
   const layout: DesignDNA['layout'] = {
@@ -170,11 +205,7 @@ function normalizeDNA(raw: unknown): DesignDNA {
     color,
     spacing,
     radii: { steps: [...radiiRaw.steps] },
-    motion: {
-      durationsMs: [...motionRaw.durationsMs],
-      easings: [...motionRaw.easings],
-      libraries: [...motionRaw.libraries],
-    },
+    motion,
     layout,
     components,
   }

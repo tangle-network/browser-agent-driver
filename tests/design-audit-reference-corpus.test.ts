@@ -137,6 +137,40 @@ describe('parseExemplar / isExemplar / serializeExemplar', () => {
     expect(isExemplar({ ...broken, dna: { ...broken.dna, layout: { archetype: 'x' } } })).toBe(false)
   })
 
+  it('round-trips an observed motion.scroll record unchanged (no silent drop on load)', () => {
+    const base = makeDNA()
+    const scrollDna: DesignDNA = {
+      ...base,
+      motion: {
+        ...base.motion,
+        scroll: {
+          pageHeightRatio: 4.2,
+          reveals: { count: 8, kinds: ['fade', 'slide-up'] },
+          stickyCount: 2,
+          parallax: 0.4,
+          scrollDriven: true,
+        },
+      },
+    }
+    const e = makeExemplar({ dna: scrollDna })
+    const restored = parseExemplar(JSON.parse(serializeExemplar(e)))
+    expect(restored.dna.motion.scroll).toEqual(scrollDna.motion.scroll)
+    expect(restored).toEqual(e)
+  })
+
+  it('fails closed on a malformed motion.scroll (never defaulted)', () => {
+    const base = makeDNA()
+    const badScroll = {
+      ...base,
+      motion: {
+        ...base.motion,
+        // scrollDriven must be a boolean — a string is rejected, not coerced.
+        scroll: { pageHeightRatio: 2, reveals: { count: 1, kinds: [] }, stickyCount: 0, parallax: 0, scrollDriven: 'yes' },
+      },
+    }
+    expect(isExemplar(makeExemplar({ dna: badScroll as unknown as DesignDNA }))).toBe(false)
+  })
+
   it('whitelists known fields: drops unknown keys and resists prototype pollution', () => {
     const hostileJson = serializeExemplar(makeExemplar()).replace(
       '{',

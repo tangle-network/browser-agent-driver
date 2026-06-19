@@ -72,8 +72,8 @@ function roundnessCharacter(steps: number[]): string {
   return `slightly rounded corners ${max}px`
 }
 
-/** Motion energy as an aesthetic word. */
-function motionCharacter(dna: DesignDNA): string {
+/** Static motion energy as an aesthetic word, from the token rip. */
+function staticMotionCharacter(dna: DesignDNA): string {
   const { durationsMs, libraries } = dna.motion
   if (libraries.length > 0) return `animated motion (${libraries.join(' ')})`
   if (durationsMs.length === 0) return 'static, no motion'
@@ -81,6 +81,27 @@ function motionCharacter(dna: DesignDNA): string {
   if (median <= 200) return `snappy motion ~${median}ms`
   if (median <= 450) return `smooth motion ~${median}ms`
   return `slow motion ~${median}ms`
+}
+
+/**
+ * Motion energy as an aesthetic word. Appends scroll-driven keywords ONLY when a
+ * scroll pass was captured AND read the page as motion-rich, so scroll-rich pages
+ * cluster near scroll-rich exemplars in embedding space. A page with no captured
+ * scroll (or a captured-but-quiet one) reads exactly as before — the existing
+ * corpus, captured statically, is unaffected.
+ */
+function motionCharacter(dna: DesignDNA): string {
+  const base = staticMotionCharacter(dna)
+  const s = dna.motion.scroll
+  if (!s || !s.scrollDriven) return base
+  const words: string[] = []
+  if (s.pageHeightRatio >= 2.5) words.push('long-form scroll')
+  if (s.reveals.count >= 2) {
+    words.push(`${s.reveals.count} scroll reveals${s.reveals.kinds.length ? ` (${s.reveals.kinds.join('/')})` : ''}`)
+  }
+  if (s.stickyCount >= 1) words.push('sticky pinning')
+  if (s.parallax >= 0.25) words.push('parallax depth')
+  return words.length ? `${base}, scroll-driven: ${words.join(', ')}` : base
 }
 
 /** Contrast posture as an aesthetic word, when a floor was measured. */

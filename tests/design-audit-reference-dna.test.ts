@@ -12,6 +12,7 @@ import type {
   ColorToken,
 } from '../src/types.js'
 import type { MeasurementBundle, ContrastFailure, A11yViolation } from '../src/design/audit/types.js'
+import type { RawScrollCapture } from '../src/design/audit/reference/contracts.js'
 
 // ── fixture builders (no network, no browser, no LLM) ────────────────────────
 
@@ -315,5 +316,60 @@ describe('summarizeDNA', () => {
     const clipped = summarizeDNA(dna, { maxChars: 60 })
     expect(clipped.length).toBeLessThanOrEqual(60)
     expect(clipped.endsWith('…')).toBe(true)
+  })
+
+  it('omits any scroll clause when no scroll pass was captured (honest absence)', () => {
+    expect(summarizeDNA(toDesignDNA(cleanTokens))).not.toContain('scroll:')
+  })
+
+  it('appends an observed scroll clause to the motion line', () => {
+    const dna = toDesignDNA(cleanTokens, undefined, scrollRich)
+    const out = summarizeDNA(dna)
+    expect(out).toContain('scroll:')
+    expect(out).toContain('reveals (fade/slide-up)')
+    expect(out).toContain('1 sticky')
+    expect(out).toContain('parallax 0.5')
+  })
+})
+
+// ── live scroll capture folds into motion.scroll (pure thread-through) ─────────
+
+const scrollRich: RawScrollCapture = {
+  scrollHeightPx: 4000,
+  viewportHeightPx: 1000,
+  steps: 10,
+  reveals: { count: 5, kinds: ['fade', 'slide-up'] },
+  stickyCount: 1,
+  parallax: 0.5,
+}
+
+describe('toDesignDNA scroll motion', () => {
+  it('leaves motion.scroll undefined when no scroll capture is supplied', () => {
+    expect(toDesignDNA(cleanTokens).motion.scroll).toBeUndefined()
+  })
+
+  it('attaches a folded ScrollMotionDNA when a RawScrollCapture is supplied', () => {
+    const dna = toDesignDNA(cleanTokens, undefined, scrollRich)
+    expect(dna.motion.scroll).toEqual({
+      pageHeightRatio: 4,
+      reveals: { count: 5, kinds: ['fade', 'slide-up'] },
+      stickyCount: 1,
+      parallax: 0.5,
+      scrollDriven: true,
+    })
+    // static motion fields are unchanged
+    expect(dna.motion.durationsMs).toEqual([200])
+  })
+
+  it('marks a captured-but-quiet page not scroll-driven', () => {
+    const quiet: RawScrollCapture = {
+      scrollHeightPx: 1500,
+      viewportHeightPx: 1000,
+      steps: 8,
+      reveals: { count: 0, kinds: [] },
+      stickyCount: 0,
+      parallax: 0,
+    }
+    expect(toDesignDNA(cleanTokens, undefined, quiet).motion.scroll?.scrollDriven).toBe(false)
   })
 })
