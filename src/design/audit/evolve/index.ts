@@ -8,6 +8,6 @@
  */
 
 export { runEvolveLoop } from './css.js'
-export { runAgentEvolveLoop, buildApplyPrompt } from './agent.js'
+export { runAgentEvolveLoop, buildApplyPrompt, resolveAgentCommand } from './agent.js'
 export { generateEvolveReport } from './report.js'
 export type { ReferenceCommonOpts } from './types.js'

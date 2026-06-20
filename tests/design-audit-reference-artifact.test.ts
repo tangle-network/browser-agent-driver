@@ -242,12 +242,23 @@ describe('buildRedesignArtifact', () => {
     expect(buildRedesignArtifact(baseBuildInput({ referenceId: 'ref-1' })).referenceId).toBe('ref-1')
   })
 
-  it('throws fail-closed when a direction is grounded in an unretrieved exemplar', () => {
+  it('drops a hallucinated grounding id (keeps valid ones) instead of crashing the audit', () => {
+    const input = baseBuildInput({
+      // ex1 is retrieved, ex-missing is not — the fabricated id is stripped.
+      directions: [direction('d-a', ['ex1', 'ex-missing'])],
+      ranking: ranking(['d-a']),
+    })
+    const art = buildRedesignArtifact(input)
+    expect(art.directions[0].groundedInExemplarIds).toEqual(['ex1'])
+  })
+
+  it('drops all grounding ids when every one is unretrieved, still produces an artifact', () => {
     const input = baseBuildInput({
       directions: [direction('d-a', ['ex-missing'])],
       ranking: ranking(['d-a']),
     })
-    expect(() => buildRedesignArtifact(input)).toThrow(/fabricated provenance/)
+    const art = buildRedesignArtifact(input)
+    expect(art.directions[0].groundedInExemplarIds).toEqual([])
   })
 
   it('is deterministic', () => {

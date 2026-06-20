@@ -4,7 +4,7 @@
 
 import * as fs from 'node:fs'
 import * as path from 'node:path'
-import { execSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 import chalk from 'chalk'
 import type { Page } from 'playwright'
 import type { Brain } from '../../../brain/index.js'
@@ -28,7 +28,7 @@ const AGENT_COMMANDS: Record<string, (prompt: string, projectDir: string) => str
   'opencode': (prompt, dir) => ['opencode', 'run', prompt],
 }
 
-function resolveAgentCommand(agent: string, prompt: string, projectDir: string): { cmd: string; args: string[]; cwd: string } {
+export function resolveAgentCommand(agent: string, prompt: string, projectDir: string): { cmd: string; args: string[]; cwd: string } {
   const builder = AGENT_COMMANDS[agent]
   if (builder) {
     const [cmd, ...args] = builder(prompt, projectDir)
@@ -205,15 +205,18 @@ export async function runAgentEvolveLoop(
     }
 
     try {
-      const result = execSync(
-        `${cmd} ${args.map(a => JSON.stringify(a)).join(' ')}`,
-        {
-          cwd,
-          stdio: debug ? 'inherit' : 'pipe',
-          timeout: 300_000, // 5min max per agent round
-          env: { ...process.env },
-        },
-      )
+      // execFileSync passes argv directly to the binary — NO shell. The prompt
+      // contains text mined from the audited DOM (findings, copy revisions), so
+      // building a shell string + JSON.stringify would let a hostile page inject
+      // `$(...)`/backtick command substitution (bash evaluates those inside the
+      // double quotes JSON.stringify emits). Argv passing closes that vector.
+      const result = execFileSync(cmd, args, {
+        cwd,
+        stdio: debug ? 'inherit' : 'pipe',
+        timeout: 300_000, // 5min max per agent round
+        env: { ...process.env },
+        maxBuffer: 64 * 1024 * 1024,
+      })
 
       if (!debug && result) {
         const agentOutputPath = path.join(outputDir, `agent-output-round-${round}.txt`)

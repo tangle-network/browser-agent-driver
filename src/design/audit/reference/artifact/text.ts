@@ -10,7 +10,8 @@
 export function clipToWord(s: string, max: number): string {
   const t = s.trim().replace(/\s+/g, ' ')
   if (t.length <= max) return t
-  const slice = t.slice(0, max - 1)
+  // Guard max<=1: slice(0, max-1) with max=0 is slice(0,-1) (drops last char).
+  const slice = max > 1 ? t.slice(0, max - 1) : ''
   const lastSpace = slice.lastIndexOf(' ')
   const head = (lastSpace > 0 ? slice.slice(0, lastSpace) : slice).replace(/[\s.,;:!?-]+$/, '')
   return `${head}…`

@@ -40,20 +40,24 @@ export interface BuildRedesignArtifactInput {
 
 export function buildRedesignArtifact(input: BuildRedesignArtifactInput): RedesignArtifact {
   const retrievedIds = new Set(input.retrieval.map((r) => r.exemplar.id))
-  for (const d of input.directions) {
-    for (const id of d.groundedInExemplarIds) {
-      if (!retrievedIds.has(id)) {
-        throw new Error(
-          `Direction "${d.id}" claims grounding in exemplar "${id}", which is not in the retrieval set ` +
-            `(${[...retrievedIds].join(', ') || 'none'}). Refusing to assemble an artifact with fabricated provenance.`,
-        )
-      }
+  // Provenance stays honest WITHOUT crashing the page audit on one LLM
+  // hallucination: drop any grounding id the model invented (not in the
+  // retrieval set) and warn. The direction keeps its valid grounding; a
+  // fabricated claim is removed, never displayed.
+  const directions = input.directions.map((d) => {
+    const valid = d.groundedInExemplarIds.filter((id) => retrievedIds.has(id))
+    if (valid.length !== d.groundedInExemplarIds.length) {
+      const dropped = d.groundedInExemplarIds.filter((id) => !retrievedIds.has(id))
+      console.warn(
+        `[reference] direction "${d.id}" claimed grounding in unretrieved exemplar(s) ${dropped.join(', ')} — dropped (kept ${valid.length} valid)`,
+      )
     }
-  }
+    return valid.length === d.groundedInExemplarIds.length ? d : { ...d, groundedInExemplarIds: valid }
+  })
 
   return {
     url: input.url,
-    directions: orderByRanking(input.directions, input.ranking),
+    directions: orderByRanking(directions, input.ranking),
     ranking: input.ranking,
     retrieval: input.retrieval,
     verdicts: input.verdicts,
