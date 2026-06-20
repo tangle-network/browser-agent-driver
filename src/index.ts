@@ -103,8 +103,8 @@ export { verifyPreview } from './preview.js';
 export { DesignAuditor, generateDesignAuditReport } from './design-audit.js';
 
 // Design token extraction
-export { extractDesignTokens } from './cli-design-audit.js';
-export type { ExtractDesignTokensOptions, ExtractionResult } from './cli-design-audit.js';
+export { extractDesignTokens } from './design/audit/tokens/extract.js';
+export type { ExtractDesignTokensOptions, ExtractionResult } from './design/audit/tokens/extract.js';
 
 // Design rip + compare
 export { ripSite, runDesignCompare, revealHiddenContent } from './design/index.js';

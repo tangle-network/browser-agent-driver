@@ -1,0 +1,89 @@
+/**
+ * Deterministic hash embedder + cosine similarity — the LITERALLY PURE half of
+ * the embedding boundary (the offline/test default).
+ *
+ * `HashEmbeddingProvider` implements `EmbeddingProvider` with a feature-hashing
+ * trick: every word unigram and adjacent bigram of the input is hashed to a
+ * signed bucket in a fixed-dimension vector, which is then L2-normalised. No
+ * network, no dynamic import, no env — so retrieval works with zero provider and
+ * unit tests never touch the wire. Identical text always yields an identical,
+ * unit-length vector.
+ *
+ * `cosineSimilarity` is the only symbol `retrieval/matcher` imports from here,
+ * keeping the matcher inside the pure subgraph. The network-backed provider lives
+ * in the sibling `embedding-openai.ts` adapter so this module stays pure.
+ */
+
+import type { AestheticVector, EmbeddingProvider } from '../contracts.js'
+
+/** Fixed embedding width. A corpus embedded with the hash provider is keyed to this. */
+export const HASH_EMBEDDING_DIMS = 256
+
+const FNV_OFFSET = 0x811c9dc5
+const FNV_PRIME = 0x01000193
+
+/** 32-bit FNV-1a — a stable, dependency-free string hash. */
+function fnv1a(str: string): number {
+  let h = FNV_OFFSET
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i)
+    h = Math.imul(h, FNV_PRIME)
+  }
+  return h >>> 0
+}
+
+/** Lowercase word unigrams + adjacent bigrams; deterministic and order-stable. */
+function tokenize(text: string): string[] {
+  const words = text.toLowerCase().match(/[a-z0-9#]+/g) ?? []
+  const tokens: string[] = [...words]
+  for (let i = 1; i < words.length; i++) tokens.push(`${words[i - 1]}_${words[i]}`)
+  return tokens
+}
+
+function hashEmbed(text: string): AestheticVector {
+  const vec = new Array<number>(HASH_EMBEDDING_DIMS).fill(0)
+  for (const token of tokenize(text)) {
+    const h = fnv1a(token)
+    const bucket = h % HASH_EMBEDDING_DIMS
+    // A second, independent hash bit picks the sign, decorrelating collisions.
+    const sign = (fnv1a(`${token}\0sign`) & 1) === 0 ? 1 : -1
+    vec[bucket] += sign
+  }
+  let norm = 0
+  for (const v of vec) norm += v * v
+  if (norm === 0) return vec
+  const inv = 1 / Math.sqrt(norm)
+  for (let i = 0; i < vec.length; i++) vec[i] *= inv
+  return vec
+}
+
+/**
+ * The offline/test default embedder. Deterministic, normalised, zero-IO.
+ */
+export const HashEmbeddingProvider: EmbeddingProvider = {
+  id: 'hash-v1',
+  async embed(texts: string[]): Promise<AestheticVector[]> {
+    return texts.map(hashEmbed)
+  },
+}
+
+/**
+ * Cosine similarity of two numeric vectors, in [-1, 1]. Symmetric. Returns 0 when
+ * either vector is all-zero or empty (a fail-closed "no signal", never NaN). When
+ * lengths differ it compares the common leading dimensions — the caller is
+ * responsible for keeping query/exemplar vectors in the same embedding space.
+ */
+export function cosineSimilarity(a: number[], b: number[]): number {
+  const len = Math.min(a.length, b.length)
+  if (len === 0) return 0
+  let dot = 0
+  let na = 0
+  let nb = 0
+  for (let i = 0; i < len; i++) {
+    dot += a[i] * b[i]
+    na += a[i] * a[i]
+    nb += b[i] * b[i]
+  }
+  if (na === 0 || nb === 0) return 0
+  return dot / (Math.sqrt(na) * Math.sqrt(nb))
+}

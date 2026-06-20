@@ -197,7 +197,8 @@ async function cmdOrchestrate(opts: ParsedArgs): Promise<void> {
  * we can deterministically locate `report.json` after the audit returns.
  */
 async function buildAuditFn(_spec: JobSpec): Promise<AuditFn> {
-  const { runDesignAudit, extractDesignTokens } = await import('./cli-design-audit.js')
+  const { runDesignAudit } = await import('./cli-design-audit.js')
+  const { extractDesignTokens } = await import('./design/audit/tokens/extract.js')
   const { detectBlock } = await import('./jobs/anti-bot.js')
   let counter = 0
   return async (target, opts) => {

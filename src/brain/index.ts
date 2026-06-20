@@ -493,6 +493,10 @@ export class Brain {
   private visionEnabled: boolean;
   private visionStrategy: 'always' | 'never' | 'auto';
   private observationMode: 'dom' | 'vision' | 'hybrid';
+  // Force streaming input on claude-code so completeVision images are not dropped
+  // (the Claude Code SDK omits image parts without it). Off by default; set only
+  // by the vision-judge wiring. See AgentConfig.claudeCodeStreamingInput.
+  private claudeCodeStreamingInput: boolean;
   private llmTimeoutMs: number;
   private compactFirstTurn: boolean;
   private lastDecisionUrl?: string;
@@ -533,6 +537,7 @@ export class Brain {
     this.visionEnabled = config.vision !== false;
     this.visionStrategy = config.visionStrategy ?? (this.visionEnabled ? 'always' : 'never');
     this.observationMode = config.observationMode ?? 'dom';
+    this.claudeCodeStreamingInput = config.claudeCodeStreamingInput === true;
     this.compactFirstTurn = config.compactFirstTurn === true;
     this.sandboxBackendType = config.sandboxBackendType;
     this.sandboxBackendProfile = config.sandboxBackendProfile;
@@ -693,6 +698,10 @@ export class Brain {
             ...(process.env.CLAUDE_CODE_CLI_PATH ? { pathToClaudeCodeExecutable: process.env.CLAUDE_CODE_CLI_PATH } : {}),
             permissionMode: 'default',
             allowDangerouslySkipPermissions: false,
+            // The Claude Code SDK only forwards image parts when streaming input
+            // is on; the vision-judge wiring sets this so completeVision images
+            // are not silently dropped. Left off for every other claude-code path.
+            ...(this.claudeCodeStreamingInput ? { streamingInput: 'always' as const } : {}),
             ...(this.debug ? { verbose: true } : {}),
             ...(this.debug
               ? {
@@ -2314,6 +2323,37 @@ Only include facts that are genuinely useful. Quality over quantity. Max 10 fact
     const result = await this.generate(
       system,
       [{ role: 'user', content: user }],
+      undefined,
+      options.maxOutputTokens ?? 1500,
+    );
+    return { text: result.text, tokensUsed: result.tokensUsed };
+  }
+
+  /**
+   * Multimodal sibling of {@link complete}: a single round-trip with a system
+   * prompt, a user prompt, and one-or-more already-encoded images. The narrow
+   * vision seam the reference-grounded taste judge binds to (one Brain per
+   * `{ provider, model }` ref), built on the same private `generate` so it goes
+   * through the existing provider abstraction — any vision-capable backend works.
+   *
+   * Images arrive ENCODED (`{ image, mediaType }`, base64/data); the disk read +
+   * mediaType inference live in the judge's `createBrainVisionModel` adapter, so
+   * this method does no IO. It is NOT `auditDesign` — the page-audit seam stays
+   * off-limits to taste comparison by contract.
+   */
+  async completeVision(
+    system: string,
+    user: string,
+    images: ReadonlyArray<{ image: string; mediaType: string }>,
+    options: { maxOutputTokens?: number } = {},
+  ): Promise<{ text: string; tokensUsed?: number }> {
+    const content: UserContent = [
+      { type: 'text' as const, text: user },
+      ...images.map((img) => ({ type: 'image' as const, image: img.image, mediaType: img.mediaType })),
+    ];
+    const result = await this.generate(
+      system,
+      [{ role: 'user', content }],
       undefined,
       options.maxOutputTokens ?? 1500,
     );

@@ -1,0 +1,1160 @@
+/**
+ * Reference-Grounded Art Director — shared contracts.
+ *
+ * This is the SINGLE source of truth for every type and module-boundary
+ * interface the reference engine passes between stages. It holds ZERO runtime
+ * logic, ZERO constants, and ZERO default values — only `type`/`interface`
+ * declarations and re-exports. Keeping it logic-free is what prevents it from
+ * becoming a god module that every core imports for behaviour rather than shape.
+ *
+ * Design rules encoded here:
+ *  - Every cross-stage hop is typed by a record in this file, so no module
+ *    reaches into another's internals.
+ *  - Every IO / LLM / browser boundary is expressed as a NARROW, single-purpose
+ *    interface (DesignDnaExtractor, CorpusReader, CorpusWriter, ExemplarMatcher,
+ *    EmbeddingProvider, RedesignGenerator, TasteJudge, DirectionRanker). Cores
+ *    and the orchestrator depend on these interfaces, never on concrete
+ *    adapters. There is deliberately NO single "God" interface — each boundary
+ *    is its own contract, and read/write surfaces are split (CorpusReader vs
+ *    CorpusWriter) so the runtime audit path can never reach authoring mutators.
+ *  - The engine emits the EXISTING audit contracts (DesignFinding,
+ *    PageAuditResult, …) verbatim by re-exporting them, never redefining them,
+ *    so the closed enums stay authoritative and stages 7-9 of the v1 pipeline
+ *    keep working unchanged.
+ *
+ * Units are noted inline (px, ms, 0-1 ratios) so downstream math is unambiguous.
+ */
+
+import type {
+  DesignTokens,
+  ColorToken,
+  ViewportTokens,
+  TypeScaleEntry,
+  FontFamily,
+  DesignFinding,
+  DesignSystemScore,
+} from '../../../types.js'
+import type {
+  PageClassification,
+  PageType,
+  MeasurementBundle,
+  PageAuditResult,
+} from '../types.js'
+import type { Dimension, DimensionScore } from '../score-types.js'
+// The provider union the Brain layer already resolves (openai/anthropic/google/
+// claude-code/…). `ModelRef.provider` reuses it so the vision-judge ensemble can
+// only name backends the provider abstraction can actually instantiate.
+import type { SupportedProvider } from '../../../provider-defaults.js'
+
+// Re-export the canonical contracts so engine modules import shapes from ONE
+// place and never redefine the authoritative enums (DesignFinding.category,
+// DesignFinding.severity, PageType, …).
+export type {
+  DesignTokens,
+  ColorToken,
+  ViewportTokens,
+  TypeScaleEntry,
+  FontFamily,
+  DesignFinding,
+  DesignSystemScore,
+} from '../../../types.js'
+export type {
+  PageClassification,
+  PageType,
+  MeasurementBundle,
+  PageAuditResult,
+} from '../types.js'
+// The 5-dimension product-quality scoring taxonomy (product_intent, visual_craft,
+// trust_clarity, workflow, content_ia) and its rich per-dim shape. This — NOT the
+// flat 8-number DesignSystemScore — is what stage 8's `precomputedScores` consumes,
+// so the engine's quality leg is keyed by `Dimension` and produces `DimensionScore`s.
+export type { Dimension, DimensionScore } from '../score-types.js'
+
+// ── Design DNA ───────────────────────────────────────────────────────────────
+//
+// DesignDNA is the structured, browser-free identity of a page or exemplar. It
+// is a LOSSY NORMALISATION of DesignTokens (colors → roles, type → scale+role,
+// spacing → rhythm) — it deliberately does not round-trip back to tokens. All
+// DNA-level math (delta, descriptor, retrieval) operates at this altitude; raw
+// token-level math stays on DesignTokens. The two never get conflated.
+
+/**
+ * Visual density of a layout, derived from whitespace ratio + component counts.
+ * Shared by SpacingRhythm and LayoutGrammar so density is computed once.
+ */
+export type Density = 'sparse' | 'balanced' | 'dense'
+
+/**
+ * One semantic step in a page's type scale.
+ */
+export interface TypeStepDNA {
+  /** Rendered font size in CSS px. */
+  fontSizePx: number
+  /** Numeric font weight (100-900). */
+  weight: number
+  /** Unitless line-height (e.g. 1.5), or the px line-height ÷ fontSizePx. */
+  lineHeight: number
+  /** Font family this step renders in. */
+  family: string
+  /** Semantic role inferred from size/usage. */
+  role: 'display' | 'heading' | 'body' | 'caption' | 'label'
+}
+
+/**
+ * A font family and the role(s) it plays in the design.
+ */
+export interface FontRoleDNA {
+  family: string
+  /** Coarse role classification carried through from DesignTokens.typography. */
+  role: 'heading' | 'body' | 'mono' | 'display'
+  /** Numeric weights observed for this family. */
+  weights: number[]
+}
+
+/**
+ * The normalised type system: an ordered scale plus the modular ratio between
+ * adjacent steps (if one is detectable).
+ */
+export interface TypeScaleDNA {
+  /** Steps sorted ascending by fontSizePx. */
+  steps: TypeStepDNA[]
+  /** Geometric ratio between adjacent steps (e.g. 1.25), or undefined if irregular. */
+  ratio?: number
+  /** Families and their roles. */
+  families: FontRoleDNA[]
+}
+
+/**
+ * Semantic color role. Mirrors ColorToken.cluster so role mapping is a 1:1
+ * carry-through from the already-clustered tokens, never a re-clustering.
+ */
+export type ColorRole =
+  | 'primary'
+  | 'secondary'
+  | 'accent'
+  | 'neutral'
+  | 'background'
+  | 'border'
+
+/**
+ * The normalised color system: hex values grouped by semantic role.
+ */
+export interface ColorSystemDNA {
+  /** Hex strings per role; a role may carry several shades. */
+  roles: Record<ColorRole, string[]>
+  /**
+   * Minimum AA contrast ratio observed on body text, when measurements are
+   * available. Lets the judge reason about legibility without re-measuring.
+   */
+  contrastFloor?: number
+}
+
+/**
+ * The spacing rhythm: a base grid unit and the discrete spacing scale.
+ */
+export interface SpacingRhythm {
+  /** Detected base grid unit in px (4/5/6/8/10), or undefined if no clear grid. */
+  baseUnit?: number
+  /** Distinct spacing values in px, sorted ascending. */
+  steps: number[]
+  /** Visual density of spacing. */
+  density: Density
+}
+
+/**
+ * The corner-radius scale, in px, sorted ascending.
+ */
+export interface RadiiScale {
+  steps: number[]
+}
+
+/**
+ * One bucket of scroll-triggered reveals: how many distinct elements animated
+ * IN on scroll, and the kinds of reveal observed. Shared by the raw live-page
+ * capture and the normalised DNA so the two stay in lock-step.
+ */
+export interface ScrollRevealSummary {
+  /** Number of elements observed animating IN as they entered the viewport. */
+  count: number
+  /**
+   * Free-form labels for the kinds of reveal observed (e.g. 'fade', 'slide-up',
+   * 'scale-in', 'mask'). Not a closed enum — novel reveal styles get a novel
+   * label rather than a forced bucket. Empty when reveals were counted but not
+   * classified.
+   */
+  kinds: string[]
+}
+
+/**
+ * Scroll-driven motion OBSERVED by replaying a top→bottom stepped scroll on the
+ * LIVE page (the opt-in `captureScrollMotion` pass). It answers "what actually
+ * animates on scroll" — which a static token rip cannot: a static rip can tell a
+ * page loads GSAP/Lenis, but not WHAT those libraries drive as you scroll.
+ *
+ * HONEST SIGNAL. Every field here is a measurement, not a guess. The whole
+ * record is OPTIONAL on {@link MotionDNA} and is present ONLY when the scroll
+ * pass actually ran AND observed motion. Absent (`undefined`) means "NOT
+ * captured", never "no scroll motion" — do not read a missing record as a
+ * static page. A captured-but-quiet page is reported as `scrollDriven: false`,
+ * which is distinct from the record being absent.
+ */
+export interface ScrollMotionDNA {
+  /**
+   * Long-scroll storytelling signal: `document.scrollHeight / viewportHeight`,
+   * a unitless ratio. ~1 = a single viewport; e.g. 4.2 means the page is 4.2
+   * viewports tall. Higher ratios read as long-form scroll narratives.
+   */
+  pageHeightRatio: number
+  /** Elements that animated IN on scroll, with a count and their kinds. */
+  reveals: ScrollRevealSummary
+  /**
+   * Count of `position: sticky` / pinned elements that stayed fixed in the
+   * viewport while their section scrolled past. Integer ≥ 0.
+   */
+  stickyCount: number
+  /**
+   * Parallax strength as a 0–1 score. NORMALISATION (identical to
+   * {@link RawScrollCapture.parallax}, carried through unchanged by the fold):
+   * for each non-pinned layer let `rate = viewportTranslate / scrollDelta` (1 =
+   * rigid with content, 0 = fixed). A genuine parallax layer sits in the slow
+   * band `0.15 < rate < 0.85` or moves faster than content `rate > 1.15`; its
+   * score is `clamp01(|rate − 1|)` (reverse/over-fast layers clamp to 1). The
+   * field is the MAX such score over all layers. `0` = no parallax observed
+   * (doubles as the boolean "no parallax"); higher = stronger layered depth.
+   */
+  parallax: number
+  /**
+   * Rollup verdict: does the page read as a motion-rich scroll experience?
+   * Derived (in the PURE fold, never here) from the reveals / sticky / parallax
+   * / ratio evidence above. `false` is a real observation ("scrolled, saw
+   * little motion"), distinct from the whole record being absent.
+   */
+  scrollDriven: boolean
+}
+
+/**
+ * Motion signature: durations, easings, and any detected animation libraries —
+ * all derived from a STATIC token rip.
+ *
+ * `scroll` is the one LIVE-observed extension. It is OPTIONAL and present ONLY
+ * when the opt-in `captureScrollMotion` extraction pass ran on the live page AND
+ * saw motion (default OFF, so existing rips/exemplars/tests with no scroll data
+ * stay valid). When absent, nothing was captured — never read its absence as
+ * "no scroll motion".
+ */
+export interface MotionDNA {
+  /** Transition/animation durations in ms. */
+  durationsMs: number[]
+  /** CSS easing functions / named curves observed. */
+  easings: string[]
+  /** Detected animation libraries (gsap, framer-motion, lottie, …). */
+  libraries: string[]
+  /**
+   * Scroll-driven motion observed on the live page. Present only when the
+   * opt-in `captureScrollMotion` pass ran AND observed motion; otherwise
+   * `undefined` (not captured). See {@link ScrollMotionDNA}.
+   */
+  scroll?: ScrollMotionDNA
+}
+
+/**
+ * Layout grammar: the macro structure of the page.
+ */
+export interface LayoutGrammar {
+  /** Dominant column count of the primary content grid, if detectable. */
+  columns?: number
+  /** Base grid unit in px (carried from ViewportTokens.gridBaseUnit). */
+  gridBaseUnit?: number
+  /** Fraction of viewport that is whitespace, 0-1. */
+  whitespaceRatio?: number
+  /** Visual density of the layout. */
+  density: Density
+  /**
+   * Free-form structural archetype label (e.g. "hero+feature-grid",
+   * "split-screen", "data-table-shell"). A hint for retrieval/generation, not a
+   * closed enum — novel layouts get a novel label rather than a forced bucket.
+   */
+  archetype: string
+}
+
+/**
+ * Component pattern counts — how many distinct button/input/card/nav patterns
+ * the page uses. High counts signal an inconsistent system.
+ */
+export interface ComponentPatternDNA {
+  buttons: number
+  inputs: number
+  cards: number
+  nav: number
+}
+
+/**
+ * The full structured identity of one page or exemplar. Produced purely from a
+ * DesignTokens record (+ optional MeasurementBundle) — no browser, no LLM.
+ */
+export interface DesignDNA {
+  url: string
+  /** ISO timestamp of capture. */
+  capturedAt: string
+  type: TypeScaleDNA
+  color: ColorSystemDNA
+  spacing: SpacingRhythm
+  radii: RadiiScale
+  motion: MotionDNA
+  layout: LayoutGrammar
+  components: ComponentPatternDNA
+  /**
+   * Deterministic measurement signals folded in when available. Absent =
+   * "no signal" (never treat as "passed").
+   */
+  signals?: {
+    /** AA contrast pass rate, 0-1. */
+    contrastAaPassRate?: number
+    /** Count of critical/serious a11y violations. */
+    a11yBlockingCount?: number
+  }
+}
+
+/**
+ * Structural delta between two DNAs (audited page vs winner, or page vs
+ * reference). Computed PURELY over DesignDNA fields — it does NOT diff raw
+ * DesignTokens (a different altitude). Used to ground judge feedback and to
+ * mint "gap" findings.
+ */
+export interface DnaDelta {
+  /** Color roles added/removed/changed between the two systems. */
+  color: { added: string[]; removed: string[]; changed: string[] }
+  /** Type-scale changes (steps added/removed, ratio shift). */
+  type: { stepsAdded: number; stepsRemoved: number; ratioDelta?: number }
+  /** Spacing rhythm changes. */
+  spacing: { baseUnitFrom?: number; baseUnitTo?: number; densityChanged: boolean }
+  /** Component pattern count deltas. */
+  components: { buttons: number; inputs: number; cards: number; nav: number }
+  /** Human-readable one-line summary of the most salient differences. */
+  summary: string
+}
+
+// ── DNA extraction boundary ───────────────────────────────────────────────────
+
+/**
+ * Options for turning a live URL (or a ripped local copy) into a DnaCapture.
+ */
+export interface ExtractPageDnaOptions {
+  /** Live URL or `file://` path to a ripped index.html. */
+  url: string
+  headless?: boolean
+  /** Where downloaded assets / screenshots land. */
+  outputDir?: string
+  /**
+   * Deterministic measurements already gathered for this page, folded into the
+   * DNA signals. Optional so the corpus-authoring path (no audit measurements)
+   * still works.
+   */
+  measurements?: MeasurementBundle
+  /**
+   * Opt in to the live scroll-motion capture pass (default OFF). When set, the
+   * extractor replays a stepped top→bottom scroll on the page and folds the
+   * result into `DesignDNA.motion.scroll`. Off by default because it adds page
+   * time and is only meaningful for live audits / corpus authoring — a static
+   * rip never observes scroll motion.
+   */
+  captureScrollMotion?: boolean
+}
+
+/**
+ * The output of a page→DNA extraction: the DNA plus the raw tokens and
+ * screenshots it derived from (kept so callers that need token-altitude data —
+ * e.g. an optional rendered before/after — don't re-extract).
+ */
+export interface DnaCapture {
+  dna: DesignDNA
+  tokens: DesignTokens
+  /** Per-viewport screenshot file paths, keyed by viewport name. */
+  screenshotPaths: Record<string, string>
+  outputDir: string
+}
+
+/**
+ * IO boundary: turn a URL into a DnaCapture. The shipped adapter reuses
+ * `extractDesignTokens` then the pure `toDesignDNA`; tests inject a fake.
+ */
+export interface DesignDnaExtractor {
+  extract(opts: ExtractPageDnaOptions): Promise<DnaCapture>
+}
+
+// ── Scroll-motion capture seam ───────────────────────────────────────────────
+
+/**
+ * The minimal live-page surface the scroll-capture pass drives: the ability to
+ * run an async function in page context (where it can `scrollTo`, await
+ * `requestAnimationFrame`, and read `getBoundingClientRect` /
+ * `getComputedStyle` across scroll steps). Modelled structurally — a Playwright
+ * `Page` satisfies it — so these pure contracts stay browser-free and the seam
+ * is fakeable in unit tests.
+ */
+export interface ScrollCapturePage {
+  evaluate<R>(pageFunction: () => R | Promise<R>): Promise<R>
+}
+
+/**
+ * Tunables for one scroll-capture pass. All optional; the implementation picks
+ * honest defaults. These affect capture FIDELITY only, never WHETHER the pass
+ * runs — that is the separate, opt-in `captureScrollMotion` extraction flag.
+ */
+export interface ScrollCaptureOptions {
+  /** Number of discrete top→bottom scroll stops to sample. */
+  steps?: number
+  /** Milliseconds to let motion settle after each scroll stop before sampling. */
+  settleMs?: number
+}
+
+/**
+ * The RAW signal a single live-page scroll pass returns, BEFORE the pure fold
+ * normalises it into {@link ScrollMotionDNA}. It reports only directly-measured
+ * quantities (heights in CSS px, observed counts/scores) and leaves the derived
+ * `pageHeightRatio` and the `scrollDriven` rollup to `deriveMotion`, keeping the
+ * browser layer free of judgement.
+ *
+ * The capturer returns `undefined` (not a zeroed record) when the pass could not
+ * observe anything — e.g. a non-scrolling page — so absence stays honest.
+ */
+export interface RawScrollCapture {
+  /** Full document scroll height in CSS px (`document.scrollingElement.scrollHeight`). */
+  scrollHeightPx: number
+  /** Viewport height in CSS px at capture time (`window.innerHeight`). */
+  viewportHeightPx: number
+  /** Number of top→bottom scroll stops actually sampled. */
+  steps: number
+  /** Elements observed animating IN as they entered the viewport. */
+  reveals: ScrollRevealSummary
+  /** Count of `position: sticky` / pinned elements that stayed fixed while their section scrolled. */
+  stickyCount: number
+  /**
+   * Parallax strength as a 0–1 score. For each non-pinned layer let
+   * `rate = viewportTranslate / scrollDelta` (1 = rigid with content, 0 =
+   * fixed). A parallax layer sits in the slow band `0.15 < rate < 0.85` or moves
+   * faster than content `rate > 1.15`; its score is `clamp01(|rate − 1|)`. This
+   * field is the MAX such score over all layers (`0` = none observed). Carried
+   * into `ScrollMotionDNA.parallax` by the fold unchanged.
+   */
+  parallax: number
+}
+
+/**
+ * The narrow capture seam: given an already-open, settled live page, run the
+ * stepped top→bottom scroll pass and return a {@link RawScrollCapture}, or
+ * `undefined` when nothing was observed. The shipped implementation lives in the
+ * browser layer (`design/audit/tokens/extract.ts`); tests inject a fake. Pure consumers
+ * (`toDesignDNA` / `deriveMotion`) never touch this — they receive the already
+ * folded result, so the DNA core stays browser-free and deterministic.
+ */
+export interface ScrollCapturer {
+  capture(page: ScrollCapturePage, opts?: ScrollCaptureOptions): Promise<RawScrollCapture | undefined>
+}
+
+// ── Corpus ─────────────────────────────────────────────────────────────────────
+
+/** A fixed-length numeric embedding of a DNA's aesthetic descriptor. */
+export type AestheticVector = number[]
+
+/** Where an exemplar came from. Open string so new sources need no code change. */
+export type ExemplarSource =
+  | 'variant'
+  | 'mobbin'
+  | 'awwwards'
+  | 'rip'
+  | 'manual'
+  | (string & {})
+
+/**
+ * One world-class reference page in the corpus. The corpus is the data-driven
+ * replacement for the scattered if/else domain tables: adding coverage is a new
+ * Exemplar row, not a new code branch.
+ */
+export interface Exemplar {
+  /** Stable id (slug of source+url). */
+  id: string
+  source: ExemplarSource
+  url: string
+  /** Page archetype — the hard retrieval filter. */
+  pageType: PageType
+  /** Job-to-be-done this page serves (e.g. "convert a visitor to signup"). */
+  jobToBeDone: string
+  dna: DesignDNA
+  /** On-disk screenshot path (per the rip.ts manifest layout). */
+  screenshotPath: string
+  /** Precomputed aesthetic embedding for retrieval. */
+  aestheticVector: AestheticVector
+  /**
+   * Elo/Bradley-Terry taste rating, seeded at corpus-build time and updated by
+   * pairwise human/judge votes. Used as a retrieval tie-break and a taste prior.
+   */
+  eloRating: number
+}
+
+/**
+ * A retrieval query. The aesthetic embedding is computed ONCE by the
+ * orchestrator and passed in here — the matcher is pure and never recomputes an
+ * embedding, eliminating the "two sources of the same vector" drift.
+ */
+export interface CorpusQuery {
+  /** Hard filter: only same-type exemplars are candidates. */
+  pageType: PageType
+  /** Soft signal: token-overlap against Exemplar.jobToBeDone (low default weight). */
+  jobToBeDone: string
+  /** Authoritative aesthetic embedding of the page-under-audit's DNA. */
+  aestheticVector: AestheticVector
+  /** Optional deterministic structural feature vector for a secondary signal. */
+  structuralVector?: number[]
+}
+
+/**
+ * Relative blend weights for the matcher's score. Aesthetic + pageType dominate;
+ * the free-form job signal is intentionally low because classification.intent is
+ * noisy and is fabricated on `--profile` runs.
+ */
+export interface RetrieveWeights {
+  aesthetic: number
+  structural: number
+  job: number
+}
+
+/**
+ * One ranked retrieval hit.
+ */
+export interface RetrievalResult {
+  exemplar: Exemplar
+  /** Blended similarity score, 0-1 (higher = closer). */
+  score: number
+  /** Human-readable reasons the exemplar matched (for the artifact/provenance). */
+  reasons: string[]
+}
+
+/**
+ * Pure k-nearest retrieval boundary. THE de-hardcoding core: a novel page type
+ * still resolves to its nearest aesthetic/job neighbour instead of falling
+ * through an if/else table. Implemented by a pure function — no IO, no LLM.
+ */
+export interface ExemplarMatcher {
+  retrieve(
+    query: CorpusQuery,
+    corpus: Exemplar[],
+    weights?: RetrieveWeights,
+  ): RetrievalResult[]
+}
+
+/**
+ * READ side of the corpus disk boundary. This is ALL the runtime audit path
+ * (engine/core, retrieval/matcher) ever needs — load the corpus once, resolve a
+ * screenshot path, look one row up. Fails closed (missing dir → empty corpus /
+ * null get), never fabricates an exemplar. The core depends on this narrow read
+ * interface so it cannot reach the authoring mutators it never invokes.
+ */
+export interface CorpusReader {
+  /** Load all exemplars from the manifest. */
+  load(): Promise<Exemplar[]>
+  /** Look up one exemplar by id, or null if absent. */
+  get(id: string): Promise<Exemplar | null>
+  /** Resolve an exemplar's screenshot to an absolute path. */
+  resolveScreenshot(exemplar: Exemplar): string
+}
+
+/**
+ * WRITE side of the corpus disk boundary. Used ONLY by the offline authoring
+ * path (corpus/build) — never by the audit hot path. Kept separate from
+ * CorpusReader so a runtime module that holds a reader cannot mutate the corpus.
+ */
+export interface CorpusWriter {
+  /** Insert or replace an exemplar (corpus authoring). */
+  upsert(exemplar: Exemplar): Promise<void>
+  /** Persist a screenshot for an exemplar; returns its on-disk path. */
+  saveScreenshot(id: string, png: Buffer): Promise<string>
+}
+
+/**
+ * The full disk boundary for the exemplar corpus (JSONL records + sidecar
+ * screenshots). The ONLY module that touches the corpus directory. Concrete
+ * `createFileCorpusStore` implements both halves; corpus/build consumes the full
+ * surface, while engine/core/matcher accept only `CorpusReader`.
+ */
+export interface CorpusStore extends CorpusReader, CorpusWriter {}
+
+// ── Embedding ──────────────────────────────────────────────────────────────────
+
+/**
+ * The aesthetic-embedding boundary. The deterministic hash implementation is the
+ * offline/test default (so retrieval works with zero provider and unit tests
+ * never hit the network); a real provider is swapped in when an API key exists.
+ */
+export interface EmbeddingProvider {
+  /** Stable id of the backing model ('hash-v1', 'openai:text-embedding-3-small', …). */
+  readonly id: string
+  /** Embed N descriptor strings → N fixed-length vectors. */
+  embed(texts: string[]): Promise<AestheticVector[]>
+}
+
+// ── Reference context ──────────────────────────────────────────────────────────
+
+/** How an operator-supplied `--reference` was interpreted. */
+export type ReferenceKind = 'url' | 'rip' | 'tokens' | 'exemplar'
+
+/**
+ * A reference resolved ONCE before the page/rep loops and reused for every page
+ * and repetition, so reference-grounded runs stay within the ±0.5 reproducibility
+ * gate. When set, this single target stands in for (or augments) corpus
+ * retrieval.
+ */
+export interface ReferenceContext {
+  kind: ReferenceKind
+  dna: DesignDNA
+  /** Optional screenshot for a future vision judge. */
+  screenshotPath?: string
+  /** Budget-bounded prompt-ready summary of the reference DNA. */
+  summary: string
+}
+
+// ── Generation ─────────────────────────────────────────────────────────────────
+
+/**
+ * Everything the generator needs about the page-under-audit (not the exemplars,
+ * which are passed alongside as RetrievalResult[]).
+ */
+export interface GenerationContext {
+  url: string
+  classification: PageClassification
+  dna: DesignDNA
+  measurements?: MeasurementBundle
+  /** Optional composed-rubric body injected as scoring criteria. */
+  rubricBody?: string
+}
+
+/** A proposed type system for a redesign direction. */
+export interface TypeSystemSpec {
+  families: string[]
+  /** Target scale in px. */
+  scalePx: number[]
+  /** Target modular ratio. */
+  ratio: number
+  rationale: string
+}
+
+/** A proposed color system for a redesign direction. */
+export interface ColorSystemSpec {
+  primary: string
+  accent?: string
+  neutrals: string[]
+  background: string
+  rationale: string
+}
+
+/** A proposed motion spec for a redesign direction. */
+export interface MotionSpec {
+  durationsMs: number[]
+  easings: string[]
+  /** Where motion is applied and why (e.g. "stagger hero cards on enter"). */
+  cues: string[]
+}
+
+/** A single revised copy element. */
+export interface CopyRevision {
+  /** CSS selector or semantic location of the copy. */
+  location: string
+  before?: string
+  after: string
+}
+
+/**
+ * A NAMED redesign direction — the core generative artifact. Grounded in
+ * concrete world-class exemplars by id so the judge can give reference-specific
+ * feedback and the loop compresses to 1-2 shots.
+ */
+export interface RedesignDirection {
+  id: string
+  /** Evocative name (e.g. "Editorial Calm", "Dense Control Room"). */
+  name: string
+  /** Why this direction fits the page's job-to-be-done. */
+  rationale: string
+  /** ASCII / box-drawing layout diagram of the proposed structure. */
+  asciiLayout: string
+  typeSystem: TypeSystemSpec
+  colorSystem: ColorSystemSpec
+  motionSpec: MotionSpec
+  /** Ordered information hierarchy, most prominent first. */
+  hierarchy: string[]
+  /** Revised copy for key surfaces. */
+  copy: CopyRevision[]
+  /** Exemplar ids this direction is grounded in (⊆ retrieved ids). */
+  groundedInExemplarIds: string[]
+}
+
+/** A typed parse failure — never a fabricated direction. */
+export interface DirectionParseError {
+  ok: false
+  reason: string
+}
+
+/** Result of parsing one model response into a direction. */
+export type DirectionParseResult =
+  | { ok: true; direction: RedesignDirection }
+  | DirectionParseError
+
+/**
+ * The output of one generation pass: the accepted directions plus the TOTAL
+ * generation tokens consumed across every model call the pass made — INCLUDING
+ * calls whose response failed to parse, which still cost tokens. Surfacing the
+ * sum here is what lets the engine report a COMPLETE `tokensUsed` (generation +
+ * judging) instead of a judge-only undercount.
+ */
+export interface GenerationResult {
+  /** Accepted directions in stable slot order (a dropped call leaves no entry). */
+  directions: RedesignDirection[]
+  /** Sum of `tokensUsed` over every generation model call this pass made. */
+  tokensUsed: number
+}
+
+/**
+ * LLM boundary: turn page context + retrieved exemplars into 2-3 grounded
+ * directions. The shipped adapter fans out one cheap `brain.complete` call per
+ * exemplar concurrently; tests inject a fake returning canned JSON. Returns the
+ * directions alongside the summed generation tokens (see {@link GenerationResult})
+ * so the engine's cost accounting covers generation, not only judging.
+ */
+export interface RedesignGenerator {
+  generate(
+    ctx: GenerationContext,
+    exemplars: RetrievalResult[],
+    opts?: { count?: number; onDirection?: (d: RedesignDirection) => void },
+  ): Promise<GenerationResult>
+}
+
+// ── Judging & ranking ──────────────────────────────────────────────────────────
+
+/**
+ * One side of a comparison. Carries the summaries the judge reasons over and an
+ * optional screenshot path.
+ *
+ * `screenshotPath` is the image source for the vision judge: page subjects and
+ * corpus exemplars carry an on-disk screenshot, so a vision `TasteJudge` compares
+ * them visually. Unrendered `RedesignDirection` specs have no screenshot and omit
+ * it, which is why direction ranking stays text-only. The default text judge
+ * ignores this field on every subject, so its presence never changes text
+ * scoring — adding/threading it is byte-neutral for `judge: 'text'`.
+ */
+export interface JudgeSubject {
+  id: string
+  /** Budget-bounded DNA summary. */
+  dnaSummary: string
+  /** Direction summary, when comparing generated directions. */
+  directionSummary?: string
+  /**
+   * Adapter-readable path to this subject's screenshot (absolute, or resolved by
+   * the wiring root). Present for pages/exemplars; absent for unrendered
+   * directions. Read only by a vision judge; the text judge never touches it.
+   */
+  screenshotPath?: string
+}
+
+/**
+ * Input to a single judge comparison in a single slot order. The pure debias
+ * core calls the judge twice (A/B then B/A) and reconciles.
+ */
+export interface JudgePairInput {
+  a: JudgeSubject
+  b: JudgeSubject
+  /** The named reference both sides are judged against. */
+  reference?: ReferenceContext
+  rubricBody?: string
+  /**
+   * Scopes this comparison to ONE product-quality dimension. Set only by the
+   * absolute quality leg, which issues one dimension-scoped comparison per
+   * `Dimension` so `QualityAssessment.dimensionWinRates` is judged per-dimension
+   * (never one overall number stamped across dims). Absent ⇒ holistic comparison
+   * (the relative direction-ranking leg). The judge prompt narrows its rubric to
+   * this dimension when present.
+   */
+  dimension?: Dimension
+}
+
+/**
+ * The raw, slot-relative verdict from ONE judge call (before debiasing). `A`/`B`
+ * refer to presentation slots, not stable ids — reconciliation maps them back.
+ */
+export interface RawVerdict {
+  winnerSlot: 'A' | 'B' | 'tie'
+  /** Judge confidence 0-1. */
+  confidence: number
+  /** Reference-specific reasons. */
+  reasons: string[]
+  /**
+   * Echoes `JudgePairInput.dimension` when the comparison was dimension-scoped,
+   * so the quality leg can bucket each verdict into the right per-dimension
+   * win-rate. Absent on holistic (direction-ranking) comparisons.
+   */
+  dimension?: Dimension
+  tokensUsed?: number
+}
+
+/**
+ * A position-debiased pairwise verdict keyed by stable direction ids. Produced
+ * by reconciling the two slot orders; disagreement collapses to a tie so the
+ * verdict measures taste, not slot bias.
+ */
+export interface TasteVerdict {
+  aId: string
+  bId: string
+  /** Stable winner id, or 'tie'. */
+  winner: string | 'tie'
+  /** Strength of preference 0-1 (averaged across the two orders). */
+  margin: number
+  reasons: string[]
+}
+
+/**
+ * The Bradley-Terry / Elo rollup of many pairwise verdicts into a single ranking.
+ */
+export interface RankResult {
+  /** Direction ids best→worst. */
+  order: string[]
+  /** The winning direction id. */
+  winnerId: string
+  /** Bradley-Terry strengths per id (sum-normalised). */
+  bradleyTerry: Record<string, number>
+  /** Elo ratings per id. */
+  elo: Record<string, number>
+}
+
+/**
+ * Pure rollup boundary. Implemented by a pure function (no LLM, no IO); modelled
+ * as an interface only so callers depend on the contract, not the solver.
+ */
+export interface DirectionRanker {
+  rank(ids: string[], verdicts: TasteVerdict[]): RankResult
+}
+
+/**
+ * The single LLM/vision comparison boundary. NARROW by design: one comparison,
+ * one slot order, returns a RawVerdict. All debiasing/aggregation lives in pure
+ * cores around it. The shipped default is text-only over `brain.complete`; a
+ * vision judge is a future drop-in implementing the same interface (it must NOT
+ * be faked by overloading `brain.auditDesign`).
+ */
+export interface TasteJudge {
+  readonly id: string
+  compare(input: JudgePairInput): Promise<RawVerdict>
+}
+
+/**
+ * A provider-agnostic handle to one model: the `{ provider, model }` pair the
+ * vision-judge ensemble keys on. Provider-agnostic by construction — `provider`
+ * reuses `SupportedProvider`, so any vision-capable backend the Brain provider
+ * layer already resolves (openai/gpt-5.4, anthropic/claude-opus-4-8, google
+ * gemini, claude-code, …) is a legal target and selection goes through the
+ * existing abstraction, never a bespoke per-provider path. `provider` is optional:
+ * when omitted the wiring root fills it from the ambient default. A list of one
+ * ref ⇒ a single judge; a list of many ⇒ an ensemble (see `visionModels`).
+ */
+export interface ModelRef {
+  provider?: SupportedProvider
+  model: string
+}
+
+/**
+ * One image handed to a vision judge for a single comparison — each comparison
+ * side contributes one. Two interchangeable forms, exactly one set:
+ *  - `{ screenshotPath }`: an on-disk image the adapter reads (the common case —
+ *    `JudgeSubject.screenshotPath` for pages/exemplars; PNG or JPEG, mediaType
+ *    inferred from the file extension);
+ *  - `{ base64, mediaType }`: already-encoded image bytes, for an in-memory
+ *    screenshot that was never written to disk.
+ * The disjoint required keys make the two mutually exclusive at the type level.
+ */
+export type VisionImageRef =
+  | { screenshotPath: string }
+  | { base64: string; mediaType: string }
+
+/**
+ * The narrow vision-capable model seam — the visual analogue of the text judge's
+ * `JudgeModel`. ONE instance is bound to ONE resolved `ModelRef` (its `id` is that
+ * ref rendered as `provider:model`, e.g. `'openai:gpt-5.4'`), so an ensemble is
+ * simply a LIST of these seams. `completeVision` is a single multimodal
+ * round-trip: a system prompt + a user prompt + one-or-more `VisionImageRef`s
+ * (the compared subjects' screenshots) → raw model text, which the judge parses
+ * with the same `parseRawVerdict` the text judge uses.
+ *
+ * The wiring root binds ONE Brain per `ModelRef` and wraps it in a thin
+ * Brain-backed adapter (`createBrainVisionModel`) that supplies the
+ * `provider:model` id, reads each `VisionImageRef` off disk, and routes the
+ * encoded images through Brain's multimodal round-trip — a SIBLING of
+ * `brain.complete`, NOT an overload of `brain.auditDesign` (the page-audit seam
+ * stays off-limits to taste comparison by contract). Unit tests inject
+ * deterministic stubs with no live model.
+ *
+ * Ensemble aggregation (how a LIST of these seams collapses to ONE `RawVerdict`
+ * per `compare`, on a single slot order — position-swap is the outer debias
+ * core's job and is never re-done here):
+ *  - each model casts ONE vote ∈ {A, B, tie}; a genuine `tie` vote is a real
+ *    verdict, tallied in its own bucket;
+ *  - a model that yields NO usable verdict — its call throws, or the response
+ *    carries no parseable winner token — is DROPPED: excluded from BOTH the tally
+ *    and the denominator (never silently recounted as a tie). If EVERY model is
+ *    dropped, `compare` throws — an empty ensemble result is an explicit error,
+ *    never a fabricated tie (and an empty model list is rejected at construction);
+ *  - `winnerSlot` = the bucket (A, B, OR tie) holding the STRICT maximum count;
+ *    `confidence` = that bucket's votes ÷ surviving votes (the honest agreement
+ *    fraction, never a constant). When ≥2 buckets share the top count the
+ *    ensemble is undecided ⇒ `winnerSlot: 'tie'`, `confidence: 0`;
+ *  - `tokensUsed` = the sum over every model call that reported a count;
+ *    `dimension` echoes `JudgePairInput.dimension` when the comparison was scoped.
+ */
+export interface VisionJudgeModel {
+  /** The bound `ModelRef` rendered as `provider:model`. */
+  readonly id: string
+  completeVision(
+    system: string,
+    user: string,
+    images: VisionImageRef[],
+    options?: { maxOutputTokens?: number },
+  ): Promise<{ text: string; tokensUsed?: number }>
+}
+
+/** A recorded human pairwise preference, for judge calibration. */
+export interface HumanVote {
+  aId: string
+  bId: string
+  winner: string | 'tie'
+}
+
+/** Judge-vs-human agreement over a vote set. */
+export interface CalibrationResult {
+  /** Fraction of comparisons where judge and human agree, 0-1 (ties excluded). */
+  agreement: number
+  /** Number of comparisons scored. */
+  n: number
+}
+
+// ── Headline scoring (absolute quality) ────────────────────────────────────────
+
+/**
+ * The ABSOLUTE quality assessment of the page-under-audit, produced by judging
+ * the current page against the retrieved world-class exemplars (position-swapped
+ * pairwise → win-rate). This — NOT the relative direction ranking — is the
+ * single, honest scoring authority: it feeds the 0-10 headline score, the
+ * per-`Dimension` `precomputedScores` (skipping stage-8's LLM call), and the
+ * overall-derived 8-dim DesignSystemScore.
+ */
+export interface QualityAssessment {
+  /** Win-rate of the current page vs exemplars, 0-1 (0.5 ≈ on par). */
+  overallWinRate: number
+  /**
+   * Per-product-dimension win-rates, keyed by the 5-dim `Dimension` taxonomy.
+   * Each entry is the win-rate of a dimension-scoped comparison set (the quality
+   * leg issues one `JudgePairInput.dimension` per `Dimension`). Present ⇒ the
+   * dims are genuinely judge-resolved; `score-core.toDimensionScores` maps them
+   * into the rich `Record<Dimension, DimensionScore>` that stage 8 consumes.
+   * Omitted ⇒ no per-dim signal was gathered (single-leg budget); callers must
+   * NOT fabricate per-dim scores from `overallWinRate`.
+   */
+  dimensionWinRates?: Partial<Record<Dimension, number>>
+  /** How many pairwise comparisons backed this assessment. */
+  comparisons: number
+}
+
+// ── Artifact & engine output ───────────────────────────────────────────────────
+
+/**
+ * The rich, first-class output of the engine. This is NOT a throwaway side file:
+ * it is returned by the library entry (`runReferenceRedesign`) and written to
+ * disk, and is the artifact the taste eval consumes.
+ */
+export interface RedesignArtifact {
+  url: string
+  /** Directions ordered by ranking (winner first). */
+  directions: RedesignDirection[]
+  ranking: RankResult
+  /** Provenance: which exemplars grounded the generation. */
+  retrieval: RetrievalResult[]
+  verdicts: TasteVerdict[]
+  /** Id of the operator-supplied reference, when one was used. */
+  referenceId?: string
+  tokensUsed: number
+}
+
+/**
+ * The full result of one engine run, shared by BOTH entrypoints. The pure core
+ * returns this; `run.ts` surfaces `.artifact`, `pipeline/evaluate-reference.ts`
+ * maps it onto a PageAuditResult. Single core, two return-shapings — no
+ * duplicated orchestration.
+ */
+export interface RedesignRunResult {
+  artifact: RedesignArtifact
+  /** Absolute quality assessment of the current page. */
+  quality: QualityAssessment
+  /** Derived 0-10 headline score. */
+  headlineScore: number
+  /**
+   * The stage-8 `precomputedScores` hook: the 5-dim product-quality scores in the
+   * exact `Record<Dimension, DimensionScore>` shape `buildAuditResult` consumes,
+   * so passing this skips its second multidim LLM call. Built by
+   * `score-core.toDimensionScores` from `quality.dimensionWinRates` (each dim's
+   * win-rate → score, with range/confidence reflecting comparison count).
+   */
+  dimensionScores: Record<Dimension, DimensionScore>
+  /**
+   * The flat 8-dim design-system score for `PageAuditResult.designSystemScore`
+   * (back-compat surface). HONESTLY a coarse projection of `overallWinRate` —
+   * the judge resolves the 5 product `Dimension`s, not these 8 design-system
+   * axes — so it is NOT a second per-dimension scoring authority.
+   */
+  designSystemScore: DesignSystemScore
+  /** Findings projected from the winner + measurement ground truth. */
+  findings: DesignFinding[]
+  classification: PageClassification
+  measurements: MeasurementBundle
+  tokensUsed: number
+}
+
+// ── Flag, config & budget ──────────────────────────────────────────────────────
+
+/** Pipeline evaluation mode. Absent/`'v1'` ⇒ byte-identical legacy behaviour. */
+export type EvalMode = 'v1' | 'reference-grounded'
+
+/**
+ * Cost ceiling for one engine run. Pairwise judging multiplies LLM calls, so
+ * every leg is explicitly capped and the orchestrator runs independent calls
+ * concurrently up to `concurrency`.
+ */
+export interface EngineBudget {
+  /** Max generation calls (≈ direction count). */
+  maxGenerationCalls: number
+  /** Max judge calls across quality + direction legs. */
+  maxJudgeCalls: number
+  /** Repetitions per pairwise comparison (each rep = both slot orders). */
+  judgeReps: number
+  /** Max concurrent in-flight LLM calls. */
+  concurrency: number
+  /**
+   * When true, screen directions at 1 rep then validate only the top-2 at full
+   * reps (the two-stage screen/validate pattern) to contain cost.
+   */
+  screenThenValidate: boolean
+}
+
+/**
+ * Resolved configuration for the reference-grounded engine. Lives on
+ * AuditOnePageOptions as a sibling of `overrides` — NOT inside AuditOverrides
+ * (a static prompt-knob bag) and NOT on DriverConfig (which the audit path
+ * bypasses).
+ */
+export interface ReferenceGroundedConfig {
+  /** Directory of the exemplar corpus. */
+  corpusDir: string
+  /** Where the rich artifact is written. */
+  artifactDir?: string
+  /** Number of exemplars to retrieve. */
+  k: number
+  /** Number of redesign directions to generate (2-3). */
+  directionCount: number
+  /**
+   * Judge backend. `'text'` (default) judges from DNA/direction summaries via
+   * `brain.complete`. `'vision'` selects the screenshot-grounded ensemble judge
+   * built from `visionModels`; it scores the subjects that HAVE a screenshot —
+   * the audited page and the corpus exemplars (the quality leg) — and falls back
+   * to the text judge for screenshot-less subjects, so the unrendered
+   * direction-ranking leg stays text-only either way.
+   */
+  judge: 'text' | 'vision'
+  /**
+   * The vision-judge ensemble: the list of `{ provider, model }` refs run when
+   * `judge: 'vision'` (ignored when `judge: 'text'`). ONE ref ⇒ a single judge;
+   * MANY ⇒ an ensemble that, for each comparison, runs every model in parallel
+   * on the SAME slot order, then aggregates across models — see
+   * {@link VisionJudgeModel} for the EXACT tally/drop/confidence rules (majority
+   * bucket wins, agreement fraction → confidence, a split → tie, a no-verdict
+   * model is dropped, an all-dropped result throws). Position-swap (A-vs-B and
+   * B-vs-A, to cancel order bias) is supplied by the surrounding pure debias core
+   * that calls the judge twice, so the ensemble layer varies MODELS only and
+   * never re-swaps order. Provider-agnostic: each ref resolves through the Brain
+   * provider abstraction, so a mixed openai+anthropic+google ensemble is legal —
+   * though `provider` admits non-vision backends too (`cli-bridge`,
+   * `sandbox-backend`, …): vision-capability is a RUNTIME precondition the wiring
+   * assumes, not something the type guarantees.
+   */
+  visionModels?: ModelRef[]
+  /** Embedding backend; falls back to 'deterministic' when no key is present. */
+  embedder: 'deterministic' | 'provider'
+  budget: EngineBudget
+  /** Operator-supplied reference, resolved once. */
+  reference?: ReferenceContext
+  /** Model id override for generation/judging. */
+  model?: string
+}
+
+/**
+ * The injected dependency bundle for the shared core. The core depends ONLY on
+ * these narrow interfaces; concrete adapters are wired at the composition roots
+ * (`run.ts`, `pipeline/evaluate-reference.ts`) and passed in — so the core never
+ * imports a concrete IO/LLM module and stays a pure sequencer.
+ */
+export interface ReferenceEngineDeps {
+  extractor: DesignDnaExtractor
+  /**
+   * READ-ONLY corpus access. The core never authors the corpus, so it depends on
+   * `CorpusReader`, not the full `CorpusStore` — the authoring mutators
+   * (upsert/saveScreenshot) are unreachable from the audit path by construction.
+   */
+  store: CorpusReader
+  embedder: EmbeddingProvider
+  matcher: ExemplarMatcher
+  generator: RedesignGenerator
+  judge: TasteJudge
+  ranker: DirectionRanker
+}
+
+/**
+ * Per-page input to the shared core. The exemplar `corpus` is loaded ONCE per
+ * run by the L4 entrypoint (a single `deps.store.load()` before the page/rep
+ * loops) and threaded in here — mirroring the acquire-once `ReferenceContext` —
+ * so a multi-page / multi-rep run never re-reads, re-parses, and re-validates
+ * the full corpus from disk. The core retrieves against this in-memory array and
+ * does NOT call `store.load()` itself.
+ */
+export interface RedesignCoreInput {
+  url: string
+  classification: PageClassification
+  measurements: MeasurementBundle
+  screenshotPath?: string
+  /** The full exemplar corpus, loaded once per run and reused across pages/reps. */
+  corpus: Exemplar[]
+  config: ReferenceGroundedConfig
+}
+
+// ── Taste eval bridge ──────────────────────────────────────────────────────────
+
+/** A corpus-vs-corpus taste pair: a known-stronger vs known-weaker exemplar. */
+export interface TastePair {
+  strongId: string
+  weakId: string
+}
+
+/** Corpus-order agreement over a set of taste pairs. */
+export interface TasteAgreementResult {
+  /** Fraction of pairs where the judge preferred the stronger member, 0-1. */
+  agreementRate: number
+  /** Number of non-tie comparisons. */
+  n: number
+}
+
+/**
+ * Bench metric shape for the taste eval. Mirrors the existing `patchMetrics`
+ * branch pattern: an optional sibling field on a TrialResult that remaps the
+ * ObjectiveVector axes (recall ← winsVsReference, precision ← corpusOrderAgreement)
+ * with ZERO change to the 5-axis vector schema.
+ */
+export interface TasteMetrics {
+  /** Generated-vs-reference wins. */
+  winsVsReference: number
+  /** Total comparisons backing winsVsReference. */
+  comparisons: number
+  /** Corpus-order agreement rate, when computed. */
+  corpusOrderAgreement?: number
+}

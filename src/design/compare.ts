@@ -12,12 +12,7 @@ import chalk from 'chalk'
 import type { DesignTokens, ColorToken } from '../types.js'
 import type { CompareOptions, CompareResult, ViewportDiff, TokenDiff, InteractionScreenshots } from './types.js'
 import { revealHiddenContent, captureInteractionScreenshots } from './page-interaction.js'
-
-const VIEWPORTS = [
-  { name: 'mobile', width: 375, height: 812 },
-  { name: 'tablet', width: 768, height: 1024 },
-  { name: 'desktop', width: 1440, height: 900 },
-] as const
+import { VIEWPORTS } from './viewports.js'
 
 // ── Pixel diff ──
 
@@ -285,7 +280,7 @@ export async function runDesignCompare(opts: CompareOptions): Promise<CompareRes
   const interactiveReveal = opts.interactiveReveal !== false
 
   // We need tokens for diff — import extractDesignTokens lazily to avoid circular deps
-  const { extractDesignTokens } = await import('../cli-design-audit.js')
+  const { extractDesignTokens } = await import('./audit/tokens/extract.js')
 
   console.log(`  ${chalk.dim('Extracting tokens from A…')}`)
   const tokensA = await extractDesignTokens({

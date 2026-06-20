@@ -8,6 +8,24 @@ export type SupportedProvider =
   | 'sandbox-backend'
   | 'zai-coding-plan';
 
+/** Runtime list of the `SupportedProvider` union — the single source of truth
+ *  for validating a user-supplied `--provider` string before it is cast. */
+export const SUPPORTED_PROVIDERS: readonly SupportedProvider[] = [
+  'openai',
+  'anthropic',
+  'google',
+  'cli-bridge',
+  'codex-cli',
+  'claude-code',
+  'sandbox-backend',
+  'zai-coding-plan',
+];
+
+/** Narrow an arbitrary string to a `SupportedProvider`. */
+export function isSupportedProvider(value: string): value is SupportedProvider {
+  return (SUPPORTED_PROVIDERS as readonly string[]).includes(value);
+}
+
 /**
  * Z.ai coding plan endpoints. The plan exposes two compatibility surfaces:
  *   - OpenAI-compatible at /api/coding/paas/v4 — works with glm-4.6 / glm-4.5
@@ -76,6 +94,23 @@ export function resolveProviderModelName(
   }
 
   return model || 'gpt-5.4';
+}
+
+/**
+ * Pick a default provider when the CLI passed none. Honours a present
+ * `OPENAI_API_KEY` (→ `'openai'`, which resolves to `gpt-5.4` + the OpenAI key)
+ * before falling back to the keyless `'claude-code'` engine. Mirrors the `run`
+ * command's `driverConfig.provider || 'openai'` precedent so design-audit no
+ * longer silently overrides a present OpenAI key with claude-code/sonnet.
+ *
+ * Fail-open offline: with no `OPENAI_API_KEY` the result is still
+ * `'claude-code'`, preserving the zero-key path the engine was designed to run
+ * on. Only the design-audit default site consumes this; explicit `--provider`
+ * still wins, so no other command's behaviour changes.
+ */
+export function resolveDefaultProvider(env: NodeJS.ProcessEnv = process.env): SupportedProvider {
+  if (env.OPENAI_API_KEY) return 'openai';
+  return 'claude-code';
 }
 
 export function resolveProviderApiKey(

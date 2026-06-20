@@ -32,6 +32,12 @@ demos/
 bench/design/eval/results/
 .claude/worktrees/
 
+# Seeded reference-grounded design-audit corpus: exemplar DNA + screenshots are
+# regenerated locally via scripts/seed-reference-corpus.mjs. PUBLIC repo — never
+# commit third-party site screenshots/DNA. Only the source list is tracked.
+bench/design/reference-corpus/*
+!bench/design/reference-corpus/sources.example.json
+
 # Generated autoreserach/autoeval state. Keep source code and reproducible
 # scripts in git; keep run corpora, JSONL trial caches, and optimizer outputs local.
 .evolve/agent-eval/

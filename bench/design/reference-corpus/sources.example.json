@@ -1,0 +1,18 @@
+[
+  { "url": "https://www.apple.com", "pageType": "marketing", "jobToBeDone": "Showcase flagship hardware and drive product consideration" },
+  { "url": "https://www.airbnb.com", "pageType": "marketing", "jobToBeDone": "Convert visitors into stay/experience bookings" },
+  { "url": "https://www.google.com", "pageType": "tool", "jobToBeDone": "Search the web from a single focused input" },
+  { "url": "https://www.microsoft.com", "pageType": "marketing", "jobToBeDone": "Route a broad audience to products, cloud, and downloads" },
+  { "url": "https://www.figma.com", "pageType": "marketing", "jobToBeDone": "Convert designers and teams to sign up for the editor" },
+  { "url": "https://tempo.xyz/", "pageType": "marketing", "jobToBeDone": "Introduce the product and capture early-access interest" },
+  { "url": "https://www.coinbase.com", "pageType": "marketing", "jobToBeDone": "Convert visitors into funded crypto accounts" },
+  { "url": "https://solana.com", "pageType": "marketing", "jobToBeDone": "Recruit builders and users to the Solana ecosystem" },
+  { "url": "https://www.moonpay.com", "pageType": "marketing", "jobToBeDone": "Convert visitors into fiat-to-crypto purchases" },
+  { "url": "https://www.paypal.com", "pageType": "marketing", "jobToBeDone": "Drive consumer and merchant account sign-ups" },
+  { "url": "https://stripe.com", "pageType": "marketing", "jobToBeDone": "Convert developers and businesses to start accepting payments" },
+  { "url": "https://www.palantir.com", "pageType": "marketing", "jobToBeDone": "Generate enterprise and government platform demand" },
+  { "url": "https://www.anduril.com", "pageType": "marketing", "jobToBeDone": "Communicate defense capability and recruit talent" },
+  { "url": "https://www.hadrian.co", "pageType": "marketing", "jobToBeDone": "Communicate advanced-manufacturing capability and recruit talent" },
+  { "url": "https://www.intel.com", "pageType": "marketing", "jobToBeDone": "Route a broad audience to silicon products and developer tools" },
+  { "url": "https://www.nvidia.com", "pageType": "marketing", "jobToBeDone": "Drive demand across GPUs, AI platforms, and developer programs" }
+]
