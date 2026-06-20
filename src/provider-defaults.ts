@@ -8,6 +8,24 @@ export type SupportedProvider =
   | 'sandbox-backend'
   | 'zai-coding-plan';
 
+/** Runtime list of the `SupportedProvider` union — the single source of truth
+ *  for validating a user-supplied `--provider` string before it is cast. */
+export const SUPPORTED_PROVIDERS: readonly SupportedProvider[] = [
+  'openai',
+  'anthropic',
+  'google',
+  'cli-bridge',
+  'codex-cli',
+  'claude-code',
+  'sandbox-backend',
+  'zai-coding-plan',
+];
+
+/** Narrow an arbitrary string to a `SupportedProvider`. */
+export function isSupportedProvider(value: string): value is SupportedProvider {
+  return (SUPPORTED_PROVIDERS as readonly string[]).includes(value);
+}
+
 /**
  * Z.ai coding plan endpoints. The plan exposes two compatibility surfaces:
  *   - OpenAI-compatible at /api/coding/paas/v4 — works with glm-4.6 / glm-4.5

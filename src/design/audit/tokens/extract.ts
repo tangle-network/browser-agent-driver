@@ -14,16 +14,12 @@ import { chromium, type Page } from 'playwright'
 import type { DesignTokens, ColorToken, FontFamily, TypeScaleEntry, LogoAsset, SvgIcon, ViewportTokens, SpacingToken, ComponentFingerprint, NavPattern, FontFile, ImageAsset } from '../../../types.js'
 import type { RawScrollCapture } from '../reference/contracts.js'
 import { createScrollCapturer } from '../reference/dna/scroll-capture.js'
+import { VIEWPORTS } from '../../viewports.js'
+import { dismissCookieBanners } from '../../cookie-consent.js'
 
 // ---------------------------------------------------------------------------
 // Design Token Extraction — pure DOM, no LLM calls
 // ---------------------------------------------------------------------------
-
-const VIEWPORTS = [
-  { name: 'mobile', width: 375, height: 812 },
-  { name: 'tablet', width: 768, height: 1024 },
-  { name: 'desktop', width: 1440, height: 900 },
-] as const
 
 interface RawExtractionResult {
   customProperties: Record<string, string>
@@ -748,17 +744,6 @@ function detectGridUnit(spacingValues: SpacingToken[]): number | undefined {
 // ---------------------------------------------------------------------------
 // Token extraction orchestrator
 // ---------------------------------------------------------------------------
-
-async function dismissCookieBanners(page: Page): Promise<void> {
-  for (const sel of ['button:has-text("Accept all")', 'button:has-text("Accept")', 'button:has-text("Reject all")', 'button:has-text("Got it")', 'button:has-text("Close")']) {
-    const btn = page.locator(sel).first()
-    if (await btn.isVisible({ timeout: 500 }).catch(() => false)) {
-      await btn.click({ timeout: 2000 }).catch(() => null)
-      await page.waitForTimeout(500)
-      break
-    }
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Programmatic API — extractDesignTokens()

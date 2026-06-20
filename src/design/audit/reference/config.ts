@@ -68,7 +68,9 @@ export const DEFAULT_REFERENCE_CONFIG: ReferenceGroundedConfig = Object.freeze({
   // A single sensible default vision model ⇒ a single-judge vision run when
   // `judge: 'vision'` is selected without `--judge-models`. Ignored under the
   // default `judge: 'text'`. One ref ⇒ single judge; many ⇒ ensemble.
-  visionModels: Object.freeze([{ provider: 'openai', model: 'gpt-5.4' }]) as ModelRef[],
+  // Deep-frozen: the inner ref is frozen too, so a consumer can't mutate the
+  // shared default (every config without an override aliases this array).
+  visionModels: Object.freeze([Object.freeze({ provider: 'openai', model: 'gpt-5.4' })]) as ModelRef[],
   embedder: 'deterministic',
   budget: DEFAULT_ENGINE_BUDGET,
   reference: undefined,

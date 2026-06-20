@@ -8,11 +8,11 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import chalk from 'chalk'
-import { chromium, type Browser, type BrowserContext, type Page } from 'playwright'
+import { chromium, type Page } from 'playwright'
 import { Brain } from './brain/index.js'
-import type { DesignFinding, PageState, DesignEvolveResult } from './types.js'
+import type { DesignFinding, DesignEvolveResult } from './types.js'
 import { PlaywrightDriver } from './drivers/playwright.js'
-import { resolveDefaultProvider, resolveProviderApiKey, resolveProviderModelName, type SupportedProvider } from './provider-defaults.js'
+import { resolveDefaultProvider, resolveProviderApiKey, resolveProviderModelName, isSupportedProvider, SUPPORTED_PROVIDERS, type SupportedProvider } from './provider-defaults.js'
 import { loadLocalEnvFiles } from './env-loader.js'
 import { cliError } from './cli-ui.js'
 import { auditOnePage } from './design/audit/pipeline.js'
@@ -172,7 +172,7 @@ export interface DesignAuditOptions {
  * one); a colon-less entry leaves `provider` unset so the wiring fills the
  * ambient default. Blank entries are skipped; an empty/absent string ⇒ `[]`.
  */
-function parseModelRefs(spec: string | undefined): ReferenceModelRef[] {
+export function parseModelRefs(spec: string | undefined): ReferenceModelRef[] {
   if (!spec) return []
   const refs: ReferenceModelRef[] = []
   for (const raw of spec.split(',')) {
@@ -199,6 +199,52 @@ import type {
   ModelRef as ReferenceModelRef,
 } from './design/audit/reference/index.js'
 
+/**
+ * Acquire the reference-grounded eval bundle once: lazily load the engine,
+ * resolve the operator reference + corpus, and pick the taste judge. Reached
+ * only when `--reference`/`--reference-grounded` is set, so the v1 path never
+ * loads the engine. Fails closed with a clear diagnostic (a module-load failure
+ * or an unresolvable reference) instead of an unhandled rejection.
+ */
+async function setupReferenceGrounded(
+  opts: DesignAuditOptions,
+  modelName: string,
+  provider: SupportedProvider,
+): Promise<ReferenceCommonOpts> {
+  try {
+    const { resolveReferenceConfig, createFileCorpusStore, resolveReferenceContext } = await import(
+      './design/audit/reference/index.js'
+    )
+    const { createPageDnaExtractor } = await import('./design/audit/reference/dna/page-adapter.js')
+    // Vision judge: `--judge vision` selects it; `--judge-models` customises the
+    // ensemble (and implies vision when `--judge` is omitted). With vision on but
+    // no explicit models, default to the audit's OWN provider/model so the screenshot
+    // judge "just works" with whatever key the run already uses. Subjects without a
+    // screenshot (unrendered directions) fall back to the text judge inside the engine.
+    const visionRefs = parseModelRefs(opts.judgeModels)
+    const wantsVision = opts.judge === 'vision' || (!opts.judge && visionRefs.length > 0)
+    const referenceConfig = resolveReferenceConfig({
+      model: modelName,
+      ...(wantsVision ? { judge: 'vision' as const } : opts.judge === 'text' ? { judge: 'text' as const } : {}),
+      ...(wantsVision
+        ? { visionModels: visionRefs.length > 0 ? visionRefs : [{ provider, model: modelName }] }
+        : {}),
+    })
+    const reference = await resolveReferenceContext(
+      opts.reference,
+      { extractor: createPageDnaExtractor() },
+      { headless: opts.headless ?? true },
+    )
+    const corpus = await createFileCorpusStore(referenceConfig.corpusDir).load()
+    const refLabel = reference ? `, reference ${opts.reference ?? ''}` : ''
+    console.log(`  ${chalk.cyan('reference-grounded')} ${chalk.dim('—')} corpus ${chalk.bold(String(corpus.length))} exemplar${corpus.length !== 1 ? 's' : ''}${refLabel}`)
+    return { evalMode: 'reference-grounded', reference, corpus, referenceConfig }
+  } catch (err) {
+    cliError(`reference-grounded setup failed: ${err instanceof Error ? err.message : String(err)}`)
+    process.exit(1)
+  }
+}
+
 export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
   loadLocalEnvFiles(process.cwd())
 
@@ -213,6 +259,12 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
   const profile = opts.profile
 
   const maxPages = opts.pages ?? 5
+  // Validate a user-supplied --provider before casting, so an unknown value
+  // fails fast with a clear message instead of surfacing deep in the pipeline.
+  if (opts.provider !== undefined && !isSupportedProvider(opts.provider)) {
+    cliError(`unknown --provider "${opts.provider}". Supported: ${SUPPORTED_PROVIDERS.join(', ')}`)
+    process.exit(1)
+  }
   const provider = (opts.provider ?? resolveDefaultProvider()) as SupportedProvider
   const modelName = resolveProviderModelName(provider, opts.model)
   const apiKey = opts.apiKey ?? resolveProviderApiKey(provider)
@@ -240,36 +292,10 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
   // reproducibility gate). The engine is imported lazily so default audits never
   // load it. ──
   const evalMode: EvalMode = opts.referenceGrounded || opts.reference ? 'reference-grounded' : 'v1'
-  let referenceCommonOpts: ReferenceCommonOpts = { evalMode }
-  if (evalMode === 'reference-grounded') {
-    const { resolveReferenceConfig, createFileCorpusStore, resolveReferenceContext } = await import(
-      './design/audit/reference/index.js'
-    )
-    const { createPageDnaExtractor } = await import('./design/audit/reference/dna/page-adapter.js')
-    // Vision judge: `--judge vision` selects it; `--judge-models` customises the
-    // ensemble (and implies vision when `--judge` is omitted). With vision on but
-    // no explicit models, default to the audit's OWN provider/model so the screenshot
-    // judge "just works" with whatever key the run already uses. Subjects without a
-    // screenshot (unrendered directions) fall back to the text judge inside the engine.
-    const visionRefs = parseModelRefs(opts.judgeModels)
-    const wantsVision = opts.judge === 'vision' || (!opts.judge && visionRefs.length > 0)
-    const referenceConfig = resolveReferenceConfig({
-      model: modelName,
-      ...(wantsVision ? { judge: 'vision' as const } : opts.judge === 'text' ? { judge: 'text' as const } : {}),
-      ...(wantsVision
-        ? { visionModels: visionRefs.length > 0 ? visionRefs : [{ provider, model: modelName }] }
-        : {}),
-    })
-    const reference = await resolveReferenceContext(
-      opts.reference,
-      { extractor: createPageDnaExtractor() },
-      { headless: opts.headless ?? true },
-    )
-    const corpus = await createFileCorpusStore(referenceConfig.corpusDir).load()
-    referenceCommonOpts = { evalMode, reference, corpus, referenceConfig }
-    const refLabel = reference ? `, reference ${opts.reference ?? ''}` : ''
-    console.log(`  ${chalk.cyan('reference-grounded')} ${chalk.dim('—')} corpus ${chalk.bold(String(corpus.length))} exemplar${corpus.length !== 1 ? 's' : ''}${refLabel}`)
-  }
+  const referenceCommonOpts: ReferenceCommonOpts =
+    evalMode === 'reference-grounded'
+      ? await setupReferenceGrounded(opts, modelName, provider)
+      : { evalMode }
 
   // Telemetry: every design-audit invocation gets a stable runId. Child
   // envelopes link back via parentRunId so fleet rollups can reconstruct

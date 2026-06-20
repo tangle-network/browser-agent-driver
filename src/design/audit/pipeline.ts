@@ -16,6 +16,7 @@ import { classifyPage, defaultClassification } from './classify.js'
 import { composeRubric, composeRubricFromProfile } from './rubric/loader.js'
 import { gatherMeasurements } from './measure/index.js'
 import { evaluatePage, type AuditPassId, type AuditOverrides } from './evaluate.js'
+import { dismissCookieBanners } from '../cookie-consent.js'
 import type { PageAuditResult, PageClassification } from './types.js'
 import { getTelemetry, shortHash } from '../../telemetry/index.js'
 import { loadEthicsRules } from './ethics/loader.js'
@@ -88,25 +89,6 @@ export interface AuditOnePageOptions {
   modality?: ModalityTag[]
   regulatoryContext?: RegulatoryContextTag[]
   audienceVulnerability?: AudienceVulnerabilityTag[]
-}
-
-const COOKIE_BANNER_SELECTORS = [
-  'button:has-text("Accept all")',
-  'button:has-text("Accept")',
-  'button:has-text("Reject all")',
-  'button:has-text("Got it")',
-  'button:has-text("Close")',
-]
-
-async function dismissCookieBanners(page: Page): Promise<void> {
-  for (const sel of COOKIE_BANNER_SELECTORS) {
-    const btn = page.locator(sel).first()
-    if (await btn.isVisible({ timeout: 500 }).catch(() => false)) {
-      await btn.click({ timeout: 2000 }).catch(() => null)
-      await page.waitForTimeout(500)
-      return
-    }
-  }
 }
 
 /**
