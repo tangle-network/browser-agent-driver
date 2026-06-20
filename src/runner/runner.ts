@@ -31,13 +31,28 @@ import type { OverrideContext } from '../override-pipeline.js';
 
 import { withRetry, findElementForRef, safeHostname, pushGoalVerificationEvidence } from './utils.js';
 import { runExtractWithIndex, formatExtractWithIndexResult } from '../drivers/extract-with-index.js';
-import { buildSearchResultsGuidance, buildVisibleLinkRecommendation, getVisibleLinkRecommendation, getRankedVisibleLinkCandidates, rankSearchCandidates } from './search-guidance.js';
+import { buildSearchResultsGuidance, buildVisibleLinkRecommendation, getVisibleLinkRecommendation } from './search-guidance.js';
 import { buildGoalVerificationClaim, collectSearchWorkflowEvidence, shouldAcceptSearchWorkflowCompletion, shouldAcceptScriptBackedCompletion, detectCompletionContentTypeMismatch } from './goal-verification.js';
-import { verifyExpectedEffect } from './effect-verification.js';
 import { detectAiTanglePartnerTemplateVisibleState, detectAiTangleVerifiedOutputState, shouldEscalateVision } from './page-analysis.js';
-import { shouldUseVisibleLinkScout, shouldUseVisibleLinkScoutPage, shouldUseBoundedBranchExplorer, inspectBranchPreview, scoreBranchPreview } from './scout.js';
-import type { BranchPreview } from './scout.js';
 import { buildOverrideProducers, buildScoutLinkRecommendationText, buildBranchLinkRecommendationText } from './overrides.js';
+import {
+  buildSearchResultsScoutFeedbackImpl,
+  buildVisibleLinkScoutRecommendationImpl,
+  buildBranchLinkRecommendationImpl,
+} from './scout-feedback.js';
+import type { RunnerScoutHost } from './scout-feedback.js';
+import {
+  filterScoutCandidatesByAllowedDomainsImpl,
+  inspectDisallowedSearchClickImpl,
+  enforceAllowedDomainBoundaryImpl,
+} from './domain-boundary.js';
+import type { RunnerDomainHost } from './domain-boundary.js';
+import { attachDecisionScreenshotImpl } from './decision-screenshot.js';
+import type { RunnerDecisionScreenshotHost } from './decision-screenshot.js';
+import { verifyEffectImpl } from './effect-verify.js';
+import type { RunnerEffectVerifyHost } from './effect-verify.js';
+import { executePlanImpl } from './execute-plan.js';
+import type { RunnerExecuteHost } from './execute-plan.js';
 
 import type { Session } from '../memory/knowledge.js';
 import { RunRegistry } from '../memory/run-registry.js';
@@ -65,7 +80,6 @@ import {
 import { DEFI_BRAIN_CONTEXT } from './prompt-snippets.js';
 import { hasPlaceholderPattern, isMeaningfulRunScriptOutput } from './completion-policy.js';
 import { selectMicroPlanFollowUps } from './micro-plan.js';
-import { domainRoot } from './allowed-domains.js';
 import { decideMaxTurnsExtension } from './max-turns-extension.js';
 import type { ResolvedExtensions } from '../extensions/types.js';
 
@@ -159,11 +173,17 @@ export function shouldUsePlannerForScenario(
   return true
 }
 
-export class BrowserAgent {
-  private driver: Driver;
-  private brain: Brain;
-  private config: AgentConfig;
-  private onTurn?: (turn: Turn) => void;
+export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDecisionScreenshotHost, RunnerEffectVerifyHost, RunnerExecuteHost {
+  // Public fields below satisfy the extracted host interfaces (RunnerScoutHost,
+  // RunnerDomainHost, RunnerDecisionScreenshotHost, RunnerEffectVerifyHost,
+  // RunnerExecuteHost). The free functions in scout-feedback.ts,
+  // domain-boundary.ts, decision-screenshot.ts, effect-verify.ts, and
+  // execute-plan.ts read them through those interfaces; `implements` makes tsc
+  // prove the surface is complete.
+  driver: Driver;
+  brain: Brain;
+  config: AgentConfig;
+  onTurn?: (turn: Turn) => void;
   private beforeTurn?: (turn: number) => Promise<void>;
   private onPhaseTiming?: (phase: 'navigate' | 'observe' | 'decide' | 'execute', durationMs: number) => void;
   private referenceTrajectory?: string;
@@ -171,8 +191,11 @@ export class BrowserAgent {
   private runRegistry?: RunRegistry;
   private knowledge?: AppKnowledge;
   private selectorCache?: SelectorCache;
-  private cachedPostState: PageState | undefined;
-  private bus: TurnEventBus;
+  // Public so the extracted effect-verify.ts / execute-plan.ts hosts can read
+  // and write the cached post-action snapshot.
+  cachedPostState: PageState | undefined;
+  // Public so the extracted execute-plan.ts host can emit loop events.
+  bus: TurnEventBus;
   private currentRunId = '';
   // In-session decision cache. Lazy-skips brain.decide() when the (snapshot,
   // url, goal, last-effect, budget-bucket) is byte-identical to a previous
@@ -2465,14 +2488,6 @@ export class BrowserAgent {
     turns: Turn[],
     runState: RunState,
     startingTurnIndex: number,
-    /**
-     * Token usage from the Brain.plan() LLM call that produced this plan.
-     * The plan call's tokens are NOT attached to any per-step turn — there's
-     * one plan call per N steps. To make the run-level cost tally honest,
-     * we attribute the plan call to the FIRST step's Turn artifact so the
-     * downstream sum (in baseline-summary.json / report.json) reflects the
-     * real LLM spend.
-     */
     planCallTokens?: {
       tokensUsed?: number
       inputTokens?: number
@@ -2484,432 +2499,7 @@ export class BrowserAgent {
     | { kind: 'completed'; lastState: PageState; finalResult?: string; turnsConsumed: number }
     | { kind: 'deviated'; lastState: PageState; failedStepIndex: number; reason: string; turnsConsumed: number }
   > {
-    let currentTurnIndex = startingTurnIndex
-    let lastState: PageState = turns[turns.length - 1]?.state
-      ?? { url: '', title: '', snapshot: '' }
-
-    // Track the last successful runScript output so placeholder complete
-    // results can be substituted with the real script output.
-    let lastRunScriptOutput: string | null = null
-
-    // Track extractWithIndex matches for per-action fallback; the LLM must
-    // read the list and pick by index.
-    let lastExtractOutput: string | null = null
-
-    for (let stepIdx = 0; stepIdx < plan.steps.length; stepIdx++) {
-      if (scenario.signal?.aborted) {
-        return {
-          kind: 'deviated',
-          lastState,
-          failedStepIndex: stepIdx,
-          reason: scenario.signal.reason || 'Cancelled',
-          turnsConsumed: stepIdx,
-        }
-      }
-
-      const step = plan.steps[stepIdx]
-      const stepStartedAt = Date.now()
-      const turnNumber = currentTurnIndex + 1
-      currentTurnIndex++
-
-      // Refresh the snapshot before EVERY step. The plan was built from a
-      // single observe() call at turn 1; later steps may target a different
-      // page entirely (after navigate / click "Next"). The first observe
-      // here is also what verify-against will eventually consume.
-      const preStepState = await this.driver.observe().catch(() => lastState)
-      lastState = preStepState
-
-      // Wrap each plan step in a Turn artifact so post-run analysis (the
-      // viewer, the events.jsonl persistence, the metrics) sees a unified
-      // timeline regardless of whether the runner used the planner or the
-      // per-action loop.
-      //
-      // Token attribution: the first step carries the Brain.plan() LLM call's
-      // token usage so run-level cost includes planning.
-      const isFirstStep = stepIdx === 0
-      const turn: Turn = {
-        turn: turnNumber,
-        state: preStepState,
-        action: step.action,
-        reasoning: step.rationale ?? `Plan step ${stepIdx + 1}/${plan.steps.length}`,
-        expectedEffect: step.expectedEffect,
-        plan: plan.steps.map((s) => s.rationale ?? s.action.action),
-        currentStep: stepIdx,
-        durationMs: 0,
-        ...(isFirstStep && planCallTokens?.tokensUsed !== undefined ? { tokensUsed: planCallTokens.tokensUsed } : {}),
-        ...(isFirstStep && planCallTokens?.inputTokens !== undefined ? { inputTokens: planCallTokens.inputTokens } : {}),
-        ...(isFirstStep && planCallTokens?.outputTokens !== undefined ? { outputTokens: planCallTokens.outputTokens } : {}),
-        ...(isFirstStep && planCallTokens?.cacheReadInputTokens !== undefined ? { cacheReadInputTokens: planCallTokens.cacheReadInputTokens } : {}),
-        ...(isFirstStep && planCallTokens?.cacheCreationInputTokens !== undefined ? { cacheCreationInputTokens: planCallTokens.cacheCreationInputTokens } : {}),
-      }
-
-      // Terminal actions: complete and abort don't go through driver.execute
-      // — the runner handles them as the end of the plan.
-      if (step.action.action === 'complete') {
-        // Substitute placeholder complete results with prior runScript output.
-        let resolvedResult = step.action.result
-        if (
-          lastRunScriptOutput
-          && typeof resolvedResult === 'string'
-          && hasPlaceholderPattern(resolvedResult)
-        ) {
-          if (this.config.debug) {
-            console.log(`[Runner] Substituting placeholder complete.result with runScript output (${lastRunScriptOutput.length} chars)`)
-          }
-          resolvedResult = lastRunScriptOutput
-          turn.reasoning = `${turn.reasoning ?? ''} [substituted runScript output]`.trim()
-        }
-        turn.durationMs = Date.now() - stepStartedAt
-        turns.push(turn)
-        this.onTurn?.(turn)
-        this.bus.emitNow({
-          type: 'plan-step-executed',
-          runId,
-          turn: turnNumber,
-          stepIndex: stepIdx + 1,
-          totalSteps: plan.steps.length,
-          action: step.action,
-          executeSuccess: true,
-          verified: true,
-          durationMs: turn.durationMs,
-        })
-        return {
-          kind: 'completed',
-          lastState,
-          finalResult: resolvedResult,
-          turnsConsumed: stepIdx + 1,
-        }
-      }
-      if (step.action.action === 'abort') {
-        turn.durationMs = Date.now() - stepStartedAt
-        turns.push(turn)
-        this.onTurn?.(turn)
-        this.bus.emitNow({
-          type: 'plan-deviated',
-          runId,
-          turn: turnNumber,
-          stepIndex: stepIdx + 1,
-          totalSteps: plan.steps.length,
-          reason: `plan aborted: ${step.action.reason}`,
-        })
-        return {
-          kind: 'deviated',
-          lastState,
-          failedStepIndex: stepIdx,
-          reason: `plan aborted: ${step.action.reason}`,
-          turnsConsumed: stepIdx + 1,
-        }
-      }
-
-      // Execute the action via the existing driver path. This emits
-      // execute-started / execute-completed events on the bus exactly
-      // like the per-action loop does.
-      //
-      // Cap each plan step at 10s so missing selectors fail quickly and hand
-      // control back to per-action mode.
-      this.bus.emitNow({ type: 'execute-started', runId, turn: turnNumber, action: step.action })
-      const execStartedAt = Date.now()
-      const planStepTimeoutMs = 10_000
-      let execResult: Awaited<ReturnType<Driver['execute']>>
-      try {
-        execResult = await Promise.race([
-          this.driver.execute(step.action),
-          new Promise<Awaited<ReturnType<Driver['execute']>>>((resolve) =>
-            setTimeout(
-              () => resolve({ success: false, error: `plan step wall-clock timeout after ${planStepTimeoutMs}ms` }),
-              planStepTimeoutMs,
-            ),
-          ),
-        ])
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        execResult = { success: false, error: message }
-      }
-      const execDurationMs = Date.now() - execStartedAt
-      this.bus.emitNow({
-        type: 'execute-completed',
-        runId,
-        turn: turnNumber,
-        action: step.action,
-        success: execResult.success,
-        ...(execResult.error ? { error: execResult.error } : {}),
-        ...(execResult.bounds ? { bounds: execResult.bounds } : {}),
-        durationMs: execDurationMs,
-      })
-
-      if (!execResult.success) {
-        turn.error = execResult.error
-        turn.durationMs = Date.now() - stepStartedAt
-        turn.verified = false
-        turn.verificationFailure = `execute failed: ${execResult.error}`
-        turns.push(turn)
-        this.onTurn?.(turn)
-        runState.recordError()
-        this.bus.emitNow({
-          type: 'plan-step-executed',
-          runId,
-          turn: turnNumber,
-          stepIndex: stepIdx + 1,
-          totalSteps: plan.steps.length,
-          action: step.action,
-          executeSuccess: false,
-          verified: false,
-          durationMs: Date.now() - stepStartedAt,
-          ...(execResult.error ? { verifyReason: execResult.error } : {}),
-        })
-        this.bus.emitNow({
-          type: 'plan-deviated',
-          runId,
-          turn: turnNumber,
-          stepIndex: stepIdx + 1,
-          totalSteps: plan.steps.length,
-          reason: `execute failed: ${execResult.error}`,
-        })
-        return {
-          kind: 'deviated',
-          lastState,
-          failedStepIndex: stepIdx,
-          reason: `execute failed at step ${stepIdx + 1}: ${execResult.error}`,
-          turnsConsumed: stepIdx + 1,
-        }
-      }
-
-      runState.clearConsecutiveErrors()
-      if (execResult.bounds) turn.actionBounds = execResult.bounds
-
-      // Capture runScript output for placeholder substitution and evidence.
-      if (step.action.action === 'runScript' && typeof execResult.data === 'string' && execResult.data.length > 0) {
-        lastRunScriptOutput = execResult.data
-        if (execResult.data.length > 10) {
-          runState.recordEvidence(`EXTRACTED (turn ${currentTurnIndex}): ${execResult.data.slice(0, 500)}`)
-        }
-      }
-
-      // Capture extractWithIndex output for per-action fallback.
-      if (step.action.action === 'extractWithIndex' && typeof execResult.data === 'string' && execResult.data.length > 0) {
-        lastExtractOutput = execResult.data
-        // Also push as goal verification evidence so the verifier sees what
-        // the agent extracted.
-        runState.firstSufficientEvidenceTurn ??= currentTurnIndex
-        pushGoalVerificationEvidence(runState.goalVerificationEvidence, `EXTRACT RESULT:\n${execResult.data}`)
-        if (execResult.data.length > 10) {
-          runState.recordEvidence(`EXTRACTED (turn ${currentTurnIndex}): ${execResult.data.slice(0, 500)}`)
-        }
-      }
-
-      // Verify the post-condition. We re-observe to get the post-action
-      // state, then run the same verifyExpectedEffect helper the per-action
-      // loop uses. The fresh observe is also stashed in cachedPostState so
-      // the next step's pre-step observe can reuse it.
-      this.bus.emitNow({
-        type: 'verify-started',
-        runId,
-        turn: turnNumber,
-        expectedEffect: step.expectedEffect,
-      })
-      const verifyStartedAt = Date.now()
-      // Auto-pass list — these actions either don't observably mutate
-      // the page state OR they're self-verifying (the underlying Playwright
-      // call throws on real failure, so a successful return means the
-      // mutation actually happened). Strict expectedEffect verification
-      // would generate false negatives on the per-action loop fallback for
-      // these. Plan execution trusts the execute result.
-      //
-      // - wait / scroll / hover: don't mutate observable snapshot state
-      // - runScript / evaluate / verifyPreview: meta actions
-      // - fill / clickSequence: self-verifying (Playwright throws on miss),
-      //   AND input values don't always reflect in the ARIA snapshot, so
-      //   the permissive "did state change?" check would also miss them
-      const isAutoPass =
-        step.action.action === 'wait'
-        || step.action.action === 'scroll'
-        || step.action.action === 'hover'
-        || step.action.action === 'runScript'
-        || step.action.action === 'extractWithIndex'
-        || step.action.action === 'evaluate'
-        || step.action.action === 'verifyPreview'
-        || step.action.action === 'fill'
-        || step.action.action === 'clickSequence'
-      // Settle wait for mutating actions, mirroring verifyEffect's logic
-      const needsSettleWait = step.action.action === 'click'
-        || step.action.action === 'navigate'
-        || step.action.action === 'press'
-        || step.action.action === 'select'
-        || step.action.action === 'fill'
-        || step.action.action === 'clickSequence'
-      const observePromise = this.driver.observe().catch(() => preStepState)
-      if (needsSettleWait) {
-        await Promise.all([
-          observePromise,
-          new Promise((r) => setTimeout(r, 50)),
-        ])
-      }
-      const postStepState = await observePromise
-      this.cachedPostState = postStepState
-      lastState = postStepState
-
-      // Plan verification is more permissive than per-action verification:
-      // a step passes if (a) it's a non-mutating action, OR (b) the strict
-      // verifier passes, OR (c) the snapshot/url changed in any meaningful
-      // way (the action did SOMETHING). Strict failure-on-no-change is
-      // appropriate for the per-action loop where the agent can recover,
-      // but plan execution needs to push forward unless there's positive
-      // evidence of failure.
-      let verifyResult: { verified: boolean; reason?: string }
-      if (isAutoPass) {
-        verifyResult = { verified: true }
-      } else {
-        const strictResult = verifyExpectedEffect({
-          expectedEffect: step.expectedEffect,
-          preActionState: preStepState,
-          postActionState: postStepState,
-        })
-        if (strictResult.verified) {
-          verifyResult = strictResult
-        } else {
-          // Permissive fallback: did the page change at all?
-          const stateChanged =
-            preStepState.url !== postStepState.url
-            || preStepState.title !== postStepState.title
-            || preStepState.snapshot !== postStepState.snapshot
-          if (stateChanged) {
-            verifyResult = { verified: true }
-          } else {
-            verifyResult = strictResult
-          }
-        }
-      }
-      turn.verified = verifyResult.verified
-      if (!verifyResult.verified) {
-        turn.verificationFailure = verifyResult.reason
-      }
-      turn.durationMs = Date.now() - stepStartedAt
-      turns.push(turn)
-      this.onTurn?.(turn)
-
-      this.bus.emitNow({
-        type: 'verify-completed',
-        runId,
-        turn: turnNumber,
-        verified: verifyResult.verified,
-        ...(verifyResult.reason ? { reason: verifyResult.reason } : {}),
-        durationMs: Date.now() - verifyStartedAt,
-      })
-      this.bus.emitNow({
-        type: 'plan-step-executed',
-        runId,
-        turn: turnNumber,
-        stepIndex: stepIdx + 1,
-        totalSteps: plan.steps.length,
-        action: step.action,
-        executeSuccess: true,
-        verified: verifyResult.verified,
-        durationMs: Date.now() - stepStartedAt,
-        ...(verifyResult.reason ? { verifyReason: verifyResult.reason } : {}),
-      })
-
-      if (!verifyResult.verified) {
-        this.bus.emitNow({
-          type: 'plan-deviated',
-          runId,
-          turn: turnNumber,
-          stepIndex: stepIdx + 1,
-          totalSteps: plan.steps.length,
-          reason: `verification failed at step ${stepIdx + 1}: ${verifyResult.reason ?? 'expected effect not observed'}`,
-        })
-        return {
-          kind: 'deviated',
-          lastState,
-          failedStepIndex: stepIdx,
-          reason: `verification failed at step ${stepIdx + 1}: ${verifyResult.reason ?? 'expected effect not observed'}`,
-          turnsConsumed: stepIdx + 1,
-        }
-      }
-    }
-
-    // Auto-complete when the plan ends with meaningful runScript output.
-    const lastStep = plan.steps[plan.steps.length - 1]
-    if (
-      lastStep
-      && lastStep.action.action === 'runScript'
-      && isMeaningfulRunScriptOutput(lastRunScriptOutput)
-    ) {
-      const synthTurnNumber = currentTurnIndex + 1
-      const synthTurn: Turn = {
-        turn: synthTurnNumber,
-        state: lastState,
-        action: { action: 'complete', result: lastRunScriptOutput! },
-        reasoning: 'Auto-complete: plan ended after runScript, runner emitted complete with the runScript output',
-        durationMs: 0,
-      }
-      turns.push(synthTurn)
-      this.onTurn?.(synthTurn)
-      this.bus.emitNow({
-        type: 'plan-step-executed',
-        runId,
-        turn: synthTurnNumber,
-        stepIndex: plan.steps.length + 1,
-        totalSteps: plan.steps.length + 1,
-        action: synthTurn.action,
-        executeSuccess: true,
-        verified: true,
-        durationMs: 0,
-      })
-      if (this.config.debug) {
-        console.log(`[Runner] Auto-emitted complete with runScript output (${lastRunScriptOutput!.length} chars) after plan exhausted`)
-      }
-      return {
-        kind: 'completed',
-        lastState,
-        finalResult: lastRunScriptOutput!,
-        turnsConsumed: plan.steps.length + 1,
-      }
-    }
-
-    // If the plan produced extractWithIndex matches, fall through with the
-    // match list so the LLM can choose the correct index.
-    if (lastExtractOutput) {
-      return {
-        kind: 'deviated',
-        lastState,
-        failedStepIndex: plan.steps.length,
-        reason: `plan completed extractWithIndex but the LLM must read the matches and pick by index. Match list:\n${lastExtractOutput.slice(0, 4000)}\n\nPick the index whose text matches the goal, then emit complete with result: <picked text>`,
-        turnsConsumed: plan.steps.length,
-      }
-    }
-
-    // If the plan ends with runScript but output is empty or placeholder-like,
-    // fall through to per-action mode instead of completing with bad data.
-    if (
-      lastStep
-      && lastStep.action.action === 'runScript'
-      && !isMeaningfulRunScriptOutput(lastRunScriptOutput)
-    ) {
-      if (this.config.debug) {
-        console.log(`[Runner] runScript returned no meaningful output (${JSON.stringify(lastRunScriptOutput).slice(0, 100)}); falling through to per-action loop for two-pass extraction`)
-      }
-      return {
-        kind: 'deviated',
-        lastState,
-        failedStepIndex: plan.steps.length - 1,
-        reason: `runScript returned no meaningful output (got: ${JSON.stringify(lastRunScriptOutput).slice(0, 200)}). The first-pass extraction failed — re-observe the page and try extractWithIndex with a wide query (e.g. 'p, span, dd, code') and a contains filter naming the expected text fragment. Pick-by-content beats pick-by-selector when the planner couldn't see the data at plan time.`,
-        turnsConsumed: plan.steps.length,
-      }
-    }
-
-    // All steps verified BUT the plan ended without an explicit complete/abort.
-    // This means the planner emitted a finite sequence of "work" steps and
-    // didn't terminate. The right behavior is NOT to fabricate a complete —
-    // we treat plan exhaustion as a deviation that triggers fallback to the
-    // per-action loop. The per-action loop will continue from the current
-    // state and emit `complete` when the goal is genuinely met.
-    return {
-      kind: 'deviated',
-      lastState,
-      failedStepIndex: plan.steps.length,
-      reason: 'plan exhausted without an explicit complete or abort step — falling through to per-action loop to finish the task',
-      turnsConsumed: plan.steps.length,
-    }
+    return executePlanImpl(this, plan, scenario, runId, turns, runState, startingTurnIndex, planCallTokens)
   }
 
   private async verifyEffect(
@@ -2917,33 +2507,7 @@ export class BrowserAgent {
     preActionState: PageState,
     actionType?: Action['action'],
   ): Promise<{ verified: boolean; reason?: string }> {
-    // Only pause for actions that mutate the page in flight (navigation,
-    // clicks that may trigger XHR/route transitions, form submits). For
-    // pure reads, scrolls, hovers, and waits the page state is already
-    // settled by the time execute returns. The previous unconditional
-    // 100ms wait was pure dead time on every turn.
-    const needsSettleWait = actionType === 'click'
-      || actionType === 'navigate'
-      || actionType === 'press'
-      || actionType === 'select';
-    // Kick observe off immediately and let the settle wait race against it.
-    // observe() polls waitForLoadState internally, so the 50ms settle is
-    // really only there to let click handlers schedule their first XHR; we
-    // don't need to *block* on it before starting observe.
-    const observePromise = this.driver.observe().catch(() => preActionState);
-    if (needsSettleWait) {
-      await Promise.all([
-        observePromise,
-        new Promise(r => setTimeout(r, 50)),
-      ]);
-    }
-    const postState = await observePromise;
-    this.cachedPostState = postState;
-    return verifyExpectedEffect({
-      expectedEffect,
-      preActionState,
-      postActionState: postState,
-    });
+    return verifyEffectImpl(this, expectedEffect, preActionState, actionType);
   }
 
   private async buildSearchResultsScoutFeedback(
@@ -2952,62 +2516,7 @@ export class BrowserAgent {
     allowedDomains: string[] | undefined,
     seenUrls: Set<string>,
   ): Promise<string> {
-    if (!buildSearchResultsGuidance(state, goal, allowedDomains)) return '';
-    if (seenUrls.has(state.url)) return '';
-
-    const page = this.driver.getPage?.();
-    if (!page) return '';
-
-    try {
-      const candidates = await page.evaluate(() => {
-        const items: Array<{ title: string; href: string }> = [];
-        const seen = new Set<string>();
-        const selectors = [
-          'main a[href]',
-          '[role="main"] a[href]',
-          'article a[href]',
-          '.search-results a[href]',
-          '#search-results a[href]',
-          '.results a[href]',
-          'ol a[href]',
-        ];
-        const fallbackLinks = Array.from(document.querySelectorAll('a[href]'));
-        const links = selectors
-          .flatMap((selector) => Array.from(document.querySelectorAll(selector)))
-          .concat(fallbackLinks);
-        const noisePattern = /\b(next|previous|page \d+|show more|show fewer|filter|sort|home|contact|privacy|accessibility|search)\b/i;
-
-        for (const node of links) {
-          const anchor = node as HTMLAnchorElement;
-          const href = anchor.href?.trim();
-          const title = (anchor.innerText || anchor.textContent || '').replace(/\s+/g, ' ').trim();
-          if (!href || !title || title.length < 12 || title.length > 220) continue;
-          if (href.startsWith('javascript:') || href.startsWith('mailto:') || href.includes('#')) continue;
-          if (href.includes('results.aspx') && !/open government|dataset|data|news release|press release/i.test(title)) continue;
-          if (noisePattern.test(title) && !/open government|dataset|data|news release|press release/i.test(title)) continue;
-          const key = `${title}::${href}`;
-          if (seen.has(key)) continue;
-          seen.add(key);
-          items.push({ title, href });
-          if (items.length >= 24) break;
-        }
-        return items;
-      });
-
-      if (!Array.isArray(candidates) || candidates.length === 0) return '';
-      const ranked = rankSearchCandidates(goal, candidates, allowedDomains);
-      const recommendation = ranked[0];
-      seenUrls.add(state.url);
-      return [
-        'SEARCH RESULTS CANDIDATES:',
-        ...ranked.map((candidate, index) => `${index + 1}. ${candidate.title} — ${candidate.href} (score ${candidate.score})`),
-        recommendation
-          ? `BEST MATCH RECOMMENDATION: prefer "${recommendation.title}" because it best matches the requested entity, content type, and host constraints.`
-          : '',
-      ].join('\n');
-    } catch {
-      return '';
-    }
+    return buildSearchResultsScoutFeedbackImpl(this, state, goal, allowedDomains, seenUrls);
   }
 
   private async buildVisibleLinkScoutRecommendation(
@@ -3015,39 +2524,7 @@ export class BrowserAgent {
     goal: string,
     allowedDomains: string[] | undefined,
   ): Promise<{ ref: string; text: string; confidence: number; reasoning: string } | undefined> {
-    const scoutConfig = this.config.scout;
-    if (!scoutConfig?.enabled) return undefined;
-    if (!shouldUseVisibleLinkScoutPage(state, goal, allowedDomains)) return undefined;
-
-    const ranked = getRankedVisibleLinkCandidates(state, goal, allowedDomains);
-    const maxCandidates = Math.max(2, Math.min(scoutConfig.maxCandidates ?? 3, 5));
-    const candidates = await this.filterScoutCandidatesByAllowedDomains(
-      ranked.slice(0, maxCandidates),
-      allowedDomains,
-    );
-    if (!shouldUseVisibleLinkScout(candidates, scoutConfig)) return undefined;
-
-    const scoutState = scoutConfig.useVision
-      ? await this.attachDecisionScreenshot(state)
-      : state;
-    const extraContext = allowedDomains && allowedDomains.length > 0
-      ? `Host constraint: prefer only ${allowedDomains.join(', ')}.`
-      : undefined;
-    const recommendation = await this.brain.recommendLinkCandidate(
-      goal,
-      scoutState,
-      candidates,
-      extraContext,
-    );
-    const matched = candidates.find((candidate) => candidate.ref === recommendation.selector);
-    if (!matched) return undefined;
-
-    return {
-      ref: matched.ref,
-      text: matched.text,
-      confidence: recommendation.confidence,
-      reasoning: recommendation.reasoning,
-    };
+    return buildVisibleLinkScoutRecommendationImpl(this, state, goal, allowedDomains);
   }
 
   private async buildBranchLinkRecommendation(
@@ -3055,64 +2532,14 @@ export class BrowserAgent {
     goal: string,
     allowedDomains: string[] | undefined,
   ): Promise<{ ref: string; text: string; confidence: number; reasoning: string } | undefined> {
-    const scoutConfig = this.config.scout;
-    if (!scoutConfig?.enabled || !scoutConfig.readOnlyTop2Challenger) return undefined;
-    if (!shouldUseVisibleLinkScoutPage(state, goal, allowedDomains)) return undefined;
-
-    const ranked = getRankedVisibleLinkCandidates(state, goal, allowedDomains);
-    const candidates = ranked.slice(0, 2);
-    if (!shouldUseBoundedBranchExplorer(candidates, scoutConfig)) return undefined;
-    if (!this.driver.inspectSelectorHref || !this.driver.getPage) return undefined;
-
-    const page = this.driver.getPage();
-    if (!page) return undefined;
-
-    const settled = await Promise.all(
-      candidates.map(async (candidate) => {
-        const href = await this.driver.inspectSelectorHref!(candidate.ref).catch(() => undefined);
-        if (!href) return undefined;
-        const preview = await inspectBranchPreview(page, href, 8000);
-        if (!preview) return undefined;
-        return { ref: candidate.ref, text: candidate.text, href, score: scoreBranchPreview(goal, preview, allowedDomains), preview };
-      }),
-    );
-    const previews = settled.filter(
-      (r): r is { ref: string; text: string; href: string; score: number; preview: BranchPreview } => r !== undefined,
-    );
-
-    if (previews.length < 2) return undefined;
-    previews.sort((a, b) => b.score - a.score);
-    const [top, second] = previews;
-    if (top.score <= second.score) return undefined;
-    if (top.score < 4) return undefined;
-
-    return {
-      ref: top.ref,
-      text: top.text,
-      confidence: Math.min(0.95, 0.7 + Math.max(0, top.score - second.score) / 20),
-      reasoning: `Branch preview favored ${top.href} (${top.preview.title || top.preview.finalUrl}) over ${second.href} based on content-type and goal-match signals.`,
-    };
+    return buildBranchLinkRecommendationImpl(this, state, goal, allowedDomains);
   }
 
-  private async filterScoutCandidatesByAllowedDomains(
+  async filterScoutCandidatesByAllowedDomains(
     candidates: Array<{ ref: string; text: string; score: number }>,
     allowedDomains: string[] | undefined,
   ): Promise<Array<{ ref: string; text: string; score: number }>> {
-    if (!allowedDomains || allowedDomains.length === 0 || !this.driver.inspectSelectorHref) {
-      return candidates;
-    }
-
-    const allowedHosts = new Set(allowedDomains.map((domain) => domain.toLowerCase()));
-    const resolved = await Promise.all(
-      candidates.map(async (candidate) => {
-        const href = await this.driver.inspectSelectorHref!(candidate.ref).catch(() => undefined);
-        const host = href ? safeHostname(href) : undefined;
-        return { candidate, host };
-      }),
-    );
-    return resolved
-      .filter(({ host }) => !host || allowedHosts.has(host))
-      .map(({ candidate }) => candidate);
+    return filterScoutCandidatesByAllowedDomainsImpl(this, candidates, allowedDomains);
   }
 
   private async inspectDisallowedSearchClick(
@@ -3120,63 +2547,18 @@ export class BrowserAgent {
     scenario: Scenario,
     action: Action,
   ): Promise<string | undefined> {
-    if (action.action !== 'click') return undefined;
-    if (!scenario.allowedDomains || scenario.allowedDomains.length === 0) return undefined;
-    if (!buildSearchResultsGuidance(state, scenario.goal, scenario.allowedDomains)) return undefined;
-    if (!this.driver.inspectSelectorHref) return undefined;
-
-    const href = await this.driver.inspectSelectorHref(action.selector);
-    const host = href ? safeHostname(href) : undefined;
-    if (!href || !host) return undefined;
-    const allowedLower = scenario.allowedDomains.map((domain) => domain.toLowerCase());
-    if (allowedLower.includes(host)) return undefined;
-    // First-party subdomain tolerance
-    if (allowedLower.some((h) => domainRoot(h) === domainRoot(host))) return undefined;
-
-    return [
-      `Blocked action: selector ${action.selector} resolves to ${href}, which is outside the allowed host set: ${scenario.allowedDomains.join(', ')}.`,
-      'Choose a result from an allowed host instead, even if the snippet text looks relevant.',
-    ].join(' ');
+    return inspectDisallowedSearchClickImpl(this, state, scenario, action);
   }
 
   private async enforceAllowedDomainBoundary(
     preActionState: PageState,
     scenario: Scenario,
   ): Promise<string | undefined> {
-    if (!scenario.allowedDomains || scenario.allowedDomains.length === 0) return undefined;
-
-    const currentUrl = this.driver.getUrl?.() ?? preActionState.url;
-    const currentHost = safeHostname(currentUrl);
-    if (!currentHost) return undefined;
-
-    const allowedHosts = scenario.allowedDomains.map((domain) => domain.toLowerCase());
-    if (allowedHosts.includes(currentHost)) return undefined;
-
-    // First-party subdomain tolerance: allow navigation within the same registrable domain
-    const currentRoot = domainRoot(currentHost);
-    if (allowedHosts.some((h) => domainRoot(h) === currentRoot)) return undefined;
-
-    const previousHost = safeHostname(preActionState.url);
-    if (previousHost && allowedHosts.includes(previousHost)) {
-      await this.driver.execute({ action: 'navigate', url: preActionState.url }).catch(() => {});
-    } else if (scenario.startUrl) {
-      await this.driver.execute({ action: 'navigate', url: scenario.startUrl }).catch(() => {});
-    }
-
-    return [
-      `Boundary violation: landed on ${currentUrl}, but the allowed host set is ${allowedHosts.join(', ')}.`,
-      'Return to an allowed host and continue from there; do not rely on disallowed subdomains even if their snippet looks relevant.',
-    ].join(' ');
+    return enforceAllowedDomainBoundaryImpl(this, preActionState, scenario);
   }
 
-  private async attachDecisionScreenshot(state: PageState): Promise<PageState> {
-    if (state.screenshot || !this.driver.screenshot) return state;
-    try {
-      const screenshot = await this.driver.screenshot();
-      return { ...state, screenshot: screenshot.toString('base64') };
-    } catch {
-      return state;
-    }
+  async attachDecisionScreenshot(state: PageState): Promise<PageState> {
+    return attachDecisionScreenshotImpl(this, state);
   }
 }
 
