@@ -286,6 +286,10 @@ describe('parseDirection', () => {
 
 // ── createBrainGenerator (adapter, injected mock model) ──────────────────────
 
+// Each mocked call reports a fixed token cost so a test can assert the generator
+// sums tokens across every completed call (parsed or not).
+const TOKENS_PER_CALL = 7
+
 function mockModel(responder: (user: string) => string | Promise<string>): GenerationModel & {
   calls: Array<{ system: string; user: string }>
 } {
@@ -294,7 +298,7 @@ function mockModel(responder: (user: string) => string | Promise<string>): Gener
     calls,
     async complete(system: string, user: string) {
       calls.push({ system, user })
-      return { text: await responder(user) }
+      return { text: await responder(user), tokensUsed: TOKENS_PER_CALL }
     },
   }
 }
@@ -311,10 +315,15 @@ describe('createBrainGenerator', () => {
     const gen = createBrainGenerator(model)
     const seen: RedesignDirection[] = []
 
-    const directions = await gen.generate(ctx, exemplars, { count: 3, onDirection: (d) => seen.push(d) })
+    const { directions, tokensUsed } = await gen.generate(ctx, exemplars, {
+      count: 3,
+      onDirection: (d) => seen.push(d),
+    })
 
     expect(model.calls).toHaveLength(3)
     expect(directions).toHaveLength(3)
+    // every model call's tokens are summed into the pass total
+    expect(tokensUsed).toBe(3 * TOKENS_PER_CALL)
     // onDirection streamed once per accepted direction
     expect(seen).toHaveLength(3)
     // ids are normalised to unique, deterministic slot ids
@@ -333,11 +342,16 @@ describe('createBrainGenerator', () => {
     const gen = createBrainGenerator(model)
     const seen: RedesignDirection[] = []
 
-    const directions = await gen.generate(ctx, exemplars, { count: 3, onDirection: (d) => seen.push(d) })
+    const { directions, tokensUsed } = await gen.generate(ctx, exemplars, {
+      count: 3,
+      onDirection: (d) => seen.push(d),
+    })
 
     expect(model.calls).toHaveLength(3)
     expect(directions).toHaveLength(2)
     expect(seen).toHaveLength(2)
+    // a malformed RESPONSE still billed tokens, so all 3 calls count toward cost
+    expect(tokensUsed).toBe(3 * TOKENS_PER_CALL)
     // ids stay unique even with a gap at the dropped slot
     expect(new Set(directions.map((d) => d.id)).size).toBe(2)
   })
@@ -348,14 +362,16 @@ describe('createBrainGenerator', () => {
       return validDirectionJson(idFor(user, ids))
     })
     const gen = createBrainGenerator(model)
-    const directions = await gen.generate(ctx, exemplars, { count: 3 })
+    const { directions, tokensUsed } = await gen.generate(ctx, exemplars, { count: 3 })
     expect(directions).toHaveLength(2)
+    // a thrown call reports no tokens; only the 2 completed calls count
+    expect(tokensUsed).toBe(2 * TOKENS_PER_CALL)
   })
 
   it('caps the fan-out at the requested count', async () => {
     const complete = vi.fn(async (_system: string, user: string) => ({ text: validDirectionJson(idFor(user, ids)) }))
     const gen = createBrainGenerator({ complete })
-    const directions = await gen.generate(ctx, exemplars, { count: 2 })
+    const { directions } = await gen.generate(ctx, exemplars, { count: 2 })
     expect(complete).toHaveBeenCalledTimes(2)
     expect(directions).toHaveLength(2)
   })
@@ -364,7 +380,7 @@ describe('createBrainGenerator', () => {
     const complete = vi.fn(async (_system: string, user: string) => ({ text: validDirectionJson(idFor(user, ids)) }))
     const gen = createBrainGenerator({ complete }, { maxOutputTokens: 999 })
     // request 10 directions but only 3 exemplars exist
-    const directions = await gen.generate(ctx, exemplars, { count: 10 })
+    const { directions } = await gen.generate(ctx, exemplars, { count: 10 })
     expect(complete).toHaveBeenCalledTimes(3)
     expect(directions).toHaveLength(3)
     expect(complete.mock.calls[0][2]).toEqual({ maxOutputTokens: 999 })

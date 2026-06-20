@@ -4,13 +4,13 @@
  *
  * Reuse, not reimplementation: the raw DOM walk (`extractTokensFromDOM`), the
  * multi-viewport merge, colour clustering and grid detection all already live in
- * `extractDesignTokens` (`cli-design-audit.ts`). This adapter calls that one
- * exported function and hands its `DesignTokens` to `toDesignDNA` — it owns zero
- * extraction logic of its own.
+ * `extractDesignTokens` (`design/audit/tokens/extract.ts`, a leaf). This adapter
+ * calls that one exported function and hands its `DesignTokens` to `toDesignDNA`
+ * — it owns zero extraction logic of its own.
  *
- * The reach into `cli-design-audit.ts` is a LAZY `await import` (mirroring
- * `compare.ts`) so no static engine→cli-design-audit→pipeline import cycle is
- * created; the pure cores never touch it.
+ * The reach into the tokens leaf is a LAZY `await import` (mirroring `compare.ts`)
+ * so the engine takes no static dependency on the browser-heavy extractor; the
+ * pure cores never touch it.
  */
 
 import type { DesignDnaExtractor, DnaCapture, ExtractPageDnaOptions } from '../contracts.js'

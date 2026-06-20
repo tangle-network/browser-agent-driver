@@ -25,6 +25,7 @@ import type {
   RedesignGenerator,
   RedesignDirection,
   GenerationContext,
+  GenerationResult,
   RetrievalResult,
 } from '../contracts.js'
 import { buildDirectionPrompt } from './prompt.js'
@@ -66,30 +67,34 @@ async function generateOne(
   opts: BrainGeneratorOptions,
   reasons: string[],
   onDirection?: (d: RedesignDirection) => void,
-): Promise<RedesignDirection | null> {
+): Promise<{ direction: RedesignDirection | null; tokensUsed: number }> {
   try {
     const { system, user } = buildDirectionPrompt(ctx, hit, { maxRefChars: opts.maxRefChars })
-    const { text } = await model.complete(system, user, {
+    const { text, tokensUsed } = await model.complete(system, user, {
       maxOutputTokens: opts.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
     })
+    // The call's tokens count toward cost even when its response fails to parse —
+    // a malformed completion still billed. Only a thrown call (caught below)
+    // reports nothing, because it never produced a usage figure.
+    const tokens = tokensUsed ?? 0
     const parsed = parseDirection(text, allowedIds)
     if (!parsed.ok) {
       reasons.push(`slot ${slot} parse failed (len=${text.length})`)
       if (process.env.BAD_DEBUG_REFGEN)
         console.error(`[refgen] slot ${slot} parse failed: ${JSON.stringify(parsed)} | len=${text.length} head=${JSON.stringify(text.slice(0, 240))}`)
-      return null
+      return { direction: null, tokensUsed: tokens }
     }
     // Normalise the id to a deterministic, collision-free slot id — parallel
     // calls share a prompt skeleton and may echo the same example id. The
     // model's evocative `name` and grounding are preserved.
     const direction: RedesignDirection = { ...parsed.direction, id: `direction-${slot + 1}` }
     onDirection?.(direction)
-    return direction
+    return { direction, tokensUsed: tokens }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     reasons.push(`slot ${slot} call failed: ${message}`)
     if (process.env.BAD_DEBUG_REFGEN) console.error(`[refgen] slot ${slot} call failed: ${message}`)
-    return null
+    return { direction: null, tokensUsed: 0 }
   }
 }
 
@@ -105,7 +110,7 @@ export function createBrainGenerator(
       ctx: GenerationContext,
       exemplars: RetrievalResult[],
       genOpts?: { count?: number; onDirection?: (d: RedesignDirection) => void },
-    ): Promise<RedesignDirection[]> {
+    ): Promise<GenerationResult> {
       const count = clampCount(genOpts?.count ?? opts.count ?? exemplars.length, exemplars.length)
       const selected = exemplars.slice(0, count)
       // Grounding is validated against the FULL retrieved set, so a direction may
@@ -123,16 +128,22 @@ export function createBrainGenerator(
       )
 
       // Stable slot order; dropped (errored/rejected) calls simply leave a gap.
+      // Tokens accrue from EVERY completed call (parsed or not) so the cost the
+      // engine reports reflects what generation actually spent.
       const directions: RedesignDirection[] = []
+      let tokensUsed = 0
       for (const r of settled) {
-        if (r.status === 'fulfilled' && r.value) directions.push(r.value)
+        if (r.status === 'fulfilled') {
+          tokensUsed += r.value.tokensUsed
+          if (r.value.direction) directions.push(r.value.direction)
+        }
       }
       if (directions.length === 0 && selected.length > 0 && reasons.length > 0) {
         console.warn(
           `[reference] all ${selected.length} redesign generation call(s) failed — first reason: ${reasons[0]}`,
         )
       }
-      return directions
+      return { directions, tokensUsed }
     },
   }
 }

@@ -444,7 +444,7 @@ export interface RawScrollCapture {
  * The narrow capture seam: given an already-open, settled live page, run the
  * stepped top→bottom scroll pass and return a {@link RawScrollCapture}, or
  * `undefined` when nothing was observed. The shipped implementation lives in the
- * browser layer (`cli-design-audit`); tests inject a fake. Pure consumers
+ * browser layer (`design/audit/tokens/extract.ts`); tests inject a fake. Pure consumers
  * (`toDesignDNA` / `deriveMotion`) never touch this — they receive the already
  * folded result, so the DNA core stays browser-free and deterministic.
  */
@@ -699,16 +699,32 @@ export type DirectionParseResult =
   | DirectionParseError
 
 /**
+ * The output of one generation pass: the accepted directions plus the TOTAL
+ * generation tokens consumed across every model call the pass made — INCLUDING
+ * calls whose response failed to parse, which still cost tokens. Surfacing the
+ * sum here is what lets the engine report a COMPLETE `tokensUsed` (generation +
+ * judging) instead of a judge-only undercount.
+ */
+export interface GenerationResult {
+  /** Accepted directions in stable slot order (a dropped call leaves no entry). */
+  directions: RedesignDirection[]
+  /** Sum of `tokensUsed` over every generation model call this pass made. */
+  tokensUsed: number
+}
+
+/**
  * LLM boundary: turn page context + retrieved exemplars into 2-3 grounded
  * directions. The shipped adapter fans out one cheap `brain.complete` call per
- * exemplar concurrently; tests inject a fake returning canned JSON.
+ * exemplar concurrently; tests inject a fake returning canned JSON. Returns the
+ * directions alongside the summed generation tokens (see {@link GenerationResult})
+ * so the engine's cost accounting covers generation, not only judging.
  */
 export interface RedesignGenerator {
   generate(
     ctx: GenerationContext,
     exemplars: RetrievalResult[],
     opts?: { count?: number; onDirection?: (d: RedesignDirection) => void },
-  ): Promise<RedesignDirection[]>
+  ): Promise<GenerationResult>
 }
 
 // ── Judging & ranking ──────────────────────────────────────────────────────────

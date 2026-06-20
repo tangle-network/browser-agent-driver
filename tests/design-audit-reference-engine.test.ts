@@ -136,6 +136,10 @@ function makeJudge(favoured: Set<string>, tokens = 5): TasteJudge {
   }
 }
 
+// Deterministic per-direction generation cost so a test can assert the engine
+// folds generation tokens into the complete `tokensUsed`, not just judge tokens.
+const GEN_TOKENS_PER_DIRECTION = 13
+
 interface BuiltDeps {
   deps: ReferenceEngineDeps
   loadCalls: () => number
@@ -174,7 +178,8 @@ function buildFakeDeps(corpus: Exemplar[], favoured: Set<string>): BuiltDeps {
         makeDirection('direction-2', ids),
         makeDirection('direction-3', ids),
       ]
-      return all.slice(0, count)
+      const directions = all.slice(0, count)
+      return { directions, tokensUsed: directions.length * GEN_TOKENS_PER_DIRECTION }
     },
   }
   const deps: ReferenceEngineDeps = {
@@ -222,8 +227,12 @@ describe('runRedesignCore', () => {
     // acquire-once: the core retrieves the pre-loaded corpus, never store.load()
     expect(loadCalls()).toBe(0)
 
-    // judge tokens accumulated through the wrapped judge boundary
-    expect(result.tokensUsed).toBeGreaterThan(0)
+    // tokensUsed is the COMPLETE cost: judge tokens (through the wrapped boundary)
+    // PLUS the generation tokens the generator summed — strictly above the
+    // generation-only floor, and mirrored onto the artifact surface.
+    const generationTokens = result.artifact.directions.length * GEN_TOKENS_PER_DIRECTION
+    expect(result.tokensUsed).toBeGreaterThan(generationTokens)
+    expect(result.artifact.tokensUsed).toBe(result.tokensUsed)
   })
 
   it('emits exactly one measured contrast finding (parity with v1 measurementsToFindings)', async () => {

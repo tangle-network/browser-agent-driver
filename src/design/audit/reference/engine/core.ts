@@ -77,11 +77,12 @@ export async function runRedesignCore(
 ): Promise<RedesignRunResult> {
   const { config } = input
 
-  // Token accounting: the only LLM token signal the injected contracts surface
-  // is `RawVerdict.tokensUsed` on the judge boundary (the `RedesignGenerator`
-  // contract returns no per-call tokens). Wrap the judge once so every debias /
-  // quality call funnels its tokens into one honest counter — generation tokens
-  // are simply not observable here, never fabricated to look complete.
+  // Token accounting: both LLM legs report their cost. The judge boundary
+  // surfaces `RawVerdict.tokensUsed` per comparison — wrap it once so every
+  // debias / quality call funnels into one counter. `RedesignGenerator.generate`
+  // surfaces the summed generation tokens (folded in below). Adding the two
+  // yields a COMPLETE `tokensUsed` (generation + judging), never a judge-only
+  // undercount.
   let judgeTokens = 0
   const judge: TasteJudge = {
     id: deps.judge.id,
@@ -127,7 +128,9 @@ export async function runRedesignCore(
     dna,
     measurements: input.measurements,
   }
-  const directions = await deps.generator.generate(ctx, hits, { count: config.directionCount })
+  const { directions, tokensUsed: generationTokens } = await deps.generator.generate(ctx, hits, {
+    count: config.directionCount,
+  })
   if (directions.length === 0) {
     throw new Error(
       'reference engine: generator produced no redesign directions (all generation calls failed); ' +
@@ -162,6 +165,11 @@ export async function runRedesignCore(
     judgeDirectionLeg(judge, directions, plan.directionPairs, plan.reps, config.budget.concurrency, config.reference),
   ])
 
+  // Complete cost: judge tokens funnelled through the wrapped boundary above plus
+  // the generation tokens the generator summed. Both surfaces (artifact + result)
+  // report this total so neither undercounts to judge-only.
+  const tokensUsed = judgeTokens + generationTokens
+
   // 7. Roll the relative verdicts up into a winner.
   const ranking = deps.ranker.rank(directions.map((d) => d.id), verdicts)
 
@@ -178,7 +186,7 @@ export async function runRedesignCore(
     ranking,
     retrieval: hits,
     verdicts,
-    tokensUsed: judgeTokens,
+    tokensUsed,
     ...(referenceId ? { referenceId } : {}),
   })
 
@@ -196,7 +204,7 @@ export async function runRedesignCore(
     findings,
     classification: input.classification,
     measurements: input.measurements,
-    tokensUsed: judgeTokens,
+    tokensUsed,
   }
 }
 

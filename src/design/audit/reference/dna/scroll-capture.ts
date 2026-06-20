@@ -22,8 +22,9 @@
  *
  * `createScrollCapturer` wires (1)+(2) behind the narrow `ScrollCapturePage`
  * seam — it depends only on `evaluate`, never on Playwright, so it is browser-
- * free and fakeable. The live `cli-design-audit` extractor hands it a real
- * `Page`; tests hand it a fake whose `evaluate` returns canned samples.
+ * free and fakeable. The live token extractor (`design/audit/tokens/extract.ts`)
+ * hands it a real `Page`; tests hand it a fake whose `evaluate` returns canned
+ * samples.
  *
  * Honest signals: every quantity is measured. The capturer returns `undefined`
  * for a page that cannot scroll (nothing to observe); a page that scrolls but

@@ -790,6 +790,17 @@ export interface ExtractionResult {
  * console.log(tokens.brand)
  * ```
  */
+/**
+ * Reduce a candidate asset filename to a safe, separator-free basename so a
+ * DOM-controlled value (e.g. a hostile `@font-face` family `../../../tmp/evil`)
+ * can never escape the output directory when joined to it. Strips any path
+ * components and leading dots (no traversal, no dotfiles); returns `fallback`
+ * when nothing usable remains.
+ */
+export function safeAssetFilename(raw: string, fallback: string): string {
+  return path.basename(raw).replace(/^[.\s]+/, '') || fallback
+}
+
 export async function extractDesignTokens(opts: ExtractDesignTokensOptions): Promise<ExtractionResult> {
   const viewports = opts.viewports ?? [...VIEWPORTS]
   const outputDir = opts.outputDir ?? `./audit-results/${new URL(opts.url).hostname}-tokens-${Date.now()}`
@@ -963,8 +974,8 @@ export async function extractDesignTokens(opts: ExtractDesignTokensOptions): Pro
         if (!res.ok) continue
         const buffer = Buffer.from(await res.arrayBuffer())
         const urlPath = decodeURIComponent(new URL(ff.src).pathname)
-        const filename = path.basename(urlPath) || `${ff.family.replace(/\s+/g, '-')}-${ff.weight}-${ff.style}.${ff.format === 'unknown' ? 'bin' : ff.format}`
-        const localPath = path.join(fontDir, filename)
+        const rawName = path.basename(urlPath) || `${ff.family.replace(/\s+/g, '-')}-${ff.weight}-${ff.style}.${ff.format === 'unknown' ? 'bin' : ff.format}`
+        const localPath = path.join(fontDir, safeAssetFilename(rawName, 'font.bin'))
         fs.writeFileSync(localPath, buffer)
         downloadedFontFiles.push({ ...ff, localPath })
       } catch {

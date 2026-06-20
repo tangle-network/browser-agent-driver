@@ -131,7 +131,12 @@ function buildFakeDeps(corpus: Exemplar[], favoured: Set<string>): ReferenceEngi
     async generate(_ctx, exemplars, opts) {
       const ids = exemplars.map((e: RetrievalResult) => e.exemplar.id)
       const count = opts?.count ?? exemplars.length
-      return [makeDirection('direction-1', ids), makeDirection('direction-2', ids), makeDirection('direction-3', ids)].slice(0, count)
+      const directions = [
+        makeDirection('direction-1', ids),
+        makeDirection('direction-2', ids),
+        makeDirection('direction-3', ids),
+      ].slice(0, count)
+      return { directions, tokensUsed: directions.length * 5 }
     },
   }
   return {
