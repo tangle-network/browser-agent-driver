@@ -54,79 +54,24 @@ import { deriveDirectStartUrl, shouldAcceptRolledBookingCompletion } from './dir
 import { prepareGoogleFlightsSearch, shouldAcceptRolledGoogleFlightsCompletion } from './google-flights-preflight.js';
 import type { GoogleFlightsPreflightResult } from './google-flights-preflight.js';
 import { containsSelfContradictingCompletion } from './completion-language.js';
+import { detectBatchFillOpportunity } from './batch-fill.js';
+import {
+  DEFAULT_MAX_TURNS,
+  DEFAULT_RETRIES,
+  DEFAULT_RETRY_DELAY_MS,
+  DEFAULT_SUPERVISOR,
+  EXTENSION_TURNS_GRANTED,
+} from './constants.js';
+import { DEFI_BRAIN_CONTEXT } from './prompt-snippets.js';
+import { hasPlaceholderPattern, isMeaningfulRunScriptOutput } from './completion-policy.js';
+import { selectMicroPlanFollowUps } from './micro-plan.js';
+import { domainRoot } from './allowed-domains.js';
+import { decideMaxTurnsExtension } from './max-turns-extension.js';
 import type { ResolvedExtensions } from '../extensions/types.js';
 
-/**
- * Detect when the agent is filling a multi-field form one input at a time and
- * inject a hint that demands a `fill` batch on the next turn.
- *
- * Trigger conditions (all must hold):
- *   1. The agent's most recent action was a single-step `type` on the
- *      current URL
- *   2. The current snapshot has 2+ unused fillable refs (textbox /
- *      searchbox / combobox) that the agent hasn't typed into yet
- *   3. We haven't already injected this hint in the last turn (to avoid
- *      hint loops if the agent ignores it)
- *
- * The detector fires after one type action when two or more unused fields
- * remain, which catches common two-field-per-step forms before the agent
- * burns extra turns.
- *
- * The hint is high-priority (100) so it survives ctxBudget truncation, and
- * it explicitly lists the unused @refs from the current snapshot so the LLM
- * doesn't have to guess. The injection is gated by BAD_BATCH_HINT=0 for
- * rollback.
- */
-export function detectBatchFillOpportunity(turns: Turn[], state: PageState): string | null {
-  if (turns.length === 0) return null
-  const lastTurn = turns[turns.length - 1]
-
-  // Last action must be a single-step type on the current URL
-  if (lastTurn.action.action !== 'type') return null
-  if (lastTurn.state.url !== state.url) return null
-
-  // Collect the @refs the agent has typed into across the ENTIRE run on
-  // the same URL. The detector should never ask the agent to re-fill a
-  // field it already filled, even if the earlier fill happened many
-  // turns ago.
-  const usedRefs = new Set<string>()
-  for (const t of turns) {
-    if (t.state.url !== state.url) continue
-    const a = t.action
-    if (a.action === 'type' && 'selector' in a && typeof a.selector === 'string') {
-      usedRefs.add(a.selector)
-    }
-    if (a.action === 'fill') {
-      for (const k of Object.keys(a.fields ?? {})) usedRefs.add(k)
-      for (const k of Object.keys(a.selects ?? {})) usedRefs.add(k)
-      for (const k of a.checks ?? []) usedRefs.add(k)
-    }
-  }
-
-  // Find unused fillable refs in the current snapshot. We look for textbox,
-  // searchbox, combobox, and spinbutton roles — anything that takes text.
-  // Snapshot lines look like: `  - textbox "First name" [ref=t1f2a]`
-  const unusedRefs: Array<{ ref: string; name: string; role: string }> = []
-  for (const line of state.snapshot.split('\n')) {
-    const match = line.match(/\b(textbox|searchbox|combobox|spinbutton)\b[^"]*"([^"]*)"[^[]*\[ref=([^\]]+)\]/i)
-    if (!match) continue
-    const role = match[1].toLowerCase()
-    const name = match[2]
-    const ref = `@${match[3]}`
-    if (usedRefs.has(ref)) continue
-    unusedRefs.push({ ref, name, role })
-  }
-
-  // Need at least 2 unused fields to make batching worthwhile
-  if (unusedRefs.length < 2) return null
-
-  const refList = unusedRefs
-    .slice(0, 12) // cap so we don't explode the prompt
-    .map((u) => `  - ${u.ref} (${u.role}: "${u.name}")`)
-    .join('\n')
-
-  return `\n[BATCH FILL REQUIRED]\nYou just typed into a single field, but ${unusedRefs.length} more fillable fields are visible on this same form. STOP. Your NEXT action MUST be a \`fill\` action that batches ALL remaining unused fields on this page in one turn. Do not emit another single-step \`type\` — emit \`fill\` with multiple entries.\n\nUnused fillable @refs from the current snapshot (use these in your \`fill.fields\` map):\n${refList}\n\nExample:\n{\"action\":\"fill\",\"fields\":{\"${unusedRefs[0].ref}\":\"value1\",\"${unusedRefs[1].ref}\":\"value2\"}}\n`
-}
+// Re-export helpers that moved into sibling modules so existing import paths
+// (e.g. tests importing from './runner.js') keep working unchanged.
+export { detectBatchFillOpportunity, hasPlaceholderPattern, isMeaningfulRunScriptOutput };
 
 /** Build a structured session record from a completed run */
 function buildSession(scenario: Scenario, result: AgentResult): Session {
@@ -142,32 +87,6 @@ function buildSession(scenario: Scenario, result: AgentResult): Session {
     durationMs: result.totalMs,
   }
 }
-
-const DEFAULT_MAX_TURNS = 20;
-const DEFAULT_RETRIES = 3;
-const DEFAULT_RETRY_DELAY_MS = 1000;
-const DEFAULT_MICRO_PLAN_ACTIONS = 2;
-// Safe action verbs for micro-plans emitted by the model.
-const SAFE_MICRO_ACTIONS = new Set<Action['action']>(['click', 'type', 'press', 'hover', 'select', 'scroll', 'wait', 'clickAt', 'typeAt', 'clickLabel', 'typeLabel']);
-const DEFAULT_SUPERVISOR: Required<Pick<SupervisorConfig, 'enabled' | 'useVision' | 'minTurnsBeforeInvoke' | 'cooldownTurns' | 'maxInterventions' | 'hardStallWindow'>> = {
-  enabled: true,
-  useVision: true,
-  minTurnsBeforeInvoke: 5,
-  cooldownTurns: 3,
-  maxInterventions: 2,
-  hardStallWindow: 4,
-};
-
-const DEFI_BRAIN_CONTEXT =
-  '\nWALLET/DeFi MODE ACTIVE — crypto app patterns:\n' +
-  '- PERSISTENT WIDGETS: Many DeFi apps have always-on support/chat widgets (bottom-right) that show as alertdialog. These CANNOT be dismissed. Ignore them and interact with the page directly.\n' +
-  '- WALLET CONNECTION: Look for "Connect Wallet" button, select MetaMask. The wallet extension handles the approval popup automatically.\n' +
-  '- TOKEN SELECTION: If you need to change a token, click the token selector button (usually shows token symbol/icon), search for the token name, and select it from the dropdown.\n' +
-  '- TRANSACTION FLOW: Enter amount → wait for quote/estimate to load → click action button (Swap/Supply/etc.) → review dialog appears → stop before confirming in MetaMask.\n' +
-  '- LOADING STATES: DeFi apps make many RPC calls. Wait for balances and quotes to appear before clicking action buttons. If a button says "Enter amount" or is disabled, the app is still loading.\n' +
-  '- NATIVE ETH: Prefer native ETH over wrapped tokens (WETH) when possible — avoids ERC-20 spending approval steps.\n' +
-  '- NETWORK SELECTOR: Do NOT change the network/chain. If a network dropdown opens accidentally, close it immediately.\n' +
-  '- COOKIE BANNERS: Dismiss immediately via Escape or Reject button — don\'t spend multiple turns on consent dialogs.\n'
 
 export interface BrowserAgentOptions {
   driver: Driver;
@@ -209,71 +128,6 @@ export interface BrowserAgentOptions {
    * happens in the driver.
    */
   macroPromptBlock?: string;
-}
-
-/**
- * Detect placeholder patterns in a planner-generated complete.result.
- *
- * The planner has to commit to its `complete.result` text BEFORE any prior
- * runScript step actually runs, so on extraction tasks it fabricates
- * placeholders. We detect those patterns and substitute the runScript
- * output (deterministic, no extra LLM call).
- *
- * Patterns we catch:
- *   - JSON `null` literals (e.g. `{"x": null, "y": null}`)
- *   - "<from prior step>", "<placeholder>", "<value from ...>", "<extracted ...>", "<observed ...>"
- *   - "{{...}}" template markers
- *
- * Conservative on purpose — we only substitute when the planner clearly
- * didn't know real values at planning time. A complete.result that contains
- * actual data (no nulls, no placeholder markers) passes through unchanged.
- */
-export function hasPlaceholderPattern(text: string): boolean {
-  if (typeof text !== 'string' || text.length === 0) return false
-  if (/<from prior step>|<placeholder>|<value from|<extracted|<observed|<previous step|<runscript output>/i.test(text)) {
-    return true
-  }
-  if (/\{\{[^}]+\}\}/.test(text)) {
-    return true
-  }
-  // JSON-shape detection: a result that parses as JSON and contains null
-  // values is almost always a planner-fabricated extraction shell. Pure
-  // strings with the word "null" elsewhere don't match because we look
-  // for the JSON null literal pattern (`: null` or `[null`).
-  if (/:\s*null\b|\[\s*null\b/.test(text)) {
-    return true
-  }
-  return false
-}
-
-/** Returns true only when runScript output contains usable extracted data. */
-export function isMeaningfulRunScriptOutput(output: string | null | undefined): boolean {
-  if (typeof output !== 'string') return false
-  const trimmed = output.trim()
-  if (trimmed.length === 0) return false
-  if (trimmed === 'null' || trimmed === 'undefined' || trimmed === '""' || trimmed === "''") return false
-  // Empty JSON shells: `{}`, `[]`, `{"x": null}`, `[null, null]`
-  if (trimmed === '{}' || trimmed === '[]') return false
-  if (hasPlaceholderPattern(trimmed)) return false
-  // If the output parses as JSON and EVERY top-level value is null/empty,
-  // treat it as not meaningful. This catches `{"x": null, "y": ""}` even
-  // though the placeholder regex would already catch the null one.
-  try {
-    const parsed = JSON.parse(trimmed)
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      const values = Object.values(parsed)
-      if (values.length > 0) {
-        const allEmpty = values.every(
-          (v) => v === null || v === undefined || v === '' || v === 0,
-        )
-        if (allEmpty) return false
-      }
-    }
-    if (Array.isArray(parsed) && parsed.length === 0) return false
-  } catch {
-    // Not JSON, that's fine — fall through to "meaningful" if we got here.
-  }
-  return true
 }
 
 export function shouldUsePlannerForScenario(
@@ -411,9 +265,6 @@ export class BrowserAgent {
     // when they reach the configured cap while still making page progress.
     let maxTurns = isVisionMode ? Math.max(baseMaxTurns, 30) : baseMaxTurns;
     let extensionGranted = false;
-    const EXTENSION_TURNS_GRANTED = 5;
-    const EXTENSION_HARD_CAP = 25;
-    const EXTENSION_PROGRESS_LOOKBACK = 3;
     const retries = this.config.retries ?? DEFAULT_RETRIES;
     const retryDelayMs = this.config.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
     const turns: Turn[] = [];
@@ -802,26 +653,23 @@ export class BrowserAgent {
     for (let i = 1 + plannerStartTurn; i <= maxTurns; i++) {
       // Grant a one-time max-turns extension when the run reaches its cap
       // while still making recent progress.
-      if (
-        i === maxTurns
-        && !extensionGranted
-        && !isVisionMode
-        && maxTurns < EXTENSION_HARD_CAP
-        && runState.lastProgressTurn >= maxTurns - EXTENSION_PROGRESS_LOOKBACK
-      ) {
-        const extendedMax = Math.min(maxTurns + EXTENSION_TURNS_GRANTED, EXTENSION_HARD_CAP);
-        const extra = extendedMax - maxTurns;
-        if (extra > 0) {
-          this.bus.emitNow({
-            type: 'recovery-fired',
-            runId,
-            turn: i,
-            strategy: 'max-turns-extension',
-            feedback: `Granted +${extra} extra turns (cap ${maxTurns} → ${extendedMax}); progress at turn ${runState.lastProgressTurn}.`,
-          });
-          maxTurns = extendedMax;
-          extensionGranted = true;
-        }
+      const turnsExtension = decideMaxTurnsExtension({
+        turn: i,
+        maxTurns,
+        extensionGranted,
+        isVisionMode,
+        lastProgressTurn: runState.lastProgressTurn,
+      });
+      if (turnsExtension) {
+        this.bus.emitNow({
+          type: 'recovery-fired',
+          runId,
+          turn: i,
+          strategy: 'max-turns-extension',
+          feedback: `Granted +${turnsExtension.extra} extra turns (cap ${maxTurns} → ${turnsExtension.extendedMax}); progress at turn ${runState.lastProgressTurn}.`,
+        });
+        maxTurns = turnsExtension.extendedMax;
+        extensionGranted = true;
       }
 
       // Honor user-driven pause or abort from the interrupt controller.
@@ -2541,30 +2389,7 @@ export class BrowserAgent {
   }
 
   private selectFollowUpActions(primaryAction: Action, nextActions?: Action[]): Action[] {
-    const microPlanConfig = this.config.microPlan;
-    if (microPlanConfig?.enabled !== true || !Array.isArray(nextActions) || nextActions.length === 0) {
-      return [];
-    }
-
-    // Never chain follow-up actions behind terminal/meta actions.
-    if (!SAFE_MICRO_ACTIONS.has(primaryAction.action)) {
-      return [];
-    }
-
-    const limit = Math.max(
-      1,
-      Math.min(4, microPlanConfig.maxActionsPerTurn ?? DEFAULT_MICRO_PLAN_ACTIONS),
-    );
-    const remainingSlots = Math.max(0, limit - 1);
-    if (remainingSlots === 0) return [];
-
-    const selected: Action[] = [];
-    for (const action of nextActions) {
-      if (!SAFE_MICRO_ACTIONS.has(action.action)) continue;
-      selected.push(action);
-      if (selected.length >= remainingSlots) break;
-    }
-    return selected;
+    return selectMicroPlanFollowUps(primaryAction, nextActions, this.config.microPlan);
   }
 
   /** Persist knowledge, selector cache, and session history to disk */
@@ -3306,11 +3131,7 @@ export class BrowserAgent {
     const allowedLower = scenario.allowedDomains.map((domain) => domain.toLowerCase());
     if (allowedLower.includes(host)) return undefined;
     // First-party subdomain tolerance
-    const toRoot = (h: string) => {
-      const parts = h.split('.').filter(Boolean);
-      return parts.length <= 2 ? h : parts.slice(-2).join('.');
-    };
-    if (allowedLower.some((h) => toRoot(h) === toRoot(host))) return undefined;
+    if (allowedLower.some((h) => domainRoot(h) === domainRoot(host))) return undefined;
 
     return [
       `Blocked action: selector ${action.selector} resolves to ${href}, which is outside the allowed host set: ${scenario.allowedDomains.join(', ')}.`,
@@ -3332,12 +3153,8 @@ export class BrowserAgent {
     if (allowedHosts.includes(currentHost)) return undefined;
 
     // First-party subdomain tolerance: allow navigation within the same registrable domain
-    const toRoot = (h: string) => {
-      const parts = h.split('.').filter(Boolean);
-      return parts.length <= 2 ? h : parts.slice(-2).join('.');
-    };
-    const currentRoot = toRoot(currentHost);
-    if (allowedHosts.some((h) => toRoot(h) === currentRoot)) return undefined;
+    const currentRoot = domainRoot(currentHost);
+    if (allowedHosts.some((h) => domainRoot(h) === currentRoot)) return undefined;
 
     const previousHost = safeHostname(preActionState.url);
     if (previousHost && allowedHosts.includes(previousHost)) {
