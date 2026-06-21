@@ -44,6 +44,15 @@ export interface RunPhaseTimings {
   firstObserveMs?: number;
   firstDecideMs?: number;
   firstExecuteMs?: number;
+  /** Per-phase wall-time summed across ALL turns — the real "where does time go"
+   *  breakdown (observe/execute are browser I/O; decide is the LLM round-trip). */
+  totalObserveMs?: number;
+  totalDecideMs?: number;
+  totalExecuteMs?: number;
+  /** Turns whose decision came from the LLM vs a deterministic-pattern/cache skip
+   *  (the lazy-decision optimization's actual hit rate). */
+  decideLlmCalls?: number;
+  decideSkips?: number;
 }
 
 export interface RunStartupDiagnostics {

@@ -822,6 +822,7 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
         );
         this.cachedPostState = undefined;
         const observeDurationMs = Date.now() - observeStartedAt;
+        phaseTimings.totalObserveMs = (phaseTimings.totalObserveMs ?? 0) + observeDurationMs;
         if (phaseTimings.firstObserveMs === undefined) {
           phaseTimings.firstObserveMs = observeDurationMs;
           this.onPhaseTiming?.('observe', phaseTimings.firstObserveMs);
@@ -1389,6 +1390,14 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
         }
 
         const decideDurationMs = Date.now() - decideStartedAt;
+        phaseTimings.totalDecideMs = (phaseTimings.totalDecideMs ?? 0) + decideDurationMs;
+        // A pattern-match or cache-hit synthesised the decision with no LLM call;
+        // anything else round-tripped the model. Tracks the lazy-decision hit rate.
+        if (patternMatch || cached) {
+          phaseTimings.decideSkips = (phaseTimings.decideSkips ?? 0) + 1;
+        } else {
+          phaseTimings.decideLlmCalls = (phaseTimings.decideLlmCalls ?? 0) + 1;
+        }
         if (phaseTimings.firstDecideMs === undefined) {
           phaseTimings.firstDecideMs = decideDurationMs;
           this.onPhaseTiming?.('decide', phaseTimings.firstDecideMs);
@@ -2113,8 +2122,10 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
             setTimeout(() => reject(new Error(`Execute wall-clock timeout after ${executeWallClockMs}ms`)), executeWallClockMs),
           );
           execResult = await Promise.race([executePromise, timeoutPromise]);
+          const executeDurationMs = Date.now() - executeStartedAt;
+          phaseTimings.totalExecuteMs = (phaseTimings.totalExecuteMs ?? 0) + executeDurationMs;
           if (phaseTimings.firstExecuteMs === undefined) {
-            phaseTimings.firstExecuteMs = Date.now() - executeStartedAt;
+            phaseTimings.firstExecuteMs = executeDurationMs;
             this.onPhaseTiming?.('execute', phaseTimings.firstExecuteMs);
           }
           this.bus.emitNow({
