@@ -507,6 +507,18 @@ bad view audit-results/stripe.com-1775502457141
 
 Web UI with per-turn screenshots, action JSON, reasoning, element highlights. Pair with `--show-cursor` for animated cursor recordings.
 
+### Shareable run videos
+
+A run's `report.json` is a complete trace — per-turn screenshot, action, and reasoning — so it renders directly into a shareable video via [`run-capsule`](https://github.com/tangle-network/run-capsule), no extra capture step:
+
+```bash
+npx run-capsule --playwright agent-results/report.json --no-upload
+# → screen.mp4  (real product frames, each captioned with the agent's 💭 reasoning + action + URL)
+# → replay.mp4  (the unified storyboard)
+```
+
+Needs a `run-capsule` whose Playwright adapter understands this driver's suite-shaped `report.json` ([tangle-network/run-capsule#4](https://github.com/tangle-network/run-capsule/pull/4); earlier versions read a bare `TestResult` and render an empty capsule for a suite). The `screen` capsule shows real frames only when the run captured screenshots — on by default (vision is on unless you pass `--no-vision` or a vision-off benchmark profile, which blocks images for speed). Drop `--no-upload` for a temporary public link. Complementary to `--show-cursor`, which bakes an animated cursor into the run's own `recording.webm`; `run-capsule` turns the trace into a captioned, reasoning-driven screencast.
+
 ## Guides
 
 - [Configuration Reference](./docs/guides/configuration.md)
