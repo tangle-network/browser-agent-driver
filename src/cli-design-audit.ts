@@ -155,11 +155,14 @@ export interface DesignAuditOptions {
   audienceVulnerability?: string
   /** Single modality: mobile, tablet, desktop, tv, kiosk */
   modality?: string
-  // ── Reference-grounded eval (opt-in; default OFF → evalMode 'v1') ──
+  // ── Reference-grounded eval. Default: ON when a populated corpus is present,
+  // else v1. `--reference`/`referenceGrounded` force it on; `v1` forces it off. ──
   /** Operator reference page (URL or local ripped-site path) to ground against. */
   reference?: string
   /** Force reference-grounded mode without an explicit `--reference`. */
   referenceGrounded?: boolean
+  /** Force the v1 (linter) audit even when a corpus is present. */
+  v1?: boolean
   /** Reference-grounded taste judge backend: `text` (default) or `vision`. */
   judge?: string
   /** Vision-judge ensemble, e.g. `"openai:gpt-5.4,anthropic:claude-opus-4-8"`. */
@@ -200,11 +203,31 @@ import type {
 } from './design/audit/reference/index.js'
 
 /**
+ * Default location for the reference corpus — mirrors
+ * `reference/config.ts` `DEFAULT_REFERENCE_CONFIG.corpusDir`. Checked with a
+ * plain fs read (no engine import) so reference-grounded can be the default
+ * without forcing the heavy engine to load on the v1 path.
+ */
+const DEFAULT_REFERENCE_CORPUS_DIR = 'bench/design/reference-corpus'
+
+/** True iff the default corpus dir holds at least one exemplar (`.json` other
+ *  than the tracked `sources.example.json`). Drives the corpus-aware default. */
+function hasPopulatedCorpus(): boolean {
+  try {
+    return fs
+      .readdirSync(path.resolve(DEFAULT_REFERENCE_CORPUS_DIR))
+      .some((f) => f.endsWith('.json') && f !== 'sources.example.json')
+  } catch {
+    return false
+  }
+}
+
+/**
  * Acquire the reference-grounded eval bundle once: lazily load the engine,
  * resolve the operator reference + corpus, and pick the taste judge. Reached
- * only when `--reference`/`--reference-grounded` is set, so the v1 path never
- * loads the engine. Fails closed with a clear diagnostic (a module-load failure
- * or an unresolvable reference) instead of an unhandled rejection.
+ * only when reference-grounded mode is active, so the v1 path never loads the
+ * engine. Fails closed with a clear diagnostic (a module-load failure or an
+ * unresolvable reference) instead of an unhandled rejection.
  */
 async function setupReferenceGrounded(
   opts: DesignAuditOptions,
@@ -283,15 +306,20 @@ export async function runDesignAudit(opts: DesignAuditOptions): Promise<void> {
     modality: parseTagList(opts.modality) as never,
   }
 
-  // ── Reference-grounded eval — acquire-once. Default OFF: evalMode 'v1' and an
-  // empty bundle, so spreading `...referenceCommonOpts` adds only `evalMode:'v1'`
-  // to each auditOnePage call and the pipeline's stage-6 branch is never entered
-  // (default behaviour byte-identical). When ON, resolve the operator reference
-  // and load the exemplar corpus a SINGLE time here — before the page/rep loops —
-  // so a multi-page / multi-rep run never re-reads them (protects the ±0.5
-  // reproducibility gate). The engine is imported lazily so default audits never
-  // load it. ──
-  const evalMode: EvalMode = opts.referenceGrounded || opts.reference ? 'reference-grounded' : 'v1'
+  // ── Reference-grounded eval — acquire-once. Default: reference-grounded WHEN a
+  // populated corpus is present (it needs exemplars to ground against), else v1.
+  // `--reference`/`--reference-grounded` force it on; `--v1` forces it off. The
+  // corpus check is a plain fs read (no engine import), so the v1 path stays
+  // lazy: evalMode 'v1' yields an empty bundle, `...referenceCommonOpts` adds only
+  // `evalMode:'v1'`, and the pipeline's stage-6 branch is never entered. When ON,
+  // resolve the operator reference and load the exemplar corpus a SINGLE time here
+  // — before the page/rep loops — so a multi-page/rep run never re-reads them
+  // (protects the ±0.5 reproducibility gate). The engine is imported lazily. ──
+  const evalMode: EvalMode = opts.v1
+    ? 'v1'
+    : opts.referenceGrounded || opts.reference || hasPopulatedCorpus()
+      ? 'reference-grounded'
+      : 'v1'
   const referenceCommonOpts: ReferenceCommonOpts =
     evalMode === 'reference-grounded'
       ? await setupReferenceGrounded(opts, modelName, provider)

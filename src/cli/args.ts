@@ -58,9 +58,11 @@ export function parseCliArgs() {
       reproducibility: { type: 'boolean' },
       'rubrics-dir': { type: 'string' },
       'audit-passes': { type: 'string' },
-      // design-audit reference-grounded eval (opt-in; default v1)
+      // design-audit reference-grounded eval (default ON when a corpus is present)
       reference: { type: 'string' },
       'reference-grounded': { type: 'boolean' },
+      // force the v1 (linter) audit even when a corpus is present
+      v1: { type: 'boolean' },
       // reference-grounded taste judge: text (default) | vision, + ensemble list
       judge: { type: 'string' },
       'judge-models': { type: 'string' },
