@@ -30,6 +30,7 @@ const casesPath = path.resolve(arg('cases', 'bench/scenarios/cases/local-determi
 const reps = Math.max(1, Number.parseInt(arg('reps', '3'), 10))
 const provider = arg('provider', 'claude-code')
 const model = arg('model', 'sonnet') // claude-code knows: opus | sonnet | haiku
+const baseUrl = arg('base-url', null) // OpenAI-compat endpoint (e.g. router.tangle.tools/v1)
 const maxTurns = arg('max-turns', '20')
 const timeoutMs = arg('timeout', '180000')
 const caseFilter = arg('case-filter', null) // optional substring on case id
@@ -79,6 +80,8 @@ function runOnce(repDir, { replay }) {
     '--max-turns', String(maxTurns),
     '--timeout', String(timeoutMs),
   ]
+  // Route through an OpenAI-compatible gateway when given (api key via env, not argv).
+  if (baseUrl) args.push('--base-url', baseUrl)
   if (replay) args.push('--replay')
   return new Promise((resolve) => {
     const proc = spawn('node', args, { cwd: ROOT, env: process.env, stdio: 'inherit' })
