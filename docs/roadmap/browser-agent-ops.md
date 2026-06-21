@@ -586,6 +586,28 @@ Do not:
 - use open-web noise to excuse Tier 1 or Tier 2 regressions
 - promote on narrative instead of evidence
 
+## Performance — measured findings (2026-06)
+
+Per-phase timing instrumentation (`RunPhaseTimings.total{Observe,Decide,Execute}Ms`,
+`decideLlmCalls`/`decideSkips`) makes "where does time go" measurable. First data
+(claude-code, short tasks): **a run is ~97-98% LLM-latency-bound** — `brain.decide`
+is ~10-13s/call; browser observation is 0.1-0.4% of wall-time. Implication: the only
+levers that move latency are **LLM call count** and **per-call latency** — snapshot/observe
+optimization is irrelevant to wall-time.
+
+Levers, by status:
+- **Already promoted** (see `bench/research/speed-v1.json`): micro-plan-2, retries=1,
+  block-images — all measured, shipped.
+- **Shipped, awaiting promotion gate**: zero-LLM **workflow replay** (`--replay`, default
+  off). One measurement: recorded run `decideLlmCalls=2`/30s → replay `0`/11s, completed.
+  Queued as the `workflow-replay` hypothesis (needs a warm-trajectory eval variant).
+- **Stalled candidate**: `micro-plan-3` (positive signal, CI spanned zero) — queued for a
+  larger-power re-run.
+- **Investigated, NOT a clean win**: "reduce wasted turns" — `turnsAfterSufficientEvidence`
+  overcounts; the extra turns are mostly legitimate refinement (exact-text extraction) plus
+  the unavoidable `complete` turn. No safe single change; an eager-complete prompt nudge
+  would need a ≥5-rep A/B on the default model (blocked on a live gpt-5.4 key).
+
 ## Short-Term Execution Plan
 
 This is the next sequence to execute:
