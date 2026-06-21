@@ -53,6 +53,10 @@ import { verifyEffectImpl } from './effect-verify.js';
 import type { RunnerEffectVerifyHost } from './effect-verify.js';
 import { executePlanImpl } from './execute-plan.js';
 import type { RunnerExecuteHost } from './execute-plan.js';
+import { verifyExpectedEffect } from './effect-verification.js';
+import { createReplayController } from './replay/controller.js';
+import { createReplayGuard } from './replay/guard.js';
+import type { ReplayEvent, ReplayPlan } from './replay/contracts.js';
 
 import type { Session } from '../memory/knowledge.js';
 import { RunRegistry } from '../memory/run-registry.js';
@@ -116,6 +120,14 @@ export interface BrowserAgentOptions {
   onPhaseTiming?: (phase: 'navigate' | 'observe' | 'decide' | 'execute', durationMs: number) => void;
   /** Reference trajectory to inject into brain context */
   referenceTrajectory?: string;
+  /**
+   * Strict-matched replay plan for ZERO-LLM workflow replay. When provided AND
+   * `config.replay.enabled` is true, the runner attempts to re-execute the
+   * recorded steps before its normal loop. Built by the caller (test-runner)
+   * from `TrajectoryStore.findReplayCandidate`. Default behavior is unchanged
+   * when absent.
+   */
+  replayPlan?: ReplayPlan;
   /** Project memory store — enables knowledge + selector persistence */
   projectStore?: ProjectStore;
   /** Run registry for orchestration-facing manifests */
@@ -187,6 +199,7 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
   private beforeTurn?: (turn: number) => Promise<void>;
   private onPhaseTiming?: (phase: 'navigate' | 'observe' | 'decide' | 'execute', durationMs: number) => void;
   private referenceTrajectory?: string;
+  private replayPlan?: ReplayPlan;
   private projectStore?: ProjectStore;
   private runRegistry?: RunRegistry;
   private knowledge?: AppKnowledge;
@@ -214,6 +227,7 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
     this.beforeTurn = options.beforeTurn;
     this.onPhaseTiming = options.onPhaseTiming;
     this.referenceTrajectory = options.referenceTrajectory;
+    this.replayPlan = options.replayPlan;
     this.bus = ensureBus(options.eventBus);
     this.extensions = options.extensions;
     if (this.extensions) {
@@ -478,6 +492,65 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
       hardStallWindow: this.config.supervisor?.hardStallWindow ?? DEFAULT_SUPERVISOR.hardStallWindow,
     } as const;
 
+    // Replay-first path (sibling to the planner-first path below): when replay
+    // is enabled and a strict-matched plan was supplied, re-execute the recorded
+    // steps with ZERO per-action LLM calls. A fully-replayed-and-verified
+    // outcome returns immediately; anything else (a self-heal abort, or a clean
+    // replay whose goal verification did not confirm achievement) falls through
+    // to the planner / per-action loop FROM THE CURRENT PAGE STATE — the page is
+    // already navigated above, so there is no re-navigation. Replay appends to
+    // the same `turns` array, so the unified timeline is preserved and the loop
+    // offset (`plannerStartTurn`) is advanced past the replayed turns.
+    let replayTurnsConsumed = 0
+    if (this.config.replay?.enabled && this.replayPlan && scenario.startUrl) {
+      const replayOutcome = await createReplayController().replay(this.replayPlan, {
+        goal: scenario.goal,
+        driver: this.driver,
+        guard: createReplayGuard(),
+        verifyGoal: (state, goal, claimed) => this.brain.verifyGoalCompletion(state, goal, claimed),
+        verifyEffect: (input) => verifyExpectedEffect(input),
+        ...(scenario.signal ? { signal: scenario.signal } : {}),
+        ...(this.config.debug ? { debug: true } : {}),
+        onEvent: (event) => this.handleReplayEvent(runId, event),
+      })
+
+      for (const turn of replayOutcome.turns) {
+        turns.push(turn)
+        this.onTurn?.(turn)
+      }
+      replayTurnsConsumed = turns.length
+
+      if (replayOutcome.kind === 'completed' && replayOutcome.goalVerification.achieved) {
+        return buildResult({
+          success: true,
+          result: replayOutcome.finalResult,
+          turns,
+          totalMs: Date.now() - startTime,
+          goalVerification: replayOutcome.goalVerification,
+        })
+      }
+
+      // healed | completed-but-not-achieved → fall through from the live state.
+      // (`no-candidate` is impossible here — a plan was supplied.)
+      if (replayOutcome.kind !== 'no-candidate') {
+        // Only prime the loop's first observe when we captured a usable
+        // snapshot; an empty snapshot would otherwise short-circuit observe().
+        if (replayOutcome.lastState.snapshot) {
+          this.cachedPostState = replayOutcome.lastState
+        }
+        const fallbackReason = replayOutcome.kind === 'healed'
+          ? replayOutcome.reason
+          : `replay completed ${replayOutcome.completedSteps}/${replayOutcome.totalSteps} steps but goal verification did not confirm achievement`
+        this.brain.injectFeedback(
+          `[REPLAY] A recorded shortcut for this goal was attempted but did not fully complete it (${fallbackReason}). `
+          + `${replayTurnsConsumed} step(s) were already executed against the live page. Continue toward the goal from the current page state.`,
+        )
+        if (this.config.debug) {
+          console.log(`[Runner] Replay fell through after ${replayTurnsConsumed} step(s): ${fallbackReason}`)
+        }
+      }
+    }
+
     // Planner-first path: make one LLM call to generate a plan, then execute
     // it deterministically. On deviation, replan from the current page state
     // with deviation context; after the retry budget is exhausted, fall back
@@ -486,7 +559,7 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
     // Plan execution writes to the same `turns` array, so post-run analysis
     // sees a unified timeline regardless of which path completed the run.
     let planFallbackContext = ''
-    let plannerStartTurn = 0
+    let plannerStartTurn = replayTurnsConsumed
     const plannerEnabled =
       this.config.plannerEnabled === true && process.env.BAD_PLANNER !== '0'
       && shouldUsePlannerForScenario(scenario, this.config.plannerMode ?? 'always')
@@ -517,7 +590,9 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
       if (initialState) {
         this.cachedPostState = initialState
         let planLoopState: PageState = initialState
-        let cumulativeTurnsConsumed = 0
+        // Start past any replayed turns so the planner's turn numbering and the
+        // per-action loop offset stay contiguous with the replay timeline.
+        let cumulativeTurnsConsumed = replayTurnsConsumed
         let attempt = 0
         let lastDeviationReason = ''
         let lastFailedStepIndex = 0
@@ -2424,6 +2499,36 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
 
   private selectFollowUpActions(primaryAction: Action, nextActions?: Action[]): Action[] {
     return selectMicroPlanFollowUps(primaryAction, nextActions, this.config.microPlan);
+  }
+
+  /**
+   * Surface replay lifecycle events. The structured TurnEventBus union is closed
+   * and replay is opt-in, so rather than widen it we log under debug — the
+   * self-heal decision is never silent (the controller also logs + returns a
+   * reason, and the runner logs the fall-through). `runId` is accepted for
+   * symmetry with bus emits and future wiring.
+   */
+  private handleReplayEvent(_runId: string, event: ReplayEvent): void {
+    if (!this.config.debug) return;
+    switch (event.type) {
+      case 'replay-started':
+        console.log(`[Replay] start: ${event.totalSteps} step(s), goalSimilarity=${event.goalSimilarity.toFixed(2)}`);
+        break;
+      case 'replay-guard-abort':
+        console.log(`[Replay] guard abort at step ${event.index + 1}: ${event.reason}`);
+        break;
+      case 'replay-effect-failed':
+        console.log(`[Replay] effect failed at step ${event.index + 1}: ${event.reason}`);
+        break;
+      case 'replay-healed':
+        console.log(`[Replay] healed ${event.completedSteps}/${event.totalSteps}: ${event.reason}`);
+        break;
+      case 'replay-completed':
+        console.log(`[Replay] completed ${event.completedSteps} step(s), achieved=${event.achieved}`);
+        break;
+      default:
+        break;
+    }
   }
 
   /** Persist knowledge, selector cache, and session history to disk */

@@ -98,6 +98,8 @@ export interface DriverConfig {
   plannerMode?: 'always' | 'auto';
   /** Extra wait before the planner's first observe, for dynamic page settle */
   initialObserveSettleMs?: number;
+  /** ZERO-LLM workflow replay (opt-in). Re-executes a strict-matched prior trajectory before the loop. */
+  replay?: { enabled?: boolean; minSimilarity?: number };
   qualityThreshold?: number;
   microPlan?: {
     enabled?: boolean;
@@ -314,6 +316,14 @@ export function toAgentConfig(config: DriverConfig): AgentConfig {
     plannerEnabled: config.plannerEnabled,
     plannerMode: config.plannerMode,
     initialObserveSettleMs: config.initialObserveSettleMs,
+    ...(config.replay
+      ? {
+          replay: {
+            enabled: config.replay.enabled === true,
+            ...(config.replay.minSimilarity !== undefined ? { minSimilarity: config.replay.minSimilarity } : {}),
+          },
+        }
+      : {}),
     qualityThreshold: config.qualityThreshold,
     microPlan: config.microPlan
       ? {

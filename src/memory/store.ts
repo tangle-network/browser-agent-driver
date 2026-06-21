@@ -10,6 +10,12 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync } from 
 import { join } from 'path';
 import type { Trajectory, Turn, Action } from '../types.js';
 import { snapshotHash } from '../recovery.js';
+import {
+  DEFAULT_REPLAY_SIMILARITY_THRESHOLD,
+  type ReplayCandidate,
+  type ReplayCandidateSource,
+  type ReplayMatchOptions,
+} from '../runner/replay/contracts.js';
 
 export interface TrajectoryStoreOptions {
   similarityThreshold?: number;
@@ -25,7 +31,7 @@ export interface TrajectoryMatchOptions {
   origin?: string;
 }
 
-export class TrajectoryStore {
+export class TrajectoryStore implements ReplayCandidateSource {
   private storePath: string;
   private cache: Trajectory[] | null = null;
   private similarityThreshold: number;
@@ -60,6 +66,9 @@ export class TrajectoryStore {
           action: t.action,
           snapshotHash: snapshotHash(t.state.snapshot).toString(),
           verified: t.verified,
+          // Persist the expected effect so workflow replay can re-assert it
+          // per-step. JSON.stringify drops the key when undefined.
+          ...(t.expectedEffect !== undefined ? { expectedEffect: t.expectedEffect } : {}),
         })),
       success,
       durationMs: turns.reduce((sum, t) => sum + t.durationMs, 0),
@@ -126,6 +135,51 @@ export class TrajectoryStore {
     }
 
     return null;
+  }
+
+  /**
+   * Strict-match lookup for ZERO-LLM workflow replay. Deliberately separate from
+   * {@link findBestMatch} (which keeps its 0.5 hint-injection threshold): a
+   * replay candidate is executed verbatim against the live page, so the bar is
+   * far higher.
+   *
+   * Requires: `success === true`, a non-empty step list, within the TTL window,
+   * an exact normalized-origin match when an origin is supplied, and raw goal
+   * similarity >= `minSimilarity` (default {@link DEFAULT_REPLAY_SIMILARITY_THRESHOLD}).
+   * Returns the highest-similarity qualifying {@link ReplayCandidate} (trajectory
+   * + the similarity score + normalized origin that justified it), or null. The
+   * score is returned so the caller can populate the plan/event without
+   * re-implementing this Jaccard. Uses raw Jaccard similarity rather than the
+   * recency/duration-blended score — replay selection is about task identity,
+   * not "best overall reference".
+   */
+  findReplayCandidate(goal: string, options: ReplayMatchOptions = {}): ReplayCandidate | null {
+    const minSimilarity = options.minSimilarity ?? DEFAULT_REPLAY_SIMILARITY_THRESHOLD;
+    const now = Date.now();
+    const maxAgeMs = this.ttlDays * 24 * 60 * 60 * 1000;
+    const requestedOrigin = normalizeOrigin(options.origin);
+
+    let candidates = this.loadAll().filter((t) => {
+      if (!t.success) return false;
+      if (t.steps.length === 0) return false;
+      const ts = Date.parse(t.timestamp);
+      if (!Number.isNaN(ts) && now - ts > maxAgeMs) return false;
+      return true;
+    });
+
+    if (requestedOrigin) {
+      candidates = candidates.filter((t) => normalizeOrigin(t.origin) === requestedOrigin);
+    }
+
+    let best: ReplayCandidate | null = null;
+    for (const trajectory of candidates) {
+      const similarity = goalSimilarity(goal, trajectory.goal);
+      if (similarity >= minSimilarity && (!best || similarity > best.similarity)) {
+        best = { trajectory, similarity, origin: normalizeOrigin(trajectory.origin) };
+      }
+    }
+
+    return best;
   }
 
   private computeScore(similarity: number, trajectory: Trajectory, nowMs: number): number {

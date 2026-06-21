@@ -26,6 +26,7 @@ import { FilesystemSink } from './artifacts/filesystem-sink.js';
 import { BrowserAgent } from './runner.js';
 import { Brain } from './brain/index.js';
 import { TrajectoryStore } from './memory/store.js';
+import type { ReplayPlan } from './runner/replay/contracts.js';
 import { TrajectoryAnalyzer, type RunAnalysis } from './memory/analyzer.js';
 import type { ProjectStore } from './memory/project-store.js';
 import { AppKnowledge } from './memory/knowledge.js';
@@ -248,6 +249,31 @@ export class TestRunner {
         }
       }
 
+      // Strict-match a replay plan for ZERO-LLM workflow replay (opt-in via
+      // config.replay). Separate, higher bar than the hint match above: requires
+      // a resolvable origin (verbatim browser actions must never be selected
+      // cross-origin on lexical overlap alone) and the strict similarity gate.
+      let replayPlan: ReplayPlan | undefined;
+      if (this.store && this.config.replay?.enabled) {
+        const replayOrigin = getOrigin(testCase.startUrl);
+        if (replayOrigin) {
+          const candidate = this.store.findReplayCandidate(testCase.goal, {
+            origin: replayOrigin,
+            ...(this.config.replay.minSimilarity !== undefined
+              ? { minSimilarity: this.config.replay.minSimilarity }
+              : {}),
+          });
+          if (candidate) {
+            replayPlan = {
+              trajectory: candidate.trajectory,
+              steps: candidate.trajectory.steps,
+              goalSimilarity: candidate.similarity,
+              ...(candidate.origin ? { origin: candidate.origin } : {}),
+            };
+          }
+        }
+      }
+
       // Build combined context: reference trajectory + feedback hints
       let combinedReference = referenceTrajectory;
       if (this.feedbackHints) {
@@ -277,6 +303,7 @@ export class TestRunner {
         driver: activeDriver,
         config: this.config,
         referenceTrajectory: combinedReference,
+        ...(replayPlan ? { replayPlan } : {}),
         projectStore: this.projectStore,
         runRegistry: this.runRegistry,
         ...(this.extensions ? { extensions: this.extensions } : {}),

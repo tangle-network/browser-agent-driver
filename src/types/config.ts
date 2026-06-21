@@ -1,4 +1,5 @@
 import type { Action } from './actions.js';
+import type { ReplayConfig } from '../runner/replay/contracts.js';
 
 // ============================================================================
 // Configuration
@@ -96,6 +97,13 @@ export interface AgentConfig {
   plannerMode?: 'always' | 'auto';
   /** Extra wait before the planner's initial observe, in ms. Default: 0. */
   initialObserveSettleMs?: number;
+  /**
+   * ZERO-LLM workflow replay. When `enabled`, a strict-matched prior successful
+   * trajectory is re-executed verbatim against the live page before the normal
+   * loop; a self-heal abort falls through to per-action mode. OPT-IN (default
+   * off / `--replay`) per experiment discipline. See src/runner/replay.
+   */
+  replay?: ReplayConfig;
   /** Optional scout that ranks ambiguous link choices before the actor decides */
   scout?: ScoutConfig;
   /** Optional supervisor that can intervene when the run is hard-stalled */
