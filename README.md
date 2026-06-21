@@ -517,7 +517,17 @@ npx run-capsule --playwright agent-results/report.json --no-upload
 # → replay.mp4  (the unified storyboard)
 ```
 
-Needs a `run-capsule` whose Playwright adapter understands this driver's suite-shaped `report.json` ([tangle-network/run-capsule#4](https://github.com/tangle-network/run-capsule/pull/4); earlier versions read a bare `TestResult` and render an empty capsule for a suite). The `screen` capsule shows real frames only when the run captured screenshots — on by default (vision is on unless you pass `--no-vision` or a vision-off benchmark profile, which blocks images for speed). Drop `--no-upload` for a temporary public link. Complementary to `--show-cursor`, which bakes an animated cursor into the run's own `recording.webm`; `run-capsule` turns the trace into a captioned, reasoning-driven screencast.
+For the **animated cursor**, run with `--show-cursor` (bakes the cursor + reasoning overlay into the run's own `recording.webm`) and hand that recording to `run-capsule` as the screen capsule — it's reused as-is rather than rebuilt, so the real cursor motion survives, with the reasoning storyboard rendered from the trace alongside:
+
+```bash
+bad run --goal "…" --url https://… --show-cursor
+npx run-capsule --playwright agent-results/report.json \
+  --video agent-results/cli-task/recording.webm --no-upload
+# → screen.mp4  (the real run recording — animated cursor + overlay)
+# → replay.mp4  (reasoning storyboard from the trace)
+```
+
+Needs a `run-capsule` whose Playwright adapter understands this driver's suite-shaped `report.json` ([tangle-network/run-capsule#4](https://github.com/tangle-network/run-capsule/pull/4); earlier versions read a bare `TestResult` and render an empty capsule for a suite) and, for `--video`, the recording-ingest path ([#5](https://github.com/tangle-network/run-capsule/pull/5)). Without `--video`, the `screen` capsule replays the per-turn screenshots — real frames only when the run captured them (vision is on by default unless you pass `--no-vision` or a vision-off benchmark profile, which blocks images for speed). Drop `--no-upload` for a temporary public link.
 
 ## Guides
 
