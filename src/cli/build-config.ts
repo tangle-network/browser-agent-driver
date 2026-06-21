@@ -101,6 +101,7 @@ export async function buildDriverConfig(values: CliValues): Promise<DriverConfig
   if (values['observation-mode']) cliOverrides.observationMode = values['observation-mode'] as DriverConfig['observationMode'];
   if (values['goal-verification'] !== undefined) cliOverrides.goalVerification = values['goal-verification'];
   if (values.planner === true) cliOverrides.plannerEnabled = true;
+  if (values.replay === true) cliOverrides.replay = { enabled: true };
   if (values['planner-mode']) {
     const plannerMode = values['planner-mode'];
     if (plannerMode !== 'always' && plannerMode !== 'auto') {

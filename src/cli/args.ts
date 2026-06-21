@@ -84,6 +84,9 @@ export function parseCliArgs() {
       // then the runner executes it deterministically.
       planner: { type: 'boolean' },
       'planner-mode': { type: 'string' },
+      // bad run --replay: zero-LLM replay of a strict-matched prior successful
+      // trajectory before the loop; self-heals to per-action mode on deviation.
+      replay: { type: 'boolean' },
       // showcase
       script: { type: 'string' },
       capture: { type: 'string' },
