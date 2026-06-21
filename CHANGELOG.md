@@ -1,5 +1,61 @@
 # @tangle-network/browser-agent-driver
 
+## 0.34.0
+
+### Minor Changes
+
+- [#109](https://github.com/tangle-network/browser-agent-driver/pull/109) [`9a607fe`](https://github.com/tangle-network/browser-agent-driver/commit/9a607febbfe1dbd53e6b721e45b13714382150fc) Thanks [@drewstone](https://github.com/drewstone)! - Emit a coding-agent apply prompt by default from reference-grounded audits.
+
+  A reference-grounded `design-audit` now writes `<slug>.apply-prompt.md` alongside the report and redesign brief — a self-contained implementation prompt a coding agent (Claude Code, Codex, Cursor) reads and runs ITSELF to apply the grounded redesign in its own project. This makes `bad` a tool coding agents call; `bad`-spawns-the-agent (`--evolve --agent <name>`) remains the opt-in alternative, and the default emits without spawning anything.
+
+- [#109](https://github.com/tangle-network/browser-agent-driver/pull/109) [`9a607fe`](https://github.com/tangle-network/browser-agent-driver/commit/9a607febbfe1dbd53e6b721e45b13714382150fc) Thanks [@drewstone](https://github.com/drewstone)! - Apply the reference-grounded redesign brief in the `--evolve` agent loop.
+
+  When a reference-grounded audit runs with `--evolve`, the coding agent's prompt now leads with the winning redesign DIRECTION — its type scale, colour tokens, layout, motion, hierarchy and copy, plus the grounding exemplars — and is instructed to implement it as a coherent system, with the individual findings as secondary issues, rather than applying piecemeal CSS fixes. Adds the reusable `renderRedesignTarget` artifact renderer. Default (v1) evolve behaviour is unchanged (lazy-imported, so v1 never loads the engine).
+
+- [#119](https://github.com/tangle-network/browser-agent-driver/pull/119) [`0176640`](https://github.com/tangle-network/browser-agent-driver/commit/017664035cba530138809e77815c7b33e565f2f6) Thanks [@drewstone](https://github.com/drewstone)! - design-audit now defaults to the reference-grounded engine when a populated reference corpus is present (previously opt-in via `--reference-grounded`). Without a corpus it stays on the v1 linter audit, so installs that don't ship a corpus are unchanged. The corpus is detected with a plain filesystem check so the v1 path never loads the reference engine. Use `--v1` to force the linter audit when a corpus is present, or `--reference-grounded` / `--reference <page>` to force the grounded engine.
+
+- [#109](https://github.com/tangle-network/browser-agent-driver/pull/109) [`9a607fe`](https://github.com/tangle-network/browser-agent-driver/commit/9a607febbfe1dbd53e6b721e45b13714382150fc) Thanks [@drewstone](https://github.com/drewstone)! - Add an opt-in reference-grounded design-audit engine (`--reference <url|path>` / `--reference-grounded`).
+
+  Turns the design audit from a defect linter into a reference-grounded redesign. It reverse-engineers a page's design DNA (type scale, color system, spacing rhythm, motion, layout grammar), retrieves the most similar world-class exemplars from a corpus by embedding similarity (no per-domain rules — novel page types resolve by nearest neighbour), generates ranked redesign directions — each with an ASCII layout, type/color/motion systems, information hierarchy, and copy — and selects a winner via a position-swapped pairwise taste judge. A rich `<slug>.redesign.md` brief is written alongside the standard report.
+
+  Includes `scripts/seed-reference-corpus.mjs` to build the exemplar corpus (offline hash embeddings by default; `--embedder provider` for OpenAI text-embedding-3-small). The engine is additive and lazily loaded: the default audit path is byte-identical when the flag is absent.
+
+- [#109](https://github.com/tangle-network/browser-agent-driver/pull/109) [`9a607fe`](https://github.com/tangle-network/browser-agent-driver/commit/9a607febbfe1dbd53e6b721e45b13714382150fc) Thanks [@drewstone](https://github.com/drewstone)! - Add opt-in scroll-capture motion DNA to the reference-grounded design audit.
+
+  Extends `DesignDNA.motion` with a live-observed `scroll` record — scroll length (`pageHeightRatio`), reveal-on-scroll count + kinds (fade/slide/scale), sticky/pinned scene count, parallax score, and a `scrollDriven` rollup — captured by a fresh-page scroll pass that runs before the page is otherwise scrolled (so one-shot scroll reveals are observed as they fire) and tracks elements spread across the full page height. The signal is surfaced so the redesign generator recommends grounded motion specs, and the audit can flag a static page whose world-class peers are scroll-rich. Additive and opt-in via `captureScrollMotion` (default off) — default token extraction is byte-identical.
+
+- [#109](https://github.com/tangle-network/browser-agent-driver/pull/109) [`9a607fe`](https://github.com/tangle-network/browser-agent-driver/commit/9a607febbfe1dbd53e6b721e45b13714382150fc) Thanks [@drewstone](https://github.com/drewstone)! - Add a provider-agnostic, ensemble-capable vision taste judge.
+
+  `design-audit --judge vision` scores designs from their SCREENSHOTS instead of DNA text — a vision-capable model looks at the audited page and the world-class reference/exemplars and judges quality visually. `--judge-models "openai:gpt-5.4,anthropic:claude-opus-4-8"` runs an ENSEMBLE: each model votes position-swapped (A-vs-B and B-vs-A to cancel order bias) and the verdicts are aggregated (majority winner, agreement→confidence, split→tie); a model that returns no usable verdict is dropped, and an all-dropped ensemble fails closed rather than fabricating a tie. Any provider the Brain layer supports works via a `{provider, model}` ref. The default judge stays `text` (byte-identical). Vision applies to screenshot-bearing subjects (page + exemplars); unrendered redesign directions still rank via the text judge.
+
+- [#114](https://github.com/tangle-network/browser-agent-driver/pull/114) [`20bf761`](https://github.com/tangle-network/browser-agent-driver/commit/20bf761fdb629f980711dee6a49ae55ba74d20ff) Thanks [@drewstone](https://github.com/drewstone)! - Add opt-in zero-LLM workflow replay (`--replay`).
+
+  When a successful trajectory has been recorded for a goal+origin, `--replay` re-runs it step-by-step through the driver with **no `brain.decide` LLM calls** — each step guarded (the recorded `@ref` must still exist, the URL/origin must be consistent) and the action's effect re-verified with the existing effect-verification. The instant a step drifts (ref gone, effect fails, execution errors) it **self-heals**: aborts to the live agent loop from the current state, so the outcome is never worse than running from scratch. A single goal-verification call at the end ensures replay never claims success blindly. Default off.
+
+  Measured (claude-code, single-step task): a recorded run at `decideLlmCalls: 2` / 30s replays at `decideLlmCalls: 0` / 11s, completing + verifying. Self-heal validated across no-candidate, effect-failure, and execute-failure cases.
+
+### Patch Changes
+
+- [#109](https://github.com/tangle-network/browser-agent-driver/pull/109) [`9a607fe`](https://github.com/tangle-network/browser-agent-driver/commit/9a607febbfe1dbd53e6b721e45b13714382150fc) Thanks [@drewstone](https://github.com/drewstone)! - Deep-clean the reference-grounded design-audit subsystem (no capability change).
+
+  - Canonicalize duplicated infra: `VIEWPORTS` (3 copies → one `src/design/viewports.ts` leaf) and cookie-banner dismissal (the two audit copies → one `src/design/cookie-consent.ts` leaf; page-interaction's richer `dismissModals` is left distinct).
+  - Validate `--provider` against a new runtime `SUPPORTED_PROVIDERS` list before casting, so an unknown value fails fast with a clear message.
+  - Extract `setupReferenceGrounded()` out of `runDesignAudit`, wrapping the lazy engine load + reference/corpus resolution in a try/catch that emits a clean diagnostic instead of an unhandled rejection.
+  - Deep-freeze the default `visionModels` ref; remove dead type imports; add `parseModelRefs` edge-case tests.
+
+- [#109](https://github.com/tangle-network/browser-agent-driver/pull/109) [`9a607fe`](https://github.com/tangle-network/browser-agent-driver/commit/9a607febbfe1dbd53e6b721e45b13714382150fc) Thanks [@drewstone](https://github.com/drewstone)! - Address PR review findings on the reference-grounded design audit.
+
+  - **Security (high):** the `--evolve --agent` dispatch built a shell string and passed the audit-derived prompt through it, so DOM text mined from a hostile audited page could inject `$(...)`/backtick command substitution. Switched to `execFileSync(cmd, args)` (argv passing, no shell) — the prompt is now a single discrete argument that the shell never evaluates. Added a regression test.
+  - **Repo hygiene:** removed a raw NUL byte in `embedding-hash.ts` (it made the file binary to git/diff/grep); replaced with the `\0` escape — runtime hash values are identical.
+  - **Robustness:** `buildRedesignArtifact` now drops an LLM-hallucinated grounding id and warns instead of throwing and crashing the whole audit; the evolve report renders skipped fixes (with reasons) and signs a negative score delta correctly (no more `(+-1.5)`); `clipToWord` handles `max<=1` without dropping a character.
+
+- [#109](https://github.com/tangle-network/browser-agent-driver/pull/109) [`9a607fe`](https://github.com/tangle-network/browser-agent-driver/commit/9a607febbfe1dbd53e6b721e45b13714382150fc) Thanks [@drewstone](https://github.com/drewstone)! - Address the medium-severity PR review findings on the design audit.
+
+  - **Security:** the font-download fallback filename was built from DOM-controlled `@font-face` fields without stripping path separators, so a hostile `family: '../../../tmp/evil'` could write the fetched bytes outside the output directory. Reduced to a safe separator-free basename via a tested `safeAssetFilename` helper.
+  - **Honest token accounting:** the reference engine reported only judge tokens; `RedesignGenerator.generate` now returns `{ directions, tokensUsed }` and the engine sums generation + judge tokens, so the reported cost is complete.
+  - **Tests:** added coverage for previously-untested judge logic — the vision-model adapter, plus quality/image-clamp paths.
+  - **Docs:** `ARCHITECTURE.md` and code comments now reflect that `extractDesignTokens` lives in the `design/audit/tokens/extract.ts` leaf (not `cli-design-audit.ts`), and the embedded pipeline's double page navigation is documented as a deliberate engine-modularity tradeoff.
+
 ## 0.33.3
 
 ### Patch Changes
