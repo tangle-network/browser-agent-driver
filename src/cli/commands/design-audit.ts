@@ -64,6 +64,7 @@ export async function runDesignAuditCommand(values: CliValues): Promise<void> {
     modality: values.modality,
     reference: values.reference,
     referenceGrounded: values['reference-grounded'],
+    v1: values.v1,
     judge: values.judge,
     judgeModels: values['judge-models'],
   });
