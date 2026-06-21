@@ -135,6 +135,32 @@
         "screenshotInterval": 0,
         "visionStrategy": "auto"
       }
+    },
+    {
+      "id": "workflow-replay",
+      "name": "Zero-LLM workflow replay (--replay)",
+      "rationale": "Per-phase timing instrumentation shows a run is ~97-98% LLM-latency-bound (~10-13s per brain.decide). Replay re-runs a recorded successful trajectory with zero decide calls, self-healing to the live loop on drift. One claude-code measurement: a recorded run at decideLlmCalls=2/30s replayed at decideLlmCalls=0/11s, completed+verified. Shipped opt-in (default off) pending this promotion gate.",
+      "category": "feature",
+      "expected_impact": "On REPEATED tasks: near-elimination of decide calls (the dominant cost). No effect on novel tasks (no candidate → falls through).",
+      "risk": "Self-heal bounds the downside to a few fast browser actions before handing to the live agent; final goal-verification prevents blind success. Main risk is a stale replay wasting those actions.",
+      "priority": 1,
+      "_eval_note": "Replay needs a WARM trajectory store — the standard per-run memory isolation would show zero benefit (nothing to replay). Run a warm-then-replay variant: pass 1 records trajectories (memory on, --replay off), pass 2 measures the same cases with --replay on against the same store. Compare decideLlmCalls / totalDecideMs / duration / pass-rate across passes. Promote to default only if pass-rate holds and decide cost drops on the warm pass.",
+      "treatment": {
+        "replay": { "enabled": true }
+      }
+    },
+    {
+      "id": "micro-plan-3-rerun",
+      "name": "Re-run micro-plan-3 with more statistical power",
+      "rationale": "micro-plan-3 was a positive-signal CANDIDATE (+8pp pass, -14% turns, -20% tokens) but its bootstrap CI spanned zero (-17pp..+33pp) on the small reachable-4 case set. Re-run on a larger case set to resolve promote vs neutral.",
+      "category": "tuning",
+      "expected_impact": "Resolve the candidate: either promote (-14% turns at held pass-rate) or reject.",
+      "risk": "Stale snapshots between 3 batched actions can mis-target on fast-changing pages.",
+      "priority": 2,
+      "_eval_note": "Use a larger case set than webbench-reachable4 (e.g. the full reachable suite) for the power the original run lacked.",
+      "treatment": {
+        "microPlan": { "enabled": true, "maxActionsPerTurn": 3 }
+      }
     }
   ]
 }
