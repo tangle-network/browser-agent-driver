@@ -12,6 +12,15 @@
  * gpt-5.4 is the default model but its key is dead, so this defaults to
  * --provider claude-code (no key). That validates the MECHANISM, not the
  * default-model promotion gate — report the model caveat.
+ *
+ * Relation to the canonical A/B harness (run-ab-experiment.mjs): that harness
+ * supports `--memory-isolation shared` and bootstrap CIs, so it can run this
+ * same warm-store comparison — but its collectMetrics surfaces only
+ * turns/duration/tokens/passRate, NOT decideLlmCalls, which is the dominant cost
+ * replay removes and the headline result here. This script is purpose-built for
+ * that decide-call metric. The clean long-term fix is to add decideLlmCalls to
+ * run-ab-experiment.mjs's collectMetrics and fold this into it; until then this
+ * stays the tool for the replay decide-call A/B.
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -27,7 +36,12 @@ const arg = (n, d) => {
 }
 
 const casesPath = path.resolve(arg('cases', 'bench/scenarios/cases/local-deterministic.json'))
-const reps = Math.max(1, Number.parseInt(arg('reps', '3'), 10))
+const repsRaw = Number.parseInt(arg('reps', '3'), 10)
+if (Number.isNaN(repsRaw) || repsRaw < 1) {
+  console.error(`warm-replay-ab: invalid --reps "${arg('reps', '3')}" (need a positive integer)`)
+  process.exit(2)
+}
+const reps = repsRaw
 const provider = arg('provider', 'claude-code')
 const model = arg('model', 'sonnet') // claude-code knows: opus | sonnet | haiku
 const baseUrl = arg('base-url', null) // OpenAI-compat endpoint (e.g. router.tangle.tools/v1)
@@ -85,23 +99,34 @@ function runOnce(repDir, { replay }) {
   if (replay) args.push('--replay')
   return new Promise((resolve) => {
     const proc = spawn('node', args, { cwd: ROOT, env: process.env, stdio: 'inherit' })
-    proc.on('exit', (code) => resolve(extractPhaseTimings(path.join(repDir, 'report.json'))))
-    proc.on('error', () => resolve([]))
+    proc.on('exit', (code) => {
+      // A non-zero exit (e.g. provider auth, crash) means the report may be
+      // partial/absent — surface it rather than silently feeding empty rows.
+      if (code !== 0) console.error(`warm-replay-ab: run in ${repDir} exited ${code} — its rows may be missing/partial`)
+      resolve(extractPhaseTimings(path.join(repDir, 'report.json')))
+    })
+    proc.on('error', (err) => {
+      console.error(`warm-replay-ab: spawn failed for ${repDir}: ${err.message}`)
+      resolve([])
+    })
   })
 }
 
 const mean = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0)
+/** mean + min/max for a metric, so the output JSON carries the spread (not just
+ *  the mean) — a single mean hides run-to-run variance and invites overclaiming. */
+const stat = (xs) => (xs.length ? { mean: mean(xs), min: Math.min(...xs), max: Math.max(...xs), n: xs.length } : { mean: 0, min: 0, max: 0, n: 0 })
 function summarize(rows) {
   const flat = rows.flat().filter(Boolean)
   const num = (k) => flat.map((r) => r[k]).filter((v) => typeof v === 'number')
   return {
     runs: flat.length,
     passRate: flat.length ? flat.filter((r) => r.ok).length / flat.length : 0,
-    decideLlmCalls: mean(num('decideLlmCalls')),
-    decideSkips: mean(num('decideSkips')),
-    totalDecideMs: mean(num('totalDecideMs')),
-    durationMs: mean(num('durationMs')),
-    turns: mean(num('turns')),
+    decideLlmCalls: stat(num('decideLlmCalls')),
+    decideSkips: stat(num('decideSkips')),
+    totalDecideMs: stat(num('totalDecideMs')),
+    durationMs: stat(num('durationMs')),
+    turns: stat(num('turns')),
   }
 }
 
@@ -140,14 +165,16 @@ try {
 
   console.log(`\n\n================ WARM-REPLAY A/B (${provider}/${model}) ================`)
   console.log(`reps=${reps}  cases=${readCaseMeta(fs.readFileSync(tmpCases, 'utf-8')).list.length}\n`)
-  const row = (label, a, b) => console.log(`| ${label.padEnd(16)} | ${String(a).padStart(10)} | ${String(b).padStart(10)} | ${pct(Number(a), Number(b)).padStart(6)} |`)
-  console.log('| metric           |   baseline |     replay |     Δ |')
-  console.log('|------------------|------------|------------|-------|')
-  row('decideLlmCalls', A.decideLlmCalls.toFixed(2), B.decideLlmCalls.toFixed(2))
-  row('decideSkips', A.decideSkips.toFixed(2), B.decideSkips.toFixed(2))
-  row('totalDecideMs', A.totalDecideMs.toFixed(0), B.totalDecideMs.toFixed(0))
-  row('duration ms', A.durationMs.toFixed(0), B.durationMs.toFixed(0))
-  row('turns', A.turns.toFixed(2), B.turns.toFixed(2))
+  // Show baseline/replay as mean (min–max) so the spread is visible inline.
+  const cell = (m, d) => `${m.mean.toFixed(d)} (${m.min.toFixed(d)}–${m.max.toFixed(d)})`
+  const row = (label, a, b, d) => console.log(`| ${label.padEnd(14)} | ${cell(a, d).padStart(20)} | ${cell(b, d).padStart(20)} | ${pct(a.mean, b.mean).padStart(6)} |`)
+  console.log('| metric         |     baseline mean(min–max) |       replay mean(min–max) |     Δ |')
+  console.log('|----------------|----------------------------|----------------------------|-------|')
+  row('decideLlmCalls', A.decideLlmCalls, B.decideLlmCalls, 2)
+  row('decideSkips', A.decideSkips, B.decideSkips, 2)
+  row('totalDecideMs', A.totalDecideMs, B.totalDecideMs, 0)
+  row('duration ms', A.durationMs, B.durationMs, 0)
+  row('turns', A.turns, B.turns, 2)
   console.log(`\n  pass rate: baseline ${(A.passRate * 100).toFixed(0)}%  →  replay ${(B.passRate * 100).toFixed(0)}%`)
   console.log(`  result → ${path.join(outRoot, 'warm-replay-result.json')}`)
 } finally {
