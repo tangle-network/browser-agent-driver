@@ -1,7 +1,6 @@
-// Treatment arm for the warm-replay A/B: zero-LLM replay of warm-store
-// trajectories. Pair with --memory-isolation shared so the off arm's recorded
-// trajectories are available to replay.
+// Treatment arm: zero-LLM replay of warm-store trajectories. The harness REQUIRES
+// --memory --memory-isolation shared --concurrency 1 with a replay-on arm (the
+// off arm must record before the on arm replays); run-ab-experiment guards this.
 export default {
-  provider: 'claude-code',
   replay: { enabled: true },
 };
