@@ -10,6 +10,7 @@ import { resolveBenchmarkProfile } from './lib/benchmark-profiles.mjs';
 import { classifyFailureReason, isExternalBlockerFailureClass } from './lib/failure-taxonomy.mjs';
 import { loadExperimentSpec } from './lib/experiment-spec.mjs';
 import { summarizeArtifactChecks } from './lib/artifact-completeness.mjs';
+import { startStaticFixtureServer } from './lib/static-fixture-server.mjs';
 import { benchmarkSyncChildEnv, syncBenchmarkOutput } from './lib/abd-benchmark-sync.mjs';
 import { mean, stddev, wilsonInterval, bootstrapDiff95 } from './lib/stats.mjs';
 
@@ -44,7 +45,8 @@ const globalModes = spec?.modes ?? getArg(
   'modes',
   benchmarkProfile.id.startsWith('webbench') ? 'fast-explore' : 'full-evidence,fast-explore',
 );
-const fixtureBaseUrl = spec?.fixtureBaseUrl ?? getArg('fixture-base-url');
+let fixtureBaseUrl = spec?.fixtureBaseUrl ?? getArg('fixture-base-url');
+let fixtureServer;
 const globalPromptFile = getArg('prompt-file');
 const globalModelAdaptive = hasFlag('model-adaptive');
 const globalNavModel = getArg('nav-model');
@@ -116,6 +118,16 @@ for (let rep = 1; rep <= repetitions; rep++) {
     casesHash: sha256(orderedJson),
     caseIds: orderedCases.map((value, index) => String(value?.id ?? `case-${index + 1}`)),
   });
+}
+
+// Auto-start the static fixture server when the cases reference
+// __FIXTURE_BASE_URL__ and no base URL was supplied — mirrors run-multi-rep and
+// the tier1 gate, so a local-fixture A/B (e.g. the warm-replay comparison) runs
+// standalone without a separately-started server.
+if (!fixtureBaseUrl && fs.existsSync(casesPath) && fs.readFileSync(casesPath, 'utf-8').includes('__FIXTURE_BASE_URL__')) {
+  fixtureServer = await startStaticFixtureServer(path.join(rootDir, 'bench', 'fixtures'));
+  fixtureBaseUrl = fixtureServer.baseUrl;
+  console.log(`ab-experiment: started fixture server at ${fixtureBaseUrl}`);
 }
 
 const jobs = [];
@@ -233,10 +245,12 @@ for (const armId of armIds) {
 }
 if (summary.delta) {
   console.log(
-    `- delta (${summary.delta.treatment} - ${summary.delta.control}): raw ${(summary.delta.raw.onMinusOff * 100).toFixed(2)}pp | clean ${(summary.delta.clean.onMinusOff * 100).toFixed(2)}pp`,
+    `- delta (${summary.delta.treatment} - ${summary.delta.control}): raw ${(summary.delta.raw.onMinusOff * 100).toFixed(2)}pp | clean ${(summary.delta.clean.onMinusOff * 100).toFixed(2)}pp` +
+      (summary.delta.decide ? ` | decideLlmCalls ${summary.delta.decide.llmCallsOnMinusOff.toFixed(2)} | decideMs ${summary.delta.decide.msOnMinusOff.toFixed(0)}` : ''),
   );
 }
 console.log(`- artifacts: ${summary.artifactChecks.passed}/${summary.artifactChecks.total} track checks passed`);
+if (fixtureServer) await fixtureServer.close();
 
 await syncBenchmarkOutput({
   rootDir,
@@ -299,6 +313,12 @@ function collectMetrics(runDir) {
   let totalTurns = 0;
   let totalDurationMs = 0;
   let totalTokens = 0;
+  // Decide-phase instrumentation (RunPhaseTimings). decideLlmCalls is the
+  // dominant cost the --replay lever removes, so any replay/decide A/B needs it
+  // surfaced here — turns/duration alone don't show the mechanism.
+  let totalDecideLlmCalls = 0;
+  let totalDecideSkips = 0;
+  let totalDecideMs = 0;
   const testOutcomes = [];
   const cleanOutcomes = [];
   const failureClassCounts = {};
@@ -316,6 +336,10 @@ function collectMetrics(runDir) {
       totalTurns += Number(result.turnsUsed ?? 0);
       totalDurationMs += Number(result.durationMs ?? 0);
       totalTokens += Number(result.tokensUsed ?? 0);
+      const pt = result.phaseTimings ?? result.agentResult?.phaseTimings ?? {};
+      totalDecideLlmCalls += Number(pt.decideLlmCalls ?? 0);
+      totalDecideSkips += Number(pt.decideSkips ?? 0);
+      totalDecideMs += Number(pt.totalDecideMs ?? 0);
       testOutcomes.push(passed ? 1 : 0);
 
       if (blocked) {
@@ -345,6 +369,9 @@ function collectMetrics(runDir) {
     avgTurns: totalTests > 0 ? totalTurns / totalTests : 0,
     avgDurationMs: totalTests > 0 ? totalDurationMs / totalTests : 0,
     avgTokens: totalTests > 0 ? totalTokens / totalTests : 0,
+    avgDecideLlmCalls: totalTests > 0 ? totalDecideLlmCalls / totalTests : 0,
+    avgDecideSkips: totalTests > 0 ? totalDecideSkips / totalTests : 0,
+    avgDecideMs: totalTests > 0 ? totalDecideMs / totalTests : 0,
     testOutcomes,
     cleanOutcomes,
     failureClassCounts,
@@ -387,6 +414,9 @@ function summarizeByArm(runs) {
       avgTurns: mean(armRuns.map((run) => run.avgTurns)),
       avgDurationMs: mean(armRuns.map((run) => run.avgDurationMs)),
       avgTokens: mean(armRuns.map((run) => run.avgTokens)),
+      avgDecideLlmCalls: mean(armRuns.map((run) => run.avgDecideLlmCalls)),
+      avgDecideSkips: mean(armRuns.map((run) => run.avgDecideSkips)),
+      avgDecideMs: mean(armRuns.map((run) => run.avgDecideMs)),
       failureClassCounts: mergeCounts(armRuns.map((run) => run.failureClassCounts)),
     };
   }
@@ -419,6 +449,12 @@ function buildDelta(armIds, byArm, runs) {
     clean: {
       onMinusOff: byArm[treatmentId].cleanPassRate.mean - byArm[controlId].cleanPassRate.mean,
       bootstrap95: bootstrapDiff95(onCleanOutcomes, offCleanOutcomes, 2000, 17),
+    },
+    // Decide-phase efficiency delta (treatment − control). Continuous metrics,
+    // so reported as mean differences (the pass-rate bootstrap is binary-only).
+    decide: {
+      llmCallsOnMinusOff: byArm[treatmentId].avgDecideLlmCalls - byArm[controlId].avgDecideLlmCalls,
+      msOnMinusOff: byArm[treatmentId].avgDecideMs - byArm[controlId].avgDecideMs,
     },
   };
 }
@@ -465,6 +501,9 @@ function writeCsv(filePath, rows) {
     'avgTurns',
     'avgDurationMs',
     'avgTokens',
+    'avgDecideLlmCalls',
+    'avgDecideMs',
+    'avgDecideSkips',
     'promptHash',
     'runDir',
   ];
@@ -485,6 +524,9 @@ function writeCsv(filePath, rows) {
       row.avgTurns,
       row.avgDurationMs,
       row.avgTokens,
+      row.avgDecideLlmCalls,
+      row.avgDecideMs,
+      row.avgDecideSkips,
       row.promptHash ?? '',
       csvEscape(row.runDir),
     ];
@@ -529,6 +571,16 @@ function writeMarkdown(filePath, summary) {
     );
   }
   lines.push('');
+  lines.push('## Efficiency (per test, mean)');
+  lines.push('');
+  lines.push('| Arm | Decide LLM calls | Decide ms | Turns | Duration ms | Tokens |');
+  lines.push('| --- | --- | --- | --- | --- | --- |');
+  for (const [armId, arm] of Object.entries(summary.byArm)) {
+    lines.push(
+      `| ${armId} | ${arm.avgDecideLlmCalls.toFixed(2)} | ${arm.avgDecideMs.toFixed(0)} | ${arm.avgTurns.toFixed(2)} | ${arm.avgDurationMs.toFixed(0)} | ${arm.avgTokens.toFixed(0)} |`,
+    );
+  }
+  lines.push('');
   lines.push('## Artifact Completeness');
   lines.push('');
   lines.push(`- Total checks: ${summary.artifactChecks.total}`);
@@ -542,6 +594,10 @@ function writeMarkdown(filePath, summary) {
     lines.push(`- Raw bootstrap 95% CI: ${(summary.delta.raw.bootstrap95[0] * 100).toFixed(2)}pp to ${(summary.delta.raw.bootstrap95[1] * 100).toFixed(2)}pp`);
     lines.push(`- Clean ${summary.delta.treatment} - ${summary.delta.control}: ${(summary.delta.clean.onMinusOff * 100).toFixed(2)}pp`);
     lines.push(`- Clean bootstrap 95% CI: ${(summary.delta.clean.bootstrap95[0] * 100).toFixed(2)}pp to ${(summary.delta.clean.bootstrap95[1] * 100).toFixed(2)}pp`);
+    if (summary.delta.decide) {
+      lines.push(`- Decide LLM calls ${summary.delta.treatment} - ${summary.delta.control}: ${summary.delta.decide.llmCallsOnMinusOff.toFixed(2)}`);
+      lines.push(`- Decide ms ${summary.delta.treatment} - ${summary.delta.control}: ${summary.delta.decide.msOnMinusOff.toFixed(0)}`);
+    }
   }
   lines.push('');
   lines.push('## Files');
