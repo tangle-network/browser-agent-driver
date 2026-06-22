@@ -10,8 +10,10 @@ import { resolveBenchmarkProfile } from './lib/benchmark-profiles.mjs';
 import { classifyFailureReason, isExternalBlockerFailureClass } from './lib/failure-taxonomy.mjs';
 import { loadExperimentSpec } from './lib/experiment-spec.mjs';
 import { summarizeArtifactChecks } from './lib/artifact-completeness.mjs';
+import { startStaticFixtureServer } from './lib/static-fixture-server.mjs';
 import { benchmarkSyncChildEnv, syncBenchmarkOutput } from './lib/abd-benchmark-sync.mjs';
-import { mean, stddev, wilsonInterval, bootstrapDiff95 } from './lib/stats.mjs';
+import { mean, stddev, wilsonInterval } from './lib/stats.mjs';
+import { buildDelta } from './lib/ab-delta.mjs';
 
 const argv = process.argv.slice(2);
 const getArg = (name, fallback = undefined) => {
@@ -44,11 +46,17 @@ const globalModes = spec?.modes ?? getArg(
   'modes',
   benchmarkProfile.id.startsWith('webbench') ? 'fast-explore' : 'full-evidence,fast-explore',
 );
-const fixtureBaseUrl = spec?.fixtureBaseUrl ?? getArg('fixture-base-url');
+let fixtureBaseUrl = spec?.fixtureBaseUrl ?? getArg('fixture-base-url');
+let fixtureServer;
 const globalPromptFile = getArg('prompt-file');
 const globalModelAdaptive = hasFlag('model-adaptive');
 const globalNavModel = getArg('nav-model');
 const globalNavProvider = getArg('nav-provider');
+// Forwarded to each child run so arm configs need not hardcode a provider/model
+// pair (which otherwise drifts from the harness's --model default).
+const providerOverride = getArg('provider');
+const baseUrlOverride = getArg('base-url');
+const apiKeyOverride = getArg('api-key');
 const memoryEnabled = hasFlag('memory');
 const memoryDir = getArg('memory-dir');
 const memoryRootArg = getArg('memory-root');
@@ -91,6 +99,34 @@ for (const arm of arms) {
   }
 }
 
+// Warm-replay guard: a replay-on arm only produces a meaningful A/B when the off
+// arm's recorded trajectories are visible to it — i.e. memory ON, isolation
+// SHARED, and concurrency 1 (so off finishes recording before on replays).
+// Without these the on arm finds no replay candidate and self-heals to the live
+// loop, silently comparing normal-vs-normal. Fail fast instead.
+for (const arm of arms) {
+  let armConfig;
+  try {
+    armConfig = (await import(path.resolve(arm.configPath))).default;
+  } catch (err) {
+    console.error(`Failed to load config for arm "${arm.id}": ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  }
+  if (armConfig?.replay?.enabled) {
+    const problems = [];
+    if (!memoryEnabled) problems.push('--memory');
+    if (memoryIsolation !== 'shared') problems.push(`--memory-isolation shared (got "${memoryIsolation}")`);
+    if (concurrency !== 1) problems.push(`--concurrency 1 (got ${concurrency})`);
+    if (problems.length > 0) {
+      console.error(
+        `Arm "${arm.id}" enables replay, which requires ${problems.join(', ')}. ` +
+        'Otherwise the off arm has no recorded trajectories to replay and the A/B is meaningless.',
+      );
+      process.exit(1);
+    }
+  }
+}
+
 const globalPromptMeta = resolvePromptMetadata(globalPromptFile ? path.resolve(globalPromptFile) : undefined);
 const armPromptMeta = Object.fromEntries(
   arms.map((arm) => {
@@ -118,6 +154,21 @@ for (let rep = 1; rep <= repetitions; rep++) {
   });
 }
 
+// Auto-start the static fixture server when the cases reference
+// __FIXTURE_BASE_URL__ and no base URL was supplied — mirrors run-multi-rep and
+// the tier1 gate, so a local-fixture A/B (e.g. the warm-replay comparison) runs
+// standalone without a separately-started server.
+if (!fixtureBaseUrl && JSON.stringify(casesRaw).includes('__FIXTURE_BASE_URL__')) {
+  try {
+    fixtureServer = await startStaticFixtureServer(path.join(rootDir, 'bench', 'fixtures'));
+  } catch (err) {
+    console.error(`Failed to start fixture server: ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  }
+  fixtureBaseUrl = fixtureServer.baseUrl;
+  console.log(`ab-experiment: started fixture server at ${fixtureBaseUrl}`);
+}
+
 const jobs = [];
 for (let rep = 1; rep <= repetitions; rep++) {
   for (const arm of arms) {
@@ -125,7 +176,12 @@ for (let rep = 1; rep <= repetitions; rep++) {
   }
 }
 
-const runs = await runPool(jobs, concurrency, async ({ arm, rep }) => {
+// try/finally so the fixture server is always closed — even if a child run or
+// collectMetrics throws (mirrors run-multi-rep). The server is only needed while
+// the children run, so it closes the moment runPool settles.
+let runs;
+try {
+runs = await runPool(jobs, concurrency, async ({ arm, rep }) => {
   const runDir = path.join(outRoot, `${arm.id}-run-${String(rep).padStart(3, '0')}`);
   fs.mkdirSync(runDir, { recursive: true });
 
@@ -142,6 +198,9 @@ const runs = await runPool(jobs, concurrency, async ({ arm, rep }) => {
   ];
   if (storageState) args.push('--storage-state', storageState);
   if (fixtureBaseUrl) args.push('--fixture-base-url', fixtureBaseUrl);
+  if (arm.provider ?? providerOverride) args.push('--provider', arm.provider ?? providerOverride);
+  if (baseUrlOverride) args.push('--base-url', baseUrlOverride);
+  if (apiKeyOverride) args.push('--api-key', apiKeyOverride);
   const promptMeta = armPromptMeta[arm.id];
   if (promptMeta.path) args.push('--prompt-file', promptMeta.path);
   if ((arm.modelAdaptive ?? globalModelAdaptive) === true) args.push('--model-adaptive');
@@ -175,6 +234,11 @@ const runs = await runPool(jobs, concurrency, async ({ arm, rep }) => {
     ...metrics,
   };
 });
+} finally {
+  if (fixtureServer) {
+    try { await fixtureServer.close(); } catch (e) { console.warn(`ab-experiment: fixture server close failed: ${e instanceof Error ? e.message : e}`); }
+  }
+}
 
 const byArm = summarizeByArm(runs);
 const armIds = Object.keys(byArm);
@@ -233,7 +297,8 @@ for (const armId of armIds) {
 }
 if (summary.delta) {
   console.log(
-    `- delta (${summary.delta.treatment} - ${summary.delta.control}): raw ${(summary.delta.raw.onMinusOff * 100).toFixed(2)}pp | clean ${(summary.delta.clean.onMinusOff * 100).toFixed(2)}pp`,
+    `- delta (${summary.delta.treatment} - ${summary.delta.control}): raw ${(summary.delta.raw.onMinusOff * 100).toFixed(2)}pp | clean ${(summary.delta.clean.onMinusOff * 100).toFixed(2)}pp` +
+      (summary.delta.decide ? ` | decideLlmCalls ${summary.delta.decide.llmCallsOnMinusOff.toFixed(2)} | decideMs ${summary.delta.decide.msOnMinusOff.toFixed(0)}` : ''),
   );
 }
 console.log(`- artifacts: ${summary.artifactChecks.passed}/${summary.artifactChecks.total} track checks passed`);
@@ -299,6 +364,12 @@ function collectMetrics(runDir) {
   let totalTurns = 0;
   let totalDurationMs = 0;
   let totalTokens = 0;
+  // Decide-phase instrumentation (RunPhaseTimings). decideLlmCalls is the
+  // dominant cost the --replay lever removes, so any replay/decide A/B needs it
+  // surfaced here — turns/duration alone don't show the mechanism.
+  let totalDecideLlmCalls = 0;
+  let totalDecideSkips = 0;
+  let totalDecideMs = 0;
   const testOutcomes = [];
   const cleanOutcomes = [];
   const failureClassCounts = {};
@@ -316,6 +387,10 @@ function collectMetrics(runDir) {
       totalTurns += Number(result.turnsUsed ?? 0);
       totalDurationMs += Number(result.durationMs ?? 0);
       totalTokens += Number(result.tokensUsed ?? 0);
+      const pt = result.phaseTimings ?? result.agentResult?.phaseTimings ?? {};
+      totalDecideLlmCalls += Number(pt.decideLlmCalls ?? 0);
+      totalDecideSkips += Number(pt.decideSkips ?? 0);
+      totalDecideMs += Number(pt.totalDecideMs ?? 0);
       testOutcomes.push(passed ? 1 : 0);
 
       if (blocked) {
@@ -345,6 +420,9 @@ function collectMetrics(runDir) {
     avgTurns: totalTests > 0 ? totalTurns / totalTests : 0,
     avgDurationMs: totalTests > 0 ? totalDurationMs / totalTests : 0,
     avgTokens: totalTests > 0 ? totalTokens / totalTests : 0,
+    avgDecideLlmCalls: totalTests > 0 ? totalDecideLlmCalls / totalTests : 0,
+    avgDecideSkips: totalTests > 0 ? totalDecideSkips / totalTests : 0,
+    avgDecideMs: totalTests > 0 ? totalDecideMs / totalTests : 0,
     testOutcomes,
     cleanOutcomes,
     failureClassCounts,
@@ -387,40 +465,13 @@ function summarizeByArm(runs) {
       avgTurns: mean(armRuns.map((run) => run.avgTurns)),
       avgDurationMs: mean(armRuns.map((run) => run.avgDurationMs)),
       avgTokens: mean(armRuns.map((run) => run.avgTokens)),
+      avgDecideLlmCalls: mean(armRuns.map((run) => run.avgDecideLlmCalls)),
+      avgDecideSkips: mean(armRuns.map((run) => run.avgDecideSkips)),
+      avgDecideMs: mean(armRuns.map((run) => run.avgDecideMs)),
       failureClassCounts: mergeCounts(armRuns.map((run) => run.failureClassCounts)),
     };
   }
   return armSummary;
-}
-
-function buildDelta(armIds, byArm, runs) {
-  // Support both off/on and first/second arm naming
-  let controlId = 'off'
-  let treatmentId = 'on'
-  if (!byArm.off || !byArm.on) {
-    if (armIds.length === 2) {
-      controlId = armIds[0]
-      treatmentId = armIds[1]
-    } else {
-      return null
-    }
-  }
-  const onOutcomes = runs.filter((run) => run.arm === treatmentId).flatMap((run) => run.testOutcomes);
-  const offOutcomes = runs.filter((run) => run.arm === controlId).flatMap((run) => run.testOutcomes);
-  const onCleanOutcomes = runs.filter((run) => run.arm === treatmentId).flatMap((run) => run.cleanOutcomes);
-  const offCleanOutcomes = runs.filter((run) => run.arm === controlId).flatMap((run) => run.cleanOutcomes);
-  return {
-    control: controlId,
-    treatment: treatmentId,
-    raw: {
-      onMinusOff: byArm[treatmentId].rawPassRate.mean - byArm[controlId].rawPassRate.mean,
-      bootstrap95: bootstrapDiff95(onOutcomes, offOutcomes, 2000, 11),
-    },
-    clean: {
-      onMinusOff: byArm[treatmentId].cleanPassRate.mean - byArm[controlId].cleanPassRate.mean,
-      bootstrap95: bootstrapDiff95(onCleanOutcomes, offCleanOutcomes, 2000, 17),
-    },
-  };
 }
 
 function findSuiteReports(root) {
@@ -465,6 +516,9 @@ function writeCsv(filePath, rows) {
     'avgTurns',
     'avgDurationMs',
     'avgTokens',
+    'avgDecideLlmCalls',
+    'avgDecideMs',
+    'avgDecideSkips',
     'promptHash',
     'runDir',
   ];
@@ -485,6 +539,9 @@ function writeCsv(filePath, rows) {
       row.avgTurns,
       row.avgDurationMs,
       row.avgTokens,
+      row.avgDecideLlmCalls,
+      row.avgDecideMs,
+      row.avgDecideSkips,
       row.promptHash ?? '',
       csvEscape(row.runDir),
     ];
@@ -529,6 +586,16 @@ function writeMarkdown(filePath, summary) {
     );
   }
   lines.push('');
+  lines.push('## Efficiency (per test, mean)');
+  lines.push('');
+  lines.push('| Arm | Decide LLM calls | Decide ms | Turns | Duration ms | Tokens |');
+  lines.push('| --- | --- | --- | --- | --- | --- |');
+  for (const [armId, arm] of Object.entries(summary.byArm)) {
+    lines.push(
+      `| ${armId} | ${arm.avgDecideLlmCalls.toFixed(2)} | ${arm.avgDecideMs.toFixed(0)} | ${arm.avgTurns.toFixed(2)} | ${arm.avgDurationMs.toFixed(0)} | ${arm.avgTokens.toFixed(0)} |`,
+    );
+  }
+  lines.push('');
   lines.push('## Artifact Completeness');
   lines.push('');
   lines.push(`- Total checks: ${summary.artifactChecks.total}`);
@@ -542,6 +609,10 @@ function writeMarkdown(filePath, summary) {
     lines.push(`- Raw bootstrap 95% CI: ${(summary.delta.raw.bootstrap95[0] * 100).toFixed(2)}pp to ${(summary.delta.raw.bootstrap95[1] * 100).toFixed(2)}pp`);
     lines.push(`- Clean ${summary.delta.treatment} - ${summary.delta.control}: ${(summary.delta.clean.onMinusOff * 100).toFixed(2)}pp`);
     lines.push(`- Clean bootstrap 95% CI: ${(summary.delta.clean.bootstrap95[0] * 100).toFixed(2)}pp to ${(summary.delta.clean.bootstrap95[1] * 100).toFixed(2)}pp`);
+    if (summary.delta.decide) {
+      lines.push(`- Decide LLM calls ${summary.delta.treatment} - ${summary.delta.control}: ${summary.delta.decide.llmCallsOnMinusOff.toFixed(2)}`);
+      lines.push(`- Decide ms ${summary.delta.treatment} - ${summary.delta.control}: ${summary.delta.decide.msOnMinusOff.toFixed(0)}`);
+    }
   }
   lines.push('');
   lines.push('## Files');
