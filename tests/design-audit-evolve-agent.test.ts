@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { resolveAgentCommand } from '../src/design/audit/evolve/agent.js'
+import { resolveAgentCommand, buildApplyPrompt } from '../src/design/audit/evolve/agent.js'
+import type { PageAuditResult } from '../src/cli-design-audit.js'
+
+const stubResult = (): PageAuditResult =>
+  ({ url: 'https://app.example', score: 6, findings: [] } as unknown as PageAuditResult)
 
 // Guards the shell-injection fix: the prompt — which contains text mined from the
 // audited DOM — must reach the coding agent as a SINGLE argv element, never
@@ -27,5 +31,19 @@ describe('resolveAgentCommand — argv safety', () => {
 
   it('resolves cwd to the project dir', () => {
     expect(resolveAgentCommand('claude-code', 'x', '/proj').cwd).toBe('/proj')
+  })
+})
+
+// Regression: the apply prompt must forbid the coding agent from inventing
+// content (data/metrics/feeds) the app does not already have — the defence-in-
+// depth guardrail behind the generator/judge content-fidelity rules.
+describe('buildApplyPrompt — content fidelity', () => {
+  it('forbids inventing content in both the redesign and findings-only modes', () => {
+    const withTarget = buildApplyPrompt([stubResult()], 'auto', '## Some redesign target\n\nbody')
+    expect(withTarget).toContain('Invent content the app does not already have')
+    expect(withTarget).toContain('using only the app\'s REAL content')
+
+    const findingsOnly = buildApplyPrompt([stubResult()], 'auto')
+    expect(findingsOnly).toContain('Invent content the app does not already have')
   })
 })

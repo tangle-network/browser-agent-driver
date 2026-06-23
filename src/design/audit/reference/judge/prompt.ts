@@ -38,6 +38,17 @@ const ANTI_POSITION_BIAS =
   'SLOT A and SLOT B are presented in a randomized order that carries NO information. ' +
   'Do not favour a design because of its slot — judge only on merit.'
 
+// Both pairwise subjects redesign the SAME real page, so "richer" content is not
+// a virtue when it is fabricated. Without this, the judge rewards a direction for
+// importing the reference's content (e.g. an invented activity feed) — exactly
+// the failure that inflates sparse-page redesigns. Fidelity to the page's real
+// content is the floor; "fit to the reference" is aesthetic, not content, fit.
+const CONTENT_FIDELITY =
+  'Both directions redesign the SAME real page. Judge them as faithful redesigns of that page, not as new pages. ' +
+  'A direction that invents content the page does not have — fabricated metrics, counts, dates, statuses, activity ' +
+  'feeds, or whole sections of made-up data — is LESS faithful and must be penalised, never rewarded as "richer". ' +
+  '"Fit to the reference" means matching its visual craft (type, colour, motion, spacing, hierarchy), not importing its content.'
+
 const RESPONSE_CONTRACT = [
   'Respond with ONLY a JSON object and no surrounding prose:',
   '{"winner": "A" | "B" | "tie", "confidence": <number 0-1>, "reasons": [<short strings>]}',
@@ -72,6 +83,7 @@ function pairwiseSystem(): string {
   return [
     'You are a world-class art director comparing two redesign directions for the same page against a named reference.',
     'Pick the direction with stronger taste, craft, information hierarchy, and fit to the reference.',
+    CONTENT_FIDELITY,
     ANTI_POSITION_BIAS,
     RESPONSE_CONTRACT,
     'Use "tie" only when the two are genuinely indistinguishable in quality.',

@@ -114,6 +114,20 @@ describe('judge prompts', () => {
     expect(ba.user.indexOf('Dense Control Room')).toBeLessThan(ba.user.indexOf('Editorial Calm'))
   })
 
+  // Regression: the pairwise ranker was observed REWARDING a direction for
+  // importing the reference's content (an invented "Recent Activity feed with
+  // timestamps"). It must instead penalise fabricated content as unfaithful.
+  it('penalises invented content rather than rewarding it (content fidelity)', () => {
+    const p = buildPairwisePrompt(input, 'AB')
+    const sys = p.system.toLowerCase()
+    expect(sys).toContain('faithful redesigns')
+    expect(sys).toContain('invents content the page does not have')
+    expect(sys).toContain('penalised')
+    expect(sys).toContain('not importing its content')
+    // byte-stability is preserved with the added clause
+    expect(buildPairwisePrompt(input, 'AB')).toEqual(p)
+  })
+
   it('narrows the quality prompt to a single dimension when scoped', () => {
     const scoped = buildQualityPrompt(
       { a: subject('page'), b: subject('exemplar'), dimension: 'visual_craft' },
