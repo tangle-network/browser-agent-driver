@@ -8,6 +8,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { AgentConfig, TestCase } from './types.js';
+import { resolveDefaultProvider } from './provider-defaults.js';
 import type { ArtifactSink } from './artifacts/types.js';
 import type { ResourceBlockingOptions } from './drivers/types.js';
 
@@ -238,14 +239,22 @@ export async function loadConfig(configPath?: string): Promise<DriverConfig> {
     ? path.resolve(configPath)
     : findConfigFile(process.cwd());
 
+  // The default provider is credential-aware, not a hard 'openai': resolved
+  // AFTER env load (cli.ts loads .env before buildDriverConfig), so a bare run
+  // uses OpenAI when OPENAI_API_KEY is set (unchanged for OpenAI users + CI) and
+  // otherwise falls back to an available provider (claude-code). The model stays
+  // the default string; the model client maps it per provider (gpt-5.4 → sonnet
+  // for claude-code). An explicit provider in the user's config file is honored.
   if (!resolved) {
-    return { ...DEFAULTS };
+    return { ...DEFAULTS, provider: resolveDefaultProvider() };
   }
 
   const imported = await import(resolved);
   const raw: DriverConfig = imported.default ?? imported;
 
-  return mergeConfig(DEFAULTS, raw);
+  const merged = mergeConfig(DEFAULTS, raw);
+  if (raw.provider === undefined) merged.provider = resolveDefaultProvider();
+  return merged;
 }
 
 // Arrays that should concatenate (combining sinks is the common pattern).

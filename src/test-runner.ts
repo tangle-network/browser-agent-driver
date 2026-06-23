@@ -9,6 +9,7 @@ import { existsSync, readFileSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Page } from 'playwright';
+import { resolveDefaultProvider } from './provider-defaults.js';
 import type {
   TestCase,
   TestResult,
@@ -1146,7 +1147,7 @@ export class TestRunner {
 
   private buildRuntimeConfig(): import('./types.js').RunRuntimeConfig {
     return {
-      provider: this.config.provider || 'openai',
+      provider: this.config.provider || resolveDefaultProvider(),
       model: this.config.model || 'unknown',
       ...(this.config.sandboxBackendType ? { sandboxBackendType: this.config.sandboxBackendType } : {}),
       ...(this.config.sandboxBackendProfile ? { sandboxBackendProfile: this.config.sandboxBackendProfile } : {}),
