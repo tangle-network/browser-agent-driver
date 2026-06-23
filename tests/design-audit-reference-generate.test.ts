@@ -199,6 +199,20 @@ describe('parseDirection', () => {
     expect(res.direction.groundedInExemplarIds).toEqual(['ex-a'])
   })
 
+  it('coerces numeric STRINGS in typeSystem.ratio/scalePx and motionSpec.durationsMs', () => {
+    // Models (esp. non-OpenAI ones, e.g. GLM-5.2) often emit numbers as strings.
+    const json = validDirectionJson('ex-a', {
+      typeSystem: { families: ['Inter'], scalePx: ['14', '18', '24'], ratio: '1.25', rationale: 'scale' },
+      motionSpec: { durationsMs: ['160', '240'], easings: ['ease-out'], cues: ['x'] },
+    })
+    const res = parseDirection(json, ['ex-a'])
+    expect(res.ok).toBe(true)
+    if (!res.ok) return
+    expect(res.direction.typeSystem.ratio).toBe(1.25)
+    expect(res.direction.typeSystem.scalePx).toEqual([14, 18, 24])
+    expect(res.direction.motionSpec.durationsMs).toEqual([160, 240])
+  })
+
   it('tolerates a markdown code fence', () => {
     const res = parseDirection('```json\n' + validDirectionJson('ex-a') + '\n```', ['ex-a'])
     expect(res.ok).toBe(true)

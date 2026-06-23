@@ -31,11 +31,34 @@ const isRecord = (v: unknown): v is Record<string, unknown> =>
 
 const isString = (v: unknown): v is string => typeof v === 'string'
 
-const isFiniteNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
-
 const isStringArray = (v: unknown): v is string[] => Array.isArray(v) && v.every(isString)
 
-const isNumberArray = (v: unknown): v is number[] => Array.isArray(v) && v.every(isFiniteNumber)
+/**
+ * Coerce a numeric value, tolerating the numeric STRINGS many models emit
+ * (`"1.25"`, `"16px"`). Same value, just typed — no fabrication. Returns
+ * undefined when there's no leading finite number to read.
+ */
+const coerceNumber = (v: unknown): number | undefined => {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : undefined
+  if (typeof v === 'string') {
+    const n = Number.parseFloat(v.trim())
+    return Number.isFinite(n) ? n : undefined
+  }
+  return undefined
+}
+
+/** Coerce an array of numbers, accepting numeric strings per element.
+ *  Returns undefined if the input isn't an array or any element won't coerce. */
+const coerceNumberArray = (v: unknown): number[] | undefined => {
+  if (!Array.isArray(v)) return undefined
+  const out: number[] = []
+  for (const x of v) {
+    const n = coerceNumber(x)
+    if (n === undefined) return undefined
+    out.push(n)
+  }
+  return out
+}
 
 /**
  * Pull the outermost JSON object out of a model response. Tolerates a leading
@@ -61,10 +84,12 @@ function extractJsonObject(raw: string): { json: string } | { truncated: true } 
 function parseTypeSystem(raw: unknown): TypeSystemSpec | string {
   if (!isRecord(raw)) return 'typeSystem must be an object'
   if (!isStringArray(raw.families) || raw.families.length === 0) return 'typeSystem.families must be a non-empty string[]'
-  if (!isNumberArray(raw.scalePx) || raw.scalePx.length === 0) return 'typeSystem.scalePx must be a non-empty number[]'
-  if (!isFiniteNumber(raw.ratio)) return 'typeSystem.ratio must be a number'
+  const scalePx = coerceNumberArray(raw.scalePx)
+  if (!scalePx || scalePx.length === 0) return 'typeSystem.scalePx must be a non-empty number[]'
+  const ratio = coerceNumber(raw.ratio)
+  if (ratio === undefined) return 'typeSystem.ratio must be a number'
   if (!isString(raw.rationale)) return 'typeSystem.rationale must be a string'
-  return { families: raw.families, scalePx: raw.scalePx, ratio: raw.ratio, rationale: raw.rationale }
+  return { families: raw.families, scalePx, ratio, rationale: raw.rationale }
 }
 
 function parseColorSystem(raw: unknown): ColorSystemSpec | string {
@@ -86,10 +111,11 @@ function parseColorSystem(raw: unknown): ColorSystemSpec | string {
 
 function parseMotionSpec(raw: unknown): MotionSpec | string {
   if (!isRecord(raw)) return 'motionSpec must be an object'
-  if (!isNumberArray(raw.durationsMs)) return 'motionSpec.durationsMs must be a number[]'
+  const durationsMs = coerceNumberArray(raw.durationsMs)
+  if (!durationsMs) return 'motionSpec.durationsMs must be a number[]'
   if (!isStringArray(raw.easings)) return 'motionSpec.easings must be a string[]'
   if (!isStringArray(raw.cues)) return 'motionSpec.cues must be a string[]'
-  return { durationsMs: raw.durationsMs, easings: raw.easings, cues: raw.cues }
+  return { durationsMs, easings: raw.easings, cues: raw.cues }
 }
 
 function parseCopy(raw: unknown): CopyRevision[] | string {
