@@ -187,19 +187,71 @@ describe('buildDirectionPrompt', () => {
   // Regression: a sparse page grounded against a dense exemplar must not be told
   // to fabricate content to fill the layout (the example.com failure — invented
   // "Recent Activity" feeds, fake metrics/dates). Fidelity to the page's real
-  // content is a hard rule; the exemplar governs look, not content.
+  // content is a hard rule; the exemplar is craft only, never content.
   it('forbids fabricating content the page does not have (content fidelity)', () => {
     const hit = makeHit('ex-a')
     const { system } = buildDirectionPrompt(ctx, hit)
     const sys = system.toLowerCase()
     expect(sys).toContain('never fabricate content')
     expect(sys).toContain("page's own content")
-    // sparse pages must stay restrained, not be padded to the exemplar's density
+    // sparse pages stay restrained rather than being padded to the exemplar's density
     expect(sys).toContain('proportionally restrained')
-    expect(sys).toContain('do not manufacture content')
-    // the exemplar governs look, never content
-    expect(sys).toContain('how the page looks')
-    expect(sys).toContain('what content it contains')
+    expect(sys).toContain('rather than manufacturing')
+    // the exemplar is a source of craft, not content/structure
+    expect(sys).toContain('borrow its craft, never its content or structure')
+    // do not assert specific values the model was not given
+    expect(sys).toContain('do not assert specific values')
+  })
+
+  // The job-first reframe: the prompt must lead from the user's task and forbid
+  // stripping navigation or density to look prettier — the regression that turned
+  // the python docs page into a marketing brochure (lost ToC, lost density).
+  it('leads from task fitness and forbids regressing function for aesthetics', () => {
+    const hit = makeHit('ex-a')
+    const { system } = buildDirectionPrompt(ctx, hit)
+    const sys = system.toLowerCase()
+    // persona is product designer (task outcomes), not art director (decoration)
+    expect(sys).toContain('product designer')
+    expect(sys).not.toContain('art director')
+    // task first, in priority order
+    expect(sys).toContain('task first')
+    expect(sys).toContain('priority order')
+    // never delete navigation to look cleaner
+    expect(sys).toContain('preserve functional affordances')
+    expect(sys).toContain('delete navigation')
+    // density is value on functional pages; right-size rather than reskin
+    expect(sys).toContain('preserve density where it is the value')
+    expect(sys).toContain('must not become a landing page')
+  })
+
+  // The per-page functional contract is DATA-DRIVEN off measured DNA: it lists the
+  // page's nav affordances to preserve, and only asserts "DENSE" when the page is
+  // actually measured dense (a sparse page is never forced to stay dense).
+  it('injects a data-driven functional contract that preserves nav + real density', () => {
+    const denseCtx: GenerationContext = {
+      ...ctx,
+      dna: makeDNA({
+        layout: { columns: 12, gridBaseUnit: 8, whitespaceRatio: 0.2, density: 'dense', archetype: 'nav-content' },
+        components: { buttons: 4, inputs: 2, cards: 8, nav: 3 },
+      }),
+    }
+    const { user } = buildDirectionPrompt(denseCtx, makeHit('ex-a'))
+    expect(user).toContain('FUNCTIONAL CONTRACT')
+    expect(user).toContain('Keep all 3 navigation') // 3 nav affordances detected
+    expect(user).toContain('This page is DENSE') // density === 'dense'
+
+    // a sparse page gets the contract + nav line but NOT the dense directive
+    const sparseCtx: GenerationContext = {
+      ...ctx,
+      dna: makeDNA({
+        layout: { columns: 1, gridBaseUnit: 8, whitespaceRatio: 0.8, density: 'sparse', archetype: 'hero' },
+        components: { buttons: 1, inputs: 0, cards: 0, nav: 0 },
+      }),
+    }
+    const { user: sparseUser } = buildDirectionPrompt(sparseCtx, makeHit('ex-a'))
+    expect(sparseUser).toContain('FUNCTIONAL CONTRACT')
+    expect(sparseUser).not.toContain('This page is DENSE')
+    expect(sparseUser).not.toContain('navigation / wayfinding affordance') // nav === 0
   })
 })
 

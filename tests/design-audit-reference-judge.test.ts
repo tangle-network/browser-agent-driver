@@ -93,7 +93,22 @@ describe('judge prompts', () => {
     const p2 = buildPairwisePrompt(input, 'AB')
     expect(p1).toEqual(p2)
     expect(p1.system).toContain('randomized order that carries NO information')
-    expect(p1.system).toContain('art director')
+    expect(p1.system).toContain('product designer')
+  })
+
+  // The judge must score task fitness + functional preservation BEFORE visual
+  // craft — so a polished direction that strips navigation or density loses. This
+  // de-biases the ranker away from the AI-pretty-but-less-functional aesthetic.
+  it('ranks task fitness + functional preservation above visual craft', () => {
+    const sys = buildPairwisePrompt(input, 'AB').system
+    expect(sys).toContain('PRIORITY ORDER')
+    expect(sys).toContain('TASK FITNESS')
+    expect(sys).toContain('FUNCTIONAL PRESERVATION')
+    expect(sys).toContain('reduces information density')
+    expect(sys).toContain('is WORSE for users, however polished it looks')
+    // visual craft is explicitly the lowest priority, and reference-fit is craft-only
+    expect(sys).toContain('VISUAL CRAFT')
+    expect(sys).toContain('never reward a direction for importing the reference')
   })
 
   it('injects the reference only when present', () => {
@@ -417,7 +432,7 @@ describe('createTextJudge', () => {
     })
     expect(out.winnerSlot).toBe('B')
     expect(out.dimension).toBeUndefined()
-    expect(calls[0].system).toContain('art director')
+    expect(calls[0].system).toContain('product designer')
   })
 })
 
