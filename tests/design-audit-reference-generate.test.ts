@@ -228,12 +228,21 @@ describe('parseDirection', () => {
     expect(res.reason).toMatch(/no JSON object/i)
   })
 
-  it('fails closed on truncated JSON with no closing brace', () => {
+  it('fails closed on truncated JSON with no closing brace, reporting truncation', () => {
     const truncated = validDirectionJson('ex-a').slice(0, 120)
     const res = parseDirection(truncated, ['ex-a'])
     expect(res.ok).toBe(false)
     if (res.ok) return
-    expect(res.reason).toMatch(/no JSON object/i)
+    // An opened-but-unclosed object is a truncated completion, not "no JSON" —
+    // surface that so a reasoning model hitting the token cap is diagnosable.
+    expect(res.reason).toMatch(/truncated/i)
+  })
+
+  it('reports empty output distinctly from non-JSON garbage', () => {
+    const res = parseDirection('   ', ['ex-a'])
+    expect(res.ok).toBe(false)
+    if (res.ok) return
+    expect(res.reason).toMatch(/empty/i)
   })
 
   it('fails closed on a braced-but-unparseable object', () => {

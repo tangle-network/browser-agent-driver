@@ -40,17 +40,22 @@ const isNumberArray = (v: unknown): v is number[] => Array.isArray(v) && v.every
 /**
  * Pull the outermost JSON object out of a model response. Tolerates a leading
  * markdown fence and any prose preamble/suffix the gateway wraps around the
- * object. Returns null when no object literal is present.
+ * object. Distinguishes three cases so the caller can report each truthfully:
+ *   - `{ json }`       — an object literal was found;
+ *   - `{ truncated }`  — an object was OPENED (`{`) but never closed (`}`), i.e.
+ *                        the model ran out of output budget mid-object;
+ *   - `null`           — no object literal at all (empty or non-JSON output).
  */
-function extractJsonObject(raw: string): string | null {
+function extractJsonObject(raw: string): { json: string } | { truncated: true } | null {
   let text = raw.trim()
   if (text.startsWith('```')) {
     text = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim()
   }
   const first = text.indexOf('{')
+  if (first < 0) return null
   const last = text.lastIndexOf('}')
-  if (first < 0 || last <= first) return null
-  return text.slice(first, last + 1)
+  if (last <= first) return { truncated: true }
+  return { json: text.slice(first, last + 1) }
 }
 
 function parseTypeSystem(raw: unknown): TypeSystemSpec | string {
@@ -116,8 +121,14 @@ export function validateGrounding(d: RedesignDirection, allowedIds: string[]): s
  * returns a `DirectionParseError`, never a partial or invented direction.
  */
 export function parseDirection(raw: string, allowedIds: string[]): DirectionParseResult {
-  const json = extractJsonObject(raw)
-  if (json === null) return fail('no JSON object found in model output')
+  const extracted = extractJsonObject(raw)
+  if (extracted === null) {
+    return fail(raw.trim().length === 0 ? 'model returned empty output' : 'no JSON object found in model output')
+  }
+  if ('truncated' in extracted) {
+    return fail('model output truncated — incomplete JSON object (raise the generation token budget for reasoning models)')
+  }
+  const json = extracted.json
 
   let parsed: unknown
   try {

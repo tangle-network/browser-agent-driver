@@ -53,7 +53,13 @@ export interface BrainGeneratorOptions {
   maxRefChars?: number
 }
 
-const DEFAULT_MAX_OUTPUT_TOKENS = 2200
+// Headroom for the JSON direction PLUS any reasoning a model emits first.
+// Non-reasoning models (gpt-5.4, claude) stop at the closing brace and never use
+// the extra, so this is free for them; reasoning models (GLM-5.2, o-series) spend
+// output tokens thinking before the answer — at 2200 their reasoning consumed the
+// budget and the JSON came back empty or truncated. Tunable per call via
+// BrainGeneratorOptions.maxOutputTokens.
+const DEFAULT_MAX_OUTPUT_TOKENS = 8000
 
 const clampCount = (requested: number, available: number): number =>
   Math.max(0, Math.min(Math.floor(requested), available))
