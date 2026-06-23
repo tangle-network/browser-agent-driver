@@ -73,7 +73,7 @@ function buildAgentFixPrompt(results: PageAuditResult[], profile: string, round:
 
 ${redesignTarget}
 
-Realize the REDESIGN TARGET above as a COHERENT SYSTEM — its type scale, colour tokens, layout structure, motion, hierarchy, and copy — adapted to this project's stack. The findings below are secondary issues to also resolve as you redesign.`
+Realize the REDESIGN TARGET above as a COHERENT SYSTEM — its type scale, colour tokens, layout structure, motion, hierarchy, and copy — adapted to this project's stack, using only the app's REAL content. The findings below are secondary issues to also resolve as you redesign.`
     : `You are fixing design issues found by an automated design audit.`
 
   return `${intro}
@@ -101,7 +101,8 @@ Do NOT:
 - Create new standalone CSS override files — edit the existing styles
 - Add comments explaining what you changed — just change it
 - Refactor unrelated code
-- Change component structure or HTML semantics unless a finding specifically requires it`
+- Change component structure or HTML semantics unless a finding specifically requires it
+- Invent content the app does not already have — no fabricated data, metrics, counts, timestamps, activity feeds, or made-up sections. Restyle and restructure the real content only; if a section would be empty, leave it out rather than filling it with placeholder facts`
 }
 
 /**

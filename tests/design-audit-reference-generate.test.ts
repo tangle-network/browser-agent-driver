@@ -183,6 +183,24 @@ describe('buildDirectionPrompt', () => {
     expect(ruled).toContain('SCORING CRITERIA')
     expect(ruled).toContain('…')
   })
+
+  // Regression: a sparse page grounded against a dense exemplar must not be told
+  // to fabricate content to fill the layout (the example.com failure — invented
+  // "Recent Activity" feeds, fake metrics/dates). Fidelity to the page's real
+  // content is a hard rule; the exemplar governs look, not content.
+  it('forbids fabricating content the page does not have (content fidelity)', () => {
+    const hit = makeHit('ex-a')
+    const { system } = buildDirectionPrompt(ctx, hit)
+    const sys = system.toLowerCase()
+    expect(sys).toContain('never fabricate content')
+    expect(sys).toContain("page's own content")
+    // sparse pages must stay restrained, not be padded to the exemplar's density
+    expect(sys).toContain('proportionally restrained')
+    expect(sys).toContain('do not manufacture content')
+    // the exemplar governs look, never content
+    expect(sys).toContain('how the page looks')
+    expect(sys).toContain('what content it contains')
+  })
 })
 
 // ── parseDirection (pure, fail-closed) ───────────────────────────────────────
