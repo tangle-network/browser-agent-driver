@@ -98,6 +98,35 @@ describe('loadConfig', () => {
     }
   });
 
+  it('default provider is credential-aware: openai with OPENAI_API_KEY, else claude-code', async () => {
+    const origCwd = process.cwd();
+    const origKey = process.env.OPENAI_API_KEY;
+    process.chdir(tmpDir);
+    try {
+      delete process.env.OPENAI_API_KEY;
+      expect((await loadConfig()).provider).toBe('claude-code');
+      process.env.OPENAI_API_KEY = 'sk-test';
+      expect((await loadConfig()).provider).toBe('openai');
+    } finally {
+      process.chdir(origCwd);
+      if (origKey === undefined) delete process.env.OPENAI_API_KEY;
+      else process.env.OPENAI_API_KEY = origKey;
+    }
+  });
+
+  it('honors an explicit config-file provider even without OPENAI_API_KEY', async () => {
+    const configPath = path.join(tmpDir, 'test.config.mjs');
+    fs.writeFileSync(configPath, 'export default { provider: "anthropic" };\n');
+    const origKey = process.env.OPENAI_API_KEY;
+    try {
+      delete process.env.OPENAI_API_KEY;
+      expect((await loadConfig(configPath)).provider).toBe('anthropic');
+    } finally {
+      if (origKey === undefined) delete process.env.OPENAI_API_KEY;
+      else process.env.OPENAI_API_KEY = origKey;
+    }
+  });
+
   it('loads config from an explicit .mjs path', async () => {
     const configPath = path.join(tmpDir, 'test.config.mjs');
     fs.writeFileSync(configPath, 'export default { model: "test-model", concurrency: 8 };\n');

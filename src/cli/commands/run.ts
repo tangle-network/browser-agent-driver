@@ -5,7 +5,7 @@ import { toAgentConfig } from '../../config.js';
 import { buildBrowserLaunchPlan } from '../../browser-launch.js';
 import { runWalletPreflight, startWalletAutoApprover } from '../../wallet/automation.js';
 import { isPersonaId, listPersonaIds, withPersonaDirective } from '../../personas.js';
-import { resolveProviderApiKey, resolveProviderModelName } from '../../provider-defaults.js';
+import { resolveProviderApiKey, resolveProviderModelName, resolveDefaultProvider } from '../../provider-defaults.js';
 import { CliRenderer, cliError, cliWarn, cliLog } from '../../cli-ui.js';
 import { ProjectStore } from '../../memory/project-store.js';
 import { RunRegistry } from '../../memory/run-registry.js';
@@ -189,7 +189,7 @@ export async function runRunCommand(values: CliValues): Promise<void> {
   const debug = values.debug!;
   const sinkDir = driverConfig.outputDir ?? './agent-results';
 
-  const resolvedProvider = driverConfig.provider || 'openai';
+  const resolvedProvider = driverConfig.provider || resolveDefaultProvider();
   const resolvedApiKey = resolveProviderApiKey(resolvedProvider, driverConfig.apiKey);
   const resolvedModel = resolveProviderModelName(resolvedProvider, driverConfig.model, {
     sandboxBackendType: resolvedProvider === 'sandbox-backend' ? driverConfig.sandboxBackendType : undefined,
@@ -329,7 +329,7 @@ export async function runRunCommand(values: CliValues): Promise<void> {
     const version = readCliVersion();
     renderer.banner({
       version,
-      provider: config.provider || 'openai',
+      provider: config.provider || resolveDefaultProvider(),
       model: config.model,
       browser: browserName,
       testCount: cases.length,
@@ -337,7 +337,7 @@ export async function runRunCommand(values: CliValues): Promise<void> {
       mode: mode || undefined,
       profile: driverConfig.profile,
       adaptiveRouting: config.adaptiveModelRouting ? {
-        navProvider: config.navProvider || config.provider || 'openai',
+        navProvider: config.navProvider || config.provider || resolveDefaultProvider(),
         navModel: config.navModel || 'gpt-4.1-mini',
       } : undefined,
       outputDir: sinkDir,
