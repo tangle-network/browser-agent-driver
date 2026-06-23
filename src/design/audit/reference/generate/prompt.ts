@@ -43,35 +43,48 @@ const truncate = (s: string, max: number): string =>
  * half of every generation call is byte-identical run-to-run.
  */
 const GENERATION_SYSTEM_PROMPT = [
-  'You are a world-class art director. You translate ONE concrete, named',
-  'world-class reference into a single coherent, buildable redesign direction for',
-  'the page under audit — not a menu of options, one opinionated direction.',
+  'You are a senior product designer improving a REAL page so its actual users',
+  'accomplish their tasks faster and more easily. A named world-class reference',
+  'is provided ONLY as a source of visual craft — type, colour, spacing rhythm,',
+  'and motion. It is NOT a template: never copy its structure, layout archetype,',
+  'or content into the page. Judge your own work by the page\'s JOB, not by how',
+  'decorative it looks.',
   '',
-  'Hard rules:',
-  '- Ground every decision in the named REFERENCE EXEMPLAR below. Echo its id in',
-  '  `groundedInExemplarIds`. NEVER invent, guess, or cite an exemplar id you',
-  '  were not given.',
-  '- Redesign the page\'s OWN content. You may restyle, regroup, and re-rank what',
-  '  the page actually contains, but NEVER fabricate content it does not have — no',
-  '  invented metrics, counts, dates, statuses, activity feeds, table rows, or',
-  '  whole sections of made-up data. The exemplar dictates HOW the page looks',
-  '  (type, colour, motion, spacing, hierarchy), never WHAT content it contains.',
-  '- Match the page\'s real content volume. If the page is sparse, keep the',
-  '  redesign proportionally restrained — generous whitespace around a few',
-  '  well-set elements is a valid world-class result. Do not manufacture content',
-  '  to fill the exemplar\'s denser layout.',
-  '- Specify concrete values: hex colors, px type sizes, ms durations, and real',
-  '  revised copy strings — never placeholders like "TODO" or "lorem ipsum".',
-  '  Revised copy must restate the page\'s actual message, not assert new facts.',
-  '- The ASCII layout must be a real box-drawing diagram of the proposed page',
-  '  structure, top to bottom.',
-  '- Preserve or improve the page\'s measured accessibility (contrast, a11y).',
-  '  Never propose a change that would regress it.',
-  '- If the REFERENCE EXEMPLAR\'s DNA reports scroll-driven motion (scroll',
-  '  reveals, sticky pinning, or parallax) and the page does not, propose concrete',
-  '  scroll interactions in `motionSpec.cues`, naming the specific reveal, pin, or',
-  '  parallax grounded in that exemplar. NEVER invent scroll motion the exemplar',
-  '  does not show.',
+  'Hard rules, in PRIORITY ORDER (a lower rule never justifies breaking a higher one):',
+  '- TASK FIRST. Design for the page\'s primary users and the job in its INTENT',
+  '  below. Every change must make that job easier. Aesthetics serve the task —',
+  '  never sacrifice the task to look more like the reference.',
+  '- PRESERVE FUNCTIONAL AFFORDANCES. Keep every way users find and move through',
+  '  the page: navigation, table of contents, menus, breadcrumbs, search,',
+  '  filters, pagination, tabs. Offer equivalent-or-better wayfinding — NEVER',
+  '  delete navigation to look cleaner.',
+  '- PRESERVE DENSITY WHERE IT IS THE VALUE. For information-dense or reference',
+  '  pages (docs, dashboards, status/console, data tables, lists, feeds,',
+  '  aggregators) density and scannability ARE the craft. Keep at least as many',
+  '  items / rows / sections visible as the original; do not trade content for',
+  '  whitespace, hero banners, or marketing-style cards. The reference informs',
+  '  polish WITHIN that density, never a reduction of it.',
+  '- RIGHT-SIZE THE INTERVENTION. If the page already serves its job well, the',
+  '  best redesign is surgical: refine type, colour, spacing, and hierarchy while',
+  '  keeping the structure and affordances. NEVER turn one kind of page into',
+  '  another — a docs page or a dashboard must not become a landing page.',
+  '- Ground the VISUAL CRAFT in the named REFERENCE EXEMPLAR and echo its id in',
+  '  `groundedInExemplarIds`. NEVER invent, guess, or cite an exemplar id you were',
+  '  not given. Borrow its craft, never its content or structure.',
+  '- Use only the page\'s OWN content. NEVER fabricate content it does not have —',
+  '  no invented metrics, counts, dates, statuses, activity feeds, or sections.',
+  '  You are given the page\'s design DNA + intent, NOT its full text or data, so',
+  '  do not assert specific values (numbers, percentages, dates, names) you were',
+  '  not given; refer to such content by its role. If the page is genuinely',
+  '  sparse, keep the redesign proportionally restrained rather than manufacturing',
+  '  content to fill a denser layout.',
+  '- Specify concrete DESIGN values: hex colours, px type sizes, ms durations.',
+  '  Revised copy may restyle the page\'s existing wording but must never invent',
+  '  facts or use placeholders like "TODO" or "lorem ipsum".',
+  '- The ASCII layout must be a real box-drawing diagram of the proposed structure,',
+  '  top to bottom, and must show the preserved navigation / affordances.',
+  '- Preserve or improve the page\'s measured accessibility (contrast, a11y); never',
+  '  propose a change that would regress it.',
   '- Output STRICT JSON only: a single object matching the OUTPUT CONTRACT, with',
   '  no surrounding prose and no markdown code fences.',
 ].join('\n')
@@ -92,7 +105,8 @@ function renderExemplarBlock(hit: RetrievalResult, maxRefChars: number): string 
   const e = hit.exemplar
   const reasons = hit.reasons.length > 0 ? hit.reasons.join('; ') : 'nearest aesthetic neighbour'
   return [
-    'REFERENCE EXEMPLAR (ground every choice in this one page)',
+    'REFERENCE EXEMPLAR (borrow its VISUAL CRAFT only — type, colour, spacing,',
+    'motion. Do NOT copy its structure, information architecture, or content.)',
     `id: ${e.id}   source: ${e.source}   type: ${e.pageType}`,
     `url: ${e.url}`,
     `job-to-be-done: ${e.jobToBeDone}`,
@@ -100,6 +114,36 @@ function renderExemplarBlock(hit: RetrievalResult, maxRefChars: number): string 
     'its design DNA:',
     summarizeDNA(e.dna, { maxChars: maxRefChars }),
   ].join('\n')
+}
+
+/**
+ * The per-page FUNCTIONAL CONTRACT — what the redesign must preserve, derived
+ * from the page's own measured DNA (not a hardcoded page-type table). Navigation
+ * affordances and information density are user value on functional pages; the
+ * generator must keep them. Density gating is data-driven off the measured
+ * `layout.density`, so a genuinely sparse page is never forced to stay dense.
+ */
+function renderFunctionalContract(ctx: GenerationContext): string {
+  const dna = ctx.dna
+  const nav = dna.components?.nav ?? 0
+  const density = dna.layout?.density ?? 'balanced'
+  const archetype = dna.layout?.archetype ?? 'unknown'
+  const lines = [
+    'FUNCTIONAL CONTRACT (preserve — the redesign must not regress these):',
+    `page type: ${ctx.classification.type}; measured layout density: ${density}; archetype: ${archetype}; navigation affordances detected: ${nav}.`,
+  ]
+  if (nav > 0)
+    lines.push(
+      `- Keep all ${nav} navigation / wayfinding affordance(s) (menus, table of contents, breadcrumbs, search, tabs). Provide equivalent-or-better navigation; do not drop any.`,
+    )
+  if (density === 'dense')
+    lines.push(
+      '- This page is DENSE: its information density is the value. Keep at least as many items / rows / sections visible as today. Do not trade content for whitespace or hero sections.',
+    )
+  lines.push(
+    '- Improve craft within this structure. Do not convert this page into a different kind of page.',
+  )
+  return lines.join('\n')
 }
 
 function renderConstraints(ctx: GenerationContext): string | null {
@@ -146,6 +190,7 @@ export function buildDirectionPrompt(
 
   const sections: string[] = [
     renderPageBlock(ctx, maxRefChars),
+    renderFunctionalContract(ctx),
     renderExemplarBlock(exemplar, maxRefChars),
   ]
 

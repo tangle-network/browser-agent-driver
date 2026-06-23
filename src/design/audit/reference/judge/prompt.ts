@@ -81,8 +81,9 @@ function joinSections(sections: string[]): string {
 
 function pairwiseSystem(): string {
   return [
-    'You are a world-class art director comparing two redesign directions for the same page against a named reference.',
-    'Pick the direction with stronger taste, craft, information hierarchy, and fit to the reference.',
+    'You are a senior product designer choosing which redesign direction serves the page\'s real users better at their tasks.',
+    'Judge in PRIORITY ORDER: (1) TASK FITNESS — does it make the primary user\'s job easier and faster? (2) FUNCTIONAL PRESERVATION — a direction that removes navigation or wayfinding, reduces information density, or shows fewer items/sections than the page needs is WORSE for users, however polished it looks. (3) VISUAL CRAFT — type, colour, spacing rhythm, hierarchy, polish.',
+    '"Fit to the reference" counts only as visual craft; never reward a direction for importing the reference\'s structure or content.',
     CONTENT_FIDELITY,
     ANTI_POSITION_BIAS,
     RESPONSE_CONTRACT,
@@ -95,7 +96,8 @@ function qualitySystem(dimension?: Dimension): string {
     ? ` Focus ONLY on the "${dimension}" dimension: ${DIMENSION_GUIDANCE[dimension]}.`
     : ''
   return [
-    `You are a world-class design critic judging which of two designs is closer to world-class quality.${focus}`,
+    `You are a senior product designer and design critic judging which of two designs is closer to world-class quality FOR ITS USERS' TASKS.${focus}`,
+    'Reward fitness for the page\'s job — task efficiency, preserved navigation, and appropriate information density — not decoration. A design that looks cleaner by removing wayfinding or content the users need is worse, not better.',
     ANTI_POSITION_BIAS,
     RESPONSE_CONTRACT,
     'Use "tie" only when the two are genuinely on par.',
