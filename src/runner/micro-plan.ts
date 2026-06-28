@@ -23,7 +23,7 @@ export function selectMicroPlanFollowUps(
 
   const limit = Math.max(
     1,
-    Math.min(4, microPlanConfig.maxActionsPerTurn ?? DEFAULT_MICRO_PLAN_ACTIONS),
+    Math.min(6, microPlanConfig.maxActionsPerTurn ?? DEFAULT_MICRO_PLAN_ACTIONS),
   );
   const remainingSlots = Math.max(0, limit - 1);
   if (remainingSlots === 0) return [];

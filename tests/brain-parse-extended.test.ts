@@ -294,7 +294,7 @@ describe('Brain.parse — nextActions', () => {
     expect(result.nextActions).toBeUndefined();
   });
 
-  it('caps nextActions at 3 entries', () => {
+  it('caps nextActions at 5 entries', () => {
     const result = parseBrain(JSON.stringify({
       action: { action: 'click', selector: '@b1' },
       nextActions: [
@@ -303,9 +303,10 @@ describe('Brain.parse — nextActions', () => {
         { action: 'wait', ms: 300 },
         { action: 'wait', ms: 400 },
         { action: 'wait', ms: 500 },
+        { action: 'wait', ms: 600 },
       ],
     })) as ParseResult;
-    expect(result.nextActions!.length).toBeLessThanOrEqual(3);
+    expect(result.nextActions!.length).toBe(5);
   });
 
   it('returns undefined when all nextActions entries are invalid', () => {

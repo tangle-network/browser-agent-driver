@@ -23,7 +23,7 @@ describe('BrowserAgent micro-plan selection', () => {
   it('filters follow-up actions to safe set and respects maxActionsPerTurn', () => {
     const runner = new BrowserAgent({
       driver: noopDriver,
-      config: { microPlan: { enabled: true, maxActionsPerTurn: 3 } },
+      config: { microPlan: { enabled: true, maxActionsPerTurn: 6 } },
     });
 
     const selected = (runner as unknown as {
@@ -32,15 +32,44 @@ describe('BrowserAgent micro-plan selection', () => {
       { action: 'click', selector: '@b1' },
       [
         { action: 'type', selector: '@i1', text: 'hello' },
+        { action: 'fill', fields: { '@i2': 'world', '@i3': 'jordan@example.com' } },
         { action: 'navigate', url: 'https://example.com/next' },
         { action: 'press', selector: '@i1', key: 'Enter' },
+        { action: 'wait', ms: 250 },
+        { action: 'scroll', direction: 'down' },
       ],
     );
 
     expect(selected).toEqual([
       { action: 'type', selector: '@i1', text: 'hello' },
+      { action: 'fill', fields: { '@i2': 'world', '@i3': 'jordan@example.com' } },
       { action: 'press', selector: '@i1', key: 'Enter' },
+      { action: 'wait', ms: 250 },
+      { action: 'scroll', direction: 'down' },
     ]);
+  });
+
+  it('caps follow-up bursts at six total actions even when configured higher', () => {
+    const runner = new BrowserAgent({
+      driver: noopDriver,
+      config: { microPlan: { enabled: true, maxActionsPerTurn: 99 } },
+    });
+
+    const selected = (runner as unknown as {
+      selectFollowUpActions: (primary: Action, next?: Action[]) => Action[];
+    }).selectFollowUpActions(
+      { action: 'type', selector: '@i1', text: 'hello' },
+      [
+        { action: 'wait', ms: 1 },
+        { action: 'wait', ms: 2 },
+        { action: 'wait', ms: 3 },
+        { action: 'wait', ms: 4 },
+        { action: 'wait', ms: 5 },
+        { action: 'wait', ms: 6 },
+      ],
+    );
+
+    expect(selected.map((action) => action.action)).toEqual(['wait', 'wait', 'wait', 'wait', 'wait']);
   });
 
   it('returns no follow-up actions when micro-plan is disabled', () => {

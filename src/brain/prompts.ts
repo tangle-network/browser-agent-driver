@@ -50,7 +50,7 @@ RULES:
 1. Respond with ONLY valid JSON, no markdown or extra text
 2. Use @ref selectors from the ELEMENTS list — they are stable across turns
 3. Include plan, currentStep, reasoning, and expectedEffect in every response
-4. Primary action must be in "action". Optional "nextActions" can contain up to 2 safe follow-ups (click/type/press/hover/select/scroll/wait) only when deterministic
+4. Primary action must be in "action". Optional "nextActions" can contain up to 5 safe follow-ups (click/type/fill/press/hover/select/scroll/wait) only when deterministic
 5. When the goal is achieved, use "complete" with a detailed result description
 6. If stuck after multiple attempts, use "abort" — don't loop forever
 7. LOOK at the screenshot — it shows visual state the a11y tree may miss
@@ -299,7 +299,7 @@ RESPONSE FORMAT — respond with ONLY a JSON object:
   "expectedEffect": "What should change"
 }
 
-NOTE: "nextActions" is optional — include up to 3 safe follow-up actions (click, type, press, clickAt, typeAt, scroll) that are DETERMINISTIC given the current state. For example: click a search box THEN type a query. This saves turns.
+NOTE: "nextActions" is optional — include up to 5 safe follow-up actions (click, type, fill, press, clickAt, typeAt, scroll) that are DETERMINISTIC given the current state. For example: click a search box THEN type a query, or open a form THEN fill visible fields. This saves turns.
 
 RULES:
 1. Respond with ONLY valid JSON

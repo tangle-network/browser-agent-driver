@@ -7,13 +7,15 @@
 
 import type { Action } from '../types.js';
 
+const MAX_NEXT_ACTIONS = 5;
+
 function parseNextActions(parsed: Record<string, unknown>, validActions: Set<string>): Action[] | undefined {
   if (!Array.isArray(parsed.nextActions)) {
     return undefined;
   }
 
   const nextActions: Action[] = [];
-  for (const entry of parsed.nextActions.slice(0, 3)) {
+  for (const entry of parsed.nextActions.slice(0, MAX_NEXT_ACTIONS)) {
     if (!entry || typeof entry !== 'object') continue;
     const rawEntry = entry as Record<string, unknown>;
     const actionType = typeof rawEntry.action === 'string' ? rawEntry.action : undefined;

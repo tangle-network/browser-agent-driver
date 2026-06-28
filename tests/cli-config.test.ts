@@ -25,7 +25,7 @@ const DEFAULTS: DriverConfig = {
   vision: true,
   goalVerification: true,
   qualityThreshold: 0,
-  microPlan: { enabled: false, maxActionsPerTurn: 2 },
+  microPlan: { enabled: false, maxActionsPerTurn: 6 },
   scout: {
     enabled: false,
     useVision: false,
@@ -140,7 +140,7 @@ describe('CLI config overlay pipeline', () => {
       goalVerification: true,
       screenshotInterval: 2,
       resourceBlocking: { blockAnalytics: true },
-      microPlan: { enabled: true, maxActionsPerTurn: 2 },
+      microPlan: { enabled: true, maxActionsPerTurn: 6 },
     };
     const merged = mergeConfig(DEFAULTS, stealthPresets);
     expect(merged.headless).toBe(false);
@@ -158,7 +158,7 @@ describe('CLI config overlay pipeline', () => {
       screenshotInterval: 0,
       goalVerification: true,
       resourceBlocking: { blockAnalytics: true, blockImages: true, blockMedia: true },
-      microPlan: { enabled: true, maxActionsPerTurn: 2 },
+      microPlan: { enabled: true, maxActionsPerTurn: 6 },
     };
     const merged = mergeConfig(DEFAULTS, benchPresets);
     expect(merged.llmTimeoutMs).toBe(20_000);
