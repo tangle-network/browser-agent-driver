@@ -9,7 +9,7 @@ export const DEFAULT_RETRIES = 3;
 export const DEFAULT_RETRY_DELAY_MS = 1000;
 export const DEFAULT_MICRO_PLAN_ACTIONS = 6;
 // Safe action verbs for micro-plans emitted by the model.
-export const SAFE_MICRO_ACTIONS = new Set<Action['action']>(['click', 'type', 'press', 'hover', 'select', 'scroll', 'wait', 'fill', 'clickAt', 'typeAt', 'clickLabel', 'typeLabel']);
+export const SAFE_MICRO_ACTIONS = new Set<Action['action']>(['click', 'type', 'press', 'hover', 'select', 'scroll', 'wait', 'fill', 'clickSequence', 'clickAt', 'typeAt', 'clickLabel', 'typeLabel']);
 export const DEFAULT_SUPERVISOR: Required<Pick<SupervisorConfig, 'enabled' | 'useVision' | 'minTurnsBeforeInvoke' | 'cooldownTurns' | 'maxInterventions' | 'hardStallWindow'>> = {
   enabled: true,
   useVision: true,

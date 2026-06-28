@@ -34,6 +34,7 @@ describe('BrowserAgent micro-plan selection', () => {
         { action: 'type', selector: '@i1', text: 'hello' },
         { action: 'fill', fields: { '@i2': 'world', '@i3': 'jordan@example.com' } },
         { action: 'navigate', url: 'https://example.com/next' },
+        { action: 'clickSequence', refs: ['@menu', '@item'] },
         { action: 'press', selector: '@i1', key: 'Enter' },
         { action: 'wait', ms: 250 },
         { action: 'scroll', direction: 'down' },
@@ -43,9 +44,9 @@ describe('BrowserAgent micro-plan selection', () => {
     expect(selected).toEqual([
       { action: 'type', selector: '@i1', text: 'hello' },
       { action: 'fill', fields: { '@i2': 'world', '@i3': 'jordan@example.com' } },
+      { action: 'clickSequence', refs: ['@menu', '@item'] },
       { action: 'press', selector: '@i1', key: 'Enter' },
       { action: 'wait', ms: 250 },
-      { action: 'scroll', direction: 'down' },
     ]);
   });
 
