@@ -61,6 +61,7 @@ export async function buildDriverConfig(values: CliValues): Promise<DriverConfig
   if (values['llm-timeout']) cliOverrides.llmTimeoutMs = parseInt(values['llm-timeout'], 10);
   if (values.retries) cliOverrides.retries = parseInt(values.retries, 10);
   if (values['retry-delay-ms']) cliOverrides.retryDelayMs = parseInt(values['retry-delay-ms'], 10);
+  if (values['observe-timeout-ms']) cliOverrides.observeTimeoutMs = parseInt(values['observe-timeout-ms'], 10);
   if (values['screenshot-interval']) cliOverrides.screenshotInterval = parseInt(values['screenshot-interval'], 10);
   if (
     values.scout !== undefined ||

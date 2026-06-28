@@ -20,6 +20,7 @@ import {
   ZAI_ANTHROPIC_BASE_URL,
 } from '../provider-defaults.js';
 import { generateWithSandboxBackend } from '../providers/sandbox-backend.js';
+import { captureBrainGenerate, isAgentEvalCaptureConfigured } from './agent-eval-capture.js';
 import { JSON_TEXT_OUTPUT, createForceNonStreamingFetch } from './provider-fetch.js';
 import type { UserContent } from './types.js';
 
@@ -162,6 +163,7 @@ export async function getModelImpl(
       const provider = createAnthropic({
         apiKey,
         ...(self.baseUrl ? { baseURL: self.baseUrl } : {}),
+        ...(isAgentEvalCaptureConfigured() ? { fetch: createForceNonStreamingFetch({ forceNonStreaming: false }) } : {}),
       });
       model = provider(modelName) as LanguageModel;
       break;
@@ -171,6 +173,7 @@ export async function getModelImpl(
       const provider = createGoogleGenerativeAI({
         apiKey,
         ...(self.baseUrl ? { baseURL: self.baseUrl } : {}),
+        ...(isAgentEvalCaptureConfigured() ? { fetch: createForceNonStreamingFetch({ forceNonStreaming: false }) } : {}),
       });
       model = provider(modelName) as LanguageModel;
       break;
@@ -185,6 +188,7 @@ export async function getModelImpl(
       const provider = createOpenAI({
         apiKey: apiKey || '',
         baseURL,
+        fetch: createForceNonStreamingFetch(),
       });
       model = provider.chat(modelName) as LanguageModel;
       break;
@@ -290,6 +294,7 @@ export async function getModelImpl(
       const provider = createOpenAI({
         apiKey,
         baseURL: ZAI_OPENAI_BASE_URL,
+        ...(isAgentEvalCaptureConfigured() ? { fetch: createForceNonStreamingFetch({ forceNonStreaming: false }) } : {}),
       });
       model = provider.chat(modelName) as LanguageModel;
       break;
@@ -313,7 +318,9 @@ export async function getModelImpl(
         // chat-completions body. Paired with the forceReasoning gate in
         // generationOptions() so all "talk to a proxy" downshifts share
         // one predicate.
-        ...(usingProxy ? { fetch: createForceNonStreamingFetch() } : {}),
+        ...(usingProxy || isAgentEvalCaptureConfigured()
+          ? { fetch: createForceNonStreamingFetch({ forceNonStreaming: usingProxy }) }
+          : {}),
       });
       model = provider.chat(modelName) as LanguageModel;
       break;
@@ -374,17 +381,24 @@ export async function generateImpl(
     ...generationOptionsImpl(self, maxOutputTokens, { provider: providerName, model: modelName }),
     abortSignal: AbortSignal.timeout(self.llmTimeoutMs),
   };
-  const result = providerName === 'cli-bridge'
-    ? await (async () => {
-        const streamed = streamText(generationSettings);
-        const [text, usage, providerMetadata] = await Promise.all([
-          streamed.text,
-          streamed.totalUsage,
-          streamed.providerMetadata,
-        ]);
-        return { text, usage, providerMetadata };
-      })()
-    : await generateText(generationSettings);
+  const result = await captureBrainGenerate({
+    provider: providerName,
+    model: modelName,
+    system: systemForRequest,
+    messages,
+  }, async () => (
+    providerName === 'cli-bridge'
+      ? await (async () => {
+          const streamed = streamText(generationSettings);
+          const [text, usage, providerMetadata] = await Promise.all([
+            streamed.text,
+            streamed.totalUsage,
+            streamed.providerMetadata,
+          ]);
+          return { text, usage, providerMetadata };
+        })()
+      : await generateText(generationSettings)
+  ));
 
   // Extract prompt-cache stats from the AI SDK's PROVIDER-AGNOSTIC fields:
   //   result.usage.inputTokenDetails.{cacheReadTokens, cacheWriteTokens}

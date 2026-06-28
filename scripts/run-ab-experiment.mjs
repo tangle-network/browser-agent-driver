@@ -22,6 +22,13 @@ const getArg = (name, fallback = undefined) => {
   if (idx === argv.length - 1) return 'true';
   return argv[idx + 1];
 };
+const getOptionalFlagValue = (name) => {
+  const idx = argv.indexOf(`--${name}`);
+  if (idx === -1) return undefined;
+  const next = argv[idx + 1];
+  if (!next || next.startsWith('--')) return 'true';
+  return next;
+};
 const hasFlag = (name) => argv.includes(`--${name}`);
 
 const rootDir = path.resolve(path.join(new URL('.', import.meta.url).pathname, '..'));
@@ -65,6 +72,19 @@ const defaultMemoryIsolation = benchmarkProfile.id === 'webbench' ? 'per-run' : 
 const memoryIsolation = spec?.memoryIsolation ?? getArg('memory-isolation', defaultMemoryIsolation);
 const traceScoring = hasFlag('trace-scoring');
 const traceTtlDays = getArg('trace-ttl-days');
+const agentEvalRecordsArg = getOptionalFlagValue('agent-eval-records');
+const agentEvalScorecardArg = getOptionalFlagValue('agent-eval-scorecard');
+const agentEvalRequested = agentEvalRecordsArg !== undefined || agentEvalScorecardArg !== undefined;
+const agentEvalExperimentId = getArg('agent-eval-experiment-id');
+const agentEvalCandidatePrefix = getArg('agent-eval-candidate-id');
+const agentEvalSeed = getArg('agent-eval-seed');
+const agentEvalSplitTag = getArg('agent-eval-split-tag');
+const agentEvalModelSnapshot = getArg('agent-eval-model-snapshot');
+const agentEvalPromptHash = getArg('agent-eval-prompt-hash');
+const agentEvalConfigHash = getArg('agent-eval-config-hash');
+const agentEvalProfileName = getArg('agent-eval-profile-name');
+const agentEvalProfileVersion = getArg('agent-eval-profile-version');
+const agentEvalAllowMixedBackend = hasFlag('agent-eval-allow-mixed-backend');
 const allowedMemoryIsolation = new Set(['none', 'shared', 'per-run']);
 
 if (!allowedMemoryIsolation.has(String(memoryIsolation))) {
@@ -212,6 +232,24 @@ runs = await runPool(jobs, concurrency, async ({ arm, rep }) => {
   if (memoryIsolation === 'per-run') args.push('--memory-scope-id', `${arm.id}-run-${String(rep).padStart(3, '0')}`);
   if (traceScoring) args.push('--trace-scoring');
   if (traceTtlDays) args.push('--trace-ttl-days', traceTtlDays);
+  if (agentEvalRequested) {
+    if (agentEvalRecordsArg !== undefined) {
+      args.push('--agent-eval-records', path.join(runDir, 'agent-eval-run-records.jsonl'));
+    }
+    if (agentEvalScorecardArg !== undefined) {
+      args.push('--agent-eval-scorecard', path.join(runDir, 'agent-eval-scorecard.jsonl'));
+    }
+    if (agentEvalExperimentId) args.push('--agent-eval-experiment-id', agentEvalExperimentId);
+    args.push('--agent-eval-candidate-id', agentEvalCandidateIdForArm(arm.id));
+    args.push('--agent-eval-seed', agentEvalSeedForRep(rep));
+    if (agentEvalSplitTag) args.push('--agent-eval-split-tag', agentEvalSplitTag);
+    if (agentEvalModelSnapshot) args.push('--agent-eval-model-snapshot', agentEvalModelSnapshot);
+    if (agentEvalPromptHash) args.push('--agent-eval-prompt-hash', agentEvalPromptHash);
+    if (agentEvalConfigHash) args.push('--agent-eval-config-hash', agentEvalConfigHash);
+    if (agentEvalProfileName) args.push('--agent-eval-profile-name', agentEvalProfileName);
+    if (agentEvalProfileVersion) args.push('--agent-eval-profile-version', agentEvalProfileVersion);
+    if (agentEvalAllowMixedBackend) args.push('--agent-eval-allow-mixed-backend');
+  }
 
   const startedAt = Date.now();
   const exitCode = await spawnAndWait('node', args, {
@@ -231,6 +269,7 @@ runs = await runPool(jobs, concurrency, async ({ arm, rep }) => {
     promptFile: promptMeta.path,
     promptHash: promptMeta.hash,
     artifactChecks: trackSummary?.artifactChecks ?? summarizeArtifactChecks([]),
+    agentEval: trackSummary?.agentEval ?? null,
     ...metrics,
   };
 });
@@ -280,6 +319,47 @@ const summary = {
   artifactChecks: summarizeArtifactChecks(runs.flatMap((run) => run.artifactChecks?.rows ?? [])),
   delta: buildDelta(armIds, byArm, runs),
 };
+
+if (agentEvalRequested) {
+  const { concatenateAgentEvalJsonl } = await import('./lib/agent-eval-records.mjs');
+  const recordsPath = resolveOptionalOutputPath(
+    agentEvalRecordsArg,
+    path.join(outRoot, 'agent-eval-run-records.jsonl'),
+  );
+  const scorecardPath = resolveOptionalOutputPath(
+    agentEvalScorecardArg,
+    path.join(outRoot, 'agent-eval-scorecard.jsonl'),
+  );
+  const childRecordPaths = runs
+    .map((run) => run.agentEval?.recordsPath)
+    .filter((value) => typeof value === 'string' && value.length > 0);
+  const childScorecardPaths = runs
+    .map((run) => run.agentEval?.scorecardPath)
+    .filter((value) => typeof value === 'string' && value.length > 0);
+  const recordCount = recordsPath
+    ? concatenateAgentEvalJsonl({
+        inputPaths: childRecordPaths,
+        outputPath: recordsPath,
+        label: 'agent-eval RunRecords',
+        requireUniqueRunIds: true,
+      })
+    : 0;
+  const scorecardLineCount = scorecardPath
+    ? concatenateAgentEvalJsonl({
+        inputPaths: childScorecardPaths,
+        outputPath: scorecardPath,
+        label: 'agent-eval scorecard',
+      })
+    : 0;
+  summary.agentEval = {
+    recordsPath: recordsPath ?? null,
+    scorecardPath: scorecardPath ?? null,
+    recordCount,
+    scorecardLineCount,
+    childRecordPaths,
+    childScorecardPaths,
+  };
+}
 
 const summaryPath = path.join(outRoot, 'summary.json');
 fs.writeFileSync(summaryPath, `${JSON.stringify(summary, null, 2)}\n`);
@@ -669,4 +749,23 @@ function safeGitSha(cwd) {
   } catch {
     return null;
   }
+}
+
+function agentEvalCandidateIdForArm(armId) {
+  return agentEvalCandidatePrefix ? `${agentEvalCandidatePrefix}-${armId}` : armId;
+}
+
+function agentEvalSeedForRep(rep) {
+  if (agentEvalSeed === undefined) return String(rep);
+  const baseSeed = Number(agentEvalSeed);
+  if (!Number.isFinite(baseSeed)) {
+    throw new Error(`--agent-eval-seed must be numeric for A/B recording, got "${agentEvalSeed}"`);
+  }
+  return String(baseSeed + rep - 1);
+}
+
+function resolveOptionalOutputPath(value, defaultPath) {
+  if (value === undefined) return undefined;
+  if (value === 'true') return defaultPath;
+  return path.resolve(value);
 }

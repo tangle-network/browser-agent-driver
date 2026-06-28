@@ -9,7 +9,6 @@ process.env.BAD_TELEMETRY_ROLLUP_NO_AUTORUN = '1'
 const { buildRemoteUrl } = await import('../bench/telemetry/rollup.js')
 
 const ROLLUP_PATH = path.resolve(__dirname, '..', 'bench', 'telemetry', 'rollup.ts')
-const TSX_BIN = path.resolve(__dirname, '..', 'node_modules', '.bin', 'tsx')
 
 describe('rollup --remote URL building', () => {
   it('appends repo, kind, since, until query params when set', () => {
@@ -18,6 +17,7 @@ describe('rollup --remote URL building', () => {
       json: false,
       raw: false,
       remote: true,
+      failOnAgentIntegrity: false,
       repo: 'browser-agent-driver',
       kind: 'design-audit-page',
       since: '2026-04-01',
@@ -37,6 +37,7 @@ describe('rollup --remote URL building', () => {
       json: false,
       raw: false,
       remote: true,
+      failOnAgentIntegrity: false,
     })
     const parsed = new URL(url)
     expect([...parsed.searchParams.keys()]).toEqual([])
@@ -45,7 +46,7 @@ describe('rollup --remote URL building', () => {
   it('appends cursor when supplied (envelopes pagination)', () => {
     const url = buildRemoteUrl(
       'https://x/api/telemetry/v1/envelopes',
-      { baseDir: '/tmp', json: false, raw: false, remote: true, repo: 'bad-app' },
+      { baseDir: '/tmp', json: false, raw: false, remote: true, failOnAgentIntegrity: false, repo: 'bad-app' },
       'telemetry/bad-app/2026-04-25/evt-3.json',
     )
     const parsed = new URL(url)
@@ -61,8 +62,8 @@ describe('rollup --remote env requirements', () => {
     delete env.BAD_TELEMETRY_ADMIN_BEARER
     delete env.BAD_TELEMETRY_ROLLUP_NO_AUTORUN
     const out = spawnSync(
-      TSX_BIN,
-      [ROLLUP_PATH, '--remote'],
+      'pnpm',
+      ['exec', 'tsx', ROLLUP_PATH, '--remote'],
       { encoding: 'utf-8', env },
     )
     expect(out.status).toBe(2)
@@ -74,8 +75,8 @@ describe('rollup --remote env requirements', () => {
     delete env.BAD_TELEMETRY_ADMIN_BEARER
     delete env.BAD_TELEMETRY_ROLLUP_NO_AUTORUN
     const out = spawnSync(
-      TSX_BIN,
-      [ROLLUP_PATH, '--remote'],
+      'pnpm',
+      ['exec', 'tsx', ROLLUP_PATH, '--remote'],
       { encoding: 'utf-8', env },
     )
     expect(out.status).toBe(2)

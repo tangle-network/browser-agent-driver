@@ -3,6 +3,8 @@
  * non-streaming fetch shim for OpenAI-compatible proxies that default to SSE.
  */
 
+import { captureProviderFetch } from './agent-eval-capture.js';
+
 const JSON_TEXT_OUTPUT = {
   name: 'json-text',
   responseFormat: Promise.resolve({ type: 'json' as const }),
@@ -21,9 +23,9 @@ const JSON_TEXT_OUTPUT = {
  * Build a fetch replacement that forces `"stream": false` on chat completions
  * bodies for OpenAI-compatible gateways that default to SSE streaming.
  */
-function createForceNonStreamingFetch(): typeof fetch {
+function createForceNonStreamingFetch(options: { forceNonStreaming?: boolean } = {}): typeof fetch {
   return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    if (init?.body && typeof init.body === 'string') {
+    if (options.forceNonStreaming !== false && init?.body && typeof init.body === 'string') {
       const body = init.body
       // Cheap content-sniff so we only rewrite chat-completions shaped bodies,
       // not arbitrary POSTs the caller might make (embeddings, etc.).
@@ -39,7 +41,7 @@ function createForceNonStreamingFetch(): typeof fetch {
         }
       }
     }
-    return fetch(input, init)
+    return captureProviderFetch(input, init, () => fetch(input, init))
   }
 }
 

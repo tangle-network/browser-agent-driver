@@ -40,6 +40,8 @@ interface CliArgs {
    * BAD_TELEMETRY_ADMIN_BEARER is not set.
    */
   remote: boolean
+  /** Exit non-zero when agent telemetry has structural integrity findings. */
+  failOnAgentIntegrity: boolean
 }
 
 async function main(): Promise<void> {
@@ -67,9 +69,11 @@ async function main(): Promise<void> {
   const summary = aggregate(filtered)
   if (args.json) {
     console.log(JSON.stringify(summary, null, 2))
+    failOnAgentIntegrity(summary, args)
     return
   }
   printSummary(summary, filtered.length, args)
+  failOnAgentIntegrity(summary, args)
 }
 
 function parseCliArgs(): CliArgs {
@@ -83,8 +87,13 @@ function parseCliArgs(): CliArgs {
       json: { type: 'boolean' },
       raw: { type: 'boolean' },
       remote: { type: 'boolean' },
+      'fail-on-agent-integrity': { type: 'boolean' },
     },
   })
+  if (values.raw && values['fail-on-agent-integrity']) {
+    console.error('[rollup] --fail-on-agent-integrity cannot be used with --raw because raw mode has no summary.')
+    process.exit(2)
+  }
   const remote = !!values.remote
   if (remote) {
     if (!process.env.BAD_TELEMETRY_API) {
@@ -105,7 +114,19 @@ function parseCliArgs(): CliArgs {
     json: !!values.json,
     raw: !!values.raw,
     remote,
+    failOnAgentIntegrity: !!values['fail-on-agent-integrity'],
   }
+}
+
+interface AgentIntegrityFinding {
+  repo: string
+  runId: string
+  issueCodes: string[]
+  stepCount: number
+  hasRunSummary: boolean
+  modelCallCount: number
+  inputTokens: number
+  outputTokens: number
 }
 
 interface RemoteRollup {
@@ -113,6 +134,7 @@ interface RemoteRollup {
   byEvolveOutcome: unknown[]
   byPromptHash: unknown[]
   recentRegressions: unknown[]
+  agentIntegrity?: AgentIntegrityFinding[]
   totals: { repos: number; totalEnvelopes: number; distinctRuns: number; distinctRepos: string[] }
   truncated?: boolean
 }
@@ -149,6 +171,7 @@ async function runRemote(args: CliArgs): Promise<void> {
   const summary = (await res.json()) as RemoteRollup
   if (args.json) {
     console.log(JSON.stringify(summary, null, 2))
+    failOnAgentIntegrity(summary, args)
     return
   }
   printSummary(summary as unknown as RolledUp, summary.totals.totalEnvelopes, args)
@@ -156,6 +179,7 @@ async function runRemote(args: CliArgs): Promise<void> {
     console.log()
     console.log('⚠ rollup truncated at server cap (5000 envelopes scanned). Use --since/--until to narrow.')
   }
+  failOnAgentIntegrity(summary, args)
 }
 
 function buildRemoteUrl(base: string, args: CliArgs, cursor?: string): string {
@@ -208,6 +232,18 @@ interface RolledUp {
     avgFindings: number | null
     avgCritical: number | null
     avgTokens: number | null
+    avgInputTokens: number | null
+    avgOutputTokens: number | null
+    avgCacheReadInputTokens: number | null
+    avgCacheCreationInputTokens: number | null
+    avgEstimatedCostUsd: number | null
+    avgModelCalls: number | null
+    avgToolCalls: number | null
+    avgExecuteFailures: number | null
+    avgVerificationRejections: number | null
+    avgDecisionSkips: number | null
+    avgSnapshotBytes: number | null
+    avgScreenshotBytes: number | null
     earliestTs: string
     latestTs: string
   }>
@@ -232,6 +268,7 @@ interface RolledUp {
     metric: string
     delta: number
   }>
+  agentIntegrity: AgentIntegrityFinding[]
   totals: {
     repos: number
     totalEnvelopes: number
@@ -257,6 +294,22 @@ function aggregate(envelopes: TelemetryEnvelope[]): RolledUp {
     const findings = ok.map((e) => e.metrics.findingCount ?? e.metrics.totalFindings).filter(isNum)
     const critical = ok.map((e) => e.metrics.criticalCount ?? e.metrics.criticalFindings).filter(isNum)
     const tokens = ok.map((e) => e.metrics.tokensUsed).filter(isNum)
+    const agentTokenTotals = list
+      .map((e) => {
+        const input = e.metrics.inputTokens
+        const output = e.metrics.outputTokens
+        if (!isNum(input) && !isNum(output)) return undefined
+        return (isNum(input) ? input : 0) + (isNum(output) ? output : 0)
+      })
+      .filter(isNum)
+    const decisionSkips = list
+      .map((e) => {
+        const cacheHits = e.metrics.decideCacheHits
+        const patternSkips = e.metrics.decidePatternSkips
+        if (!isNum(cacheHits) && !isNum(patternSkips)) return undefined
+        return (isNum(cacheHits) ? cacheHits : 0) + (isNum(patternSkips) ? patternSkips : 0)
+      })
+      .filter(isNum)
     const ordered = [...list].sort((a, b) => a.timestamp.localeCompare(b.timestamp))
     byRepoKind.push({
       repo,
@@ -267,7 +320,23 @@ function aggregate(envelopes: TelemetryEnvelope[]): RolledUp {
       avgScore: scores.length > 0 ? round(avg(scores), 2) : null,
       avgFindings: findings.length > 0 ? round(avg(findings), 1) : null,
       avgCritical: critical.length > 0 ? round(avg(critical), 1) : null,
-      avgTokens: tokens.length > 0 ? Math.round(avg(tokens)) : null,
+      avgTokens: tokens.length > 0
+        ? Math.round(avg(tokens))
+        : agentTokenTotals.length > 0
+          ? Math.round(avg(agentTokenTotals))
+          : null,
+      avgInputTokens: avgMetric(list, 'inputTokens', 0),
+      avgOutputTokens: avgMetric(list, 'outputTokens', 0),
+      avgCacheReadInputTokens: avgMetric(list, 'cacheReadInputTokens', 0),
+      avgCacheCreationInputTokens: avgMetric(list, 'cacheCreationInputTokens', 0),
+      avgEstimatedCostUsd: avgMetric(list, 'estimatedCostUsd', 6),
+      avgModelCalls: avgMetric(list, 'modelCallCount', 1),
+      avgToolCalls: avgMetric(list, 'toolCallCount', 1),
+      avgExecuteFailures: avgMetric(list, 'executeFailureCount', 1),
+      avgVerificationRejections: avgMetric(list, 'verificationRejectionCount', 1),
+      avgDecisionSkips: decisionSkips.length > 0 ? round(avg(decisionSkips), 1) : null,
+      avgSnapshotBytes: avgMetric(list, 'snapshotBytes', 0),
+      avgScreenshotBytes: avgMetric(list, 'screenshotBytes', 0),
       earliestTs: ordered[0]!.timestamp,
       latestTs: ordered[ordered.length - 1]!.timestamp,
     })
@@ -354,6 +423,7 @@ function aggregate(envelopes: TelemetryEnvelope[]): RolledUp {
     byEvolveOutcome,
     byPromptHash,
     recentRegressions,
+    agentIntegrity: buildAgentIntegrity(envelopes),
     totals: {
       repos: new Set(envelopes.map((e) => e.source.repo)).size,
       totalEnvelopes: envelopes.length,
@@ -366,9 +436,94 @@ function aggregate(envelopes: TelemetryEnvelope[]): RolledUp {
 function isNum(v: unknown): v is number {
   return typeof v === 'number' && Number.isFinite(v)
 }
+
+function buildAgentIntegrity(envelopes: TelemetryEnvelope[]): RolledUp['agentIntegrity'] {
+  const byRun = new Map<string, TelemetryEnvelope[]>()
+  for (const env of envelopes) {
+    if (env.kind !== 'agent-run' && env.kind !== 'agent-step') continue
+    const key = `${env.source.repo}\u0000${env.runId}`
+    const list = byRun.get(key) ?? []
+    list.push(env)
+    byRun.set(key, list)
+  }
+
+  const findings: RolledUp['agentIntegrity'] = []
+  for (const [, list] of byRun) {
+    const runSummary = list.find((env) => env.kind === 'agent-run')
+    const steps = list.filter((env) => env.kind === 'agent-step')
+    const runId = list[0]?.runId ?? 'unknown'
+    const issueCodes: string[] = []
+    const eventTypes = new Set(steps.map(eventTypeOf).filter((eventType): eventType is string => Boolean(eventType)))
+    const modelCallCount = metricNumber(runSummary, 'modelCallCount')
+      ?? steps.filter((env) => hasModelUsage(env)).length
+    const inputTokens = metricNumber(runSummary, 'inputTokens')
+      ?? sumMetrics(steps, 'inputTokens')
+    const outputTokens = metricNumber(runSummary, 'outputTokens')
+      ?? sumMetrics(steps, 'outputTokens')
+
+    if (!runSummary && steps.length > 0) issueCodes.push('missing_run_summary')
+    if (runSummary && steps.length === 0) issueCodes.push('missing_steps')
+    if (steps.length > 0 && !eventTypes.has('run-started')) issueCodes.push('missing_run_started')
+    if (steps.length > 0 && !eventTypes.has('run-completed')) issueCodes.push('missing_run_completed')
+    if (runSummary && modelCallCount === 0 && inputTokens === 0 && outputTokens === 0) {
+      issueCodes.push('no_model_usage')
+    }
+    if (runSummary && !runSummary.ok && !runSummary.error && typeof runSummary.data.reason !== 'string') {
+      issueCodes.push('missing_failure_reason')
+    }
+
+    if (issueCodes.length === 0) continue
+    findings.push({
+      repo: list[0]?.source.repo ?? 'unknown',
+      runId,
+      issueCodes,
+      stepCount: steps.length,
+      hasRunSummary: Boolean(runSummary),
+      modelCallCount,
+      inputTokens,
+      outputTokens,
+    })
+  }
+
+  findings.sort((a, b) => (a.repo + a.runId).localeCompare(b.repo + b.runId))
+  return findings
+}
+
+function eventTypeOf(env: TelemetryEnvelope): string | undefined {
+  const fromTags = env.tags?.eventType
+  if (typeof fromTags === 'string') return fromTags
+  const fromData = env.data.eventType
+  return typeof fromData === 'string' ? fromData : undefined
+}
+
+function hasModelUsage(env: TelemetryEnvelope): boolean {
+  return sumMetrics([env], 'inputTokens') > 0
+    || sumMetrics([env], 'outputTokens') > 0
+    || sumMetrics([env], 'cacheReadInputTokens') > 0
+    || sumMetrics([env], 'cacheCreationInputTokens') > 0
+}
+
+function metricNumber(env: TelemetryEnvelope | undefined, metric: string): number | undefined {
+  const value = env?.metrics[metric]
+  return isNum(value) ? value : undefined
+}
+
+function sumMetrics(envelopes: TelemetryEnvelope[], metric: string): number {
+  return envelopes.reduce((sum, env) => {
+    const value = env.metrics[metric]
+    return sum + (isNum(value) ? value : 0)
+  }, 0)
+}
+
 function avg(values: number[]): number {
   if (values.length === 0) return 0
   return values.reduce((a, b) => a + b, 0) / values.length
+}
+function avgMetric(envelopes: TelemetryEnvelope[], metric: string, digits: number): number | null {
+  const values = envelopes.map((e) => e.metrics[metric]).filter(isNum)
+  if (values.length === 0) return null
+  if (digits === 0) return Math.round(avg(values))
+  return round(avg(values), digits)
 }
 function round(v: number, digits: number): number {
   const f = 10 ** digits
@@ -396,6 +551,37 @@ function printSummary(summary: RolledUp, totalEnvelopes: number, args: CliArgs):
     )
   }
   console.log()
+
+  const agentRows = summary.byRepoKind.filter((row) => row.kind === 'agent-run')
+  if (agentRows.length > 0) {
+    console.log()
+    console.log('Agent optimization:')
+    console.log('  repo                          runs  ok%   cost/run  inTok  outTok  model  tools  fail  reject  skips')
+    for (const row of agentRows) {
+      console.log(
+        `  ${pad(row.repo, 30)}${pad(String(row.runs), 6)}${pad((row.okRate * 100).toFixed(0) + '%', 6)}`
+        + `${pad(row.avgEstimatedCostUsd == null ? '-' : row.avgEstimatedCostUsd.toFixed(6), 10)}`
+        + `${pad(row.avgInputTokens?.toString() ?? '-', 7)}${pad(row.avgOutputTokens?.toString() ?? '-', 8)}`
+        + `${pad(row.avgModelCalls?.toString() ?? '-', 7)}${pad(row.avgToolCalls?.toString() ?? '-', 7)}`
+        + `${pad(row.avgExecuteFailures?.toString() ?? '-', 6)}${pad(row.avgVerificationRejections?.toString() ?? '-', 8)}`
+        + `${pad(row.avgDecisionSkips?.toString() ?? '-', 6)}`,
+      )
+    }
+  }
+
+  const integrityRows = summary.agentIntegrity ?? []
+  if (integrityRows.length > 0) {
+    console.log()
+    console.log('Agent telemetry integrity:')
+    console.log('  repo                          runId                         steps  model  tokens  issues')
+    for (const row of integrityRows.slice(0, 20)) {
+      console.log(
+        `  ${pad(row.repo, 30)}${pad(row.runId, 30)}${pad(String(row.stepCount), 7)}`
+        + `${pad(String(row.modelCallCount), 7)}${pad(String(row.inputTokens + row.outputTokens), 8)}`
+        + row.issueCodes.join(','),
+      )
+    }
+  }
 
   if (summary.byEvolveOutcome.length > 0) {
     console.log('Evolve outcomes:')
@@ -426,13 +612,28 @@ function printSummary(summary: RolledUp, totalEnvelopes: number, args: CliArgs):
   }
 }
 
+function failOnAgentIntegrity(summary: { agentIntegrity?: AgentIntegrityFinding[] }, args: CliArgs): void {
+  if (!args.failOnAgentIntegrity) return
+  if (!Array.isArray(summary.agentIntegrity)) {
+    console.error('[rollup] --fail-on-agent-integrity requires agentIntegrity in the rollup summary.')
+    process.exit(1)
+  }
+  if (summary.agentIntegrity.length === 0) return
+
+  console.error(`[rollup] agent telemetry integrity failed for ${summary.agentIntegrity.length} run(s):`)
+  for (const row of summary.agentIntegrity.slice(0, 20)) {
+    console.error(`  ${row.repo} ${row.runId}: ${row.issueCodes.join(',')}`)
+  }
+  process.exit(1)
+}
+
 function pad(s: string, width: number): string {
   if (s.length >= width) return s
   return s + ' '.repeat(width - s.length)
 }
 
 // Exported so the test suite can drive the remote URL builder directly.
-export { buildRemoteUrl }
+export { aggregate, buildRemoteUrl }
 
 // Auto-run unless explicitly imported as a module by the test harness.
 if (!process.env.BAD_TELEMETRY_ROLLUP_NO_AUTORUN) {

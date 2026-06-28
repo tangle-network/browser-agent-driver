@@ -10,7 +10,7 @@
  * optional fields is backwards-compatible and does not require a bump.
  */
 
-export const TELEMETRY_SCHEMA_VERSION = 1
+export const TELEMETRY_SCHEMA_VERSION = 2
 
 /** Discriminator for the high-level invocation that produced this envelope. */
 export type TelemetryKind =
@@ -19,6 +19,7 @@ export type TelemetryKind =
   | 'design-evolve-round' // one round of CSS- or agent-evolve
   | 'design-evolve-run'   // an evolve invocation, summarising rounds
   | 'agent-run'           // a `bad run` agent invocation (run-level)
+  | 'agent-step'          // sub-turn observe/decide/execute/verify span
   | 'gepa-trial'          // one prompt-variant evaluation inside the GEPA loop
   | 'gepa-generation'     // one generation summary
 

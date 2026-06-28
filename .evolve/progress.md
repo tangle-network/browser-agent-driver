@@ -1,5 +1,64 @@
 # Evolve Progress
 
+## Generation 31 Round 2 — Canonical RunRecord Bridge — 2026-06-26
+
+Goal stayed the same: make `browser-agent-driver` a simple, powerful, trace-first browser-agent optimization platform.
+
+Shipped this slice:
+
+- `bench/agent-eval/run-records.ts` converts compact `agent-run` telemetry into `agent-eval` `RunRecord`s
+- every converted record is checked with `validateRunRecord`
+- the adapter fails closed unless callers provide experiment identity, candidate identity, seed, scenario id, split tag, snapshot-pinned model, prompt hash, config hash, and commit SHA
+- bare model aliases reject before scorecards can ingest them
+- no-model-usage runs reject by default so backend outages cannot look like measured failures
+- callers can explicitly keep zero-usage records only when they want `assertRealBackend` to reject them in a downstream gate
+- BAD profile descriptors can produce canonical `agent-eval` profile cells for longitudinal cell grouping
+
+Verification:
+
+- `pnpm exec vitest run tests/agent-eval-run-records.test.ts tests/agent-eval-surface.test.ts` passed
+- `pnpm exec vitest run tests/agent-eval-run-records.test.ts tests/agent-eval-surface.test.ts tests/runner-event-telemetry.test.ts tests/telemetry-rollup-agent.test.ts tests/telemetry-rollup-remote.test.ts tests/telemetry.test.ts` passed: 40 tests
+- `pnpm lint` passed
+- `pnpm check:boundaries` passed
+- `git diff --check` passed
+
+Next highest-leverage gap:
+
+- Wire benchmark runners to emit `scenarioId` / `seed` / `splitTag` metadata and write validated `RunRecord`s.
+- Add raw-provider capture IDs plus `assertRunCaptured` / `assertRealBackend` gates around benchmark campaigns.
+- Replace fragmented promotion evidence with one gate that combines telemetry integrity, scorecard diff, and `HeldOutGate`.
+
+## Generation 31 Round 1 — World-Class Browser-Agent Observability Substrate — 2026-06-26
+
+Goal restarted around the moonshot target: make `browser-agent-driver` a simple, powerful, trace-first browser-agent optimization platform with full per-step observability and rigorous promotion gates.
+
+Written north star: `docs/roadmap/world-class-browser-agent-goal.md`.
+
+Shipped this slice:
+
+- runner event telemetry bridge emits compact `agent-step` envelopes plus `agent-run` summaries
+- telemetry schema bumped to v2 with `agent-step`
+- `telemetry:rollup` surfaces cost, latency, token, model-call, tool-call, skip, failure, verification, snapshot, and screenshot metrics
+- `telemetry:rollup --fail-on-agent-integrity` fails closed on missing summaries, missing steps, missing run boundaries, no model usage, and failed runs without reasons
+- planner model/provider attribution is recorded on plan events
+- failed planner calls now emit failed `plan-completed` spans with parse/validation error metadata and token/model details when available
+- `@tangle-network/agent-eval` pinned to `0.100.0`
+- `tests/agent-eval-surface.test.ts` audits the root, `analyst`, `traces`, and `rl` export surfaces before deeper integration
+
+Verification:
+
+- `pnpm exec vitest run tests/agent-eval-surface.test.ts tests/runner-event-telemetry.test.ts tests/telemetry-rollup-agent.test.ts tests/telemetry-rollup-remote.test.ts tests/telemetry.test.ts tests/runner-events.test.ts tests/brain-plan-parse.test.ts tests/runner-execute-plan.test.ts` passed
+- `pnpm lint` passed
+- `pnpm check:boundaries` passed
+- `git diff --check` passed
+- `pnpm test` passed: 157 files, 1918 tests
+
+Next highest-leverage gap:
+
+- Build one canonical BAD telemetry -> `agent-eval` `RunRecord` / profile-cell adapter and make benchmark promotion consume it.
+- Add raw-provider capture IDs plus `assertRunCaptured` / `assertRealBackend` gates to campaign paths.
+- Replace fragmented promotion evidence with one gate that combines telemetry integrity, scorecard diff, and `HeldOutGate`.
+
 ## Generation 30 Round 3 — WebVoyager curated-30 via Tangle router (scope-limited) — 2026-04-20
 
 Goal: measure current WebVoyager pass rate on main-HEAD (commit b55d5d8 + f25a3d2 = Gen 29 + 30 R1 + R2 + R3 infra fix) via the Tangle router + claude-sonnet-4-6 route that Gen 30 R2 validated. Compare against Gen 11's curated-30 baseline (12/30 = 40% on gpt-5.4 via OpenAI direct).
@@ -753,3 +812,96 @@ and live cross-page systemic detection (verified on 3-page Stripe audit).
 - 3-turn pipeline (separate ranking call)
 - Reference library with embedded fingerprints
 - Live evolve loop validation against a real vibecoded app
+## Generation 31 Round 2 — Benchmark RunRecord Recording — 2026-06-26
+
+Goal: make benchmark evidence flow from real `agent-run` telemetry into validated `agent-eval` RunRecords across single-run, scenario-track, multi-rep, and A/B surfaces.
+
+Shipped this slice:
+- `scripts/run-mode-baseline.mjs` remains the leaf conversion boundary: it enables per-mode telemetry and records through `recordTelemetryAgentEval`.
+- `scripts/run-scenario-track.mjs` forwards agent-eval metadata per scenario and aggregates only validated child JSONL.
+- `scripts/run-multi-rep.mjs` forwards agent-eval metadata to each rep, uses rep-specific seeds, syncs benchmark child env, and aggregates validated child JSONL.
+- `scripts/run-ab-experiment.mjs` forwards agent-eval metadata to each arm/rep, stamps arm-distinct candidate IDs, and aggregates validated child JSONL.
+- `scripts/lib/agent-eval-records.mjs` now rejects corrupt numeric metrics and duplicate RunRecord `runId`s before writing aggregate files.
+- `tests/agent-eval-recording.test.ts` now covers empty inputs, mixed good/bad records, invalid metadata, corrupt numeric metrics, production telemetry wiring, scorecard append behavior, and duplicate aggregate run IDs.
+
+Verification:
+- `node --check scripts/lib/agent-eval-records.mjs && node --check scripts/run-multi-rep.mjs && node --check scripts/run-ab-experiment.mjs && node --check scripts/run-mode-baseline.mjs && node --check scripts/run-scenario-track.mjs`
+- `pnpm exec vitest run tests/agent-eval-recording.test.ts tests/agent-eval-run-records.test.ts tests/agent-eval-surface.test.ts tests/runner-event-telemetry.test.ts tests/telemetry-rollup-agent.test.ts tests/telemetry-rollup-remote.test.ts tests/telemetry.test.ts`
+- `pnpm lint`
+- `pnpm check:boundaries`
+- `git diff --check`
+- `pnpm test`
+
+Next: `/evolve` targeting raw-provider capture IDs, `assertRunCaptured`, `assertRealBackend`, scorecard diff, and `HeldOutGate` as one promotion gate.
+
+## Generation 31 Round 3 — Agent-Eval Promotion Gate — 2026-06-26
+
+Goal: make one fail-closed gate consume the evidence Round 1 and Round 2 created: validated `RunRecord` JSONL, backend integrity, compact telemetry integrity, scorecard regressions, and held-out promotion evidence.
+
+What shipped:
+- `bench/agent-eval/promotion-gate.ts` validates every input row with `validateRunRecord` before checking anything downstream.
+- Backend integrity runs first through `assertRealBackend(records, { allowMixed: false })` by default.
+- Optional telemetry integrity imports `bench/telemetry/rollup.ts` with autorun disabled and fails on any `agentIntegrity` finding.
+- Optional scorecard evidence runs `loadScorecard` + `diffScorecard` and fails only on real regressed cells unless explicitly allowed.
+- Optional held-out evidence delegates to `HeldOutGate`; the local gate does not reimplement paired-delta logic or rejection codes.
+- `pnpm agent-eval:gate -- --records <records.jsonl>` exposes the gate as a repo script and can emit JSON reports with `--json` / `--out`.
+- `tests/agent-eval-promotion-gate.test.ts` covers the pass path plus stub backend, broken telemetry, scorecard regression, held-out `few_runs`, held-out `negative_delta`, and CLI JSON smoke.
+
+Verification:
+- `pnpm exec vitest run tests/agent-eval-promotion-gate.test.ts`
+- `pnpm exec vitest run tests/agent-eval-promotion-gate.test.ts tests/agent-eval-recording.test.ts tests/telemetry-rollup-agent.test.ts`
+- `pnpm lint`
+- `pnpm check:boundaries`
+- `git diff --check`
+- `pnpm test`
+
+Next highest leverage:
+- Wire raw-provider capture IDs plus `assertRunCaptured` around live provider calls and benchmark campaign traces. Current gate intentionally checks present evidence and does not pretend raw HTTP capture exists yet.
+- Add a fixture-backed `run-mode-baseline` smoke with `--agent-eval-records` enabled end to end.
+- Define stable scorecard/profile dimensions for modes, benchmark profiles, and A/B arms so comparison cells remain simple and non-overlapping.
+
+## Generation 31 Round 4 - Raw Provider Capture Integrity - 2026-06-26
+
+Goal: close the known gap that BAD provider calls flowed through the AI SDK without raw HTTP capture evidence tied to `agent-eval` LLM spans.
+
+Shipped:
+- `src/brain/agent-eval-capture.ts` wraps Brain `generate` calls in `TraceEmitter` runs and LLM spans when `BAD_AGENT_EVAL_CAPTURE_DIR` or `BAD_AGENT_EVAL_TRACE_DIR` is set.
+- Provider fetches now record `FileSystemRawProviderSink` request/response/error events with `runId`, `spanId`, `provider`, `model`, `endpoint`, `baseUrl`, and `redactedFields`.
+- Capture integrity runs `assertRunCaptured(..., { requireRawCoverageOfLlmSpans: true, requireOutcome: true })`, with strict throw enabled by `BAD_AGENT_EVAL_CAPTURE_REQUIRE=1`.
+- `tests/agent-eval-capture.test.ts` proves a captured Brain generation writes schema-valid raw provider events and passes strict capture integrity.
+- The previous stuck Codex session was autopsied with `@tangle-network/traces`; deterministic analysis found 2,755 spans, 3 findings, and 30 repeated-tool loops. HALO support was attempted, but the external `halo` binary was missing.
+
+Verification:
+- `npx -y @tangle-network/traces@0.8.0 analyze --harness codex --last 2 --cwd /Users/drew/webb/browser-agent-driver --out .evolve/autopsies/2026-06-27-codex-last2-traces.md --otlp .evolve/autopsies/2026-06-27-codex-last2-otlp.jsonl`
+- `npx -y @tangle-network/traces@0.8.0 analyze --harness codex --last 2 --cwd /Users/drew/webb/browser-agent-driver --analyzer halo --out .evolve/autopsies/2026-06-27-codex-last2-halo.md --otlp .evolve/autopsies/2026-06-27-codex-last2-halo-otlp.jsonl` (HALO failed: `spawn halo ENOENT`)
+- `pnpm lint`
+- `pnpm exec vitest run tests/agent-eval-capture.test.ts tests/agent-eval-surface.test.ts tests/agent-eval-recording.test.ts tests/agent-eval-run-records.test.ts tests/agent-eval-promotion-gate.test.ts tests/telemetry-rollup-agent.test.ts tests/telemetry-rollup-remote.test.ts tests/runner-event-telemetry.test.ts tests/telemetry.test.ts`
+- `pnpm check:boundaries`
+- `git diff --check`
+
+Next:
+- Add a fixture-backed `run-mode-baseline` smoke with `BAD_AGENT_EVAL_CAPTURE_DIR` enabled end to end.
+- Feed capture-integrity summaries into `agent-eval:gate` so benchmark campaigns fail on missing raw coverage.
+
+## Generation 31 Round 5 - First-Turn Performance Unblock - 2026-06-26
+
+Goal: stop the end-to-end capture smoke from measuring a dead local harness and make first-turn browser state arrive fast enough to be useful.
+
+Shipped:
+- `scripts/run-agent-eval-capture-smoke.mjs` now runs the benchmark child with async `spawn` instead of `spawnSync`, so its fixture and fake OpenAI HTTP servers can answer requests while the child process runs.
+- `scripts/lib/static-fixture-server.mjs` now serves GET/HEAD fixture files directly with safe path resolution and content lengths; direct fetch of `/simple.html` returns `200`, 1084 bytes.
+- Browser navigation now waits for document commit instead of `domcontentloaded`, so the agent can observe partial DOM rather than burning 15s before turn 1.
+- Playwright observe now bounds CDP snapshot collection, disables repeated CDP retries after a failure, and reduces fallback settle from 1000ms to a small observe-budget-derived delay.
+- `BrowserAgent` has a bounded observe fallback plus `observeTimeoutMs` config/CLI plumbing (`--observe-timeout-ms`) so experiments can tune speed vs. snapshot completeness.
+
+Measured result:
+- Before: `agent-eval:capture-smoke` failed after 120000ms with 0 turns, 0 tokens, raw=0, trace=0.
+- After: `agent-eval:capture-smoke` passed in 401ms wall time, 1 turn, 144 tokens, raw=6, trace=12. Turn 1 started 47ms after run start, observe completed in 21ms, and the agent run completed in 149ms.
+
+Verification:
+- direct fixture fetch: `status=200`, `bytes=1084`, `hasTitle=true`
+- `pnpm agent-eval:capture-smoke`
+- `pnpm lint`
+- `pnpm check:boundaries`
+- `git diff --check`
+- `pnpm test`

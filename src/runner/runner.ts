@@ -61,6 +61,7 @@ import type { ReplayEvent, ReplayPlan } from './replay/contracts.js';
 import type { Session } from '../memory/knowledge.js';
 import { RunRegistry } from '../memory/run-registry.js';
 import { TurnEventBus, ensureBus } from './events.js';
+import { attachTurnEventTelemetry } from './event-telemetry.js';
 import { DecisionCache } from './decision-cache.js';
 import {
   VerdictTracker,
@@ -219,6 +220,53 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
   /** Cached so compound-goal sub-tabs inherit the macro catalog. */
   private macroPromptBlock?: string;
 
+  private getObserveTimeoutMs(): number {
+    const configured = this.config.observeTimeoutMs;
+    return typeof configured === 'number' && Number.isFinite(configured) && configured > 0
+      ? configured
+      : 5_000;
+  }
+
+  private async buildObserveFallback(reason: string, fallback: Partial<PageState> = {}): Promise<PageState> {
+    const page = this.driver.getPage?.();
+    const url = fallback.url ?? this.driver.getUrl?.() ?? page?.url() ?? '';
+    let title = fallback.title ?? '';
+    if (!title && page) {
+      title = await page.title().catch(() => '');
+    }
+    const marker = `[observe degraded: ${reason}]`;
+    return {
+      url,
+      title,
+      snapshot: fallback.snapshot ? `${fallback.snapshot}\n${marker}` : marker,
+      screenshot: fallback.screenshot,
+      snapshotDiff: fallback.snapshotDiff,
+      snapshotDiffRaw: fallback.snapshotDiffRaw,
+    };
+  }
+
+  private async observeWithTimeout(fallback?: Partial<PageState>): Promise<PageState> {
+    const timeoutMs = this.getObserveTimeoutMs();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const observePromise = this.driver.observe();
+    observePromise.catch(() => undefined);
+
+    const timeoutPromise = new Promise<PageState>((resolve) => {
+      timer = setTimeout(() => {
+        void this.buildObserveFallback(`timeout after ${timeoutMs}ms`, fallback).then(resolve);
+      }, timeoutMs);
+    });
+
+    try {
+      return await Promise.race([observePromise, timeoutPromise]);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      return this.buildObserveFallback(reason || 'observe failed', fallback);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
   constructor(options: BrowserAgentOptions) {
     this.driver = options.driver;
     this.config = options.config || {};
@@ -251,6 +299,15 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
   }
 
   async run(scenario: Scenario): Promise<AgentResult> {
+    const detachTurnEventTelemetry = attachTurnEventTelemetry(this.bus, { config: this.config });
+    try {
+      return await this.runScenario(scenario);
+    } finally {
+      detachTurnEventTelemetry();
+    }
+  }
+
+  private async runScenario(scenario: Scenario): Promise<AgentResult> {
     // Pre-flight compound goals into parallel sub-goals when enabled.
     if (this.config.parallelTabs?.enabled && scenario.goal && scenario.startUrl) {
       const context = this.driver.getPage?.()?.context();
@@ -437,11 +494,11 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
         { timeoutMs: 45_000 },
       );
       if (googleFlightsPreflight?.blockingReason) {
-        const state = await this.driver.observe().catch(() => ({
+        const state = await this.observeWithTimeout({
           url: this.driver.getUrl?.() || googleFlightsPreflight?.finalUrl || initialStartUrl,
           title: 'Google Flights',
           snapshot: googleFlightsPreflight?.blockingReason || 'Google Flights preflight blocked the requested search.',
-        }));
+        });
         const reason = googleFlightsPreflight.blockingReason;
         turns.push({
           turn: 1,
@@ -586,7 +643,9 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
             console.log(`[Runner] Initial settle: waited ${settleMs}ms (or networkidle) before planner observe`)
         }
       }
-      const initialState = await this.driver.observe().catch(() => undefined)
+      const initialState = await this.observeWithTimeout({
+        url: this.driver.getUrl?.() || scenario.startUrl || '',
+      })
       if (initialState) {
         this.cachedPostState = initialState
         let planLoopState: PageState = initialState
@@ -606,7 +665,7 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
           // Re-observe before every replan (attempt > 0); the initial plan
           // already has the freshly-observed state above.
           if (attempt > 0) {
-            const reobserved = await this.driver.observe().catch(() => planLoopState)
+            const reobserved = await this.observeWithTimeout(planLoopState)
             planLoopState = reobserved
             this.cachedPostState = reobserved
             this.bus.emitNow({
@@ -639,8 +698,31 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
             plan: null,
             raw: '',
             durationMs: 0,
+            tokensUsed: undefined,
+            inputTokens: undefined,
+            outputTokens: undefined,
+            cacheReadInputTokens: undefined,
+            cacheCreationInputTokens: undefined,
+            providerUsed: undefined,
+            modelUsed: undefined,
             parseError: err instanceof Error ? err.message : String(err),
           }))
+
+          this.bus.emitNow({
+            type: 'plan-completed',
+            runId,
+            turn: turns.length,
+            stepCount: planResult.plan?.steps.length ?? 0,
+            plan: planResult.plan,
+            durationMs: planResult.durationMs,
+            ...(planResult.parseError ? { parseError: planResult.parseError } : {}),
+            ...(planResult.inputTokens !== undefined ? { inputTokens: planResult.inputTokens } : {}),
+            ...(planResult.outputTokens !== undefined ? { outputTokens: planResult.outputTokens } : {}),
+            ...(planResult.cacheReadInputTokens !== undefined ? { cacheReadInputTokens: planResult.cacheReadInputTokens } : {}),
+            ...(planResult.cacheCreationInputTokens !== undefined ? { cacheCreationInputTokens: planResult.cacheCreationInputTokens } : {}),
+            ...(planResult.providerUsed ? { providerUsed: planResult.providerUsed } : {}),
+            ...(planResult.modelUsed ? { modelUsed: planResult.modelUsed } : {}),
+          })
 
           if (!planResult.plan || planResult.plan.steps.length === 0) {
             // Planner unavailable / parse failure / zero steps. Fall through.
@@ -650,18 +732,6 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
             replanLoopDone = true
             break
           }
-
-          this.bus.emitNow({
-            type: 'plan-completed',
-            runId,
-            turn: turns.length,
-            stepCount: planResult.plan.steps.length,
-            plan: planResult.plan,
-            durationMs: planResult.durationMs,
-            ...(planResult.inputTokens !== undefined ? { inputTokens: planResult.inputTokens } : {}),
-            ...(planResult.outputTokens !== undefined ? { outputTokens: planResult.outputTokens } : {}),
-            ...(planResult.cacheReadInputTokens !== undefined ? { cacheReadInputTokens: planResult.cacheReadInputTokens } : {}),
-          })
 
           if (this.config.debug) {
             console.log(`[Runner] Plan attempt ${attempt}: ${planResult.plan.steps.length} steps in ${planResult.durationMs}ms`)
@@ -884,17 +954,7 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
         // Reuse the snapshot from verifyEffect if available (no page mutations between them)
         const observeStartedAt = Date.now();
         this.bus.emitNow({ type: 'observe-started', runId, turn: i });
-        const state = this.cachedPostState ?? await withRetry(
-          () => this.driver.observe(),
-          1, // Observe failures are DOM access issues, not transient — retrying 3x wastes 3s
-          retryDelayMs,
-          (attempt, err) => {
-            if (this.config.debug) {
-              console.log(`[Runner] Observe retry ${attempt}: ${err.message}`);
-            }
-          },
-          scenario.signal,
-        );
+        const state = this.cachedPostState ?? await this.observeWithTimeout();
         this.cachedPostState = undefined;
         const observeDurationMs = Date.now() - observeStartedAt;
         phaseTimings.totalObserveMs = (phaseTimings.totalObserveMs ?? 0) + observeDurationMs;
@@ -947,13 +1007,7 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
         ) {
           await this.driver.execute({ action: 'navigate', url: initialStartUrl }).catch(() => {});
           // Re-observe after navigation
-          const reState = await withRetry(
-            () => this.driver.observe(),
-            retries,
-            retryDelayMs,
-            undefined,
-            scenario.signal,
-          );
+          const reState = await this.observeWithTimeout(state);
           Object.assign(state, reState);
         }
 
@@ -973,7 +1027,7 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
               })
               if (captchaResult.success) {
                 await page.waitForLoadState('domcontentloaded', { timeout: 10_000 }).catch(() => {})
-                const postCaptchaState = await this.driver.observe()
+                const postCaptchaState = await this.observeWithTimeout(state)
                 Object.assign(state, postCaptchaState)
                 this.brain.injectFeedback(
                   `CAPTCHA solved: ${captchaResult.type} in ${captchaResult.attempts} attempt(s), ${captchaResult.durationMs}ms. Continuing.`
@@ -1511,6 +1565,8 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
             ...(inputTokens !== undefined ? { inputTokens } : {}),
             ...(outputTokens !== undefined ? { outputTokens } : {}),
             ...(cacheReadInputTokens !== undefined ? { cacheReadInputTokens } : {}),
+            ...(cacheCreationInputTokens !== undefined ? { cacheCreationInputTokens } : {}),
+            ...(modelUsed ? { modelUsed } : {}),
             durationMs: decideDurationMs,
           });
         }
@@ -2230,7 +2286,7 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
             if (this.config.debug) {
               console.log(`[Runner] Stale ref @${err.staleRef} — re-observing for immediate retry`);
             }
-            this.cachedPostState = await this.driver.observe();
+            this.cachedPostState = await this.observeWithTimeout();
             this.brain.injectFeedback(
               `Your selector @${err.staleRef} was not found. ` +
               `Available refs: ${err.availableRefs.slice(0, 20).join(', ')}. ` +
@@ -2258,7 +2314,7 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
             if (this.config.debug) {
               console.log(`[Runner] Execute timeout recovery ${executeTimeoutRecoveries}/2 — re-observing`);
             }
-            this.cachedPostState = await this.driver.observe().catch(() => undefined);
+            this.cachedPostState = await this.observeWithTimeout().catch(() => undefined);
             this.brain.injectFeedback(
               'Your action timed out — the page is loading slowly or has heavy JavaScript. ' +
               'Try interacting with elements already visible in the snapshot, use runScript ' +
@@ -2435,17 +2491,7 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
         runState.recordError();
         const error = err instanceof Error ? err.message : String(err);
 
-        let timer: ReturnType<typeof setTimeout> | undefined;
-        const emptyState: PageState = { url: '', title: '', snapshot: '' };
-        // Suppress dangling rejection from the observe if the timeout wins
-        const observePromise = this.driver.observe().catch(() => emptyState);
-        const state = await Promise.race([
-          observePromise,
-          new Promise<PageState>((_, reject) => {
-            timer = setTimeout(() => reject(new Error('observe timeout')), 5000);
-          }),
-        ]).catch(() => emptyState)
-          .finally(() => { if (timer) clearTimeout(timer); });
+        const state = await this.observeWithTimeout();
 
         const turn: Turn = {
           turn: i,

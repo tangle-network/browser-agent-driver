@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BrowserAgent } from '../src/runner.js';
 import type { Action } from '../src/types.js';
 import type { Driver } from '../src/drivers/types.js';
@@ -16,6 +16,10 @@ const noopDriver: Driver = {
 };
 
 describe('BrowserAgent micro-plan selection', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('filters follow-up actions to safe set and respects maxActionsPerTurn', () => {
     const runner = new BrowserAgent({
       driver: noopDriver,
@@ -54,5 +58,32 @@ describe('BrowserAgent micro-plan selection', () => {
 
     expect(selected).toEqual([]);
   });
-});
 
+  it('returns partial page state when observe exceeds the configured timeout', async () => {
+    vi.useFakeTimers();
+    const slowDriver: Driver = {
+      observe: vi.fn(async () => new Promise<never>(() => {})),
+      execute: vi.fn(async () => ({ success: true })),
+      getUrl: () => 'https://example.com/slow',
+      getPage: () => ({
+        url: () => 'https://example.com/slow',
+        title: async () => 'Slow Page',
+      }) as any,
+      close: vi.fn(async () => {}),
+    };
+    const runner = new BrowserAgent({
+      driver: slowDriver,
+      config: { observeTimeoutMs: 25 },
+    });
+
+    const promise = (runner as any).observeWithTimeout();
+    await vi.advanceTimersByTimeAsync(25);
+    const state = await promise;
+
+    expect(state).toMatchObject({
+      url: 'https://example.com/slow',
+      title: 'Slow Page',
+    });
+    expect(state.snapshot).toContain('observe degraded: timeout after 25ms');
+  });
+});

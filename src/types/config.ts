@@ -97,6 +97,8 @@ export interface AgentConfig {
   plannerMode?: 'always' | 'auto';
   /** Extra wait before the planner's initial observe, in ms. Default: 0. */
   initialObserveSettleMs?: number;
+  /** Max wall-clock time for a single browser observe before using partial state. Default 5000. */
+  observeTimeoutMs?: number;
   /**
    * ZERO-LLM workflow replay. When `enabled`, a strict-matched prior successful
    * trajectory is re-executed verbatim against the live page before the normal

@@ -1,56 +1,76 @@
-/**
- * Tiny static HTTP server for serving local fixture HTML to bench scenarios
- * that use `__FIXTURE_BASE_URL__/...` placeholders. Used by run-tier1-gate
- * and run-multi-rep so they share one implementation.
- *
- * Returns { baseUrl, close }. Listens on 127.0.0.1, ephemeral port.
- */
+import fs from 'node:fs'
+import http from 'node:http'
+import path from 'node:path'
 
-import fs from 'node:fs';
-import http from 'node:http';
-import path from 'node:path';
+const CONTENT_TYPES = new Map([
+  ['.html', 'text/html; charset=utf-8'],
+  ['.css', 'text/css; charset=utf-8'],
+  ['.js', 'text/javascript; charset=utf-8'],
+  ['.json', 'application/json; charset=utf-8'],
+  ['.txt', 'text/plain; charset=utf-8'],
+  ['.svg', 'image/svg+xml'],
+])
 
-export async function startStaticFixtureServer(root) {
+export async function startStaticFixtureServer(rootDir) {
+  const root = path.resolve(rootDir)
   const server = http.createServer((req, res) => {
-    const rawPath = decodeURIComponent((req.url || '/').split('?')[0]);
-    const safePath = rawPath === '/' ? '/index.html' : rawPath;
-    const normalized = path.normalize(safePath).replace(/^(\.\.[/\\])+/, '');
-    const filePath = path.join(root, normalized);
-    if (!filePath.startsWith(root)) {
-      res.statusCode = 403;
-      res.end('Forbidden');
-      return;
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      res.writeHead(405, { 'content-type': 'text/plain; charset=utf-8' })
+      res.end('Method Not Allowed')
+      return
     }
-    if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
-      res.statusCode = 404;
-      res.end('Not Found');
-      return;
+
+    let pathname
+    try {
+      pathname = decodeURIComponent(new URL(req.url ?? '/', 'http://fixture.local').pathname)
+    } catch {
+      res.writeHead(400, { 'content-type': 'text/plain; charset=utf-8' })
+      res.end('Bad Request')
+      return
     }
-    const ext = path.extname(filePath).toLowerCase();
-    const contentType =
-      ext === '.html'
-        ? 'text/html; charset=utf-8'
-        : ext === '.js'
-          ? 'text/javascript; charset=utf-8'
-          : ext === '.css'
-            ? 'text/css; charset=utf-8'
-            : 'application/octet-stream';
-    res.setHeader('Content-Type', contentType);
-    res.end(fs.readFileSync(filePath));
-  });
+
+    const relativePath = pathname === '/'
+      ? 'index.html'
+      : pathname.replace(/^\/+/, '')
+    const filePath = path.resolve(root, relativePath)
+    if (filePath !== root && !filePath.startsWith(`${root}${path.sep}`)) {
+      res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' })
+      res.end('Forbidden')
+      return
+    }
+
+    fs.readFile(filePath, (err, data) => {
+      if (err) {
+        const status = err.code === 'ENOENT' || err.code === 'EISDIR' ? 404 : 500
+        res.writeHead(status, { 'content-type': 'text/plain; charset=utf-8' })
+        res.end(status === 404 ? 'Not Found' : 'Internal Server Error')
+        return
+      }
+
+      res.writeHead(200, {
+        'content-type': CONTENT_TYPES.get(path.extname(filePath).toLowerCase()) ?? 'application/octet-stream',
+        'content-length': String(data.length),
+      })
+      res.end(req.method === 'HEAD' ? undefined : data)
+    })
+  })
 
   await new Promise((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', () => resolve());
-  });
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', resolve)
+  })
 
-  const address = server.address();
-  const port = typeof address === 'object' && address ? address.port : 0;
+  const address = server.address()
+  if (!address || typeof address !== 'object') {
+    throw new Error('fixture server did not bind to a TCP port')
+  }
+
   return {
-    baseUrl: `http://127.0.0.1:${port}`,
-    close: () =>
-      new Promise((resolve, reject) =>
-        server.close((err) => (err ? reject(err) : resolve())),
-      ),
-  };
+    baseUrl: `http://127.0.0.1:${address.port}`,
+    close: () => new Promise((resolve, reject) => {
+      server.close((err) => (err ? reject(err) : resolve()))
+    }),
+  }
 }
+
+export default startStaticFixtureServer

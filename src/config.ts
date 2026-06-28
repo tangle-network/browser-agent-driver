@@ -99,6 +99,8 @@ export interface DriverConfig {
   plannerMode?: 'always' | 'auto';
   /** Extra wait before the planner's first observe, for dynamic page settle */
   initialObserveSettleMs?: number;
+  /** Max wall-clock time for a single browser observe before using partial state. */
+  observeTimeoutMs?: number;
   /** ZERO-LLM workflow replay (opt-in). Re-executes a strict-matched prior trajectory before the loop. */
   replay?: { enabled?: boolean; minSimilarity?: number };
   qualityThreshold?: number;
@@ -179,6 +181,7 @@ const DEFAULTS: DriverConfig = {
   compactFirstTurn: false,
   retries: 3,
   retryDelayMs: 1000,
+  observeTimeoutMs: 5_000,
   screenshotInterval: 5,
   vision: true,
   goalVerification: true,
@@ -325,6 +328,7 @@ export function toAgentConfig(config: DriverConfig): AgentConfig {
     plannerEnabled: config.plannerEnabled,
     plannerMode: config.plannerMode,
     initialObserveSettleMs: config.initialObserveSettleMs,
+    observeTimeoutMs: config.observeTimeoutMs,
     ...(config.replay
       ? {
           replay: {

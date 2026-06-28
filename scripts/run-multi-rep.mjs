@@ -27,6 +27,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { execSync } from 'node:child_process';
 import { startStaticFixtureServer } from './lib/static-fixture-server.mjs';
+import { benchmarkSyncChildEnv } from './lib/abd-benchmark-sync.mjs';
 
 const argv = process.argv.slice(2);
 const getArg = (name, fallback = undefined) => {
@@ -34,6 +35,13 @@ const getArg = (name, fallback = undefined) => {
   if (idx === -1) return fallback;
   if (idx === argv.length - 1) return 'true';
   return argv[idx + 1];
+};
+const getOptionalFlagValue = (name) => {
+  const idx = argv.indexOf(`--${name}`);
+  if (idx === -1) return undefined;
+  const next = argv[idx + 1];
+  if (!next || next.startsWith('--')) return 'true';
+  return next;
 };
 const hasFlag = (name) => argv.includes(`--${name}`);
 const rootDir = path.resolve(path.join(new URL('.', import.meta.url).pathname, '..'));
@@ -55,6 +63,20 @@ const fixtureBaseUrlArg = getArg('fixture-base-url');
 const providerOverride = getArg('provider');
 const baseUrlOverride = getArg('base-url');
 const apiKeyOverride = getArg('api-key');
+const agentEvalRecordsArg = getOptionalFlagValue('agent-eval-records');
+const agentEvalScorecardArg = getOptionalFlagValue('agent-eval-scorecard');
+const agentEvalRequested = agentEvalRecordsArg !== undefined || agentEvalScorecardArg !== undefined;
+const agentEvalExperimentId = getArg('agent-eval-experiment-id');
+const agentEvalCandidateId = getArg('agent-eval-candidate-id');
+const agentEvalSeed = getArg('agent-eval-seed');
+const agentEvalScenarioId = getArg('agent-eval-scenario-id');
+const agentEvalSplitTag = getArg('agent-eval-split-tag');
+const agentEvalModelSnapshot = getArg('agent-eval-model-snapshot');
+const agentEvalPromptHash = getArg('agent-eval-prompt-hash');
+const agentEvalConfigHash = getArg('agent-eval-config-hash');
+const agentEvalProfileName = getArg('agent-eval-profile-name');
+const agentEvalProfileVersion = getArg('agent-eval-profile-version');
+const agentEvalAllowMixedBackend = hasFlag('agent-eval-allow-mixed-backend');
 let fixtureBaseUrl = fixtureBaseUrlArg;
 let fixtureServer = null;
 
@@ -118,6 +140,29 @@ for (let rep = 1; rep <= reps; rep++) {
   if (providerOverride) args.push('--provider', providerOverride);
   if (baseUrlOverride) args.push('--base-url', baseUrlOverride);
   if (apiKeyOverride) args.push('--api-key', apiKeyOverride);
+  if (agentEvalRequested) {
+    if (agentEvalRecordsArg !== undefined) {
+      args.push('--agent-eval-records', path.join(repDir, 'agent-eval-run-records.jsonl'));
+    }
+    if (agentEvalScorecardArg !== undefined) {
+      args.push('--agent-eval-scorecard', path.join(repDir, 'agent-eval-scorecard.jsonl'));
+    }
+    if (agentEvalExperimentId) args.push('--agent-eval-experiment-id', agentEvalExperimentId);
+    if (agentEvalCandidateId) args.push('--agent-eval-candidate-id', agentEvalCandidateId);
+    args.push('--agent-eval-seed', agentEvalSeedForRep(rep));
+    if (agentEvalScenarioId) {
+      args.push('--agent-eval-scenario-id', agentEvalScenarioId);
+    } else if (!casesPath) {
+      args.push('--agent-eval-scenario-id', label);
+    }
+    if (agentEvalSplitTag) args.push('--agent-eval-split-tag', agentEvalSplitTag);
+    if (agentEvalModelSnapshot) args.push('--agent-eval-model-snapshot', agentEvalModelSnapshot);
+    if (agentEvalPromptHash) args.push('--agent-eval-prompt-hash', agentEvalPromptHash);
+    if (agentEvalConfigHash) args.push('--agent-eval-config-hash', agentEvalConfigHash);
+    if (agentEvalProfileName) args.push('--agent-eval-profile-name', agentEvalProfileName);
+    if (agentEvalProfileVersion) args.push('--agent-eval-profile-version', agentEvalProfileVersion);
+    if (agentEvalAllowMixedBackend) args.push('--agent-eval-allow-mixed-backend');
+  }
 
   // CRITICAL: must be async spawn (not spawnSync). The fixture server lives
   // in this same process — spawnSync would block the event loop and the
@@ -125,7 +170,7 @@ for (let rep = 1; rep <= reps; rep++) {
   const exitCode = await new Promise((resolve) => {
     const proc = spawn('node', args, {
       cwd: rootDir,
-      env: process.env,
+      env: benchmarkSyncChildEnv(process.env),
       stdio: 'inherit',
     });
     proc.on('exit', (code, signal) => resolve(code ?? (signal ? 128 : 1)));
@@ -209,6 +254,47 @@ const aggregate = {
   rigorWarnings: reps < 3 ? ['reps < 3 — CLAUDE.md mandates ≥3 for any speed claim'] : [],
 };
 
+if (agentEvalRequested) {
+  const { concatenateAgentEvalJsonl } = await import('./lib/agent-eval-records.mjs');
+  const recordsPath = resolveOptionalOutputPath(
+    agentEvalRecordsArg,
+    path.join(outRoot, 'agent-eval-run-records.jsonl'),
+  );
+  const scorecardPath = resolveOptionalOutputPath(
+    agentEvalScorecardArg,
+    path.join(outRoot, 'agent-eval-scorecard.jsonl'),
+  );
+  const childRecordPaths = repResults
+    .map((result) => result.summary?.agentEval?.recordsPath)
+    .filter((value) => typeof value === 'string' && value.length > 0);
+  const childScorecardPaths = repResults
+    .map((result) => result.summary?.agentEval?.scorecardPath)
+    .filter((value) => typeof value === 'string' && value.length > 0);
+  const recordCount = recordsPath
+    ? concatenateAgentEvalJsonl({
+        inputPaths: childRecordPaths,
+        outputPath: recordsPath,
+        label: 'agent-eval RunRecords',
+        requireUniqueRunIds: true,
+      })
+    : 0;
+  const scorecardLineCount = scorecardPath
+    ? concatenateAgentEvalJsonl({
+        inputPaths: childScorecardPaths,
+        outputPath: scorecardPath,
+        label: 'agent-eval scorecard',
+      })
+    : 0;
+  aggregate.agentEval = {
+    recordsPath: recordsPath ?? null,
+    scorecardPath: scorecardPath ?? null,
+    recordCount,
+    scorecardLineCount,
+    childRecordPaths,
+    childScorecardPaths,
+  };
+}
+
 const aggPath = path.join(outRoot, 'multi-rep-summary.json');
 fs.writeFileSync(aggPath, `${JSON.stringify(aggregate, null, 2)}\n`);
 
@@ -270,4 +356,19 @@ function safeGitSha() {
   } catch {
     return null;
   }
+}
+
+function agentEvalSeedForRep(rep) {
+  if (agentEvalSeed === undefined) return String(rep);
+  const baseSeed = Number(agentEvalSeed);
+  if (!Number.isFinite(baseSeed)) {
+    throw new Error(`--agent-eval-seed must be numeric for multi-rep recording, got "${agentEvalSeed}"`);
+  }
+  return String(baseSeed + rep - 1);
+}
+
+function resolveOptionalOutputPath(value, defaultPath) {
+  if (value === undefined) return undefined;
+  if (value === 'true') return defaultPath;
+  return path.resolve(value);
 }

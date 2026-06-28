@@ -1,55 +1,111 @@
 {
   "mode": "evolve",
-  "goal": "#1 on WebVoyager + employee-grade agent",
-  "status": "gen30-r3-shipped-curated30-53pct-cost-cap-confound",
-  "generation": 30,
-  "round": 3,
-  "branch": "gen29-browser-harness-integration",
-  "npmVersion": "0.24.1",
+  "goal": "World-class browser-agent optimization platform",
+  "status": "round-4-raw-provider-capture-wired",
+  "generation": 31,
+  "round": 4,
+  "branch": "feat/job-first-redesign-engine",
   "activePursuit": null,
+  "objective": "Transform browser-agent-driver into a small, powerful, code-native browser-agent harness with full per-step observability, trace-first evals, replayable experiments, held-out promotion gates, and an autonomous improvement loop.",
   "metricClaims": {
-    "webvoyagerCurated30PassRate": "If this number exceeds 40% (Gen 11 gpt-5.4 baseline) with ≤3 true capability failures, the current stack is at least on par with the Gen 25 era on real-web tasks. If the cost-cap failures flip to pass on a cap bump, the current stack is materially stronger — that's the next round's test."
+    "agentTelemetryIntegrity": "If agent telemetry integrity reaches zero findings on captured runs, engineers can trust cost, latency, token, tool, and failure measurements without replaying the run.",
+    "validatedAgentEvalSurface": "If the pinned agent-eval surface audit passes, BAD can wire scorecards, raw-provider capture, held-out gates, analysts, and RL dataset exports without duplicating substrate code.",
+    "perStepCostAndLatencyCoverage": "If every model/tool/planner step emits cost, latency, token, and failure metadata, optimization can target real user-visible reliability and spend instead of anecdotal traces.",
+    "canonicalRunRecordCoverage": "If agent-run telemetry converts into validated RunRecords with profile-cell identity, benchmark improvements can feed scorecards and promotion gates without hand-written evidence translation.",
+    "benchmarkRecordingCoverage": "If every benchmark wrapper forwards agent-eval identity metadata and only aggregates validated child RunRecords, campaign evidence can scale from single runs to multi-rep and A/B gates without losing provenance.",
+    "promotionGateCoverage": "If one gate combines backend integrity, telemetry integrity, scorecard regressions, and held-out decisions, BAD can promote harness changes with a single reproducible evidence contract instead of scattered prose judgments.",
+    "rawProviderCaptureIntegrity": "If every captured Brain provider call writes schema-valid raw request/response events keyed to its LLM span, assertRunCaptured can fail closed when AI SDK transport evidence is missing or mismatched."
   },
-  "shipped": {
-    "gen30r3": "WebVoyager curated-30 via Tangle router + claude-sonnet-4-6: 16/30 = 53.3% (Gen 11 baseline 12/30 = 40%). 12 of 14 failures are cost_cap_exceeded at 100k tokens. True capability failures: 3 (Amazon timeout, Google Flights x2 crash). Infra fix: scenario-track + webvoyager/run.mjs --provider/--base-url/--api-key forwarding (f25a3d2).",
-    "gen30r2": "Tangle router unblocks measurement; Gen 29 cost −13% vs off (CI [−$0.060,−$0.017], d=-2.57 large). Infra fixes for multi-rep + mode-baseline.",
-    "gen30r1": "bootstrap CI + Cohen's d verdict in scripts/lib/macro-promotion.mjs — closes audit B-H2",
-    "gen29": "browser-harness integration — attach, portable domain-skill loader, custom macros, eval-gated promotion",
-    "gen28": "per-role model orchestration",
-    "gen27": "stealth, anti-bot, form intelligence, CAPTCHA, card dedup, system Chrome",
-    "gen26b": "site pattern learning from successful runs",
-    "gen24b": "checkpoint replay on wrong-path failures",
-    "gen21": "parallel tab execution",
-    "datadome": "behavioral timing bypass",
-    "compression": "aggressive context window pruning"
+  "round1": {
+    "writtenGoal": "docs/roadmap/world-class-browser-agent-goal.md",
+    "shippedThisSlice": [
+      "runner event telemetry bridge emits compact agent-step spans and agent-run summaries",
+      "telemetry rollup reports agent optimization metrics and structural integrity findings",
+      "telemetry:rollup --fail-on-agent-integrity provides a fail-closed promotion gate",
+      "@tangle-network/agent-eval is pinned to 0.100.0",
+      "tests/agent-eval-surface.test.ts audits root, analyst, traces, and rl public surfaces",
+      "failed planner calls now emit failed plan-completed spans with model, token, latency, and parse/validation failure metadata"
+    ],
+    "verification": [
+      "pnpm lint",
+      "pnpm check:boundaries",
+      "git diff --check",
+      "pnpm test"
+    ]
   },
-  "gen30r3Metrics": {
-    "reps": 2,
-    "scope": "curated-30",
-    "runA": {"label": "b9u942fk7", "pass": 16, "total": 30, "rate": 0.533, "costUsd": 7.67, "tokens": 2328248},
-    "runB": {"label": "bzu03njah", "pass": 15, "total": 30, "rate": 0.500, "costUsd": 8.08, "tokens": 2474606},
-    "n2Mean": 0.517,
-    "passRateRange": [0.500, 0.533],
-    "gen11BaselineRate": 0.40,
-    "deltaPctPointsVsBaseline": 11.7,
-    "model": "claude-sonnet-4-6",
-    "routedVia": "router.tangle.tools",
-    "dominantFailureMode": "cost_cap_exceeded at 100k tokens (26-28 of ~29 cumulative failures)",
-    "stableSolvedSites": ["Cambridge Dictionary", "GitHub"],
-    "noiseFlippedSites": ["BBC News", "Coursera", "Google Map", "Google Search", "Apple", "Wolfram Alpha"],
-    "consistentFailureSites": ["Booking", "Huggingface", "Google Flights"],
-    "mixedSites": ["Allrecipes", "ArXiv", "ESPN", "Amazon"]
+  "round2": {
+    "shippedThisSlice": [
+      "bench/agent-eval/run-records.ts converts compact agent-run telemetry into validateRunRecord-checked RunRecords",
+      "the adapter requires experimentId, candidateId, seed, scenarioId, splitTag, snapshot-pinned model, promptHash, configHash, and commitSha instead of inventing defaults",
+      "bare model aliases and missing identity fields reject before scorecard writes",
+      "zero-model-usage runs reject by default, with an explicit escape hatch for assertRealBackend-based negative tests",
+      "BAD profile descriptors can produce agent-eval profile cells for longitudinal profile/cell grouping",
+      "scripts/run-mode-baseline.mjs records production benchmark evidence from agent-run telemetry envelopes",
+      "scripts/run-scenario-track.mjs aggregates child validated RunRecords and scorecard JSONL instead of synthesizing reducer records",
+      "scripts/run-multi-rep.mjs forwards agent-eval metadata, uses rep-specific seeds, syncs child env, and aggregates validated child JSONL",
+      "scripts/run-ab-experiment.mjs forwards agent-eval metadata per arm/rep, stamps arm-distinct candidate IDs, and aggregates validated child JSONL",
+      "scripts/lib/agent-eval-records.mjs rejects corrupt numeric metrics and duplicate RunRecord runIds during aggregation before writing outputs",
+      "tests/agent-eval-recording.test.ts covers empty inputs, mixed good/bad runs, invalid metadata, corrupt numeric metrics, production telemetry wiring, scorecard append behavior, and duplicate runId aggregation"
+    ],
+    "verification": [
+      "node --check scripts/lib/agent-eval-records.mjs && node --check scripts/run-multi-rep.mjs && node --check scripts/run-ab-experiment.mjs && node --check scripts/run-mode-baseline.mjs && node --check scripts/run-scenario-track.mjs",
+      "pnpm exec vitest run tests/agent-eval-recording.test.ts tests/agent-eval-run-records.test.ts tests/agent-eval-surface.test.ts tests/runner-event-telemetry.test.ts tests/telemetry-rollup-agent.test.ts tests/telemetry-rollup-remote.test.ts tests/telemetry.test.ts",
+      "pnpm lint",
+      "pnpm check:boundaries",
+      "git diff --check",
+      "pnpm test"
+    ],
+    "nextHighestLeverage": [
+      "add raw-provider capture IDs plus assertRunCaptured/assertRealBackend gates around benchmark campaigns",
+      "add a small fixture-backed smoke that runs run-mode-baseline with agent-eval recording enabled end to end",
+      "define scorecard/profile dimensions for modes, benchmark profiles, and arms so comparison cells stay simple and non-overlapping"
+    ]
   },
-  "heldOutResults": {
-    "competitive": "10/10 (100%)",
-    "webbench50_raw": "44/50 (88%)",
-    "webbench50_excl_datadome": "44/46 (95.7%)",
-    "systemChromeUnblocked": "9/13 previously-blocked sites"
+  "round3": {
+    "shippedThisSlice": [
+      "bench/agent-eval/promotion-gate.ts loads and validates RunRecord JSONL before downstream checks",
+      "promotion gate checks assertRealBackend, telemetry aggregate agentIntegrity, scorecard regressions, and HeldOutGate decisions in one report",
+      "agent-eval:gate CLI emits text or JSON reports and exits nonzero when any check fails",
+      "tests/agent-eval-promotion-gate.test.ts covers the pass path, stub backend, broken telemetry, scorecard regression, held-out few_runs, held-out negative_delta, and CLI JSON"
+    ],
+    "verification": [
+      "pnpm exec vitest run tests/agent-eval-promotion-gate.test.ts",
+      "pnpm exec vitest run tests/agent-eval-promotion-gate.test.ts tests/agent-eval-recording.test.ts tests/telemetry-rollup-agent.test.ts",
+      "pnpm lint",
+      "pnpm check:boundaries",
+      "git diff --check",
+      "pnpm test"
+    ],
+    "nextHighestLeverage": [
+      "wire raw-provider capture IDs plus assertRunCaptured around live provider calls and benchmark campaign traces",
+      "add a fixture-backed run-mode-baseline smoke with agent-eval recording enabled end to end",
+      "define stable scorecard/profile dimensions for modes, benchmark profiles, and A/B arms"
+    ],
+    "knownGap": "RawProviderSink/assertRunCaptured is intentionally not claimed yet because BAD provider calls still flow through the AI SDK without agent-eval raw HTTP capture."
   },
-  "webvoyagerBaseline": {
-    "gen25_full_run": "539/590 (91.3%) at $54 on gpt-5.4",
-    "gen30r3_curated30": "n=2 same-day: Run A 16/30 (53.3%) + Run B 15/30 (50.0%), mean 31/60 (51.7%), +11.7pp vs Gen 11 gpt-5.4 baseline — cost-cap-dominated, ~26-28 of ~29 cumulative failures are cost_cap_exceeded at 100k"
-  },
-  "criticalGap": "Full WebVoyager 590 still pending. R3 found the blocker isn't the router (fixed) or the agent capability (6 sites at 2/2) but the cost cap interaction with claude-sonnet-4-6's verbosity. Next round: raise cap to 150k and re-run curated-30 to get a fair same-model pass rate before committing to full-590 budget.",
-  "updatedAt": "2026-04-20T06:35:00Z"
+  "updatedAt": "2026-06-26T22:09:24-04:00",
+  "round4": {
+    "shippedThisSlice": [
+      "src/brain/agent-eval-capture.ts wraps Brain generate calls in TraceEmitter runs and LLM spans when BAD_AGENT_EVAL_CAPTURE_DIR or BAD_AGENT_EVAL_TRACE_DIR is set",
+      "provider fetches now write FileSystemRawProviderSink request/response/error events with runId, spanId, provider, model, endpoint, baseUrl, and redactedFields",
+      "capture integrity calls assertRunCaptured with requireRawCoverageOfLlmSpans so strict mode can fail closed on missing raw provider evidence",
+      "tests/agent-eval-capture.test.ts verifies schema-valid raw events pass strict capture integrity at the Brain capture boundary",
+      "previous stuck Codex session was autopsied with @tangle-network/traces; HALO support was attempted but external halo binary was missing"
+    ],
+    "verification": [
+      "npx -y @tangle-network/traces@0.8.0 analyze --harness codex --last 2 --cwd /Users/drew/webb/browser-agent-driver --out .evolve/autopsies/2026-06-27-codex-last2-traces.md --otlp .evolve/autopsies/2026-06-27-codex-last2-otlp.jsonl",
+      "npx -y @tangle-network/traces@0.8.0 analyze --harness codex --last 2 --cwd /Users/drew/webb/browser-agent-driver --analyzer halo --out .evolve/autopsies/2026-06-27-codex-last2-halo.md --otlp .evolve/autopsies/2026-06-27-codex-last2-halo-otlp.jsonl (HALO failed: spawn halo ENOENT)",
+      "pnpm lint",
+      "pnpm exec vitest run tests/agent-eval-capture.test.ts tests/agent-eval-surface.test.ts tests/agent-eval-recording.test.ts tests/agent-eval-run-records.test.ts tests/agent-eval-promotion-gate.test.ts tests/telemetry-rollup-agent.test.ts tests/telemetry-rollup-remote.test.ts tests/runner-event-telemetry.test.ts tests/telemetry.test.ts",
+      "pnpm check:boundaries",
+      "git diff --check"
+    ],
+    "autopsy": ".evolve/autopsies/2026-06-27-stuck-round4-raw-provider-capture.md",
+    "nextHighestLeverage": [
+      "add a fixture-backed run-mode-baseline smoke with BAD_AGENT_EVAL_CAPTURE_DIR enabled end to end",
+      "feed capture-integrity report summaries into agent-eval:gate so benchmark campaigns fail on missing raw coverage",
+      "define stable scorecard/profile dimensions for modes, benchmark profiles, and A/B arms"
+    ],
+    "knownGap": "Raw-provider capture is opt-in and validated at the Brain provider boundary; benchmark campaign wrappers still need an end-to-end fixture smoke with capture enabled."
+  }
 }

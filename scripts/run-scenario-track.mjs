@@ -16,6 +16,13 @@ const getArg = (name, fallback = undefined) => {
   if (idx === argv.length - 1) return 'true';
   return argv[idx + 1];
 };
+const getOptionalFlagValue = (name) => {
+  const idx = argv.indexOf(`--${name}`);
+  if (idx === -1) return undefined;
+  const next = argv[idx + 1];
+  if (!next || next.startsWith('--')) return 'true';
+  return next;
+};
 
 const rootDir = path.resolve(path.join(new URL('.', import.meta.url).pathname, '..'));
 const casesPath = path.resolve(getArg('cases', './bench/scenarios/cases/staging-auth-ai-tangle.json'));
@@ -44,6 +51,19 @@ const traceScoring = argv.includes('--trace-scoring');
 const traceTtlDays = getArg('trace-ttl-days');
 const modes = getArg('modes');
 const headless = argv.includes('--headless');
+const agentEvalRecordsArg = getOptionalFlagValue('agent-eval-records');
+const agentEvalScorecardArg = getOptionalFlagValue('agent-eval-scorecard');
+const agentEvalRequested = agentEvalRecordsArg !== undefined || agentEvalScorecardArg !== undefined;
+const agentEvalExperimentId = getArg('agent-eval-experiment-id');
+const agentEvalCandidateId = getArg('agent-eval-candidate-id');
+const agentEvalSeed = getArg('agent-eval-seed');
+const agentEvalSplitTag = getArg('agent-eval-split-tag', 'search');
+const agentEvalModelSnapshot = getArg('agent-eval-model-snapshot');
+const agentEvalPromptHash = getArg('agent-eval-prompt-hash');
+const agentEvalConfigHash = getArg('agent-eval-config-hash');
+const agentEvalProfileName = getArg('agent-eval-profile-name', 'bad-browser-agent');
+const agentEvalProfileVersion = getArg('agent-eval-profile-version', readPackageVersion(rootDir));
+const agentEvalAllowMixedBackend = argv.includes('--agent-eval-allow-mixed-backend');
 const allowedMemoryIsolation = new Set(['none', 'shared', 'per-run']);
 
 loadLocalEnvFiles(rootDir);
@@ -133,6 +153,26 @@ const results = await runPool(jobs, concurrency, async (job) => {
   if (apiKeyOverride) args.push('--api-key', apiKeyOverride);
   if (Array.isArray(scenario.allowedDomains) && scenario.allowedDomains.length > 0) {
     args.push('--allowed-domains', scenario.allowedDomains.join(','));
+  }
+  if (agentEvalRequested) {
+    const scenarioId = scenario.id ?? scenarioSlug;
+    if (agentEvalRecordsArg !== undefined) {
+      args.push('--agent-eval-records', path.join(scenarioDir, 'agent-eval-run-records.jsonl'));
+    }
+    if (agentEvalScorecardArg !== undefined) {
+      args.push('--agent-eval-scorecard', path.join(scenarioDir, 'agent-eval-scorecard.jsonl'));
+    }
+    args.push('--agent-eval-scenario-id', scenarioId);
+    if (agentEvalExperimentId) args.push('--agent-eval-experiment-id', agentEvalExperimentId);
+    if (agentEvalCandidateId) args.push('--agent-eval-candidate-id', agentEvalCandidateId);
+    if (agentEvalSeed) args.push('--agent-eval-seed', agentEvalSeed);
+    if (agentEvalSplitTag) args.push('--agent-eval-split-tag', agentEvalSplitTag);
+    if (agentEvalModelSnapshot) args.push('--agent-eval-model-snapshot', agentEvalModelSnapshot);
+    if (agentEvalPromptHash) args.push('--agent-eval-prompt-hash', agentEvalPromptHash);
+    if (agentEvalConfigHash) args.push('--agent-eval-config-hash', agentEvalConfigHash);
+    if (agentEvalProfileName) args.push('--agent-eval-profile-name', agentEvalProfileName);
+    if (agentEvalProfileVersion) args.push('--agent-eval-profile-version', agentEvalProfileVersion);
+    if (agentEvalAllowMixedBackend) args.push('--agent-eval-allow-mixed-backend');
   }
 
   const exitCode = await spawnAndWait('node', args, {
@@ -226,6 +266,53 @@ const aggregate = {
   results: completedResults,
 };
 
+if (agentEvalRequested) {
+  const { concatenateAgentEvalJsonl } = await import('./lib/agent-eval-records.mjs');
+  const recordsPath = resolveOptionalOutputPath(
+    agentEvalRecordsArg,
+    path.join(outRoot, 'agent-eval-run-records.jsonl'),
+  );
+  const scorecardPath = resolveOptionalOutputPath(
+    agentEvalScorecardArg,
+    path.join(outRoot, 'agent-eval-scorecard.jsonl'),
+  );
+  const childRecordPaths = completedResults
+    .map((result) => result.summary?.agentEval?.recordsPath)
+    .filter((value) => typeof value === 'string' && value.length > 0);
+  const childScorecardPaths = completedResults
+    .map((result) => result.summary?.agentEval?.scorecardPath)
+    .filter((value) => typeof value === 'string' && value.length > 0);
+  const recordCount = recordsPath
+    ? concatenateAgentEvalJsonl({
+        inputPaths: childRecordPaths,
+        outputPath: recordsPath,
+        label: 'agent-eval RunRecords',
+        requireUniqueRunIds: true,
+      })
+    : 0;
+  const scorecardLineCount = scorecardPath
+    ? concatenateAgentEvalJsonl({
+        inputPaths: childScorecardPaths,
+        outputPath: scorecardPath,
+        label: 'agent-eval scorecard',
+      })
+    : 0;
+  aggregate.agentEval = {
+    recordsPath: recordsPath ?? null,
+    scorecardPath: scorecardPath ?? null,
+    recordCount,
+    scorecardLineCount,
+    childRecordPaths,
+    childScorecardPaths,
+  };
+  if (recordsPath) {
+    console.log(`Agent-eval RunRecords: ${recordsPath}`);
+  }
+  if (scorecardPath) {
+    console.log(`Agent-eval scorecard: ${scorecardPath}`);
+  }
+}
+
 const aggregatePath = path.join(outRoot, 'track-summary.json');
 fs.writeFileSync(aggregatePath, `${JSON.stringify(aggregate, null, 2)}\n`);
 console.log(`\nTrack summary: ${aggregatePath}`);
@@ -295,4 +382,21 @@ function safeGitSha(cwd) {
   } catch {
     return null;
   }
+}
+
+function readPackageVersion(root) {
+  try {
+    const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf-8'));
+    return typeof packageJson.version === 'string' && packageJson.version.trim()
+      ? packageJson.version
+      : 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
+function resolveOptionalOutputPath(value, defaultPath) {
+  if (value === undefined) return undefined;
+  if (value === 'true') return defaultPath;
+  return path.resolve(value);
 }

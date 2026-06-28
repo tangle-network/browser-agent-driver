@@ -7,6 +7,7 @@ import {
   setTelemetryClient,
   resetTelemetryClient,
   getTelemetry,
+  TELEMETRY_SCHEMA_VERSION,
   setCliVersion,
   setInvocation,
   shortHash,
@@ -56,7 +57,7 @@ describe('telemetry', () => {
 
       expect(sink.envelopes).toHaveLength(1)
       const env = sink.envelopes[0]!
-      expect(env.schemaVersion).toBe(1)
+      expect(env.schemaVersion).toBe(TELEMETRY_SCHEMA_VERSION)
       expect(env.envelopeId).toMatch(/^[0-9a-f-]{36}$/)
       expect(env.runId).toBe('r1')
       expect(env.kind).toBe('design-audit-page')

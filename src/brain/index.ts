@@ -329,6 +329,8 @@ export class Brain implements BrainModelHost, BrainSystemPromptHost, BrainEvalua
     outputTokens?: number
     cacheReadInputTokens?: number
     cacheCreationInputTokens?: number
+    providerUsed?: string
+    modelUsed?: string
     parseError?: string
   }> {
     return planImpl(this, goal, state, options)

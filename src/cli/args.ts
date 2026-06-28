@@ -101,6 +101,7 @@ export function parseCliArgs() {
       'llm-timeout': { type: 'string' },
       retries: { type: 'string' },
       'retry-delay-ms': { type: 'string' },
+      'observe-timeout-ms': { type: 'string' },
       'screenshot-interval': { type: 'string' },
       scout: { type: 'boolean' },
       'scout-model': { type: 'string' },

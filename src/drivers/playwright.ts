@@ -130,6 +130,8 @@ export interface PlaywrightDriverOptions {
   screenshotQuality?: number;
   /** Disable CDP fast-path (fall back to Playwright for everything) */
   disableCdp?: boolean;
+  /** Max wall-clock time for a single observe backend before falling back */
+  observeTimeoutMs?: number;
   /** Vision strategy — controls when screenshots are sent to the LLM */
   visionStrategy?: 'always' | 'never' | 'auto';
   /** Capture a screenshot every N turns for artifact storage (0 = disabled) */
@@ -491,6 +493,29 @@ export class PlaywrightDriver implements Driver {
     }
   }
 
+  private getObserveTimeoutMs(): number {
+    const configured = this.options.observeTimeoutMs;
+    return typeof configured === 'number' && Number.isFinite(configured) && configured > 0
+      ? configured
+      : 5_000;
+  }
+
+  private async withObserveTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+    const timeoutMs = Math.max(500, Math.floor(this.getObserveTimeoutMs() / 2));
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    promise.catch(() => undefined);
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<T>((_, reject) => {
+          timer = setTimeout(() => reject(new Error(`${label} timeout after ${timeoutMs}ms`)), timeoutMs);
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
   async observe(): Promise<PageState> {
     const observeStart = performance.now();
     this.observeCount++;
@@ -530,7 +555,7 @@ export class PlaywrightDriver implements Driver {
       } catch {
         // CDP call failed — detach and fall back to Playwright for this turn
         this.cdpSession = null;
-        this.cdpFailed = false; // Allow retry next turn (transient failure)
+        this.cdpFailed = true;
         this.snapshot.reset(); // Reset refs since CDP partially populated them
       }
     }
@@ -552,10 +577,10 @@ export class PlaywrightDriver implements Driver {
   ): Promise<PageState> {
     // Parallel: get page metadata + build AX tree snapshot
     const snapshotStart = performance.now();
-    const [metadata, cdpResult] = await Promise.all([
+    const [metadata, cdpResult] = await this.withObserveTimeout(Promise.all([
       getPageMetadata(cdp),
       buildCdpSnapshot(cdp),
-    ]);
+    ]), 'cdp observe');
     const snapshotMs = performance.now() - snapshotStart;
 
     // Import refs into the snapshot helper (for resolveLocator + getDiff)
@@ -627,7 +652,8 @@ export class PlaywrightDriver implements Driver {
     captureScreenshot: boolean,
     quality: number,
   ): Promise<PageState> {
-    await this.page.waitForTimeout(1000);
+    const settleMs = Math.min(250, Math.max(0, Math.floor(this.getObserveTimeoutMs() / 20)));
+    if (settleMs > 0) await this.page.waitForTimeout(settleMs);
 
     const snapshotStart = performance.now();
     const [url, title, snapshotText] = await Promise.all([
@@ -827,7 +853,7 @@ export class PlaywrightDriver implements Driver {
           // for 40s+. Better to proceed with partial DOM than timeout the whole case.
           const navTimeout = Math.min(timeout, 15_000);
           try {
-            await this.page.goto(action.url, { timeout: navTimeout, waitUntil: 'domcontentloaded' });
+            await this.page.goto(action.url, { timeout: navTimeout, waitUntil: 'commit' });
           } catch (navErr) {
             // If domcontentloaded timed out but the page has started loading,
             // proceed — the agent can still interact with whatever is in the DOM.

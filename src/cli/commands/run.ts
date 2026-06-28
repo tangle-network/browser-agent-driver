@@ -570,6 +570,7 @@ export async function runRunCommand(values: CliValues): Promise<void> {
       captureScreenshots: config.vision,
       screenshotQuality: 50,
       disableCdp: driverConfig.disableCdp,
+      observeTimeoutMs: config.observeTimeoutMs,
       timeout: actionTimeout,
       visionStrategy: config.visionStrategy,
       screenshotInterval,

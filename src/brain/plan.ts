@@ -66,6 +66,8 @@ export async function planImpl(
   outputTokens?: number
   cacheReadInputTokens?: number
   cacheCreationInputTokens?: number
+  providerUsed?: string
+  modelUsed?: string
   parseError?: string
 }> {
   const startedAt = Date.now()
@@ -124,6 +126,8 @@ What is the complete plan?`
   }))
 
   const durationMs = Date.now() - startedAt
+  const providerUsed = planModelOpts.provider
+  const modelUsed = planModelOpts.model
   const raw = (result as { text: string }).text
 
   if (!raw) {
@@ -131,6 +135,8 @@ What is the complete plan?`
       plan: null,
       raw: '',
       durationMs,
+      providerUsed,
+      modelUsed,
       parseError: (result as { _error?: string })._error ?? 'empty response',
     }
   }
@@ -151,6 +157,8 @@ What is the complete plan?`
       plan: null,
       raw,
       durationMs,
+      providerUsed,
+      modelUsed,
       tokensUsed: result.tokensUsed,
       inputTokens: result.inputTokens,
       outputTokens: result.outputTokens,
@@ -165,6 +173,8 @@ What is the complete plan?`
       plan: null,
       raw,
       durationMs,
+      providerUsed,
+      modelUsed,
       tokensUsed: result.tokensUsed,
       inputTokens: result.inputTokens,
       outputTokens: result.outputTokens,
@@ -184,6 +194,8 @@ What is the complete plan?`
         plan: null,
         raw,
         durationMs,
+        providerUsed,
+        modelUsed,
         tokensUsed: result.tokensUsed,
         inputTokens: result.inputTokens,
         outputTokens: result.outputTokens,
@@ -199,6 +211,8 @@ What is the complete plan?`
         plan: null,
         raw,
         durationMs,
+        providerUsed,
+        modelUsed,
         parseError: `step ${idx + 1}: missing action`,
       }
     }
@@ -209,6 +223,8 @@ What is the complete plan?`
         plan: null,
         raw,
         durationMs,
+        providerUsed,
+        modelUsed,
         parseError: `step ${idx + 1}: action.action must be a string`,
       }
     }
@@ -220,6 +236,8 @@ What is the complete plan?`
         plan: null,
         raw,
         durationMs,
+        providerUsed,
+        modelUsed,
         parseError: `step ${idx + 1}: ${err instanceof Error ? err.message : String(err)}`,
       }
     }
@@ -240,6 +258,8 @@ What is the complete plan?`
     plan,
     raw,
     durationMs,
+    providerUsed,
+    modelUsed,
     tokensUsed: result.tokensUsed,
     inputTokens: result.inputTokens,
     outputTokens: result.outputTokens,

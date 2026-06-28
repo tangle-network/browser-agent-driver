@@ -104,6 +104,8 @@ export interface DecideCompletedEvent extends BaseEvent {
   inputTokens?: number
   outputTokens?: number
   cacheReadInputTokens?: number
+  cacheCreationInputTokens?: number
+  modelUsed?: string
   durationMs: number
 }
 
@@ -185,19 +187,24 @@ export interface PlanStartedEvent extends BaseEvent {
   goal: string
 }
 
-/** Brain.plan() returned a plan (or fell back to per-action on parse failure) */
+/** Brain.plan() returned a usable plan or a structured planner failure */
 export interface PlanCompletedEvent extends BaseEvent {
   type: 'plan-completed'
   /** Number of steps in the plan */
   stepCount: number
-  /** The full plan body, for replay reconstruction */
-  plan: Plan
+  /** The full plan body, for replay reconstruction. Null when parsing/validation failed. */
+  plan: Plan | null
   /** ms spent in the plan() LLM call */
   durationMs: number
+  /** Planner parse/validation error when no usable plan was produced */
+  parseError?: string
   /** Token usage for the plan call */
   inputTokens?: number
   outputTokens?: number
   cacheReadInputTokens?: number
+  cacheCreationInputTokens?: number
+  providerUsed?: string
+  modelUsed?: string
 }
 
 /** A single plan step finished executing (success or failure) */

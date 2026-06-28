@@ -10,16 +10,16 @@ importers:
     dependencies:
       '@ai-sdk/openai':
         specifier: ^3.0.36
-        version: 3.0.37(zod@4.3.6)
+        version: 3.0.37(zod@4.4.3)
       ai:
         specifier: ^6.0.104
-        version: 6.0.105(zod@4.3.6)
+        version: 6.0.105(zod@4.4.3)
       ai-sdk-provider-claude-code:
         specifier: ^2.2.3
-        version: 2.3.0(zod@4.3.6)
+        version: 2.3.0(zod@4.4.3)
       ai-sdk-provider-codex-cli:
         specifier: ^1.1.0
-        version: 1.1.0(zod@4.3.6)
+        version: 1.1.0(zod@4.4.3)
       axe-core:
         specifier: ^4.11.2
         version: 4.11.2
@@ -31,17 +31,17 @@ importers:
         version: 5.3.0
       openai:
         specifier: ^6.34.0
-        version: 6.34.0(ws@8.18.3)(zod@4.3.6)
+        version: 6.34.0(ws@8.18.3)(zod@4.4.3)
       patchright:
         specifier: 1.60.2
         version: 1.60.2
     devDependencies:
       '@ai-sdk/anthropic':
         specifier: ^3.0.49
-        version: 3.0.50(zod@4.3.6)
+        version: 3.0.50(zod@4.4.3)
       '@ai-sdk/google':
         specifier: ^3.0.33
-        version: 3.0.34(zod@4.3.6)
+        version: 3.0.34(zod@4.4.3)
       '@changesets/changelog-github':
         specifier: ^0.6.0
         version: 0.6.0
@@ -49,8 +49,8 @@ importers:
         specifier: ^2.30.0
         version: 2.30.0(@types/node@20.19.35)
       '@tangle-network/agent-eval':
-        specifier: ^0.23.0
-        version: 0.23.0(typescript@5.9.3)
+        specifier: 0.100.0
+        version: 0.100.0(typescript@5.9.3)
       '@types/node':
         specifier: ^20.10.0
         version: 20.19.35
@@ -405,66 +405,56 @@ packages:
     resolution: {integrity: sha512-9B+taZ8DlyyqzZQnoeIvDVR/2F4EbMepXMc/NdVbkzsJbzkUjhXv/70GQJ7tdLA4YJgNP25zukcxpX2/SueNrA==}
     cpu: [arm64]
     os: [linux]
-    libc: [glibc]
 
   '@img/sharp-libvips-linux-arm@1.0.5':
     resolution: {integrity: sha512-gvcC4ACAOPRNATg/ov8/MnbxFDJqf/pDePbBnuBDcjsI8PssmjoKMAz4LtLaVi+OnSb5FK/yIOamqDwGmXW32g==}
     cpu: [arm]
     os: [linux]
-    libc: [glibc]
 
   '@img/sharp-libvips-linux-x64@1.0.4':
     resolution: {integrity: sha512-MmWmQ3iPFZr0Iev+BAgVMb3ZyC4KeFc3jFxnNbEPas60e1cIfevbtuyf9nDGIzOaW9PdnDciJm+wFFaTlj5xYw==}
     cpu: [x64]
     os: [linux]
-    libc: [glibc]
 
   '@img/sharp-libvips-linuxmusl-arm64@1.0.4':
     resolution: {integrity: sha512-9Ti+BbTYDcsbp4wfYib8Ctm1ilkugkA/uscUn6UXK1ldpC1JjiXbLfFZtRlBhjPZ5o1NCLiDbg8fhUPKStHoTA==}
     cpu: [arm64]
     os: [linux]
-    libc: [musl]
 
   '@img/sharp-libvips-linuxmusl-x64@1.0.4':
     resolution: {integrity: sha512-viYN1KX9m+/hGkJtvYYp+CCLgnJXwiQB39damAO7WMdKWlIhmYTfHjwSbQeUK/20vY154mwezd9HflVFM1wVSw==}
     cpu: [x64]
     os: [linux]
-    libc: [musl]
 
   '@img/sharp-linux-arm64@0.33.5':
     resolution: {integrity: sha512-JMVv+AMRyGOHtO1RFBiJy/MBsgz0x4AWrT6QoEVVTyh1E39TrCUpTRI7mx9VksGX4awWASxqCYLCV4wBZHAYxA==}
     engines: {node: ^18.17.0 || ^20.3.0 || >=21.0.0}
     cpu: [arm64]
     os: [linux]
-    libc: [glibc]
 
   '@img/sharp-linux-arm@0.33.5':
     resolution: {integrity: sha512-JTS1eldqZbJxjvKaAkxhZmBqPRGmxgu+qFKSInv8moZ2AmT5Yib3EQ1c6gp493HvrvV8QgdOXdyaIBrhvFhBMQ==}
     engines: {node: ^18.17.0 || ^20.3.0 || >=21.0.0}
     cpu: [arm]
     os: [linux]
-    libc: [glibc]
 
   '@img/sharp-linux-x64@0.33.5':
     resolution: {integrity: sha512-opC+Ok5pRNAzuvq1AG0ar+1owsu842/Ab+4qvU879ippJBHvyY5n2mxF1izXqkPYlGuP/M556uh53jRLJmzTWA==}
     engines: {node: ^18.17.0 || ^20.3.0 || >=21.0.0}
     cpu: [x64]
     os: [linux]
-    libc: [glibc]
 
   '@img/sharp-linuxmusl-arm64@0.33.5':
     resolution: {integrity: sha512-XrHMZwGQGvJg2V/oRSUfSAfjfPxO+4DkiRh6p2AFjLQztWUuY/o8Mq0eMQVIY7HJ1CDQUJlxGGZRw1a5bqmd1g==}
     engines: {node: ^18.17.0 || ^20.3.0 || >=21.0.0}
     cpu: [arm64]
     os: [linux]
-    libc: [musl]
 
   '@img/sharp-linuxmusl-x64@0.33.5':
     resolution: {integrity: sha512-WT+d/cgqKkkKySYmqoZ8y3pxx7lx9vVejxW/W4DOFMYVSkErR+w7mf2u8m/y4+xHe7yY9DAXQMWQhpnMuFfScw==}
     engines: {node: ^18.17.0 || ^20.3.0 || >=21.0.0}
     cpu: [x64]
     os: [linux]
-    libc: [musl]
 
   '@img/sharp-win32-x64@0.33.5':
     resolution: {integrity: sha512-MpY/o8/8kj+EcnxwvrP4aTJSWw/aZ7JIGR4aBeZkZw5B7/Jn+tY9/VNwtcoGmdT7GfggGIU4kygOMSbYnOrAbg==}
@@ -601,79 +591,66 @@ packages:
     resolution: {integrity: sha512-t4ONHboXi/3E0rT6OZl1pKbl2Vgxf9vJfWgmUoCEVQVxhW6Cw/c8I6hbbu7DAvgp82RKiH7TpLwxnJeKv2pbsw==}
     cpu: [arm]
     os: [linux]
-    libc: [glibc]
 
   '@rollup/rollup-linux-arm-musleabihf@4.59.0':
     resolution: {integrity: sha512-CikFT7aYPA2ufMD086cVORBYGHffBo4K8MQ4uPS/ZnY54GKj36i196u8U+aDVT2LX4eSMbyHtyOh7D7Zvk2VvA==}
     cpu: [arm]
     os: [linux]
-    libc: [musl]
 
   '@rollup/rollup-linux-arm64-gnu@4.59.0':
     resolution: {integrity: sha512-jYgUGk5aLd1nUb1CtQ8E+t5JhLc9x5WdBKew9ZgAXg7DBk0ZHErLHdXM24rfX+bKrFe+Xp5YuJo54I5HFjGDAA==}
     cpu: [arm64]
     os: [linux]
-    libc: [glibc]
 
   '@rollup/rollup-linux-arm64-musl@4.59.0':
     resolution: {integrity: sha512-peZRVEdnFWZ5Bh2KeumKG9ty7aCXzzEsHShOZEFiCQlDEepP1dpUl/SrUNXNg13UmZl+gzVDPsiCwnV1uI0RUA==}
     cpu: [arm64]
     os: [linux]
-    libc: [musl]
 
   '@rollup/rollup-linux-loong64-gnu@4.59.0':
     resolution: {integrity: sha512-gbUSW/97f7+r4gHy3Jlup8zDG190AuodsWnNiXErp9mT90iCy9NKKU0Xwx5k8VlRAIV2uU9CsMnEFg/xXaOfXg==}
     cpu: [loong64]
     os: [linux]
-    libc: [glibc]
 
   '@rollup/rollup-linux-loong64-musl@4.59.0':
     resolution: {integrity: sha512-yTRONe79E+o0FWFijasoTjtzG9EBedFXJMl888NBEDCDV9I2wGbFFfJQQe63OijbFCUZqxpHz1GzpbtSFikJ4Q==}
     cpu: [loong64]
     os: [linux]
-    libc: [musl]
 
   '@rollup/rollup-linux-ppc64-gnu@4.59.0':
     resolution: {integrity: sha512-sw1o3tfyk12k3OEpRddF68a1unZ5VCN7zoTNtSn2KndUE+ea3m3ROOKRCZxEpmT9nsGnogpFP9x6mnLTCaoLkA==}
     cpu: [ppc64]
     os: [linux]
-    libc: [glibc]
 
   '@rollup/rollup-linux-ppc64-musl@4.59.0':
     resolution: {integrity: sha512-+2kLtQ4xT3AiIxkzFVFXfsmlZiG5FXYW7ZyIIvGA7Bdeuh9Z0aN4hVyXS/G1E9bTP/vqszNIN/pUKCk/BTHsKA==}
     cpu: [ppc64]
     os: [linux]
-    libc: [musl]
 
   '@rollup/rollup-linux-riscv64-gnu@4.59.0':
     resolution: {integrity: sha512-NDYMpsXYJJaj+I7UdwIuHHNxXZ/b/N2hR15NyH3m2qAtb/hHPA4g4SuuvrdxetTdndfj9b1WOmy73kcPRoERUg==}
     cpu: [riscv64]
     os: [linux]
-    libc: [glibc]
 
   '@rollup/rollup-linux-riscv64-musl@4.59.0':
     resolution: {integrity: sha512-nLckB8WOqHIf1bhymk+oHxvM9D3tyPndZH8i8+35p/1YiVoVswPid2yLzgX7ZJP0KQvnkhM4H6QZ5m0LzbyIAg==}
     cpu: [riscv64]
     os: [linux]
-    libc: [musl]
 
   '@rollup/rollup-linux-s390x-gnu@4.59.0':
     resolution: {integrity: sha512-oF87Ie3uAIvORFBpwnCvUzdeYUqi2wY6jRFWJAy1qus/udHFYIkplYRW+wo+GRUP4sKzYdmE1Y3+rY5Gc4ZO+w==}
     cpu: [s390x]
     os: [linux]
-    libc: [glibc]
 
   '@rollup/rollup-linux-x64-gnu@4.59.0':
     resolution: {integrity: sha512-3AHmtQq/ppNuUspKAlvA8HtLybkDflkMuLK4DPo77DfthRb71V84/c4MlWJXixZz4uruIH4uaa07IqoAkG64fg==}
     cpu: [x64]
     os: [linux]
-    libc: [glibc]
 
   '@rollup/rollup-linux-x64-musl@4.59.0':
     resolution: {integrity: sha512-2UdiwS/9cTAx7qIUZB/fWtToJwvt0Vbo0zmnYt7ED35KPg13Q0ym1g442THLC7VyI6JfYTP4PiSOWyoMdV2/xg==}
     cpu: [x64]
     os: [linux]
-    libc: [musl]
 
   '@rollup/rollup-openbsd-x64@4.59.0':
     resolution: {integrity: sha512-M3bLRAVk6GOwFlPTIxVBSYKUaqfLrn8l0psKinkCFxl4lQvOSz8ZrKDz2gxcBwHFpci0B6rttydI4IpS4IS/jQ==}
@@ -726,10 +703,13 @@ packages:
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
-  '@tangle-network/agent-eval@0.23.0':
-    resolution: {integrity: sha512-YY4J2v1epvTBJ3HeNAYs4AaeurgUZCTfmooGrmDbKeAfWSD6Xzv8RC33xChd1Tge/IGDz1ILRTfpLqyuhNU2aQ==}
+  '@tangle-network/agent-eval@0.100.0':
+    resolution: {integrity: sha512-yBupVJJAqHozhe1BL5xBuDObjvNsoY+XmJo7qfpw/w7rehAXbKliBb4k3XS1G55+GaYPjFA+xwPzlEDQISpMRw==}
     engines: {node: '>=20'}
     hasBin: true
+
+  '@tangle-network/agent-interface@0.10.1':
+    resolution: {integrity: sha512-yehY/0EgKvu8lG6jIVoZCtMPLkj8VEWwasuAtuph2RaB9MKE5wuxRF647O6jw8KufNZ3aQ2UVVWpZ19dGCbs6w==}
 
   '@tangle-network/sandbox@0.1.2':
     resolution: {integrity: sha512-6TPH9QgCgou9Bhc1kzLNL4/PRiT1mjId6NONY5Le/KT2kh77cXH8KN3TTY/cU+/eW+WM5FYJOy32FWl2HShXbw==}
@@ -1560,48 +1540,51 @@ packages:
   zod@4.3.6:
     resolution: {integrity: sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg==}
 
+  zod@4.4.3:
+    resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
+
 snapshots:
 
   '@adraffy/ens-normalize@1.11.1': {}
 
-  '@ai-sdk/anthropic@3.0.50(zod@4.3.6)':
+  '@ai-sdk/anthropic@3.0.50(zod@4.4.3)':
     dependencies:
       '@ai-sdk/provider': 3.0.8
-      '@ai-sdk/provider-utils': 4.0.16(zod@4.3.6)
-      zod: 4.3.6
+      '@ai-sdk/provider-utils': 4.0.16(zod@4.4.3)
+      zod: 4.4.3
 
-  '@ai-sdk/gateway@3.0.59(zod@4.3.6)':
+  '@ai-sdk/gateway@3.0.59(zod@4.4.3)':
     dependencies:
       '@ai-sdk/provider': 3.0.8
-      '@ai-sdk/provider-utils': 4.0.16(zod@4.3.6)
+      '@ai-sdk/provider-utils': 4.0.16(zod@4.4.3)
       '@vercel/oidc': 3.1.0
-      zod: 4.3.6
+      zod: 4.4.3
 
-  '@ai-sdk/google@3.0.34(zod@4.3.6)':
+  '@ai-sdk/google@3.0.34(zod@4.4.3)':
     dependencies:
       '@ai-sdk/provider': 3.0.8
-      '@ai-sdk/provider-utils': 4.0.16(zod@4.3.6)
-      zod: 4.3.6
+      '@ai-sdk/provider-utils': 4.0.16(zod@4.4.3)
+      zod: 4.4.3
 
-  '@ai-sdk/openai@3.0.37(zod@4.3.6)':
+  '@ai-sdk/openai@3.0.37(zod@4.4.3)':
     dependencies:
       '@ai-sdk/provider': 3.0.8
-      '@ai-sdk/provider-utils': 4.0.16(zod@4.3.6)
-      zod: 4.3.6
+      '@ai-sdk/provider-utils': 4.0.16(zod@4.4.3)
+      zod: 4.4.3
 
-  '@ai-sdk/provider-utils@3.0.9(zod@4.3.6)':
+  '@ai-sdk/provider-utils@3.0.9(zod@4.4.3)':
     dependencies:
       '@ai-sdk/provider': 2.0.0
       '@standard-schema/spec': 1.1.0
       eventsource-parser: 3.0.6
-      zod: 4.3.6
+      zod: 4.4.3
 
-  '@ai-sdk/provider-utils@4.0.16(zod@4.3.6)':
+  '@ai-sdk/provider-utils@4.0.16(zod@4.4.3)':
     dependencies:
       '@ai-sdk/provider': 3.0.8
       '@standard-schema/spec': 1.1.0
       eventsource-parser: 3.0.6
-      zod: 4.3.6
+      zod: 4.4.3
 
   '@ai-sdk/provider@2.0.0':
     dependencies:
@@ -1611,9 +1594,9 @@ snapshots:
     dependencies:
       json-schema: 0.4.0
 
-  '@anthropic-ai/claude-agent-sdk@0.1.77(zod@4.3.6)':
+  '@anthropic-ai/claude-agent-sdk@0.1.77(zod@4.4.3)':
     dependencies:
-      zod: 4.3.6
+      zod: 4.4.3
     optionalDependencies:
       '@img/sharp-darwin-arm64': 0.33.5
       '@img/sharp-darwin-x64': 0.33.5
@@ -2128,11 +2111,12 @@ snapshots:
 
   '@standard-schema/spec@1.1.0': {}
 
-  '@tangle-network/agent-eval@0.23.0(typescript@5.9.3)':
+  '@tangle-network/agent-eval@0.100.0(typescript@5.9.3)':
     dependencies:
       '@asteasolutions/zod-to-openapi': 8.5.0(zod@4.3.6)
       '@ax-llm/ax': 19.0.45(zod@4.3.6)
       '@hono/node-server': 2.0.0(hono@4.12.18)
+      '@tangle-network/agent-interface': 0.10.1
       '@tangle-network/tcloud': 0.4.6(typescript@5.9.3)(zod@4.3.6)
       hono: 4.12.18
       zod: 4.3.6
@@ -2141,9 +2125,13 @@ snapshots:
       - typescript
       - utf-8-validate
 
+  '@tangle-network/agent-interface@0.10.1':
+    dependencies:
+      zod: 4.4.3
+
   '@tangle-network/sandbox@0.1.2(viem@2.48.4(typescript@5.9.3)(zod@4.3.6))':
     optionalDependencies:
-      viem: 2.48.4(typescript@5.9.3)(zod@4.3.6)
+      viem: 2.48.4(typescript@5.9.3)(zod@4.4.3)
 
   '@tangle-network/tcloud-attestation@0.1.1': {}
 
@@ -2154,7 +2142,7 @@ snapshots:
       '@tangle-network/sandbox': 0.1.2(viem@2.48.4(typescript@5.9.3)(zod@4.3.6))
       '@tangle-network/tcloud-attestation': 0.1.1
       commander: 14.0.3
-      viem: 2.48.4(typescript@5.9.3)(zod@4.3.6)
+      viem: 2.48.4(typescript@5.9.3)(zod@4.4.3)
     transitivePeerDependencies:
       - bufferutil
       - typescript
@@ -2243,29 +2231,29 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  ai-sdk-provider-claude-code@2.3.0(zod@4.3.6):
+  ai-sdk-provider-claude-code@2.3.0(zod@4.4.3):
     dependencies:
       '@ai-sdk/provider': 2.0.0
-      '@ai-sdk/provider-utils': 3.0.9(zod@4.3.6)
-      '@anthropic-ai/claude-agent-sdk': 0.1.77(zod@4.3.6)
-      zod: 4.3.6
+      '@ai-sdk/provider-utils': 3.0.9(zod@4.4.3)
+      '@anthropic-ai/claude-agent-sdk': 0.1.77(zod@4.4.3)
+      zod: 4.4.3
 
-  ai-sdk-provider-codex-cli@1.1.0(zod@4.3.6):
+  ai-sdk-provider-codex-cli@1.1.0(zod@4.4.3):
     dependencies:
       '@ai-sdk/provider': 3.0.8
-      '@ai-sdk/provider-utils': 4.0.16(zod@4.3.6)
+      '@ai-sdk/provider-utils': 4.0.16(zod@4.4.3)
       jsonc-parser: 3.3.1
-      zod: 4.3.6
+      zod: 4.4.3
     optionalDependencies:
       '@openai/codex': 0.105.0
 
-  ai@6.0.105(zod@4.3.6):
+  ai@6.0.105(zod@4.4.3):
     dependencies:
-      '@ai-sdk/gateway': 3.0.59(zod@4.3.6)
+      '@ai-sdk/gateway': 3.0.59(zod@4.4.3)
       '@ai-sdk/provider': 3.0.8
-      '@ai-sdk/provider-utils': 4.0.16(zod@4.3.6)
+      '@ai-sdk/provider-utils': 4.0.16(zod@4.4.3)
       '@opentelemetry/api': 1.9.0
-      zod: 4.3.6
+      zod: 4.4.3
 
   ansi-colors@4.1.3: {}
 
@@ -2577,10 +2565,10 @@ snapshots:
 
   obug@2.1.1: {}
 
-  openai@6.34.0(ws@8.18.3)(zod@4.3.6):
+  openai@6.34.0(ws@8.18.3)(zod@4.4.3):
     optionalDependencies:
       ws: 8.18.3
-      zod: 4.3.6
+      zod: 4.4.3
 
   openapi3-ts@4.5.0:
     dependencies:
@@ -2808,7 +2796,7 @@ snapshots:
 
   util-deprecate@1.0.2: {}
 
-  viem@2.48.4(typescript@5.9.3)(zod@4.3.6):
+  viem@2.48.4(typescript@5.9.3)(zod@4.4.3):
     dependencies:
       '@noble/curves': 1.9.1
       '@noble/hashes': 1.8.0
@@ -2898,3 +2886,5 @@ snapshots:
   yaml@2.8.3: {}
 
   zod@4.3.6: {}
+
+  zod@4.4.3: {}

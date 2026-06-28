@@ -9,6 +9,7 @@ import { assertApiKeyForModel, loadLocalEnvFiles } from './lib/env-loader.mjs';
 import { resolveBenchmarkProfile } from './lib/benchmark-profiles.mjs';
 import { formatArtifactCheckFailures, summarizeArtifactChecks, verifyModeArtifacts } from './lib/artifact-completeness.mjs';
 import { benchmarkSyncChildEnv, syncBenchmarkOutput } from './lib/abd-benchmark-sync.mjs';
+import { configureAgentEvalCaptureEnv, inspectAgentEvalCaptureArtifacts } from './lib/agent-eval-capture-artifacts.mjs';
 
 const argv = process.argv.slice(2);
 const getArg = (name, fallback = undefined) => {
@@ -19,6 +20,13 @@ const getArg = (name, fallback = undefined) => {
 };
 
 const hasFlag = (name) => argv.includes(`--${name}`);
+const getOptionalFlagValue = (name) => {
+  const idx = argv.indexOf(`--${name}`);
+  if (idx === -1) return undefined;
+  const next = argv[idx + 1];
+  if (!next || next.startsWith('--')) return 'true';
+  return next;
+};
 const rootDir = path.resolve(path.join(new URL('.', import.meta.url).pathname, '..'));
 
 const explicitGoal = getArg('goal');
@@ -58,6 +66,20 @@ const promptFile = getArg('prompt-file');
 const traceScoring = hasFlag('trace-scoring');
 const traceTtlDays = getArg('trace-ttl-days');
 const headless = hasFlag('headless');
+const agentEvalRecordsArg = getOptionalFlagValue('agent-eval-records');
+const agentEvalScorecardArg = getOptionalFlagValue('agent-eval-scorecard');
+const agentEvalRequested = agentEvalRecordsArg !== undefined || agentEvalScorecardArg !== undefined;
+const agentEvalExperimentId = getArg('agent-eval-experiment-id', process.env.BAD_AGENT_EVAL_EXPERIMENT_ID);
+const agentEvalCandidateId = getArg('agent-eval-candidate-id', process.env.BAD_AGENT_EVAL_CANDIDATE_ID);
+const agentEvalSeed = getArg('agent-eval-seed', process.env.BAD_AGENT_EVAL_SEED);
+const agentEvalScenarioIdArg = getArg('agent-eval-scenario-id', process.env.BAD_AGENT_EVAL_SCENARIO_ID);
+const agentEvalSplitTag = getArg('agent-eval-split-tag', process.env.BAD_AGENT_EVAL_SPLIT_TAG ?? 'search');
+const agentEvalModelSnapshot = getArg('agent-eval-model-snapshot', process.env.BAD_AGENT_EVAL_MODEL_SNAPSHOT);
+const agentEvalPromptHash = getArg('agent-eval-prompt-hash', process.env.BAD_AGENT_EVAL_PROMPT_HASH);
+const agentEvalConfigHash = getArg('agent-eval-config-hash', process.env.BAD_AGENT_EVAL_CONFIG_HASH);
+const agentEvalProfileName = getArg('agent-eval-profile-name', process.env.BAD_AGENT_EVAL_PROFILE_NAME ?? 'bad-browser-agent');
+const agentEvalProfileVersion = getArg('agent-eval-profile-version', process.env.BAD_AGENT_EVAL_PROFILE_VERSION ?? readPackageVersion(rootDir));
+const agentEvalAllowMixedBackend = hasFlag('agent-eval-allow-mixed-backend');
 const allowedMemoryIsolation = new Set(['none', 'shared', 'per-run']);
 const allowedModes = new Set(['full-evidence', 'fast-explore']);
 const modes = parseModes(getArg('modes', 'full-evidence,fast-explore'));
@@ -134,6 +156,7 @@ fs.mkdirSync(outBase, { recursive: true });
 
 function runMode(mode) {
   const modeDir = path.join(outBase, mode);
+  const telemetryDir = agentEvalRequested ? path.join(modeDir, 'telemetry') : null;
   const memoryConfig = resolveMemoryConfig({
     enabled: memory,
     isolation: memoryIsolation,
@@ -175,9 +198,21 @@ function runMode(mode) {
   if (apiKeyOverride) args.push('--api-key', apiKeyOverride);
 
   const startedAt = new Date().toISOString();
+  const childEnv = benchmarkSyncChildEnv(process.env);
+  const captureConfig = configureAgentEvalCaptureEnv({
+    childEnv,
+    mode,
+    rootDir,
+    scenarioId: agentEvalScenarioIdArg ?? resolvedCaseMeta?.selectedCaseId ?? path.basename(outBase),
+    candidateId: agentEvalCandidateId,
+  });
+  if (telemetryDir) {
+    childEnv.BAD_TELEMETRY = '1';
+    childEnv.BAD_TELEMETRY_DIR = telemetryDir;
+  }
   const proc = spawnSync('node', args, {
     cwd: rootDir,
-    env: benchmarkSyncChildEnv(process.env),
+    env: childEnv,
     stdio: 'inherit',
   });
   const endedAt = new Date().toISOString();
@@ -195,6 +230,10 @@ function runMode(mode) {
     modeDir,
     reportPath,
   });
+  const agentEvalCapture = captureConfig.enabled
+    ? inspectAgentEvalCaptureArtifacts(captureConfig.dir, { require: captureConfig.require })
+    : null;
+
   return {
     mode,
     startedAt,
@@ -213,6 +252,8 @@ function runMode(mode) {
       estimatedCostUsd: result?.estimatedCostUsd ?? null,
       verdict: result?.verdict ?? null,
     },
+    telemetryDir,
+    agentEvalCapture,
     memory: memoryConfig,
     artifactCheck,
   };
@@ -225,6 +266,9 @@ const executionFailures = runs
   .filter((run) => run.exitCode !== 0)
   .map((run) => `${run.mode} exited with code ${run.exitCode}`);
 const artifactFailures = formatArtifactCheckFailures(artifactChecks);
+const captureFailures = runs.flatMap((run) => (
+  run.agentEvalCapture?.failures ?? []
+).map((failure) => `${run.mode}: ${failure}`));
 
 const full = runs.find((r) => r.mode === 'full-evidence');
 const fast = runs.find((r) => r.mode === 'fast-explore');
@@ -268,8 +312,76 @@ const summary = {
   outputDir: outBase,
   runs,
   artifactChecks: artifactSummary,
+  agentEvalCaptureChecks: runs
+    .filter((run) => run.agentEvalCapture)
+    .map((run) => ({ mode: run.mode, ...run.agentEvalCapture })),
   comparison,
 };
+
+if (agentEvalRequested) {
+  const { recordTelemetryAgentEval } = await import('./lib/agent-eval-records.mjs');
+  const effectivePromptHash = agentEvalPromptHash ?? promptHash;
+  const scenarioId = agentEvalScenarioIdArg ?? resolvedCaseMeta?.selectedCaseId;
+  const effectiveConfigHash = agentEvalConfigHash ?? agentEvalDefaultConfigHash({
+    modelSnapshot: agentEvalModelSnapshot,
+    configPath,
+    benchmarkProfile: benchmarkProfile.id,
+    driverProfile: benchmarkProfile.driverProfile,
+    promptHash: effectivePromptHash,
+    persona,
+    modes,
+    maxTurns,
+    timeoutMs,
+    allowedDomains,
+    memory: summary.memory,
+    modelAdaptive,
+    navModel,
+    navProvider,
+    traceScoring,
+    traceTtlDays,
+    headless,
+  });
+  const recordsPath = resolveOptionalOutputPath(
+    agentEvalRecordsArg ?? 'true',
+    path.join(outBase, 'agent-eval-run-records.jsonl'),
+  );
+  const scorecardPath = resolveOptionalOutputPath(
+    agentEvalScorecardArg,
+    path.join(outBase, 'agent-eval-scorecard.jsonl'),
+  );
+  const result = await recordTelemetryAgentEval({
+    telemetryDirs: runs.map((run) => run.telemetryDir).filter(Boolean),
+    recordsPath,
+    scorecardPath,
+    experimentId: agentEvalExperimentId,
+    candidateId: agentEvalCandidateId,
+    seed: agentEvalSeed,
+    scenarioId,
+    splitTag: agentEvalSplitTag,
+    modelSnapshot: agentEvalModelSnapshot,
+    promptHash: effectivePromptHash,
+    configHash: effectiveConfigHash,
+    commitSha: summary.gitSha,
+    profileName: agentEvalProfileName,
+    profileVersion: agentEvalProfileVersion,
+    benchmarkProfile: benchmarkProfile.id,
+    driverProfile: benchmarkProfile.driverProfile,
+    modes,
+    allowMixedBackend: agentEvalAllowMixedBackend,
+  });
+  summary.agentEval = {
+    recordsPath: result.recordsPath ?? null,
+    scorecardPath: result.scorecardPath ?? null,
+    recordCount: result.records.length,
+    scorecardLineCount: result.scorecardLines.length,
+    backendIntegrity: result.backendIntegrity,
+    profile: {
+      name: result.profile.name,
+      version: result.profile.version,
+      model: result.profile.model,
+    },
+  };
+}
 
 const summaryPath = path.join(outBase, 'baseline-summary.json');
 fs.writeFileSync(summaryPath, `${JSON.stringify(summary, null, 2)}\n`);
@@ -288,6 +400,18 @@ if (comparison.tokenDeltaPercent != null) {
   console.log(`- fast-explore token reduction vs full-evidence: ${comparison.tokenDeltaPercent.toFixed(1)}%`);
 }
 console.log(`- artifacts: ${artifactSummary.passed}/${artifactSummary.total} mode checks passed`);
+for (const run of runs) {
+  if (!run.agentEvalCapture) continue;
+  console.log(
+    `- ${run.mode} agent-eval capture: raw=${run.agentEvalCapture.rawProviderEvents} trace=${run.agentEvalCapture.traceRows} dir=${run.agentEvalCapture.dir}`,
+  );
+}
+if (summary.agentEval?.recordsPath) {
+  console.log(`- agent-eval records: ${summary.agentEval.recordsPath}`);
+}
+if (summary.agentEval?.scorecardPath) {
+  console.log(`- agent-eval scorecard: ${summary.agentEval.scorecardPath}`);
+}
 console.log(`- summary: ${summaryPath}`);
 
 await syncBenchmarkOutput({
@@ -296,8 +420,8 @@ await syncBenchmarkOutput({
   label: `${goal.slice(0, 80)} · mode baseline`,
 });
 
-if (executionFailures.length > 0 || artifactFailures.length > 0) {
-  for (const failure of [...executionFailures, ...artifactFailures]) {
+if (executionFailures.length > 0 || artifactFailures.length > 0 || captureFailures.length > 0) {
+  for (const failure of [...executionFailures, ...artifactFailures, ...captureFailures]) {
     console.error(`- ${failure}`);
   }
   process.exit(1);
@@ -305,6 +429,41 @@ if (executionFailures.length > 0 || artifactFailures.length > 0) {
 
 function sha256(text) {
   return crypto.createHash('sha256').update(text).digest('hex');
+}
+
+function agentEvalDefaultConfigHash(config) {
+  return sha256(JSON.stringify({
+    ...config,
+    configFile: fileHash(config.configPath),
+  }));
+}
+
+function fileHash(filePath) {
+  if (!filePath) return null;
+  const absolute = path.resolve(filePath);
+  if (!fs.existsSync(absolute)) return { path: absolute, exists: false };
+  return {
+    path: absolute,
+    exists: true,
+    sha256: sha256(fs.readFileSync(absolute, 'utf-8')),
+  };
+}
+
+function resolveOptionalOutputPath(value, defaultPath) {
+  if (value === undefined) return undefined;
+  if (value === 'true') return defaultPath;
+  return path.resolve(value);
+}
+
+function readPackageVersion(root) {
+  try {
+    const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf-8'));
+    return typeof packageJson.version === 'string' && packageJson.version.trim()
+      ? packageJson.version
+      : 'unknown';
+  } catch {
+    return 'unknown';
+  }
 }
 
 function parseModes(input) {
