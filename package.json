@@ -145,6 +145,20 @@
     "pngjs": "^7.0.0",
     "tsx": "^4.21.0",
     "typescript": "^5.3.0",
-    "vitest": "^4.0.18"
+    "vitest": "^4.1.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "vite": "7.3.6",
+      "vitest": "^4.1.0",
+      "hono": "^4.12.25",
+      "ws": "^8.21.0",
+      "esbuild": "^0.28.1",
+      "picomatch": "^4.0.4",
+      "postcss": "^8.5.10",
+      "@ai-sdk/provider-utils": "^4.0.16",
+      "js-yaml@^3": "^3.15.0",
+      "js-yaml@^4": "^4.2.0"
+    }
   }
 }
