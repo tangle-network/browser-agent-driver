@@ -9,7 +9,10 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [18, 20, 22]
+        # Node 18 is EOL (2025-04) and unsupported by the toolchain: the vitest
+        # security bump (>=4.1.0, fixes GHSA critical) and vite 7 both require
+        # Node ^20.19 || >=22.12. Test on supported LTS only.
+        node-version: [20, 22]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
