@@ -10,13 +10,20 @@ FROM mcr.microsoft.com/playwright:v1.58.2-noble
 
 WORKDIR /app
 
-# Install deps and build
-COPY package.json package-lock.json ./
-RUN npm ci
+# The repo standardizes on pnpm: every CI workflow runs `pnpm install
+# --frozen-lockfile` and pnpm-lock.yaml is the single source of truth (there is
+# no committed npm lockfile). Enable pnpm in the image to match.
+RUN npm install -g pnpm@10.33.3
+
+# Install deps and build. scripts/ is copied before install because the root
+# postinstall (provider patches) reads from it, and the build step does too.
+COPY package.json pnpm-lock.yaml ./
+COPY scripts/ ./scripts/
+RUN pnpm install --frozen-lockfile
 
 COPY tsconfig.json ./
 COPY src/ ./src/
-RUN npm run build
+RUN pnpm run build
 
 # Make CLI executable
 RUN chmod +x dist/cli.js

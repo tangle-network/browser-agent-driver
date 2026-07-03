@@ -23,19 +23,23 @@ RUN apt-get update && apt-get install -y xvfb && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
+# The repo standardizes on pnpm (all CI uses `pnpm install --frozen-lockfile`;
+# there is no committed npm lockfile). Enable pnpm in the image to match.
+RUN npm install -g pnpm@10.33.3
+
 # Install deps (skip postinstall patches — only needed for claude-code/codex providers)
-COPY package.json package-lock.json ./
-RUN npm ci --ignore-scripts
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile --ignore-scripts
 
 # Install Chrome via patchright (real TLS fingerprint for stealth/anti-bot bypass)
-RUN npx patchright install chrome
+RUN pnpm exec patchright install chrome
 
 COPY tsconfig.json ./
 COPY src/ ./src/
-RUN npm run build
+COPY scripts/ ./scripts/
+RUN pnpm run build
 
 # Copy benchmark infrastructure
-COPY scripts/ ./scripts/
 COPY bench/ ./bench/
 
 # Default output directory
