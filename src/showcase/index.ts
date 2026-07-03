@@ -24,6 +24,7 @@ import type {
 import { captureWithHighlight, captureWithCrop } from './annotate.js'
 import { assembleGif, assembleVideo } from './assemble.js'
 import { revealHiddenContent } from '../design/page-interaction.js'
+import { isPlaywrightFfmpegAvailable } from '../ffmpeg-availability.js'
 
 // ── Main Entry ──
 
@@ -37,14 +38,28 @@ export async function runShowcase(config: ShowcaseConfig): Promise<ShowcaseResul
   fs.mkdirSync(outputDir, { recursive: true })
 
   const viewport = config.viewport ?? { width: 1440, height: 900 }
+
+  // Video recording shells out to Playwright's bundled ffmpeg at newPage(); a
+  // runtime whose browser cache ships Chromium but not ffmpeg (e.g. the Tangle
+  // sandbox's agent-thin image) would crash the whole capture. Drop webm video
+  // when ffmpeg is absent and keep the screenshots/GIF — same graceful degrade
+  // as `bad run`. See ffmpeg-availability.ts.
+  const wantsVideo = formats.includes('webm')
+  const recordVideo = wantsVideo && isPlaywrightFfmpegAvailable()
+  if (wantsVideo && !recordVideo) {
+    console.warn(
+      '  ⚠ ffmpeg not found in the Playwright browser cache; skipping webm video (screenshots and GIF are still captured).',
+    )
+  }
+
   const browser = await chromium.launch({ headless: config.headless ?? true })
   const context = await browser.newContext({
     viewport,
     deviceScaleFactor: scale,
     colorScheme: config.colorScheme,
     storageState: config.storageState ? JSON.parse(fs.readFileSync(config.storageState, 'utf-8')) : undefined,
-    // Record video if webm format requested
-    ...(formats.includes('webm') ? { recordVideo: { dir: path.join(outputDir, '_video'), size: viewport } } : {}),
+    // Record video if webm format requested and ffmpeg is available
+    ...(recordVideo ? { recordVideo: { dir: path.join(outputDir, '_video'), size: viewport } } : {}),
   })
 
   const page = await context.newPage()
@@ -110,7 +125,7 @@ export async function runShowcase(config: ShowcaseConfig): Promise<ShowcaseResul
 
   // Get video recording path if available
   let videoPath: string | undefined
-  if (formats.includes('webm')) {
+  if (recordVideo) {
     await page.close() // Must close page to flush video
     const videoFile = await context.pages()[0]?.video()?.path().catch(() => undefined)
     // Page already closed, try getting video from context
