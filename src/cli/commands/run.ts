@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import type { BrowserContext } from 'playwright';
 import { toAgentConfig } from '../../config.js';
 import { buildBrowserLaunchPlan } from '../../browser-launch.js';
-import { isPlaywrightFfmpegAvailable } from '../../ffmpeg-availability.js';
+import { isPlaywrightFfmpegAvailable, playwrightBrowsersPath } from '../../ffmpeg-availability.js';
 import { runWalletPreflight, startWalletAutoApprover } from '../../wallet/automation.js';
 import { isPersonaId, listPersonaIds, withPersonaDirective } from '../../personas.js';
 import { resolveProviderApiKey, resolveProviderModelName, resolveDefaultProvider } from '../../provider-defaults.js';
@@ -359,8 +359,10 @@ export async function runRunCommand(values: CliValues): Promise<void> {
   // skipped. In normal dev/CI (ffmpeg present) recording is unchanged.
   const recordVideo = isPlaywrightFfmpegAvailable();
   if (!recordVideo) {
+    const cacheDir = playwrightBrowsersPath() ?? '(bundled in package)';
     cliWarn(
-      'ffmpeg not found in the Playwright browser cache; recording video disabled for this run ' +
+      `ffmpeg not found in the Playwright browser cache (${cacheDir}); recording video disabled ` +
+        `for this run — driver v${readCliVersion()} ` +
         '(report, screenshots, and trace are still captured).',
     );
   }
