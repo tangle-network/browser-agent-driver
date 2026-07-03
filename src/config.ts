@@ -40,6 +40,13 @@ export interface DriverConfig {
   browserArgs?: string[];
   /** Residential/SOCKS5/HTTP proxy URL (e.g. http://user:pass@proxy:port). Also reads BAD_PROXY_URL env. */
   proxy?: string;
+  /**
+   * Launch a specific Chromium binary instead of the Playwright-managed browser
+   * (e.g. a sandbox's Nix-provided Chromium at /nix/profile/bin/chromium). When
+   * set, it overrides the Playwright `channel`. Also reads BAD_CHROMIUM_EXECUTABLE_PATH
+   * env. Chromium only — ignored for firefox/webkit.
+   */
+  executablePath?: string;
   wallet?: {
     enabled?: boolean;
     /** Wallet address (hex with 0x prefix). Auto-detected from MetaMask if not set. Used for RPC interception. */
