@@ -414,7 +414,12 @@ export async function runRunCommand(values: CliValues): Promise<void> {
 
     const persistentLaunchStartedAt = Date.now();
     persistentContext = await chromium.launchPersistentContext(userDataDir, {
-      channel: isStealthProfile ? 'chrome' : 'chromium',
+      // An explicit Chromium binary (e.g. the sandbox's Nix Chromium via
+      // BAD_CHROMIUM_EXECUTABLE_PATH) overrides the Playwright-managed channel;
+      // Playwright ignores `channel` when `executablePath` is set.
+      ...(launchPlan.executablePath
+        ? { executablePath: launchPlan.executablePath }
+        : { channel: isStealthProfile ? 'chrome' : 'chromium' }),
       headless: launchPlan.headless,
       args: launchPlan.browserArgs,
       viewport,
@@ -492,11 +497,18 @@ export async function runRunCommand(values: CliValues): Promise<void> {
     browser = await browserType.launch({
       headless: launchPlan.headless,
       ...(browserName === 'chromium' ? { args: launchPlan.browserArgs } : {}),
-      // System Chrome for stealth profiles only — real TLS/JA3 fingerprint
-      // fixes anti-bot blocking. But system Chrome renders differently than
-      // bundled Chromium on some sites (Allrecipes click timeouts, Amazon
-      // layout shifts), so only enable when anti-bot evasion is needed.
-      ...(isStealthProfile && browserName === 'chromium' ? { channel: 'chrome' } : {}),
+      // An explicit Chromium binary (the sandbox's Nix Chromium via
+      // BAD_CHROMIUM_EXECUTABLE_PATH) takes precedence over the stealth
+      // system-Chrome channel; Playwright ignores `channel` alongside
+      // `executablePath`. Otherwise use system Chrome for stealth profiles only —
+      // real TLS/JA3 fingerprint fixes anti-bot blocking, but system Chrome
+      // renders differently than bundled Chromium on some sites (Allrecipes click
+      // timeouts, Amazon layout shifts), so only enable when evasion is needed.
+      ...(browserName === 'chromium' && launchPlan.executablePath
+        ? { executablePath: launchPlan.executablePath }
+        : isStealthProfile && browserName === 'chromium'
+          ? { channel: 'chrome' }
+          : {}),
       // Residential/SOCKS5/HTTP proxy — routes all traffic through the proxy
       ...(launchPlan.proxyServer
         ? { proxy: { server: launchPlan.proxyServer, ...(launchPlan.proxyBypass ? { bypass: launchPlan.proxyBypass } : {}) } }

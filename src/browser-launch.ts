@@ -26,6 +26,12 @@ export interface BrowserLaunchPlan {
    * Optional so external consumers constructing a plan literal aren't type-broken by this field.
    */
   ignoreHTTPSErrors?: boolean;
+  /**
+   * Absolute path to a Chromium binary to launch instead of the Playwright-managed
+   * browser (Chromium only). When set, launch sites pass it as `executablePath` and
+   * omit `channel` — Playwright treats the two as mutually exclusive.
+   */
+  executablePath?: string;
   warnings: string[];
   errors: string[];
 }
@@ -131,6 +137,9 @@ export function buildBrowserLaunchPlan(
     warnings.push('--cdp-url connects to an existing browser; --profile-dir and wallet options are ignored.')
   }
 
+  // Explicit Chromium binary (e.g. the sandbox's Nix Chromium) — config wins over env.
+  const executablePath = config.executablePath || env.BAD_CHROMIUM_EXECUTABLE_PATH || undefined;
+
   // Explicit user proxy (residential/SOCKS5/custom) always wins and keeps cert validation on.
   const explicitProxy = config.proxy || env.BAD_PROXY_URL || undefined;
   // Otherwise, auto-wire the sandbox's managed egress proxy (iron-proxy) if present. Playwright's
@@ -173,6 +182,7 @@ export function buildBrowserLaunchPlan(
     proxyServer,
     proxyBypass,
     ignoreHTTPSErrors,
+    executablePath,
     warnings,
     errors,
   };

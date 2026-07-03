@@ -15,6 +15,27 @@ describe('buildBrowserLaunchPlan', () => {
     expect(plan.errors).toEqual([]);
   });
 
+  it('leaves executablePath undefined when neither config nor env set it', () => {
+    const plan = buildBrowserLaunchPlan({}, { cwd: '/repo', platform: 'linux', env: {} });
+    expect(plan.executablePath).toBeUndefined();
+  });
+
+  it('resolves executablePath from BAD_CHROMIUM_EXECUTABLE_PATH env', () => {
+    const plan = buildBrowserLaunchPlan(
+      {},
+      { cwd: '/repo', platform: 'linux', env: { BAD_CHROMIUM_EXECUTABLE_PATH: '/nix/profile/bin/chromium' } },
+    );
+    expect(plan.executablePath).toBe('/nix/profile/bin/chromium');
+  });
+
+  it('prefers config.executablePath over the env var', () => {
+    const plan = buildBrowserLaunchPlan(
+      { executablePath: '/custom/chromium' },
+      { cwd: '/repo', platform: 'linux', env: { BAD_CHROMIUM_EXECUTABLE_PATH: '/nix/profile/bin/chromium' } },
+    );
+    expect(plan.executablePath).toBe('/custom/chromium');
+  });
+
   it('enables wallet mode when extension paths are provided', () => {
     const plan = buildBrowserLaunchPlan({
       headless: true,
