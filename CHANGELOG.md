@@ -1,5 +1,11 @@
 # @tangle-network/browser-agent-driver
 
+## 0.35.2
+
+### Patch Changes
+
+- [#129](https://github.com/tangle-network/browser-agent-driver/pull/129) [`c85666e`](https://github.com/tangle-network/browser-agent-driver/commit/c85666edfe54fe2dc9feeaf9db5e3dd1fab6ec1c) Thanks [@AtelyPham](https://github.com/AtelyPham)! - Fix the ffmpeg probe so a **missing** Playwright browsers cache disables video recording instead of keeping it on. The graceful degrade added in 0.35.1 only disabled `recordVideo` when the cache dir existed but had no ffmpeg; in the Tangle agent-thin sandbox `PLAYWRIGHT_BROWSERS_PATH` (`/opt/cache/npm/_playwright`) is never populated — Chromium is launched from Nix via executablePath — so the directory does not exist, and the previous "bias toward true on a missing dir" kept `recordVideo` and still crashed the run at `context.newPage()`. The probe now biases toward disabling video on any uncertainty (missing cache dir, cache without ffmpeg, or a probe error), because a wrong "available" hard-crashes the run while a wrong "unavailable" only skips the replay video; it returns true only when it positively finds an ffmpeg binary, or for the package-bundled `PLAYWRIGHT_BROWSERS_PATH=0` mode. Normal dev/CI (where `playwright install` provides ffmpeg) is unchanged. The disabled-video warning now names the resolved cache path and the driver version.
+
 ## 0.35.1
 
 ### Patch Changes

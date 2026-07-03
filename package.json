@@ -1,6 +1,6 @@
 {
   "name": "@tangle-network/browser-agent-driver",
-  "version": "0.35.1",
+  "version": "0.35.2",
   "description": "LLM-driven browser agent and bad CLI for UI automation, testing, and evaluation",
   "packageManager": "pnpm@10.33.3",
   "publishConfig": {
