@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import type { BrowserContext } from 'playwright';
 import { toAgentConfig } from '../../config.js';
 import { buildBrowserLaunchPlan } from '../../browser-launch.js';
+import { isPlaywrightFfmpegAvailable } from '../../ffmpeg-availability.js';
 import { runWalletPreflight, startWalletAutoApprover } from '../../wallet/automation.js';
 import { isPersonaId, listPersonaIds, withPersonaDirective } from '../../personas.js';
 import { resolveProviderApiKey, resolveProviderModelName, resolveDefaultProvider } from '../../provider-defaults.js';
@@ -348,6 +349,21 @@ export async function runRunCommand(values: CliValues): Promise<void> {
   const sink = new FilesystemSink(path.resolve(sinkDir));
   const videoDir = path.join(sinkDir, '_videos');
   const viewport = launchPlan.viewport;
+
+  // Video recording needs Playwright/patchright's bundled ffmpeg. The Tangle
+  // sandbox's agent-thin runtime seeds the warm browser cache with Chromium but
+  // NOT ffmpeg, so a context opened with `recordVideo` throws at page creation
+  // ("Executable doesn't exist at .../ffmpeg-<rev>/ffmpeg-linux") and kills the
+  // whole run. When ffmpeg is absent we drop `recordVideo` and keep going —
+  // report, screenshots, and trace are still captured; only the replay video is
+  // skipped. In normal dev/CI (ffmpeg present) recording is unchanged.
+  const recordVideo = isPlaywrightFfmpegAvailable();
+  if (!recordVideo) {
+    cliWarn(
+      'ffmpeg not found in the Playwright browser cache; recording video disabled for this run ' +
+        '(report, screenshots, and trace are still captured).',
+    );
+  }
   const storageStatePath = driverConfig.storageState
     ? path.resolve(driverConfig.storageState)
     : undefined;
@@ -423,7 +439,7 @@ export async function runRunCommand(values: CliValues): Promise<void> {
       headless: launchPlan.headless,
       args: launchPlan.browserArgs,
       viewport,
-      recordVideo: { dir: videoDir, size: viewport },
+      ...(recordVideo ? { recordVideo: { dir: videoDir, size: viewport } } : {}),
       ...(launchPlan.proxyServer
         ? { proxy: { server: launchPlan.proxyServer, ...(launchPlan.proxyBypass ? { bypass: launchPlan.proxyBypass } : {}) } }
         : {}),
@@ -554,7 +570,7 @@ export async function runRunCommand(values: CliValues): Promise<void> {
     } else {
       context = await browser!.newContext({
         viewport,
-        recordVideo: { dir: videoDir, size: viewport },
+        ...(recordVideo ? { recordVideo: { dir: videoDir, size: viewport } } : {}),
         storageState: storageStatePath,
         locale: 'en-US',
         timezoneId: 'America/New_York',
