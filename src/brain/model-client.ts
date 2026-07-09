@@ -20,6 +20,7 @@ import {
   ZAI_ANTHROPIC_BASE_URL,
 } from '../provider-defaults.js';
 import { generateWithSandboxBackend } from '../providers/sandbox-backend.js';
+import { loadOptionalModule } from '../optional-dependency.js';
 import { JSON_TEXT_OUTPUT, createForceNonStreamingFetch } from './provider-fetch.js';
 import type { UserContent } from './types.js';
 
@@ -190,7 +191,11 @@ export async function getModelImpl(
       break;
     }
     case 'codex-cli': {
-      const { codexExec } = await import('ai-sdk-provider-codex-cli');
+      const { codexExec } = await loadOptionalModule(
+        () => import('ai-sdk-provider-codex-cli'),
+        'ai-sdk-provider-codex-cli',
+        "The 'codex-cli' provider",
+      );
       const env: Record<string, string> = {};
       if (apiKey) env.OPENAI_API_KEY = apiKey;
       model = codexExec(modelName, {
@@ -202,7 +207,11 @@ export async function getModelImpl(
       break;
     }
     case 'claude-code': {
-      const { createClaudeCode } = await import('ai-sdk-provider-claude-code');
+      const { createClaudeCode } = await loadOptionalModule(
+        () => import('ai-sdk-provider-claude-code'),
+        'ai-sdk-provider-claude-code',
+        "The 'claude-code' provider",
+      );
       const env: Record<string, string> = {};
       if (apiKey) env.ANTHROPIC_API_KEY = apiKey;
       const provider = createClaudeCode({
@@ -243,7 +252,11 @@ export async function getModelImpl(
         );
       }
       if (isClaudeCodeRoutedModel(modelName)) {
-        const { createClaudeCode } = await import('ai-sdk-provider-claude-code');
+        const { createClaudeCode } = await loadOptionalModule(
+          () => import('ai-sdk-provider-claude-code'),
+          'ai-sdk-provider-claude-code',
+          "The 'claude-code' provider",
+        );
         const env: Record<string, string> = {
           // Override Claude Code's API base + auth at the env-var level.
           // The CLI subprocess inherits these and routes all Anthropic
