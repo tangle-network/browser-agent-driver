@@ -9,6 +9,7 @@ import type {
 } from '../types.js';
 import { resolveProviderApiKey, resolveProviderModelName, shouldSendTemperature } from '../provider-defaults.js';
 import { generateWithSandboxBackend } from '../providers/sandbox-backend.js';
+import { loadOptionalModule } from '../optional-dependency.js';
 
 export interface SupervisorCriticInput {
   goal: string;
@@ -313,7 +314,11 @@ async function getModel(config: {
       return provider.chat(modelName) as LanguageModel;
     }
     case 'codex-cli': {
-      const { codexExec } = await import('ai-sdk-provider-codex-cli');
+      const { codexExec } = await loadOptionalModule(
+        () => import('ai-sdk-provider-codex-cli'),
+        'ai-sdk-provider-codex-cli',
+        "The 'codex-cli' provider",
+      );
       const env: Record<string, string> = {};
       if (apiKey) env.OPENAI_API_KEY = apiKey;
       return codexExec(modelName, {
@@ -324,7 +329,11 @@ async function getModel(config: {
       }) as LanguageModel;
     }
     case 'claude-code': {
-      const { createClaudeCode } = await import('ai-sdk-provider-claude-code');
+      const { createClaudeCode } = await loadOptionalModule(
+        () => import('ai-sdk-provider-claude-code'),
+        'ai-sdk-provider-claude-code',
+        "The 'claude-code' provider",
+      );
       const env: Record<string, string> = {};
       if (apiKey) env.ANTHROPIC_API_KEY = apiKey;
       const provider = createClaudeCode({
