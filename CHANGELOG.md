@@ -1,5 +1,11 @@
 # @tangle-network/browser-agent-driver
 
+## 0.35.3
+
+### Patch Changes
+
+- [#131](https://github.com/tangle-network/browser-agent-driver/pull/131) [`135558e`](https://github.com/tangle-network/browser-agent-driver/commit/135558e8b9bf2ca83aee88a6a7c65c7df5a61ae7) Thanks [@AtelyPham](https://github.com/AtelyPham)! - Move the CLI-backed provider adapters (`ai-sdk-provider-codex-cli`, `ai-sdk-provider-claude-code`) and `ffmpeg-static` to `optionalDependencies`. Consumers that only drive `--provider openai` — e.g. slim sandbox runtime images — can now install with `npm install --omit=optional` to skip ~300 MB of platform-native binaries (the bundled Codex CLI, the Claude Agent SDK's per-platform ripgrep, and the static ffmpeg). Default installs are unchanged: optional dependencies still install by default, so the full provider/showcase surface works out of the box. When an omitted dependency's provider is selected (including the keyless `claude-code` default) or `bad showcase` is run without it, the driver now throws an actionable "reinstall without --omit=optional" error instead of a raw `ERR_MODULE_NOT_FOUND`.
+
 ## 0.35.2
 
 ### Patch Changes
