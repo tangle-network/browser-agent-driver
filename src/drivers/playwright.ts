@@ -12,6 +12,7 @@
 import type { Page, CDPSession } from 'playwright';
 import type { Driver, ActionResult, ResourceBlockingOptions } from './types.js';
 import type { Action, PageState } from '../types.js';
+import { cliWarn } from '../cli-ui.js';
 import { AriaSnapshotHelper, dismissOverlays } from './snapshot.js';
 import { ANALYTICS_PATTERNS, IMAGE_PATTERNS, MEDIA_PATTERNS } from './block-patterns.js';
 import { buildCdpSnapshot } from './cdp-snapshot.js';
@@ -26,6 +27,48 @@ import { interpolateStep } from '../skills/macro-loader.js';
 
 function isPointerInterceptError(error: string): boolean {
   return /intercepts pointer events|subtree intercepts pointer events|not receiving pointer events/i.test(error);
+}
+
+// ---------------------------------------------------------------------------
+// Observe deadlines
+// ---------------------------------------------------------------------------
+// A raw CDPSession.send() carries no Playwright timeout, so a wedged renderer
+// (e.g. an about:blank page behind a managed-egress proxy whose CDP pipe never
+// answers) makes an observe() call hang forever — and the turn-1 observe has no
+// outer deadline. Bounding each step turns a hang into a rejection that observe()
+// catches, degrading CDP -> Playwright -> minimal state instead of stalling the run.
+
+/** Per-call ceiling for a CDP observe call (newCDPSession, Runtime.evaluate,
+ * Accessibility.getFullAXTree). Generous vs a healthy call (tens of ms, a few
+ * seconds on huge pages); its job is to fail the CDP path fast to the Playwright
+ * fallback and label which call wedged — the overall guarantee is the budget. */
+const CDP_OBSERVE_TIMEOUT_MS = 8_000;
+/** Total wall-clock ceiling for all observation work in one observe() (after the
+ * load-state wait): CDP attach + calls + screenshot, or the Playwright fallback.
+ * A single shared budget — not a sum of independent per-step ceilings — so several
+ * steps wedging in sequence still can't push observe() past the transport budget. */
+const OBSERVE_BUDGET_MS = 20_000;
+
+/** Thrown by withObserveTimeout when a step exceeds its deadline. Named so
+ * observe() can tell a wedge (degrade + warn) from a genuine failure (rethrow). */
+export class ObserveTimeoutError extends Error {
+  constructor(readonly step: string, readonly timeoutMs: number) {
+    super(`observe step "${step}" exceeded ${timeoutMs}ms`);
+    this.name = 'ObserveTimeoutError';
+  }
+}
+
+/** Reject with an ObserveTimeoutError if `promise` does not settle in time. The
+ * underlying promise is left to settle on its own (a wedged CDP send never will,
+ * which is harmless); the timer is always cleared so it never leaks. */
+export function withObserveTimeout<T>(promise: Promise<T>, step: string, timeoutMs: number): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new ObserveTimeoutError(step, timeoutMs)), timeoutMs);
+    }),
+  ]).finally(() => { if (timer) clearTimeout(timer); });
 }
 
 // ---------------------------------------------------------------------------
@@ -150,6 +193,15 @@ export interface PlaywrightDriverOptions {
    * `{action:"macro", name:..., args:...}`. When omitted, macro calls fail
    * with an error message referencing the missing name. */
   macros?: MacroRegistry;
+  /** Per-call ceiling for a raw CDP observe call (newCDPSession, Runtime.evaluate,
+   * Accessibility.getFullAXTree) in ms. Default {@link CDP_OBSERVE_TIMEOUT_MS}.
+   * A raw CDPSession.send() has no timeout; on timeout observe() fails the CDP
+   * path over to the Playwright fallback. */
+  cdpObserveTimeoutMs?: number;
+  /** Total wall-clock ceiling for all observation work in one observe() in ms.
+   * Default {@link OBSERVE_BUDGET_MS}. On timeout observe() returns a minimal state
+   * so the run advances instead of blocking the turn. */
+  observeBudgetMs?: number;
 }
 
 export class PlaywrightDriver implements Driver {
@@ -481,10 +533,24 @@ export class PlaywrightDriver implements Driver {
     if (this.options.disableCdp || this.cdpFailed) return null;
     if (this.cdpSession) return this.cdpSession;
 
+    const attach = this.page.context().newCDPSession(this.page);
     try {
-      this.cdpSession = await this.page.context().newCDPSession(this.page);
+      this.cdpSession = await withObserveTimeout(
+        attach,
+        'newCDPSession',
+        this.options.cdpObserveTimeoutMs ?? CDP_OBSERVE_TIMEOUT_MS,
+      );
       return this.cdpSession;
-    } catch {
+    } catch (err) {
+      if (err instanceof ObserveTimeoutError) {
+        // Attach wedged this turn (transient) — fall back to Playwright but keep
+        // CDP eligible next turn rather than disabling it for the whole run. If the
+        // abandoned attach later resolves, detach it so the session doesn't leak.
+        void attach.then(s => s.detach()).catch(() => {});
+        cliWarn(`observe: ${err.message}; using Playwright observation this turn`);
+        this.cdpSession = null;
+        return null;
+      }
       // Non-Chromium browser or CDP not available
       this.cdpFailed = true;
       return null;
@@ -519,27 +585,72 @@ export class PlaywrightDriver implements Driver {
 
     this.snapshot.reset();
 
+    // One shared budget for all observation work. The inner per-call CDP ceilings
+    // only fail the CDP path fast to the fallback and label which call wedged; this
+    // single cap is the guarantee that observe() returns promptly even if attach,
+    // CDP calls, screenshot, and the Playwright fallback wedge in sequence — so
+    // their ceilings can't sum past the transport budget.
+    try {
+      const result = await withObserveTimeout(
+        this.observeWithin(captureScreenshot, quality),
+        'observe',
+        this.options.observeBudgetMs ?? OBSERVE_BUDGET_MS,
+      );
+      this.lastTiming!.waitForLoadMs = waitForLoadMs;
+      this.lastTiming!.totalMs = performance.now() - observeStart;
+      return result;
+    } catch (err) {
+      if (!(err instanceof ObserveTimeoutError)) throw err;
+      // Every observation path wedged — return a minimal state (URL only) so the
+      // run advances to the next turn instead of blocking indefinitely.
+      cliWarn(`observe: ${err.message}; returning minimal observation this turn`);
+      this.lastTiming = {
+        totalMs: performance.now() - observeStart,
+        waitForLoadMs,
+        snapshotMs: 0,
+        metadataMs: 0,
+        screenshotMs: 0,
+        usedCdp: false,
+        snapshotSize: 0,
+        refCount: 0,
+      };
+      let url = '';
+      try { url = this.page.url(); } catch { /* target gone — leave url empty */ }
+      return {
+        url,
+        title: '',
+        snapshot: '(observation timed out — the page did not respond in time)',
+      };
+    }
+  }
+
+  /**
+   * One observation attempt: the fast CDP path, falling back to Playwright when a
+   * CDP call fails or wedges. Bounded as a whole by observe()'s shared budget; the
+   * inner per-call CDP timeouts only fail fast to the fallback and label the wedge.
+   */
+  private async observeWithin(captureScreenshot: boolean, quality: number): Promise<PageState> {
     const cdp = await this.ensureCdpSession();
 
     if (cdp) {
       try {
-        const result = await this.observeCdp(cdp, captureScreenshot, quality);
-        this.lastTiming!.waitForLoadMs = waitForLoadMs;
-        this.lastTiming!.totalMs = performance.now() - observeStart;
-        return result;
-      } catch {
-        // CDP call failed — detach and fall back to Playwright for this turn
+        return await this.observeCdp(cdp, captureScreenshot, quality);
+      } catch (err) {
+        // A CDP observe call failed or timed out — detach and fall back to
+        // Playwright for this turn. withObserveTimeout() turns a wedged renderer
+        // into a rejection here so observe() degrades instead of hanging on a raw
+        // CDPSession.send(), which carries no timeout of its own.
+        if (err instanceof ObserveTimeoutError) {
+          cliWarn(`observe: ${err.message}; falling back to Playwright observation`);
+        }
+        void cdp.detach().catch(() => {}); // best-effort; never await a wedged session
         this.cdpSession = null;
         this.cdpFailed = false; // Allow retry next turn (transient failure)
         this.snapshot.reset(); // Reset refs since CDP partially populated them
       }
     }
 
-    // Fallback: original Playwright path (with 1s sleep)
-    const result = await this.observePlaywright(captureScreenshot, quality);
-    this.lastTiming!.waitForLoadMs = waitForLoadMs;
-    this.lastTiming!.totalMs = performance.now() - observeStart;
-    return result;
+    return this.observePlaywright(captureScreenshot, quality);
   }
 
   /**
@@ -550,11 +661,14 @@ export class PlaywrightDriver implements Driver {
     captureScreenshot: boolean,
     quality: number,
   ): Promise<PageState> {
-    // Parallel: get page metadata + build AX tree snapshot
+    // Parallel: get page metadata + build AX tree snapshot. Each is a raw
+    // CDPSession.send() with no built-in timeout, so bound them individually —
+    // the labels let observe() report which call wedged when it degrades.
     const snapshotStart = performance.now();
+    const cdpTimeoutMs = this.options.cdpObserveTimeoutMs ?? CDP_OBSERVE_TIMEOUT_MS;
     const [metadata, cdpResult] = await Promise.all([
-      getPageMetadata(cdp),
-      buildCdpSnapshot(cdp),
+      withObserveTimeout(getPageMetadata(cdp), 'Runtime.evaluate (page metadata)', cdpTimeoutMs),
+      withObserveTimeout(buildCdpSnapshot(cdp), 'Accessibility.getFullAXTree', cdpTimeoutMs),
     ]);
     const snapshotMs = performance.now() - snapshotStart;
 
