@@ -229,6 +229,9 @@ describe('buildBrowserLaunchPlan', () => {
       expect(plan.proxyServer).toBe('http://172.18.0.7:1080'); // prefers HTTPS_PROXY
       expect(plan.proxyBypass).toBe('localhost,127.0.0.1');
       expect(plan.ignoreHTTPSErrors).toBe(true);
+      // Browser-wide cert acceptance so Chromium's internal services (component update, GCM,
+      // sign-in probes) don't fail ERR_CERT_AUTHORITY_INVALID against the MITM proxy and wedge startup.
+      expect(plan.browserArgs).toContain('--ignore-certificate-errors');
       expect(plan.warnings).toContainEqual(expect.stringContaining('managed egress proxy'));
     });
 
@@ -257,6 +260,8 @@ describe('buildBrowserLaunchPlan', () => {
       expect(plan.proxyServer).toBe('http://user:pass@residential:9000');
       expect(plan.proxyBypass).toBeUndefined();
       expect(plan.ignoreHTTPSErrors).toBe(false);
+      // Explicit user proxy keeps full cert validation — no browser-wide cert bypass.
+      expect(plan.browserArgs).not.toContain('--ignore-certificate-errors');
     });
 
     it('BAD_PROXY_URL (env) wins over the egress proxy and keeps cert validation on', () => {
