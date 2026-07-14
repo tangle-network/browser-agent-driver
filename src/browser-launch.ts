@@ -154,6 +154,18 @@ export function buildBrowserLaunchPlan(
     warnings.push(
       `Routing the browser through the managed egress proxy (${managedEgressProxy.server}) and accepting its TLS-interception certificate; outbound is otherwise blocked by the sandbox egress firewall.`,
     );
+    // Chromium's own network stack (component update, GCM, sign-in probes, variations seed) validates
+    // TLS against Chrome's built-in trust store, which does NOT contain the egress proxy's MITM CA.
+    // Unlike page traffic, these browser-internal requests are not covered by the per-context
+    // ignoreHTTPSErrors above (CDP Security.setIgnoreCertificateErrors is per-session), so behind the
+    // proxy they fail ERR_CERT_AUTHORITY_INVALID (net_error -202) and Chromium retries them for
+    // minutes — wedging the first navigation long past the sandbox's terminals/commands budget and
+    // surfacing to the caller as "orchestrator connect timeout". Accept the proxy's cert browser-wide
+    // so the internal requests resolve immediately instead of stalling startup. Scoped to the trusted
+    // managed egress proxy only (gated on EGRESS_PROXY_IP), never an arbitrary user-supplied proxy.
+    if (!browserArgs.includes('--ignore-certificate-errors')) {
+      browserArgs.push('--ignore-certificate-errors');
+    }
     if (cdpUrl) {
       // CDP attaches to a browser we didn't launch, so the proxy/cert wiring never reaches it.
       warnings.push(
