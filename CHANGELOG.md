@@ -1,5 +1,18 @@
 # @tangle-network/browser-agent-driver
 
+## 0.36.1
+
+### Patch Changes
+
+- [#137](https://github.com/tangle-network/browser-agent-driver/pull/137) [`8199070`](https://github.com/tangle-network/browser-agent-driver/commit/8199070b63eea324f73096c7cfe4dc33de4576d5) Thanks [@AtelyPham](https://github.com/AtelyPham)! - Surface the agent's result in the CLI output and the `bad view` viewer.
+
+  Previously, when a run's completion message was empty the agent's answer was written only to `goalVerification.evidence` in `report.json`; the CLI printed a bare "Goal achieved" and the viewer showed the same, so the actual result was hidden. Now:
+
+  - The CLI prints the full result under the run's ✓/✗ line, with multi-line output preserved and indented (multi-task rows collapse to one line).
+  - `bad view` renders it in a "Result" panel, derived directly from the report so it also shows for existing runs.
+
+- [#139](https://github.com/tangle-network/browser-agent-driver/pull/139) [`b7e9914`](https://github.com/tangle-network/browser-agent-driver/commit/b7e99141620026a84dc6cdc77d8136ae2f2ebd19) Thanks [@drewstone](https://github.com/drewstone)! - Update the WebVoyager research command to use Agent Eval's maintained pairwise ranking API, and move the optional Claude Code provider to its secure AI SDK v6 release line.
+
 ## 0.36.0
 
 ### Minor Changes
