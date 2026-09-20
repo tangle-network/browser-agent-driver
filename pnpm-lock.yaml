@@ -54,10 +54,13 @@ importers:
         version: 2.30.0(@types/node@22.20.4)
       '@tangle-network/agent-app':
         specifier: 0.48.3
-        version: 0.48.3(@tangle-network/agent-eval@0.182.0(@modelcontextprotocol/sdk@1.30.0(zod@4.5.4)))(@tangle-network/agent-integrations@0.53.39(@opentelemetry/api@1.9.0)(@types/node@22.20.4))(@tangle-network/agent-interface@2.10.0)
+        version: 0.48.3(@tangle-network/agent-eval@0.182.0(@modelcontextprotocol/sdk@1.30.0(zod@4.5.4)))(@tangle-network/agent-integrations@0.54.2(@opentelemetry/api@1.9.0)(@types/node@22.20.4))(@tangle-network/agent-interface@2.10.0)
       '@tangle-network/agent-eval':
         specifier: 0.182.0
         version: 0.182.0(@modelcontextprotocol/sdk@1.30.0(zod@4.5.4))
+      '@tangle-network/agent-integrations':
+        specifier: 0.54.2
+        version: 0.54.2(@opentelemetry/api@1.9.0)(@types/node@22.20.4)
       '@types/node':
         specifier: ^22.20.4
         version: 22.20.4
@@ -851,8 +854,8 @@ packages:
     engines: {node: '>=20.19.0'}
     hasBin: true
 
-  '@tangle-network/agent-integrations@0.53.39':
-    resolution: {integrity: sha512-Xv+GHwjVekmlP2aCVKNug5/52J+V/M5/OvQUhcUZgrSesniqzaXhDwaM72cxE7rPFTBngex7Ioeo5sfvelUZHg==}
+  '@tangle-network/agent-integrations@0.54.2':
+    resolution: {integrity: sha512-d0WPIr5amDvRMaa0uG3Tqt1M2UI3Y3s4cIQLhoIko9hylyhXs80g98YmB8gJSSmNUB0tci8CNHUtFYKA9wA7jw==}
     engines: {node: '>=20'}
 
   '@tangle-network/agent-interface@2.10.0':
@@ -2806,10 +2809,10 @@ snapshots:
 
   '@standard-schema/spec@1.1.0': {}
 
-  '@tangle-network/agent-app@0.48.3(@tangle-network/agent-eval@0.182.0(@modelcontextprotocol/sdk@1.30.0(zod@4.5.4)))(@tangle-network/agent-integrations@0.53.39(@opentelemetry/api@1.9.0)(@types/node@22.20.4))(@tangle-network/agent-interface@2.10.0)':
+  '@tangle-network/agent-app@0.48.3(@tangle-network/agent-eval@0.182.0(@modelcontextprotocol/sdk@1.30.0(zod@4.5.4)))(@tangle-network/agent-integrations@0.54.2(@opentelemetry/api@1.9.0)(@types/node@22.20.4))(@tangle-network/agent-interface@2.10.0)':
     dependencies:
       '@tangle-network/agent-eval': 0.182.0(@modelcontextprotocol/sdk@1.30.0(zod@4.5.4))
-      '@tangle-network/agent-integrations': 0.53.39(@opentelemetry/api@1.9.0)(@types/node@22.20.4)
+      '@tangle-network/agent-integrations': 0.54.2(@opentelemetry/api@1.9.0)(@types/node@22.20.4)
       '@tangle-network/agent-interface': 2.10.0
       zod: 4.4.3
 
@@ -2834,7 +2837,7 @@ snapshots:
     transitivePeerDependencies:
       - '@modelcontextprotocol/sdk'
 
-  '@tangle-network/agent-integrations@0.53.39(@opentelemetry/api@1.9.0)(@types/node@22.20.4)':
+  '@tangle-network/agent-integrations@0.54.2(@opentelemetry/api@1.9.0)(@types/node@22.20.4)':
     dependencies:
       '@duckdb/node-api': 1.5.5-r.2
       amqplib: 2.0.1

@@ -142,6 +142,7 @@
     "@changesets/cli": "^2.30.0",
     "@tangle-network/agent-app": "0.48.3",
     "@tangle-network/agent-eval": "0.182.0",
+    "@tangle-network/agent-integrations": "0.54.2",
     "@types/node": "^22.20.4",
     "@types/pngjs": "^6.0.5",
     "classic-level": "^3.0.0",
