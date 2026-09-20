@@ -4,7 +4,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync, execSync } from 'node:child_process';
 import {
-  AxGepaSteeringOptimizer,
   PairwiseSteeringOptimizer,
   validateRunRecord,
 } from '@tangle-network/agent-eval';
@@ -85,7 +84,7 @@ async function optimize() {
   if (!allRows.length) throw new Error('no optimizer rows');
   const coverage = computeCoverage(allRows, variantIds);
   const scenarioIds = variantIds.length > 1
-    ? scenariosWithMultipleVariants(allRows)
+    ? [...coverage.comparableScenarios]
     : [...coverage.allScenarios];
   if (!scenarioIds.length) {
     throw new Error('no overlapping scenarios across variants; score variants on at least one shared scenario before optimizing');
@@ -102,7 +101,6 @@ async function optimize() {
       wallSeconds: -0.02,
     },
   });
-  const axGepa = await maybeRunAxGepa(comparableRows);
   const recommendedVariantId = pairwise.recommendedVariantId;
 
   const result = {
@@ -119,21 +117,19 @@ async function optimize() {
       byVariant: Object.fromEntries([...coverage.byVariant.entries()].map(([variantId, scenarios]) => [variantId, scenarios.size])),
     },
     pairwise,
-    axGepa,
     selection: {
       method: pairwise.backend,
       recommendedVariantId,
       rankings: pairwise.rankings,
     },
     nextTacticalStep: variantIds.length < 2
-      ? 'Implement one real code variant, run train-smoke, ingest it, then rerun optimize. AxGEPA/selector training is not meaningful with one variant.'
+      ? 'Implement one real code variant, run train-smoke, ingest it, then rerun optimize.'
       : 'Run dev/holdout scoring for the top candidate before any promotion claim.',
     bullshitAssessment: assessValue({
       variantIds,
       allRows: comparableRows,
       totalRows: allRows.length,
       coverage,
-      axGepa,
       recommendedVariantId,
     }),
   };
@@ -193,7 +189,7 @@ function toRunRecord(row, summary, index) {
       output: Number(row.metadata?.outputTokens ?? 0),
     },
     outcome: {
-      ...(split === 'dev' ? { searchScore: score } : { searchScore: score }),
+      searchScore: score,
       raw,
     },
     failureMode: Array.isArray(row.score?.notes) ? row.score.notes[0] : undefined,
@@ -201,40 +197,7 @@ function toRunRecord(row, summary, index) {
   };
 }
 
-async function maybeRunAxGepa(rows) {
-  const variantIds = [...new Set(rows.map((row) => row.variantId))];
-  const hasKey = Boolean(process.env.OPENAI_API_KEY || process.env.TANGLE_ROUTER_USER_KEY);
-  if (variantIds.length < 2) {
-    return {
-      skipped: true,
-      reason: `needs >=2 variants, got ${variantIds.length}`,
-    };
-  }
-  if (!hasKey) {
-    return {
-      skipped: true,
-      reason: 'OPENAI_API_KEY or TANGLE_ROUTER_USER_KEY is required for AxGEPA',
-    };
-  }
-  const apiKey = process.env.OPENAI_API_KEY || process.env.TANGLE_ROUTER_USER_KEY;
-  const optimizer = new AxGepaSteeringOptimizer({
-    provider: 'openai',
-    apiKey,
-    model: process.env.AGENT_EVAL_AXGEPA_MODEL || 'gpt-5.4',
-    teacherModel: process.env.AGENT_EVAL_AXGEPA_TEACHER_MODEL || process.env.AGENT_EVAL_AXGEPA_MODEL || 'gpt-5.4',
-    minRows: Number(process.env.AGENT_EVAL_AXGEPA_MIN_ROWS || 6),
-    weights: {
-      success: 5,
-      finalGate: 4,
-      testReality: 3,
-      costUsd: -0.05,
-      wallSeconds: -0.02,
-    },
-  });
-  return optimizer.optimize(rows);
-}
-
-function assessValue({ variantIds, allRows, totalRows, coverage, axGepa, recommendedVariantId }) {
+function assessValue({ variantIds, allRows, totalRows, coverage, recommendedVariantId }) {
   const strictPasses = allRows.filter((row) => row.score?.success === 1).length;
   const falsePositiveRisk = allRows.filter((row) => Array.isArray(row.score?.notes) && row.score.notes.includes('verifier-false-positive-risk')).length;
   const calendarFailures = allRows.filter((row) => Array.isArray(row.score?.notes) && row.score.notes.includes('calendar-date-picker')).length;
@@ -243,7 +206,7 @@ function assessValue({ variantIds, allRows, totalRows, coverage, axGepa, recomme
     verdict: variantIds.length < 2 ? 'plumbing-only-not-yet-value-proof' : 'variant-comparison-available',
     why: variantIds.length < 2
       ? 'Only the baseline variant has been scored. This proves ingestion, strict scoring, RunRecord validation, and agent-eval ranking, but it does not prove a benchmark improvement.'
-      : 'At least two variants are scored on overlapping scenarios. Pairwise comparison is available; AxGEPA only counts as evidence when it is not skipped. This is still not a promotion claim without dev/holdout coverage.',
+      : 'At least two variants are scored on overlapping scenarios. The ranking describes observed scores. Promotion still requires a held-out comparison.',
     evidence: {
       variants: variantIds.length,
       rows: totalRows ?? allRows.length,
@@ -254,7 +217,6 @@ function assessValue({ variantIds, allRows, totalRows, coverage, axGepa, recomme
       strictPassRate: allRows.length ? strictPasses / allRows.length : 0,
       falsePositiveRisk,
       calendarFailures,
-      axGepaSkipped: Boolean(axGepa?.skipped),
       recommendedVariantId,
     },
     nextFalsification: 'Score a second real code variant on the same scenarios. If strict pass does not improve or dev regresses, this loop has not earned promotion.',
@@ -284,17 +246,6 @@ function computeCoverage(rows, variantIds) {
   return { allScenarios, byVariant, variantsByScenario, comparableScenarios };
 }
 
-function scenariosWithMultipleVariants(rows) {
-  const variantsByScenario = new Map();
-  for (const row of rows) {
-    if (!variantsByScenario.has(row.scenarioId)) variantsByScenario.set(row.scenarioId, new Set());
-    variantsByScenario.get(row.scenarioId).add(row.variantId);
-  }
-  return [...variantsByScenario.entries()]
-    .filter(([, variants]) => variants.size >= 2)
-    .map(([scenarioId]) => scenarioId);
-}
-
 function help() {
   console.log(`webvoyager-agent-eval-loop
 
@@ -303,7 +254,7 @@ Commands:
     Convert a BAD track summary into agent-eval optimizer rows and RunRecords.
 
   optimize [--state-dir <dir>]
-    Rank ingested variants with agent-eval PairwiseSteeringOptimizer and optional AxGEPA.
+    Rank ingested variants with agent-eval PairwiseSteeringOptimizer.
 
 This is intentionally a thin browser adapter. Browser Agent Driver produces and
 scores variants; agent-eval ranks them. Promotion still requires separate dev and
