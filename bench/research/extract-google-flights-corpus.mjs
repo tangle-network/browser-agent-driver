@@ -148,6 +148,7 @@ const optimizerRows = cases.map((c) => ({
     labels: c.labels,
     rawPassed: c.rawPassed,
     strictPassed: c.strictPassed,
+    exitCode: c.exitCode,
     turnsUsed: c.turnsUsed,
     tokensUsed: c.tokensUsed,
     inputTokens: c.inputTokens,

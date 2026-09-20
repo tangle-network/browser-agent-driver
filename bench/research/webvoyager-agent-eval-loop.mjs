@@ -164,6 +164,9 @@ function withVariant(row, variantId, trackSummary) {
 function toRunRecord(row, summary, index) {
   const split = row.metadata?.split === 'dev' ? 'dev' : 'search';
   const score = Number(row.score?.success ?? 0);
+  const costUsd = row.metadata?.costUsd ?? null;
+  const exitCode = row.metadata?.exitCode;
+  const tokensKnown = row.metadata?.inputTokens != null && row.metadata?.outputTokens != null;
   const raw = {};
   for (const [key, value] of Object.entries(row.score ?? {})) {
     if (typeof value === 'number' && Number.isFinite(value)) raw[key] = value;
@@ -171,6 +174,7 @@ function toRunRecord(row, summary, index) {
   return {
     runId: `${row.variantId}:${row.scenarioId}:${index}`,
     experimentId: String(row.scenarioId),
+    scenarioId: String(row.scenarioId),
     candidateId: String(row.variantId),
     seed: index,
     model: 'gpt-5.4@router-2026-04-29',
@@ -183,16 +187,18 @@ function toRunRecord(row, summary, index) {
     })),
     commitSha: gitSha(),
     wallMs: Number(row.score?.wallSeconds ?? 0) * 1000,
-    costUsd: Number(row.score?.costUsd ?? 0),
+    costUsd,
+    costProvenance: { kind: costUsd === null ? 'uncaptured' : 'estimated', usd: costUsd },
     tokenUsage: {
       input: Number(row.metadata?.inputTokens ?? 0),
       output: Number(row.metadata?.outputTokens ?? 0),
+      ...(tokensKnown ? {} : { tokensKnown: false }),
     },
+    terminalOutcome: exitCode === 0 ? 'succeeded' : Number.isInteger(exitCode) ? 'failed' : 'unknown',
     outcome: {
       searchScore: score,
       raw,
     },
-    failureMode: Array.isArray(row.score?.notes) ? row.score.notes[0] : undefined,
     splitTag: split,
   };
 }
