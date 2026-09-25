@@ -10,6 +10,8 @@
  */
 
 import { generateText, streamText } from 'ai';
+import { profileChatClient } from '@tangle-network/agent-runtime/kernel';
+import type { AgentProfile } from '@tangle-network/agent-interface';
 import type { ModelMessage, LanguageModel, SystemModelMessage } from 'ai';
 import {
   resolveProviderApiKey,
@@ -364,6 +366,43 @@ export async function generateImpl(
       backendModelProvider: self.sandboxBackendProvider,
     });
     return { text: result.text };
+  }
+
+  if (providerName === 'openai' && self.baseUrl && self.explicitApiKey) {
+    const systemText = typeof system === 'string' ? system : system.map(m => m.content).join('\n\n');
+    const profile: AgentProfile = {
+      name: 'browser-agent-brain',
+      harness: 'cli-base',
+      prompt: { systemPrompt: systemText },
+      model: {
+        provider: 'tangle-router',
+        default: modelName,
+        maxVisibleOutputTokens: maxOutputTokens,
+        metadata: shouldSendTemperatureImpl(self, modelName) ? { temperature: 0 } : {},
+      },
+    };
+    const chat = profileChatClient({
+      profile,
+      executor: {
+        backend: 'router',
+        routerBaseUrl: self.baseUrl,
+        routerKey: self.explicitApiKey,
+      },
+      context: 'browser-agent brain',
+    });
+    const response = await chat.chat({
+      model: modelName,
+      messages: messages as never,
+      maxTokens: maxOutputTokens,
+      timeoutMs: self.llmTimeoutMs,
+    });
+    return {
+      text: response.content,
+      tokensUsed: response.usage.totalTokens,
+      inputTokens: response.usage.promptTokens,
+      outputTokens: response.usage.completionTokens,
+      cacheReadInputTokens: response.usage.cachedPromptTokens,
+    };
   }
 
   const model = await getModelImpl(self, {
