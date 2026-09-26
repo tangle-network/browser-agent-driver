@@ -1,0 +1,18 @@
+name: lockfile refresh
+on:
+  push:
+    branches: [pro/published-packages-sweep3]
+jobs:
+  lock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: pnpm install --lockfile-only --no-frozen-lockfile
+      - uses: actions/upload-artifact@v4
+        with:
+          name: refreshed-lockfile
+          path: pnpm-lock.yaml
