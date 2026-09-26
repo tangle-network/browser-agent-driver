@@ -2,17 +2,25 @@ name: lockfile refresh
 on:
   push:
     branches: [pro/published-packages-sweep3]
+permissions:
+  contents: write
 jobs:
   lock:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: pro/published-packages-sweep3
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - run: pnpm install --lockfile-only --no-frozen-lockfile
-      - uses: actions/upload-artifact@v4
-        with:
-          name: refreshed-lockfile
-          path: pnpm-lock.yaml
+      - name: Commit lockfile and remove helper
+        run: |
+          rm .github/workflows/lock-refresh.yml
+          git config user.name tangletools
+          git config user.email tangletools@users.noreply.github.com
+          git add pnpm-lock.yaml .github/workflows/lock-refresh.yml
+          git commit -m "chore: refresh lockfile"
+          git push origin HEAD:pro/published-packages-sweep3
