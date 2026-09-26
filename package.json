@@ -129,7 +129,7 @@
     "chalk": "^5.4.1",
     "openai": "^6.34.0",
     "patchright": "1.60.2",
-    "@tangle-network/agent-runtime": "0.275.0",
+    "@tangle-network/agent-runtime": "0.274.0",
     "@tangle-network/agent-interface": "2.12.0"
   },
   "optionalDependencies": {
