@@ -368,7 +368,7 @@ export async function generateImpl(
     return { text: result.text };
   }
 
-  if (providerName === 'openai' && self.baseUrl && self.explicitApiKey) {
+  if (providerName === 'openai' && self.baseUrl && /(^|\\.)router\\.tangle\\.tools$/i.test(new URL(self.baseUrl).hostname) && self.explicitApiKey) {
     const systemText = typeof system === 'string' ? system : system.map(m => m.content).join('\n\n');
     const profile: AgentProfile = {
       name: 'browser-agent-brain',
