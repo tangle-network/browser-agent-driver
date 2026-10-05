@@ -26,6 +26,7 @@
     "LICENSE"
   ],
   "scripts": {
+    "prepare": "node ./scripts/install-git-hooks.mjs",
     "postinstall": "node ./scripts/postinstall-provider-patches.mjs",
     "build": "tsc && node ./scripts/copy-static-assets.mjs",
     "dev": "tsc --watch",
