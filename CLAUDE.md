@@ -40,3 +40,15 @@ Consumer-visible changes require a changeset with the correct compatibility leve
 Documentation and internal changes without consumer impact do not.
 Metric claims in the PR, changeset, and report must agree with the same checked evidence.
 Verify the published artifact before claiming a release is available.
+
+## Notes
+
+`pnpm install` runs `prepare`, which sets this checkout's local `core.hooksPath` to `.githooks`.
+After an install with lifecycle scripts disabled, run `pnpm run prepare` to enable the hook.
+The installer skips directories without their own `.git` entry, including published package installs.
+
+The pre-commit hook runs `scripts/check-changeset.sh` before allowing staged changes under `src/` or `bench/`.
+Stage an added or modified `.changeset/*.md` in the same commit (use `pnpm changeset`, then `git add .changeset/<name>.md`).
+Unstaged changesets, deleted changesets, nested files, and `.changeset/README.md` do not satisfy the check.
+For an intentional exception, such as an internal-only change, use `git commit --no-verify`.
+This bypasses all pre-commit and commit-msg hooks for that commit; it does not remove the release changeset requirement.
