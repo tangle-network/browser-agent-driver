@@ -16,21 +16,9 @@
  * regression is a real gap this gate cannot see — see docs/SIGNOFF.md.
  *
  * `nodeVersion` is declared explicitly rather than left to be read off a
- * workflow, because the fleet disagrees with itself: `tier1-gate.yml` and
- * `tier2-staging-gate.yml` pin Node 20, while `ci.yml`'s matrix, `.nvmrc`,
- * and `changesets.yml`/`publish-npm.yml`/`release.yml` all pin 22. Without
- * this the gate refuses to run at all — it cannot silently pick a runtime
- * when the repo's own workflows disagree. 22 is the pin this repo declares
- * everywhere except those two gated-on-secrets workflows; docs/SIGNOFF.md
- * names the discrepancy as unresolved, not invisible.
- *
- * `tier1-gate.yml` and `tier2-staging-gate.yml` are NOT reproduced here: both
- * need a real `OPENAI_API_KEY` (billed LLM calls against a live router) and
- * the staging gate additionally needs `AI_TANGLE_STORAGE_STATE`, a live
- * session cookie for ai.tangle.tools. Nothing local replaces either — they
- * are the same class as tax-agent's `wrangler versions upload`: a credentialed
- * check that needs a real secret and a real network call, so it runs
- * post-merge instead of pre-merge. `docs/SIGNOFF.md` states what that costs.
+ * workflow: `ci.yml`'s matrix covers Node 20 and 22, while `.nvmrc` and
+ * `changesets.yml`/`publish-npm.yml`/`release.yml` pin 22. 22 is the pin this
+ * repo declares everywhere; docs/SIGNOFF.md names the Node 20 gap.
  */
 export default {
   nodeVersion: '22',

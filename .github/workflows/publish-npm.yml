@@ -13,16 +13,19 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 concurrency:
   group: npm-publish-${{ github.repository }}-${{ github.ref_name }}
   cancel-in-progress: false
 
 jobs:
-  publish:
+  # Tests run on the self-hosted runners and validate the publish target; a
+  # version already on npm fails here before any hosted runner starts.
+  verify:
     if: github.repository == 'tangle-network/browser-agent-driver'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, ci-public]
+    outputs:
+      publish: ${{ steps.validate.outputs.publish }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,7 +38,6 @@ jobs:
         with:
           node-version: '22'
           cache: pnpm
-          registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -44,7 +46,7 @@ jobs:
         run: pnpm build
 
       - name: Install Playwright browsers
-        run: pnpm exec playwright install --with-deps chromium
+        run: pnpm exec playwright install chromium
 
       - name: Test
         run: pnpm test
@@ -78,6 +80,36 @@ jobs:
           fi
 
           echo "version=${PKG_VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "publish=true" >> "${GITHUB_OUTPUT}"
+
+  # npm trusted publishing accepts OIDC only from GitHub-hosted runners, so only
+  # this job stays hosted and it starts only after verify approved a new version.
+  publish:
+    needs: verify
+    if: needs.verify.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
 
       - name: Publish to npm (trusted publishing via OIDC)
         # Auth: GitHub OIDC validated against the trusted publisher at

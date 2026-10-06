@@ -35,15 +35,14 @@ Read the current workflow before changing the supported runtime set.
 
 Host operating system, architecture, libraries, filesystem, and resource contention remain outside the worktree.
 Record the actual environment when comparing failures or timing.
-The local browser step installs Chromium but does not install operating-system dependencies; CI also uses `--with-deps`.
+The local browser step installs Chromium but does not install operating-system dependencies; CI runs the same command on self-hosted runners whose browser libraries come from the host.
 A pass on one host does not prove a clean host has those dependencies.
 
-The local steps do not run the credentialed [Tier 1](../.github/workflows/tier1-gate.yml) or [staging](../.github/workflows/tier2-staging-gate.yml) browser evaluations.
-Those require billed model access, and staging also requires an authenticated browser session.
-Do not treat a missing-secret skip as live evaluation proof.
+No configured check runs the credentialed Tier 1 or staging browser evaluations (`pnpm bench:tier1:gate`, `pnpm bench:tier2:repeat`).
+Their workflows were removed because the repository has neither `OPENAI_API_KEY` nor `AI_TANGLE_STORAGE_STATE`, so every run skipped the evaluation.
 Local signoff cannot establish deployment health, live task quality, or behavior that no configured check exercises.
 
-The three workflows run after pushes to `main`; the credentialed workflows also support manual dispatch.
-They do not provide pull-request checks.
+The CI workflow runs after pushes to `main`.
+It does not provide pull-request checks.
 Failures create or update the shared post-merge failure issue.
 Inspect that result before claiming the corresponding hosted verification passed.
