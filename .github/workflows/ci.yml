@@ -19,7 +19,7 @@ on:
 jobs:
   build:
     name: Post-merge safety net
-    runs-on: [self-hosted, ci-public]
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         # Node 18 is EOL (2025-04) and unsupported by the toolchain: the vitest
@@ -38,7 +38,7 @@ jobs:
       - run: pnpm check:boundaries
       - run: pnpm build
       - name: Install Playwright browsers
-        run: pnpm exec playwright install chromium
+        run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test
 
   # The safety net's output. A red post-merge run is a real defect on `main`
@@ -48,12 +48,14 @@ jobs:
   #
   # One rolling issue, not one per push: a failing `main` usually fails
   # several pushes in a row, and a fresh issue each time buries the first one,
-  # which is the one carrying the commit that broke it.
+  # which is the one carrying the commit that broke it. `tier1-gate.yml` and
+  # `tier2-staging-gate.yml` file into this SAME issue title, so one place
+  # tracks every post-merge gate.
   safety-net-issue:
     name: File the safety-net failure
     needs: [build]
     if: always() && needs.build.result == 'failure'
-    runs-on: [self-hosted, ci-public]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       issues: write
