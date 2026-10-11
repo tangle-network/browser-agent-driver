@@ -40,6 +40,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--goal", required=True, help="Task goal in natural language")
     parser.add_argument("--url", required=True, help="Starting URL")
     parser.add_argument("--model", default="gpt-5.2", help="OpenAI model id")
+    parser.add_argument(
+        "--base-url",
+        default=os.environ.get("OPENAI_BASE_URL"),
+        help="OpenAI-compatible endpoint (e.g. http://localhost:11434/v1 for local Ollama smoke runs)",
+    )
     parser.add_argument("--output-dir", required=True, help="Where result.json + artifacts go")
     parser.add_argument("--max-steps", type=int, default=30)
     parser.add_argument("--timeout-sec", type=float, default=600.0)
@@ -88,7 +93,12 @@ async def run() -> dict[str, Any]:
     # to bad's startUrl behavior.
     from browser_use import Agent
 
-    llm = ChatOpenAI(model=args.model)
+    llm_kwargs: dict[str, Any] = {"model": args.model}
+    if args.base_url:
+        llm_kwargs["base_url"] = args.base_url
+        # Local endpoints (Ollama etc.) accept any non-empty key.
+        llm_kwargs["api_key"] = os.environ.get("OPENAI_API_KEY") or "local-smoke"
+    llm = ChatOpenAI(**llm_kwargs)
     full_task = f"{args.goal}\n\nStart at: {args.url}"
 
     agent_state: dict[str, Any] = {
@@ -103,6 +113,11 @@ async def run() -> dict[str, Any]:
     # So we record state after every step and keep the latest.
     last_state = {"page_text": "", "page_url": ""}
 
+    # Artifact capture: overwrite screenshot-final.jpg each step so the
+    # artifact always reflects the latest observable state, matching how
+    # the bad adapter reads the last observe-completed snapshot.
+    screenshot_path = out_dir / "screenshot-final.jpg"
+
     async def _on_step_end(agent_obj):  # type: ignore[no-untyped-def]
         try:
             session = getattr(agent_obj, "browser_session", None)
@@ -114,6 +129,14 @@ async def run() -> dict[str, Any]:
                 pass
             try:
                 last_state["page_url"] = (await session.get_current_page_url()) or ""
+            except Exception:
+                pass
+            try:
+                data = await session.take_screenshot(
+                    path=str(screenshot_path), format="jpeg", quality=50
+                )
+                if data and not screenshot_path.exists():
+                    screenshot_path.write_bytes(data)
             except Exception:
                 pass
         except Exception:
@@ -212,6 +235,7 @@ async def run() -> dict[str, Any]:
         "result_text": result_text,
         "error_reason": agent_state["errors"],
         "model": args.model,
+        "screenshot_path": str(screenshot_path) if screenshot_path.exists() else None,
     }
 
     result_path = out_dir / "result.json"

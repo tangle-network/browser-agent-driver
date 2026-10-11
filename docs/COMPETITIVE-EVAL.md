@@ -138,6 +138,8 @@ export OPENAI_API_KEY=sk-...
 
 The adapter (`bench/competitive/adapters/browser-use.mjs`) shells out to a small Python entry script (`bench/competitive/adapters/_browser_use_runner.py`) and parses its JSON output.
 
+**Local zero-spend smoke runs:** the bridge honors `OPENAI_BASE_URL`, so any OpenAI-compatible endpoint works — e.g. a local Ollama (`OPENAI_BASE_URL=http://localhost:11434/v1` + `--model qwen2.5:3b`). Token capture, the external oracle, and artifact capture (`result.json` + `screenshot-final.jpg` in the run dir) all work identically; cost is reported as $0 for loopback endpoints. Smoke results from weak local models prove adapter plumbing only — never cite them as capability numbers.
+
 ### Stagehand (TypeScript / Browserbase)
 
 ```bash

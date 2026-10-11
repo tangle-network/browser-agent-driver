@@ -35,6 +35,10 @@ function priceFor(model) {
 }
 
 function computeCost(model, inputTokens, cachedTokens, outputTokens) {
+  // Local smoke runs (Ollama etc. via OPENAI_BASE_URL) have zero marginal
+  // cost — don't price their tokens at OpenAI rates.
+  const baseUrl = process.env.OPENAI_BASE_URL ?? ''
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(baseUrl)) return 0
   const p = priceFor(model)
   const uncachedInput = Math.max(0, (inputTokens ?? 0) - (cachedTokens ?? 0))
   return uncachedInput * p.input + (cachedTokens ?? 0) * p.cachedInput + (outputTokens ?? 0) * p.output
