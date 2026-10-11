@@ -28,6 +28,14 @@ const PRICING = {
   'gpt-5':   { input: 2.5e-6, cachedInput: 0.25e-6, output: 10e-6 },
   'gpt-4o':  { input: 2.5e-6, cachedInput: 1.25e-6, output: 10e-6 },
   'gpt-4o-mini': { input: 0.15e-6, cachedInput: 0.075e-6, output: 0.6e-6 },
+  // DeepSeek via its OpenAI-compatible endpoint (OPENAI_BASE_URL=https://api.deepseek.com/v1).
+  // Values match LiteLLM model_prices_and_context_window.json — the same
+  // source bad's src/model-pricing.ts resolves, so cross-framework cost
+  // comparison stays fair.
+  'deepseek-chat': { input: 2.8e-7, cachedInput: 2.8e-8, output: 4.2e-7 },
+  // Gemini via browser-use's ChatGoogle (BENCH_PROVIDER=google, GEMINI_API_KEY).
+  'gemini-2.5-flash': { input: 3e-7, cachedInput: 3e-8, output: 2.5e-6 },
+  'gemini-2.5-flash-lite': { input: 1e-7, cachedInput: 1e-8, output: 4e-7 },
 }
 
 function priceFor(model) {

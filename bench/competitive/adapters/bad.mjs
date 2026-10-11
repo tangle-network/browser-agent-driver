@@ -134,6 +134,9 @@ export async function runTask(task, options) {
   if (process.env.BAD_COMPETE_HEADFUL !== '1') args.push('--headless')
   // Honor OPENAI_BASE_URL the same way the browser-use adapter does, so
   // zero-spend local endpoints (Ollama) can exercise the full bad loop.
+  // BAD_PROVIDER selects a non-OpenAI provider (e.g. 'google'); the API key
+  // then resolves from the provider's own env var (GEMINI_API_KEY etc.)
+  // inside the bad CLI unless BAD_API_KEY is set explicitly.
   const baseUrl = process.env.OPENAI_BASE_URL
   if (baseUrl) {
     args.push(
@@ -141,6 +144,9 @@ export async function runTask(task, options) {
       '--base-url', baseUrl,
       '--api-key', process.env.OPENAI_API_KEY || 'local-smoke',
     )
+  } else if (process.env.BAD_PROVIDER) {
+    args.push('--provider', process.env.BAD_PROVIDER)
+    if (process.env.BAD_API_KEY) args.push('--api-key', process.env.BAD_API_KEY)
   }
 
   const exitCode = await new Promise((resolve) => {

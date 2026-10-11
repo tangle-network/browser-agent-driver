@@ -81,8 +81,16 @@ function validateAction(actionType: string, data: Record<string, unknown>): Acti
     }
     case 'verifyPreview':
       return { action: 'verifyPreview' };
-    case 'complete':
-      return { action: 'complete', result: optStr('result') };
+    case 'complete': {
+      // Models increasingly follow task instructions literally and emit the
+      // result as a structured value (e.g. {"year": 1815}) instead of a
+      // string. optStr would silently coerce those to '', which blanks the
+      // agent's answer and fails downstream result parsing. Serialize
+      // non-string results instead of dropping them.
+      const raw = data.result;
+      const result = typeof raw === 'string' ? raw : raw == null ? '' : JSON.stringify(raw);
+      return { action: 'complete', result };
+    }
     case 'abort':
       return { action: 'abort', reason: optStr('reason') || 'No reason provided' };
     case 'fill': {
