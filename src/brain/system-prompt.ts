@@ -34,6 +34,14 @@ export interface BrainSystemPromptHost {
   extensionRules?: { global?: string; search?: string; dataExtraction?: string; heavy?: string };
   extensionDomainRules?: Record<string, { extraRules?: string }>;
   macroPromptBlock: string;
+  /** Run-frozen system parts for the default prompt path. The conditional
+   *  rule groups (search rules on snapshot content, etc.) flip as the page
+   *  changes mid-run, which busts both implicit prefix caching and the
+   *  explicit cachedContent entry (bench: the HN task alternated between
+   *  two system prompts and halved its cache reads). Frozen on first
+   *  decide of the run; cleared on Brain.reset(). Skipped when
+   *  extension/domain rules or macros are active — those stay per-turn. */
+  frozenSystemParts?: string[];
 }
 
 /**
@@ -58,6 +66,22 @@ export function buildSystemPromptImpl(self: BrainSystemPromptHost, goal: string,
 export function composeSystemPromptPartsImpl(self: BrainSystemPromptHost, goal: string, state: PageState, turn: number): string[] {
   if (self.systemPrompt !== SYSTEM_PROMPT) return [self.systemPrompt]
 
+  // Freeze per-run: conditional rule groups flip with page content, which
+  // busts prompt caching mid-run. Extension/domain/macro rules are
+  // genuinely per-URL and stay dynamic (no freeze).
+  const hasDynamicExtensions = Boolean(
+    self.extensionRules || self.extensionDomainRules || self.macroPromptBlock,
+  )
+  if (!hasDynamicExtensions) {
+    if (self.frozenSystemParts) return self.frozenSystemParts
+    const parts = composeParts(self, goal, state)
+    self.frozenSystemParts = parts
+    return parts
+  }
+  return composeParts(self, goal, state)
+}
+
+function composeParts(self: BrainSystemPromptHost, goal: string, state: PageState): string[] {
   const parts: string[] = [CORE_RULES]
   const snapshotSample = state.snapshot.length > 4000 ? state.snapshot.slice(0, 4000) : state.snapshot
   if (SEARCH_SNAPSHOT_PATTERN.test(snapshotSample) || /\/search\b/i.test(state.url)) {
