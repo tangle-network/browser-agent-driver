@@ -178,3 +178,15 @@ describe('goalLiteralsCorroborated — form-consume flows (wave 5 refinement)', 
     expect(goalLiteralsCorroborated(formGoal, finalSnap, [], priorSnaps)).toBe(false)
   })
 })
+
+describe('extractQuotedLiterals apostrophe guard (wave 5)', () => {
+  it('does not capture across a possessive apostrophe', () => {
+    const goal = "Click the 'Users' tab. Edit Alice Johnson's row. Verify the workflow status shows 'Export complete for Alice Johnson'."
+    expect(goalLiteralsCorroborated(
+      goal,
+      '- text "Export complete for Alice Johnson"',
+      [],
+      ['- tab "Users" [ref=t1]'],
+    )).toBe(true)
+  })
+})

@@ -177,11 +177,19 @@ export function goalLiteralsCorroborated(
   return literals.every((lit) => haystack.includes(lit));
 }
 
-/** Quoted literals of ≥4 chars from goal text, both quote styles. */
+/** Quoted literals of ≥4 chars from goal text, both quote styles.
+ *  Guards against apostrophe artifacts: a quoted span that starts with an
+ *  English contraction tail ('s, 't, 're, 've, 'll, 'd, 'm) is the back
+ *  half of a possessive ("Alice Johnson's row"), not a literal; and
+ *  literals cap at 80 chars (success banners are short — longer spans are
+ *  quote-spanning capture noise). */
 function extractQuotedLiterals(text: string): string[] {
   const out: string[] = [];
   for (const m of text.matchAll(/'([^']{4,})'|"([^"]{4,})"/g)) {
-    out.push(m[1] ?? m[2]);
+    const lit = m[1] ?? m[2];
+    if (lit.length > 80) continue;
+    if (/^(?:s|t|re|ve|ll|d|m)\s/i.test(lit)) continue;
+    out.push(lit);
   }
   return out;
 }
