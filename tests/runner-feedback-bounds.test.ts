@@ -2,8 +2,9 @@
  * Wave-1 history/feedback bounds:
  *   1. capFeedbackText bounds injectFeedback payloads (extraction results
  *      re-bill as input tokens on every later turn if fed back uncapped).
- *   2. decide() sends "NO CHANGES — refs still valid" instead of the full
- *      snapshot when the structured diff shows zero changes.
+ *   2. Regression guard: zero-diff same-page turns must STILL send the
+ *      snapshot — form fills don't alter the a11y tree, so a "NO CHANGES"
+ *      stub made the model conclude the page was broken and abort.
  */
 
 import { describe, expect, it } from 'vitest'
@@ -31,7 +32,7 @@ describe('capFeedbackText', () => {
   })
 })
 
-describe('decide zero-diff snapshot suppression', () => {
+describe('decide zero-diff turns keep the snapshot', () => {
   const state: PageState = {
     url: 'https://example.com/form',
     title: 'Form',
@@ -55,15 +56,17 @@ describe('decide zero-diff snapshot suppression', () => {
     return typeof last.content === 'string' ? last.content : JSON.stringify(last.content)
   }
 
-  it('same-page turn with zero diff changes sends NO CHANGES, not the snapshot', async () => {
+  it('same-page turn with zero diff changes STILL sends the snapshot', async () => {
     const { brain, captured } = brainWithCapture()
     // Turn 1 establishes lastDecisionUrl (first turn never diffs).
     await brain.decide('goal', state, undefined, { current: 1, max: 8 })
-    // Turn 2: same URL, zero-change diff.
+    // Turn 2: same URL, zero-change diff. Form fills do not alter the a11y
+    // tree, so suppressing the snapshot here made the model conclude the
+    // page was broken and abort (bench wave 1 regression).
     await brain.decide('goal', state, undefined, { current: 2, max: 8 })
     const text = lastUserText(captured[1].messages)
-    expect(text).toContain('NO CHANGES since last turn')
-    expect(text).not.toContain('- textbox "Email"')
+    expect(text).toContain('- textbox "Email"')
+    expect(text).not.toContain('NO CHANGES since last turn')
   })
 
   it('first turn on a page still sends the full snapshot', async () => {

@@ -115,23 +115,17 @@ export async function decideImpl(
     && diffTotal > 0
     && diffChanges / diffTotal < 0.3;
 
-  // Zero-change turns (e.g. a wait, or an action that didn't mutate the
-  // page): don't resend the full snapshot at all — just say nothing moved
-  // and the previous refs are still valid.
-  const noPageChanges = samePageAsPrevious
-    && !isFirstTurn
-    && rawDiff !== undefined
-    && diffChanges === 0;
+  // NOTE: a zero-change diff must NOT suppress the snapshot. Form fills and
+  // other interactions don't alter the a11y tree, so interaction-heavy tasks
+  // show diffChanges === 0 on most turns — substituting a "NO CHANGES" stub
+  // made the model conclude the page was broken and abort (bench wave 1).
 
   // Tighter snapshot budget on same-page turns; new pages keep enough
   // content for extraction from docs/spec pages.
   const snapshotBudget = samePageAsPrevious ? 8_000 : 24_000;
   let visibleSnapshot: string;
   let elementsHeader: string;
-  if (noPageChanges) {
-    visibleSnapshot = 'NO CHANGES since last turn — page state is unchanged; all refs from the previous turn are still valid.';
-    elementsHeader = 'ELEMENTS (unchanged)';
-  } else if (useDiffOnly) {
+  if (useDiffOnly) {
     // Build compact diff-only view: changed/added elements with refs
     const lines: string[] = [];
     if (rawDiff!.added.length) lines.push('ADDED:', ...rawDiff!.added);
@@ -172,7 +166,7 @@ ${visibleSnapshot}`;
   }
 
   // Append snapshot diff only when NOT using diff-only mode (avoid redundant info)
-  if (!useDiffOnly && !noPageChanges && state.snapshotDiff && state.snapshotDiff.length < state.snapshot.length * 0.3) {
+  if (!useDiffOnly && state.snapshotDiff && state.snapshotDiff.length < state.snapshot.length * 0.3) {
     textContent += `\n\nSNAPSHOT CHANGES (since last turn):\n${state.snapshotDiff}`;
   }
 
