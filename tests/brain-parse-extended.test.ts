@@ -101,6 +101,13 @@ describe('Brain.parse — action types', () => {
     expect(result.action).toEqual({ action: 'complete', result: 'Task done' });
   });
 
+  it('serializes a structured complete result instead of blanking it', () => {
+    const result = parseBrain(JSON.stringify({
+      action: { action: 'complete', result: { year: 1815 } },
+    })) as ParseResult;
+    expect(result.action).toEqual({ action: 'complete', result: '{"year":1815}' });
+  });
+
   it('parses an abort action', () => {
     const result = parseBrain(JSON.stringify({
       action: { action: 'abort', reason: 'Blocked by captcha' },
