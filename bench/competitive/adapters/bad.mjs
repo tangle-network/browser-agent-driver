@@ -128,6 +128,20 @@ export async function runTask(task, options) {
     '--memory-scope-id', runId,
   ]
   if (options.config) args.push('--config', path.resolve(options.config))
+  // Bench runs are headless by default — the harness must never pop a
+  // visible browser window on the host. Opt out explicitly for stealth
+  // real-web debugging with BAD_COMPETE_HEADFUL=1.
+  if (process.env.BAD_COMPETE_HEADFUL !== '1') args.push('--headless')
+  // Honor OPENAI_BASE_URL the same way the browser-use adapter does, so
+  // zero-spend local endpoints (Ollama) can exercise the full bad loop.
+  const baseUrl = process.env.OPENAI_BASE_URL
+  if (baseUrl) {
+    args.push(
+      '--provider', process.env.BAD_PROVIDER ?? 'openai',
+      '--base-url', baseUrl,
+      '--api-key', process.env.OPENAI_API_KEY || 'local-smoke',
+    )
+  }
 
   const exitCode = await new Promise((resolve) => {
     const proc = spawn('node', args, {
@@ -169,6 +183,13 @@ export async function runTask(task, options) {
     ? { passed: false, reason: 'blocked by site (anti-bot / unreachable)', detail: blockReason }
     : evaluateOracle(task.oracle, finalState)
 
+  // Local smoke runs (Ollama etc. via OPENAI_BASE_URL) have zero marginal
+  // cost — don't report the driver's OpenAI-priced estimate for them.
+  const localEndpoint = /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(process.env.OPENAI_BASE_URL ?? '')
+  const costUsd = localEndpoint
+    ? 0
+    : (typeof result.estimatedCostUsd === 'number' ? result.estimatedCostUsd : null)
+
   return {
     framework: 'bad',
     frameworkVersion: readVersion(options.repoRoot),
@@ -188,7 +209,7 @@ export async function runTask(task, options) {
     outputTokens: typeof result.outputTokens === 'number' ? result.outputTokens : null,
     cachedInputTokens: eventTotals.cacheReadInputTokens,
     totalTokens: typeof result.tokensUsed === 'number' ? result.tokensUsed : null,
-    costUsd: typeof result.estimatedCostUsd === 'number' ? result.estimatedCostUsd : null,
+    costUsd,
     finalUrl: finalState.finalUrl,
     finalTitle: finalState.finalTitle,
     resultText: finalState.resultText,

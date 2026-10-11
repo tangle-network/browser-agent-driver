@@ -52,6 +52,24 @@ Each run produces:
 - `<out>/comparison.md` — readable markdown report (paste this directly into PRs)
 - `<out>/<framework>/<task>/<runId>/...` — per-run raw artifacts (events.jsonl, screenshots, etc.) for forensics
 
+### Headless, always
+
+Every adapter in this harness runs its browser **headless**. The bench is
+meant to be safe to run on a machine someone is sitting at: no visible
+windows, ever. `bad` gets `--headless` (opt out for stealth real-web
+debugging with `BAD_COMPETE_HEADFUL=1`); the browser-use bridge passes
+`BrowserProfile(headless=True)` (browser-use's own default is headed — do
+not remove that argument). Any new adapter must prove its headless path
+before its first run.
+
+### Local zero-spend smoke runs
+
+Set `OPENAI_BASE_URL=http://localhost:11434/v1` (Ollama) and pass
+`--model qwen2.5:3b` to exercise every adapter end-to-end with no API key
+and no spend. Both `bad` and `browser-use` honor it; cost is reported as
+$0 for loopback endpoints. Weak local models prove plumbing only — never
+cite smoke results as capability numbers.
+
 ## Rigor rules (same as `bench:validate`)
 
 - `--reps < 3` exits non-zero unless `--allow-quick-check` is passed

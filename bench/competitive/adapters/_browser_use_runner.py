@@ -90,8 +90,11 @@ async def run() -> dict[str, Any]:
 
     # Build the agent. directly_open_url=True means browser-use opens the
     # URL directly instead of via search, which is the closer comparison
-    # to bad's startUrl behavior.
+    # to bad's startUrl behavior. headless=True is non-negotiable for bench
+    # runs: browser-use defaults to a headed browser, and the harness must
+    # never pop a visible window on the host machine.
     from browser_use import Agent
+    from browser_use.browser.profile import BrowserProfile
 
     llm_kwargs: dict[str, Any] = {"model": args.model}
     if args.base_url:
@@ -146,6 +149,7 @@ async def run() -> dict[str, Any]:
         agent = Agent(
             task=full_task,
             llm=llm,
+            browser_profile=BrowserProfile(headless=True),
             use_vision=False,
             calculate_cost=False,
             directly_open_url=True,
