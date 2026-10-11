@@ -37,6 +37,12 @@ export interface GoalVerification {
   evidence: string[];
   /** Missing criteria (empty if achieved) */
   missing: string[];
+  /** Token usage of the verification LLM call itself (absent for
+   *  deterministic accept paths that make no LLM call). Recorded into run
+   *  metrics by the runner — previously invisible in cost accounting. */
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheReadInputTokens?: number;
 }
 
 export interface RunPhaseTimings {
