@@ -876,7 +876,10 @@ export class PlaywrightDriver implements Driver {
           await this.animateCursorToSelector(action.selector, action);
           try {
             await this.withOverlayRecovery(async () => {
-              await locator.click({ timeout });
+              // No pre-fill click: fill() focuses the element itself, and the
+              // click used to hang to the full actionability timeout on
+              // elements whose hit target is obstructed (e.g. date inputs
+              // with a picker trigger) even though fill succeeds instantly.
               await locator.fill(action.text, { timeout });
               await locator.evaluate((el) => {
                 el.dispatchEvent(new Event('input', { bubbles: true }));
@@ -886,8 +889,7 @@ export class PlaywrightDriver implements Driver {
           } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             if (!isPointerInterceptError(message)) throw err;
-            await locator.click({ timeout, force: true });
-            await locator.fill(action.text, { timeout });
+            await locator.fill(action.text, { timeout, force: true });
             await locator.evaluate((el) => {
               el.dispatchEvent(new Event('input', { bubbles: true }));
               el.dispatchEvent(new Event('change', { bubbles: true }));

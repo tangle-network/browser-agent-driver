@@ -119,6 +119,18 @@ export function generationOptionsImpl(
           },
         }
       : {}),
+    // Gemini thinking budget: omitted by default (API default) — see
+    // googleThinkingBudget() for why zeroing regressed. The env override
+    // exists for A/B isolation runs.
+    ...(providerName === 'google' && /flash/i.test(modelName) && googleThinkingBudget() !== undefined
+      ? {
+          providerOptions: {
+            google: {
+              thinkingConfig: { thinkingBudget: googleThinkingBudget() },
+            },
+          },
+        }
+      : {}),
   };
 }
 
@@ -134,6 +146,22 @@ export function generationOptionsImpl(
  */
 export function isProxiedOpenAIImpl(self: BrainModelHost, providerName: string): boolean {
   return providerName === 'openai' && Boolean(self.baseUrl);
+}
+
+/**
+ * Thinking budget for Gemini flash models. Default: omit thinkingConfig
+ * entirely (API default) — bench isolation showed zeroing it degraded
+ * recovery reasoning on selector-guessing tasks (dashboard-extract 2/3 vs
+ * 3/3, hn 0/3 vs 1/3) and cost MORE tokens through strategy loops than the
+ * thinking tokens it saved. The output-cap raise to 2000 covers
+ * thinking+JSON. Env override for A/B isolation: integer budget (0
+ * restores the wave-1 experiment), or 'default' to omit explicitly.
+ */
+function googleThinkingBudget(): number | undefined {
+  const raw = process.env.BAD_GOOGLE_THINKING_BUDGET;
+  if (raw === undefined || raw === '' || raw === 'default') return undefined;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 /** Get a LLM model instance, optionally with provider/model override (e.g. for CAPTCHA fallback) */

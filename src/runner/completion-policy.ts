@@ -68,3 +68,34 @@ export function isMeaningfulRunScriptOutput(output: string | null | undefined): 
   }
   return true
 }
+
+/**
+ * Terminal-action guarantee for the final turn.
+ *
+ * The model occasionally spends its last turn on another extraction action
+ * even though the answer is already on the evidence ledger — the run then
+ * dies at max turns with `result: "Max turns reached"` and the data on the
+ * floor (both lost hn-top-story-score reps in the 2026-10-11 bench were
+ * this: turnsAfterSufficientEvidence=2). When that happens, complete from
+ * the most recent SCRIPT RESULT instead of executing the non-terminal
+ * action.
+ *
+ * Conservative by construction: only fires on the final turn, only for
+ * non-terminal actions, only when a meaningful script result exists.
+ * Returns the original action untouched in every other case.
+ */
+export function synthesizeFinalTurnCompletion<T extends { action: string }>(
+  action: T,
+  goalVerificationEvidence: string[],
+  isFinalTurn: boolean,
+): { action: T | { action: 'complete'; result: string }; synthesized: boolean } {
+  if (!isFinalTurn) return { action, synthesized: false }
+  if (action.action === 'complete' || action.action === 'abort') return { action, synthesized: false }
+  const evidence = [...goalVerificationEvidence]
+    .reverse()
+    .find((e) => e.startsWith('SCRIPT RESULT:'))
+  if (!evidence) return { action, synthesized: false }
+  const result = evidence.slice('SCRIPT RESULT:'.length).trim()
+  if (!isMeaningfulRunScriptOutput(result)) return { action, synthesized: false }
+  return { action: { action: 'complete', result }, synthesized: true }
+}

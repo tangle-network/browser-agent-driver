@@ -29,7 +29,7 @@ import { ContextBudget } from '../context-budget.js';
 import { runOverridePipeline } from '../override-pipeline.js';
 import type { OverrideContext } from '../override-pipeline.js';
 
-import { withRetry, findElementForRef, safeHostname, pushGoalVerificationEvidence } from './utils.js';
+import { withRetry, findElementForRef, safeHostname, pushGoalVerificationEvidence, capFeedbackText, sanitizeRunScript } from './utils.js';
 import { runExtractWithIndex, formatExtractWithIndexResult } from '../drivers/extract-with-index.js';
 import { buildSearchResultsGuidance, buildVisibleLinkRecommendation, getVisibleLinkRecommendation } from './search-guidance.js';
 import { buildGoalVerificationClaim, collectSearchWorkflowEvidence, shouldAcceptSearchWorkflowCompletion, shouldAcceptScriptBackedCompletion, detectCompletionContentTypeMismatch } from './goal-verification.js';
@@ -82,7 +82,7 @@ import {
   EXTENSION_TURNS_GRANTED,
 } from './constants.js';
 import { DEFI_BRAIN_CONTEXT } from './prompt-snippets.js';
-import { hasPlaceholderPattern, isMeaningfulRunScriptOutput } from './completion-policy.js';
+import { hasPlaceholderPattern, isMeaningfulRunScriptOutput, synthesizeFinalTurnCompletion } from './completion-policy.js';
 import { selectMicroPlanFollowUps } from './micro-plan.js';
 import { decideMaxTurnsExtension } from './max-turns-extension.js';
 import type { ResolvedExtensions } from '../extensions/types.js';
@@ -1515,6 +1515,21 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
           });
         }
 
+        // Terminal-action guarantee: on the final turn, a non-terminal action
+        // with script evidence already on the ledger completes from that
+        // evidence instead of dying at max turns with the answer on the floor.
+        const finalTurnCompletion = synthesizeFinalTurnCompletion(
+          action,
+          runState.goalVerificationEvidence,
+          i >= maxTurns - 1,
+        );
+        if (finalTurnCompletion.synthesized) {
+          action = finalTurnCompletion.action;
+          if (this.config.debug) {
+            console.log(`[Runner] Final turn — auto-completing from script evidence instead of ${decision.action.action}`);
+          }
+        }
+
         // -- 4a. Narrate to the cursor overlay. Fire-and-forget.
         // Signals pushed to the page-context overlay:
         //   1. Reasoning panel (top-right) — the agent's own text
@@ -1685,9 +1700,12 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
         // -- 5c. Handle runScript action --
         if (action.action === 'runScript') {
           const page = this.driver.getPage?.();
-          if (page) {
+          const sanitized = sanitizeRunScript(action.script);
+          if (!sanitized.ok) {
+            this.brain.injectFeedback(sanitized.error);
+          } else if (page) {
             try {
-              const scriptResult = await page.evaluate(action.script);
+              const scriptResult = await page.evaluate(sanitized.script);
               const stringified = typeof scriptResult === 'string'
                 ? scriptResult
                 : JSON.stringify(scriptResult, null, 2);
@@ -1697,7 +1715,7 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
                 runState.recordEvidence(`EXTRACTED (turn ${i}): ${stringified.slice(0, 500)}`);
               }
               this.brain.injectFeedback(
-                `SCRIPT RESULT:\n${stringified ?? '(undefined)'}`
+                capFeedbackText(`SCRIPT RESULT:\n${stringified ?? '(undefined)'}`)
               );
             } catch (scriptErr: unknown) {
               const msg = scriptErr instanceof Error ? scriptErr.message : String(scriptErr);
@@ -1737,7 +1755,7 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
                 runState.recordEvidence(`EXTRACTED (turn ${i}): ${formatted.slice(0, 500)}`);
               }
               this.brain.injectFeedback(
-                `EXTRACT RESULT (${matches.length} matches for query "${action.query}"${action.contains ? ` containing "${action.contains}"` : ''}):\n${formatted}`,
+                capFeedbackText(`EXTRACT RESULT (${matches.length} matches for query "${action.query}"${action.contains ? ` containing "${action.contains}"` : ''}):\n${formatted}`),
               );
             } catch (extractErr: unknown) {
               const msg = extractErr instanceof Error ? extractErr.message : String(extractErr);

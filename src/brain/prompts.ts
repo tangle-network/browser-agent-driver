@@ -36,14 +36,16 @@ SELECTOR FORMAT:
 - Refs are deterministic — same element keeps the same ref across observations
 - Fallback: [data-testid="..."], [aria-label="..."], text="...", role=button[name="..."]
 
-RESPONSE FORMAT — respond with ONLY a JSON object:
+RESPONSE FORMAT — respond with ONLY a JSON object.
+Emit "action" FIRST: output is capped, and a truncated response that never
+reaches "action" wastes the whole turn. Plan and reasoning come last.
 {
-  "plan": ["step 1", "step 2", ...],
-  "currentStep": 0,
   "action": { "action": "click", "selector": "@REF_FROM_ELEMENTS" },
   "nextActions": [{ "action": "type", "selector": "@REF_FROM_ELEMENTS", "text": "..." }],
   "reasoning": "Why I chose this action based on what I see",
-  "expectedEffect": "What should change (e.g., 'URL should contain /chat/', 'modal should close')"
+  "expectedEffect": "What should change (e.g., 'URL should contain /chat/', 'modal should close')",
+  "currentStep": 0,
+  "plan": ["step 1", "step 2", ...]
 }
 
 RULES:
@@ -78,7 +80,8 @@ const DATA_EXTRACTION_RULES = `
 21. EFFICIENT COMPLETION: When you have enough data to answer the goal, complete immediately. Do not navigate to additional pages for "confirmation" if the data was already extracted or is visible in the current a11y tree. Include all extracted data in the completion result
 22. EXTRACT BEFORE NAVIGATING: On search results, directory listings, or any page showing multiple items, ALWAYS extract ALL needed data BEFORE clicking into individual items. Use extractWithIndex with a wide query for unknown structure, or runScript with document.querySelectorAll('.result-card') if the structure is well-known. Many sites use anti-bot protection on detail pages but leave listing pages accessible. If you can answer the goal from list-level data, do so without navigating deeper.
 23. FILTER vs SEARCH: When a goal asks to filter results (e.g., "under $50", "4+ stars"), look for filter controls (sliders, dropdowns, checkboxes in a sidebar or toolbar) rather than typing filter values into the search box. Search boxes are for keyword queries, not numeric filters. After applying a filter: (1) wait 2-3 seconds for results to update, (2) verify the filter took effect by checking the updated results, (3) extract the filtered data. Do NOT keep searching for more filter controls after one is applied — extract and complete
-25. EXTRACTWITHINDEX RECOVERY: If a previous runScript returned null/empty/{x:null} on an extraction task, the selector was wrong. DO NOT retry the same runScript or guess a similar selector — the LLM cannot guess CSS class names that aren't visible in the snapshot. Switch to extractWithIndex with a WIDE query: \`'p, span, dd, code, strong, em'\` plus a \`contains\` filter naming the expected text fragment (e.g. contains: "downloads" for npm download counts, contains: "callbackFn" for MDN method signatures). The response shows you the actual text per element so you can pick by content match. Pick-by-content beats pick-by-selector on pages where the planner couldn't see the data at plan time.`;
+25. EXTRACTWITHINDEX RECOVERY: If a previous runScript returned null/empty/{x:null} on an extraction task, the selector was wrong. DO NOT retry the same runScript or guess a similar selector — the LLM cannot guess CSS class names that aren't visible in the snapshot. Switch to extractWithIndex with a WIDE query: \`'p, span, dd, code, strong, em'\` plus a \`contains\` filter naming the expected text fragment (e.g. contains: "downloads" for npm download counts, contains: "callbackFn" for MDN method signatures). The response shows you the actual text per element so you can pick by content match. Pick-by-content beats pick-by-selector on pages where the planner couldn't see the data at plan time.
+26. REFS ARE NOT DOM ATTRIBUTES: [ref=...] ids exist only in the ELEMENTS snapshot, not in the page DOM. document.querySelector('[ref=...]') in a runScript always matches nothing and the script is rejected outright — inside runScript use real CSS selectors, [data-testid="..."], or [aria-label="..."]; use @ref selectors only in click/type/fill actions.`;
 
 /** Heavy page rules (19-20, 24): injected when snapshot is large or turn count is high */
 const HEAVY_PAGE_RULES = `
@@ -133,13 +136,13 @@ REASONING FRAMEWORK — before choosing an action:
 5. Ask: "Is there a blocker preventing progress right now?" If yes, clear blocker first, then continue goal plan
 
 EXAMPLE 1 — Multi-step form fill (use actual refs from ELEMENTS, not these placeholders):
-{"plan":["Navigate to signup page","Fill email field","Fill password field","Click submit","Verify success"],"currentStep":1,"action":{"action":"type","selector":"@REF","text":"user@example.com"},"reasoning":"I see the signup form with email input [ref=...] and password input [ref=...]. Starting with email since it is the first required field.","expectedEffect":"Email field should show 'user@example.com'"}
+{"action":{"action":"type","selector":"@REF","text":"user@example.com"},"reasoning":"I see the signup form with email input [ref=...] and password input [ref=...]. Starting with email since it is the first required field.","expectedEffect":"Email field should show 'user@example.com'","currentStep":1,"plan":["Navigate to signup page","Fill email field","Fill password field","Click submit","Verify success"]}
 
 EXAMPLE 2 — Recovery after failure:
-{"plan":["Click the send button","Wait for response"],"currentStep":0,"action":{"action":"scroll","direction":"down","amount":300},"reasoning":"My last click failed because the element was not visible in the viewport. I can see from the screenshot that the send button is below the fold. Scrolling down to bring it into view before retrying.","expectedEffect":"The send button should become visible in the viewport"}
+{"action":{"action":"scroll","direction":"down","amount":300},"reasoning":"My last click failed because the element was not visible in the viewport. I can see from the screenshot that the send button is below the fold. Scrolling down to bring it into view before retrying.","expectedEffect":"The send button should become visible in the viewport","currentStep":0,"plan":["Click the send button","Wait for response"]}
 
 EXAMPLE 3 — Batch fill a multi-field form (one turn instead of ten):
-{"plan":["Fill all visible Personal Info fields","Click Next","Fill Contact step","Submit"],"currentStep":0,"action":{"action":"fill","fields":{"@firstname":"Jordan","@lastname":"Rivera","@dob":"1990-04-15"},"selects":{"@gender":"other"}},"reasoning":"Step 1 of the form has 3 text fields and 1 select all visible at once. Filling them in a single batch action saves 7 turns vs typing each individually.","expectedEffect":"All four Step 1 fields populated with the supplied values"}`;
+{"action":{"action":"fill","fields":{"@firstname":"Jordan","@lastname":"Rivera","@dob":"1990-04-15"},"selects":{"@gender":"other"}},"reasoning":"Step 1 of the form has 3 text fields and 1 select all visible at once. Filling them in a single batch action saves 7 turns vs typing each individually.","expectedEffect":"All four Step 1 fields populated with the supplied values","currentStep":0,"plan":["Fill all visible Personal Info fields","Click Next","Fill Contact step","Submit"]}`;
 
 /** Full static prompt (all rules) — used as default when config.systemPrompt is not set */
 const SYSTEM_PROMPT = CORE_RULES + SEARCH_RULES + DATA_EXTRACTION_RULES + HEAVY_PAGE_RULES + REASONING_SUFFIX;

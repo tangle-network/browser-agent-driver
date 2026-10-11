@@ -3,14 +3,14 @@
  * Brain class keeps a thin wrapper that passes its own `history`.
  *
  * Compact conversation history: strip ELEMENTS blocks and screenshots
- * from older observations, keeping the last 2 user messages intact.
+ * from older observations, keeping only the last user message intact.
  *
  * For older turns, replaces the full ELEMENTS block with a one-line
  * summary showing element count and the selectors the agent actually
  * used, extracted from the paired assistant response.
  *
  * Three-tier compression:
- *   Zone 1 (intact):         last 2 turns — full content
+ *   Zone 1 (intact):         last turn — full content
  *   Zone 2 (standard):       turns 3-5 back — ELEMENTS stripped from user msgs
  *   Zone 3 (deep compact):   turns 6+ back — both user and assistant ultra-compacted
  */
@@ -20,12 +20,15 @@ import type { ModelMessage } from 'ai';
 export function compactHistory(history: ModelMessage[]): ModelMessage[] {
   if (history.length === 0) return [];
 
-  // Find indices of the last 2 user messages to keep intact
+  // Find the index of the last user message to keep intact. Only the most
+  // recent turn needs the full snapshot — every older turn's ELEMENTS block
+  // is compressible to a selector summary (Wave-1 token bound: was 2 intact
+  // user messages, which kept a second full snapshot alive every turn).
   const userIndices: number[] = [];
   for (let i = history.length - 1; i >= 0; i--) {
     if (history[i].role === 'user') {
       userIndices.push(i);
-      if (userIndices.length === 2) break;
+      if (userIndices.length === 1) break;
     }
   }
   const keepIntactFrom = userIndices.length > 0
@@ -33,7 +36,7 @@ export function compactHistory(history: ModelMessage[]): ModelMessage[] {
     : history.length;
 
   // Three-tier compression:
-  //   Zone 1 (intact):         last 2 turns — full content
+  //   Zone 1 (intact):         last turn — full content
   //   Zone 2 (standard):       turns 3-5 back — ELEMENTS stripped from user msgs
   //   Zone 3 (deep compact):   turns 6+ back — both user and assistant ultra-compacted
   // Keep enough older history for long multi-step travel workflows.

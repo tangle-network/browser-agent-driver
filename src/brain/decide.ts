@@ -115,6 +115,11 @@ export async function decideImpl(
     && diffTotal > 0
     && diffChanges / diffTotal < 0.3;
 
+  // NOTE: a zero-change diff must NOT suppress the snapshot. Form fills and
+  // other interactions don't alter the a11y tree, so interaction-heavy tasks
+  // show diffChanges === 0 on most turns — substituting a "NO CHANGES" stub
+  // made the model conclude the page was broken and abort (bench wave 1).
+
   // Tighter snapshot budget on same-page turns; new pages keep enough
   // content for extraction from docs/spec pages.
   const snapshotBudget = samePageAsPrevious ? 8_000 : 24_000;
@@ -148,15 +153,14 @@ Title: ${state.title}
 ${elementsHeader}:
 ${visibleSnapshot}`;
 
+  const isFinalTurn = turnInfo ? turnInfo.max - turnInfo.current <= 1 : false;
   if (turnInfo) {
     const remaining = turnInfo.max - turnInfo.current;
     const budgetUsed = turnInfo.current / turnInfo.max;
     textContent += `\n\nTURN: ${turnInfo.current}/${turnInfo.max} (${remaining} remaining)`;
-    if (remaining === 1) {
-      textContent += ` — FINAL TURN: return a terminal action only (complete or abort)`;
-    } else if (remaining <= 3) {
+    if (!isFinalTurn && remaining <= 3) {
       textContent += ` — RUNNING LOW, avoid exploratory navigation; prioritize completing the goal or aborting with a clear blocker reason`;
-    } else if (budgetUsed >= 0.5) {
+    } else if (!isFinalTurn && budgetUsed >= 0.5) {
       textContent += ` — HALF BUDGET USED. If you have extracted useful data, try completing now. Do not navigate away from pages with relevant content without attempting completion first`;
     }
   }
@@ -170,7 +174,22 @@ ${visibleSnapshot}`;
     textContent += `\n\n${extraContext}`;
   }
 
-  textContent += '\n\nWhat action should you take?';
+  if (isFinalTurn) {
+    // Structural done-only turn (browser-use's _force_done_after_last_step
+    // pattern): replace the open-ended action request with a terminal-only
+    // schema so the model cannot legally answer with another navigation or
+    // extraction step. The runner's terminal-action guarantee independently
+    // auto-completes from script evidence if a non-terminal action slips
+    // through anyway.
+    textContent += `
+
+FINAL TURN — respond with ONLY a terminal action. No other action is valid:
+{"action": "complete", "result": "<everything the goal asked for, using data you ALREADY extracted — do NOT claim you need another step>"}
+{"action": "abort", "reason": "<the specific blocker>"}
+If any earlier turn produced data that answers the goal (SCRIPT RESULT, EXTRACT RESULT, visible page content), put it in the complete result NOW.`;
+  } else {
+    textContent += '\n\nWhat action should you take?';
+  }
 
   const userContent = self.buildUserContent(textContent, state.screenshot, options?.forceVision === true);
   const useNavModel = shouldUseNavigationModel(self, state, extraContext, turnInfo);
@@ -199,9 +218,12 @@ ${visibleSnapshot}`;
     : self.buildSystemForDecide(goal, state, turnInfo?.current ?? 1, effectiveProvider)
 
   const modelOpts = { provider: effectiveProvider, model: effectiveModel };
-  // Bump output budget near max turns so data-heavy completions don't truncate
+  // Bump output budget near max turns so data-heavy completions don't truncate.
+  // Google gets a higher flat cap: Gemini 2.5 Flash consumes output tokens on
+  // hidden thinking before the JSON body, so the 600 cap truncated mid-response
+  // (the format-hint retry below reuses this same cap).
   const nearingEnd = turnInfo && turnInfo.current >= turnInfo.max - 3;
-  const maxTokens = useCompactFirstTurn ? 500 : nearingEnd ? 1200 : 600;
+  const maxTokens = useCompactFirstTurn ? 500 : effectiveProvider === 'google' ? 2000 : nearingEnd ? 1200 : 600;
   const result = await self.generate(dynamicSystemPrompt, messages, modelOpts, maxTokens);
 
   let raw = result.text;

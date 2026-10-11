@@ -106,7 +106,7 @@ export class Brain implements BrainModelHost, BrainSystemPromptHost, BrainEvalua
     this.debug = config.debug || false;
     this.maxHistoryTurns = config.maxHistoryTurns || 10;
     this.visionEnabled = config.vision !== false;
-    this.visionStrategy = config.visionStrategy ?? (this.visionEnabled ? 'always' : 'never');
+    this.visionStrategy = config.visionStrategy ?? (this.visionEnabled ? 'auto' : 'never');
     this.observationMode = config.observationMode ?? 'dom';
     this.claudeCodeStreamingInput = config.claudeCodeStreamingInput === true;
     this.compactFirstTurn = config.compactFirstTurn === true;

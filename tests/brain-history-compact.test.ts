@@ -6,12 +6,13 @@ import { compactHistory } from '../src/brain/history-compact.js'
  * Guard for the 3-zone history compaction extracted from Brain.
  *
  * With 14 messages (7 user/assistant pairs), the zone boundaries are:
- *   - keepIntactFrom = index of the 2nd-to-last user message = 10
+ *   - keepIntactFrom = index of the LAST user message = 12 (Wave 1: was the
+ *     2nd-to-last user message — only the freshest turn stays intact now)
  *   - deepCompactBefore = max(0, 14 - 10) = 4
  * So:
  *   - Zone 3 (deep compact):  idx 0..3   — user → "[Prior turn …]", assistant → "[action → selector]"
- *   - Zone 2 (standard):      idx 4..9   — user ELEMENTS blocks summarized, paired assistant supplies selectors
- *   - Zone 1 (intact):        idx 10..13 — untouched
+ *   - Zone 2 (standard):      idx 4..11  — user ELEMENTS blocks summarized, paired assistant supplies selectors
+ *   - Zone 1 (intact):        idx 12..13 — untouched
  */
 
 const ELEMENTS_USER = `GOAL: test
@@ -85,12 +86,16 @@ describe('compactHistory — 3-zone compaction', () => {
     expect(out[6].content).toBe(history[6].content)
   })
 
-  it('Zone 1: keeps the last two turns fully intact, ELEMENTS and all', () => {
+  it('Zone 1: keeps only the last turn fully intact; the turn before is compacted', () => {
     const history = buildHistory()
     const out = compactHistory(history)
-    expect(out[10].content).toBe(history[10].content)
-    expect(out[10].content).toContain('[ref=z1]')
+    // idx 12..13 — the freshest pair stays verbatim.
     expect(out[12].content).toBe(history[12].content)
     expect(out[13].content).toBe(history[13].content)
+    // idx 10 (previously Zone 1 when two turns stayed intact) now lands in
+    // Zone 2: its ELEMENTS block is summarized and the raw ref is gone.
+    expect(out[10].content).not.toBe(history[10].content)
+    expect(out[10].content).not.toContain('[ref=z1]')
+    expect(out[10].content).toContain('ELEMENTS:\n[Page snapshot:')
   })
 })
