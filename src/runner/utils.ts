@@ -137,3 +137,16 @@ export function pushGoalVerificationEvidence(target: string[], entry: string): v
 export function hasFullDate(text: string): boolean {
   return /\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2},\s+\d{4}\b/i.test(text);
 }
+
+/**
+ * Cap a feedback payload injected into the brain's next-turn context.
+ * Extraction actions (runScript / extractWithIndex) can return page-sized
+ * blobs; feeding them back uncapped re-bills the full blob as input tokens
+ * on every subsequent turn. The evidence ledger keeps the full text — this
+ * cap only bounds what the model re-reads.
+ */
+export function capFeedbackText(text: string, maxChars = 1000): string {
+  if (text.length <= maxChars) return text;
+  const omitted = text.length - maxChars;
+  return `${text.slice(0, maxChars)}\n… [${omitted} chars truncated — query the page again if you need more]`;
+}
