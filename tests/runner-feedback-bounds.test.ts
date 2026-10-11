@@ -75,3 +75,27 @@ describe('decide zero-diff turns keep the snapshot', () => {
     expect(lastUserText(captured[0].messages)).toContain('- textbox "Email"')
   })
 })
+
+describe('new-page snapshot budget (wave 5)', () => {
+  const bigState: PageState = {
+    url: 'https://en.wikipedia.org/wiki/Ada_Lovelace',
+    title: 'Ada',
+    snapshot: '- heading "Ada Lovelace" [ref=h1]\n' + '- code "int x = 1;"\n'.repeat(1500),
+  } as PageState
+
+  it('new-page turns serve at most ~12k chars of snapshot with a windowing hint', async () => {
+    const brain = new Brain({ provider: 'google', model: 'gemini-2.5-flash', apiKey: 'sk-test', vision: false })
+    const captured: ModelMessage[][] = []
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(brain as any).generate = async (_s: unknown, messages: ModelMessage[]) => {
+      captured.push(messages)
+      return { text: '{"action":{"action":"wait","ms":1000},"reasoning":"r","expectedEffect":"e","currentStep":0,"plan":["x"]}' }
+    }
+    await brain.decide('goal', bigState, undefined, { current: 1, max: 8 })
+    const text = String(captured[0][captured[0].length - 1].content)
+    expect(text).toContain('ELEMENTS (windowed')
+    expect(text).toContain('extractWithIndex')
+    const elementsBlock = text.split('ELEMENTS (windowed')[1] ?? ''
+    expect(elementsBlock.length).toBeLessThan(13_000)
+  })
+})
