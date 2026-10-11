@@ -130,3 +130,31 @@ describe('run-frozen system prompt (wave 3)', () => {
     expect(second).not.toBe(first)
   })
 })
+
+describe('materializeHistoryPrefix — token-aware tail (wave 4)', () => {
+  it('compacts fat extraction-turn history by chars, keeping the freshest pair intact', () => {
+    const fat = (n: number): ModelMessage[] => [
+      { role: 'user', content: `GOAL: extract\n\nELEMENTS:\n${'x'.repeat(9000)} turn ${n}` },
+      { role: 'assistant', content: `{"action":{"action":"runScript","script":"s${n}"}}` },
+    ]
+    const history: ModelMessage[] = []
+    for (let i = 1; i <= 4; i++) history.push(...fat(i))
+    const host: MaterializingHistoryHost = { history, historySummary: '' }
+    const out = materializeHistoryPrefix(host)
+    // 4 pairs × ~9.2k chars ≈ 37k chars: the budget keeps ~2 pairs + one
+    // lean assistant message (5); the oldest 3 are summarized.
+    expect(host.history).toHaveLength(5)
+    expect(host.historySummary.length).toBeGreaterThan(0)
+    expect(out[0].role).toBe('user')
+    expect(String(out[0].content)).toContain('PRIOR TURNS (compacted')
+    // Freshest pair is verbatim.
+    expect(host.history[host.history.length - 2].content).toContain('turn 4')
+  })
+
+  it('keeps lean interaction history at the message cap (wave-2 behavior preserved)', () => {
+    const host = hostWith(4) // 8 lean messages ≈ 8 × ~120 chars
+    const out = materializeHistoryPrefix(host)
+    expect(host.historySummary).toBe('')
+    expect(out).toHaveLength(8)
+  })
+})

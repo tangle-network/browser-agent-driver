@@ -264,11 +264,13 @@ If any earlier turn produced data that answers the goal (SCRIPT RESULT, EXTRACT 
 
   const modelOpts = { provider: effectiveProvider, model: effectiveModel };
   // Bump output budget near max turns so data-heavy completions don't truncate.
-  // Google gets a higher flat cap: Gemini 2.5 Flash consumes output tokens on
-  // hidden thinking before the JSON body, so the 600 cap truncated mid-response
-  // (the format-hint retry below reuses this same cap).
+  // Google gets a higher flat cap: Gemini thinking tokens count against
+  // maxOutputTokens, and dynamic thinking regularly consumes 1.5-3.9k tokens
+  // before the JSON body — at a 2000 cap the visible JSON was starved and
+  // truncated mid-script (wave-3 hn rep2: three malformed-JSON turns at
+  // out=3992 each, ~90k input tokens wasted on one rep).
   const nearingEnd = turnInfo && turnInfo.current >= turnInfo.max - 3;
-  const maxTokens = useCompactFirstTurn ? 500 : effectiveProvider === 'google' ? 2000 : nearingEnd ? 1200 : 600;
+  const maxTokens = useCompactFirstTurn ? 500 : effectiveProvider === 'google' ? 4096 : nearingEnd ? 1200 : 600;
   const result = await self.generate(dynamicSystemPrompt, messages, modelOpts, maxTokens);
 
   let raw = result.text;

@@ -185,6 +185,14 @@ function summarizeElements(text: string, selectors: string[]): string {
 /** Tail size in messages (user+assistant pairs ×2). 8 = 4 full turns intact. */
 export const HISTORY_TAIL_MESSAGES = 8;
 
+/** Tail size in characters. The message-count cap works for interaction
+ *  runs (small snapshots), but extraction runs carry 8-24k-char user
+ *  messages — 4 intact turns of those is ~30k tokens of re-read history
+ *  per decide call (the wave-3 top cost item; measured on wikipedia and
+ *  dashboard-extract artifacts). Materialize once the tail exceeds this
+ *  budget, always keeping the freshest pair intact. */
+export const HISTORY_TAIL_CHARS = 20_000;
+
 export interface MaterializingHistoryHost {
   history: ModelMessage[];
   /** Append-only compaction ledger. Mutated in place by
@@ -198,8 +206,26 @@ export interface MaterializingHistoryHost {
  * summarized messages) and host.historySummary (appends summary lines).
  */
 export function materializeHistoryPrefix(host: MaterializingHistoryHost): ModelMessage[] {
-  if (host.history.length > HISTORY_TAIL_MESSAGES) {
-    const excess = host.history.length - HISTORY_TAIL_MESSAGES;
+  // Overflow is measured in BOTH messages (cap for lean turns) and chars
+  // (cap for fat extraction turns). Always keep the freshest pair intact —
+  // the model needs its immediately-preceding observation verbatim.
+  const excessCount = (h: ModelMessage[]): number => {
+    const lenOf = (m: ModelMessage): number =>
+      typeof m.content === 'string' ? m.content.length : JSON.stringify(m.content).length;
+    let keep = Math.min(2, h.length);
+    let chars = 0;
+    for (let i = h.length - keep; i < h.length; i++) chars += lenOf(h[i]);
+    while (keep < h.length && keep < HISTORY_TAIL_MESSAGES) {
+      const nextLen = lenOf(h[h.length - keep - 1]);
+      if (chars + nextLen > HISTORY_TAIL_CHARS) break;
+      chars += nextLen;
+      keep++;
+    }
+    return h.length - keep;
+  };
+
+  const excess = excessCount(host.history);
+  if (excess > 0) {
     const olds = host.history.slice(0, excess);
     host.history = host.history.slice(excess);
     const lines = olds.map((msg) =>
