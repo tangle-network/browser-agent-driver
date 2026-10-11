@@ -1907,6 +1907,11 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
                   state.snapshot,
                   runState.goalVerificationEvidence,
                   turns.map((t) => t.state.snapshot),
+                  // Form-control state evidence: payloads of actions that
+                  // executed without error (driver-confirmed fills/selects).
+                  turns
+                    .filter((t) => !t.error)
+                    .flatMap((t) => [JSON.stringify(t.action), ...(t.executedActions ?? []).map((a) => JSON.stringify(a))]),
                 )
               );
 

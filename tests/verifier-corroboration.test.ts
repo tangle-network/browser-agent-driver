@@ -207,3 +207,44 @@ describe('extractQuotedLiterals — letter-flanked apostrophes are not delimiter
     expect(goalLiteralsCorroborated(goal, '- text "Export complete for Bob Smith"', [], ['- tab "Users"'])).toBe(false)
   })
 })
+
+describe('goalLiteralsCorroborated — form-control state evidence (wave 6)', () => {
+  const formGoal = "Set gender to 'other', plan to 'Pro ($9/mo)'. Verify the success message 'Account Created!' appears."
+
+  it('corroborates a select value that never echoes as page text when a successful action payload attests it', () => {
+    const finalSnap = '- heading "Account Created!" [ref=h1]'
+    const priorSnaps = ['- combobox "Plan" [ref=s1]']
+    const actionEvidence = ['{"action":"fill","selects":{"@s1":"Pro ($9/mo)","@g1":"other"}}']
+    expect(goalLiteralsCorroborated(formGoal, finalSnap, [], priorSnaps, actionEvidence)).toBe(true)
+  })
+
+  it('still rejects when the payload set a DIFFERENT value (strict accounting)', () => {
+    const finalSnap = '- heading "Account Created!" [ref=h1]'
+    const actionEvidence = ['{"action":"fill","selects":{"@s1":"Pro ($9/mo)","@g1":"male"}}']
+    expect(goalLiteralsCorroborated(formGoal, finalSnap, [], [], actionEvidence)).toBe(false)
+  })
+
+  it('ignores failed-action payloads (only successful driver confirmations count)', () => {
+    // The runner only passes error-free turns; a payload list without the
+    // value must fail even when the goal literal names it.
+    const finalSnap = '- heading "Account Created!" [ref=h1]'
+    expect(goalLiteralsCorroborated(formGoal, finalSnap, [], [], ['{"action":"fill","fields":{"@g1":"unrelated"}}'])).toBe(false)
+  })
+})
+
+describe('goalLiteralsCorroborated — case-insensitive word-boundary matching (wave 6)', () => {
+  it("matches the page's 'Other' against the goal's 'other'", () => {
+    const goal = "Set gender to 'other'. Verify 'Account Created!' appears."
+    expect(goalLiteralsCorroborated(goal, '- radio "Other" [ref=r1]\n- heading "Account Created!"', [])).toBe(true)
+  })
+
+  it("does NOT match 'other' inside 'bother' or 'Another'", () => {
+    const goal = "Set gender to 'other'. Verify 'Account Created!' appears."
+    expect(goalLiteralsCorroborated(goal, '- text "Do not bother with Another thing"\n- heading "Account Created!"', [])).toBe(false)
+  })
+
+  it('word-boundary does not break punctuation-heavy literals', () => {
+    const goal = "Choose plan 'Pro ($9/mo)'. Verify 'Account Created!' appears."
+    expect(goalLiteralsCorroborated(goal, '- option "Pro ($9/mo)" [selected]\n- heading "Account Created!"', [])).toBe(true)
+  })
+})

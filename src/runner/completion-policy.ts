@@ -166,15 +166,31 @@ export function goalLiteralsCorroborated(
   finalSnapshot: string,
   goalVerificationEvidence: string[],
   priorSnapshots: string[] = [],
+  actionEvidence: string[] = [],
 ): boolean {
   const literals = extractQuotedLiterals(goal);
   if (literals.length === 0) return false;
   // Form-consume flows replace the form with a success page: field-value
   // literals ('Jordan', 'Pro ($9/mo)') vanish from the FINAL page but are
-  // attested in earlier observations. Every literal must appear verbatim
-  // SOMEWHERE in the run — final state, evidence, or a prior observation.
-  const haystack = [finalSnapshot, ...goalVerificationEvidence, ...priorSnapshots].join('\n');
-  return literals.every((lit) => haystack.includes(lit));
+  // attested in earlier observations. Select values ('other') may never
+  // echo as page text at all — they ARE attested by the driver's own
+  // successful fill/select action payloads (actionEvidence). Every literal
+  // must appear SOMEWHERE — final state, evidence, a prior observation,
+  // or a successful action payload.
+  //
+  // Matching is case-insensitive but word-boundaried: option literals are
+  // case-mismatched by design ('other' the goal value vs 'Other' the page
+  // label), while substring matches inside unrelated words ('bother',
+  // 'Another') must not count. Word-edge chars in the literal itself
+  // ('Pro ($9/mo)', 'Account Created!') anchor boundaries only where the
+  // literal actually starts/ends with a word character.
+  const haystack = [finalSnapshot, ...goalVerificationEvidence, ...priorSnapshots, ...actionEvidence].join('\n');
+  return literals.every((lit) => {
+    const escaped = lit.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pre = /^\w/.test(lit) ? '\\b' : '';
+    const post = /\w$/.test(lit) ? '\\b' : '';
+    return new RegExp(`${pre}${escaped}${post}`, 'i').test(haystack);
+  });
 }
 
 /** Quoted literals of ≥4 chars from goal text, both quote styles.
