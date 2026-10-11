@@ -150,3 +150,37 @@ export function capFeedbackText(text: string, maxChars = 1000): string {
   const omitted = text.length - maxChars;
   return `${text.slice(0, maxChars)}\n… [${omitted} chars truncated — query the page again if you need more]`;
 }
+
+/**
+ * Sanitize a model-emitted runScript payload before page.evaluate.
+ *
+ * Two failure classes seen in bench runs:
+ *   1. Phantom refs: the model queries `document.querySelector('[ref=t1f2a]')`
+ *      — refs exist only in our aria snapshot, not the DOM, so the query
+ *      matches nothing and the model loops guessing similar selectors
+ *      (the hn-top-story-score death spiral). Reject outright with an
+ *      explanation the model can act on.
+ *   2. Bare top-level `return`: page.evaluate(script) evaluates the string
+ *      with eval semantics, where a top-level return is a SyntaxError and
+ *      the turn dies. Scripts that use return (and aren't already an IIFE)
+ *      are wrapped in one. Expression-style scripts stay untouched so their
+ *      completion value still reaches the caller.
+ */
+export function sanitizeRunScript(
+  script: string,
+): { ok: true; script: string } | { ok: false; error: string } {
+  if (/\[\s*ref\s*=/.test(script)) {
+    return {
+      ok: false,
+      error:
+        'SCRIPT REJECTED: [ref=...] selectors are aria-snapshot refs, not DOM attributes — document.querySelector cannot see them. ' +
+        'Use CSS selectors, [data-testid="..."], [aria-label="..."], or the extractWithIndex action instead.',
+    };
+  }
+  const trimmed = script.trim();
+  const looksInvoked = trimmed.startsWith('(') || /^(async\s+)?function\b/.test(trimmed);
+  if (/\breturn\b/.test(trimmed) && !looksInvoked) {
+    return { ok: true, script: `(() => { ${trimmed} })()` };
+  }
+  return { ok: true, script };
+}

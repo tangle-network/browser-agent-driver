@@ -29,7 +29,7 @@ import { ContextBudget } from '../context-budget.js';
 import { runOverridePipeline } from '../override-pipeline.js';
 import type { OverrideContext } from '../override-pipeline.js';
 
-import { withRetry, findElementForRef, safeHostname, pushGoalVerificationEvidence, capFeedbackText } from './utils.js';
+import { withRetry, findElementForRef, safeHostname, pushGoalVerificationEvidence, capFeedbackText, sanitizeRunScript } from './utils.js';
 import { runExtractWithIndex, formatExtractWithIndexResult } from '../drivers/extract-with-index.js';
 import { buildSearchResultsGuidance, buildVisibleLinkRecommendation, getVisibleLinkRecommendation } from './search-guidance.js';
 import { buildGoalVerificationClaim, collectSearchWorkflowEvidence, shouldAcceptSearchWorkflowCompletion, shouldAcceptScriptBackedCompletion, detectCompletionContentTypeMismatch } from './goal-verification.js';
@@ -1700,9 +1700,12 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
         // -- 5c. Handle runScript action --
         if (action.action === 'runScript') {
           const page = this.driver.getPage?.();
-          if (page) {
+          const sanitized = sanitizeRunScript(action.script);
+          if (!sanitized.ok) {
+            this.brain.injectFeedback(sanitized.error);
+          } else if (page) {
             try {
-              const scriptResult = await page.evaluate(action.script);
+              const scriptResult = await page.evaluate(sanitized.script);
               const stringified = typeof scriptResult === 'string'
                 ? scriptResult
                 : JSON.stringify(scriptResult, null, 2);
