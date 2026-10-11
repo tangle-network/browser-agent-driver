@@ -6,16 +6,15 @@
  * Runs `scripts/run-mode-baseline.mjs` N times against one scenario+config
  * and emits the canonical mean/min/max table for: wall-time, turns,
  * tokens, cost. NO speedup or improvement claim should be filed without
- * this (or `ab:experiment` for A/B comparisons).
+ * this (see docs/EVAL-RIGOR.md).
  *
  * Usage:
  *   node scripts/run-multi-rep.mjs \
- *     --cases bench/scenarios/cases/long-form-dashboard.json \
- *     --config bench/scenarios/configs/planner-on.mjs \
+ *     --cases bench/competitive/tasks/form-fill-multi-step.json \
  *     --reps 3 \
  *     --modes fast-explore \
- *     --label gen7-planner \
- *     --out agent-results/multi-rep-gen7
+ *     --label my-change \
+ *     --out agent-results/multi-rep-my-change
  *
  * Output: <out>/multi-rep-summary.json + multi-rep-summary.md
  *

@@ -8,7 +8,8 @@ Create `browser-agent-driver.config.ts` in your project root:
 import { defineConfig } from '@tangle-network/browser-agent-driver'
 
 export default defineConfig({
-  model: 'gpt-5.4',
+  provider: 'google',
+  model: 'gemini-2.5-flash',   // bench-validated default
   headless: true,
   concurrency: 4,
   maxTurns: 30,
@@ -25,8 +26,8 @@ Auto-detected by CLI and programmatic API. CLI flags override config values. Sup
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `provider` | `'openai' \| 'anthropic' \| 'google' \| 'codex-cli' \| 'claude-code' \| 'sandbox-backend'` | `'openai'` | LLM provider |
-| `model` | `string` | `'gpt-5.4'` | Model name |
+| `provider` | `'openai' \| 'anthropic' \| 'google' \| 'codex-cli' \| 'claude-code' \| 'sandbox-backend' \| 'cli-bridge' \| 'zai-coding-plan'` | credential-aware | LLM provider. Unset: `openai` when `OPENAI_API_KEY` is present, else keyless `claude-code` |
+| `model` | `string` | per-provider | Model name (`gemini-2.5-flash` is the bench-validated choice) |
 | `apiKey` | `string` | env var | API key |
 | `baseUrl` | `string` | — | Custom endpoint (LiteLLM, etc.) |
 | `browser` | `'chromium' \| 'firefox' \| 'webkit'` | `'chromium'` | Browser engine |

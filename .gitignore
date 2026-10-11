@@ -45,3 +45,7 @@ bench/design/reference-corpus/*
 # Transient WebVoyager run-recovery cases (regenerated per session)
 bench/external/webvoyager/cases-resume*.json
 bench/external/webvoyager/cases-hotspots*.json
+
+# Historical program-state journal was removed from git; runtime scripts
+# (macro promotion, design eval/gepa) recreate it locally. Never re-commit.
+.evolve/

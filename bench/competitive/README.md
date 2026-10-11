@@ -33,7 +33,7 @@ For each (framework, task) cell, capture:
 
 ## Tasks (planned)
 
-1. **`form-fill-multi-step.json`** — local fixture (already exists as `bench/scenarios/cases/local-long-form.json`). Goal: fill 19 fields across 3 form steps. Oracle: success message visible.
+1. **`form-fill-multi-step.json`** — local fixture (shipped as `bench/competitive/tasks/form-fill-multi-step.json`). Goal: fill 19 fields across 3 form steps. Oracle: success message visible.
 2. **`hn-search-and-extract.json`** — public web. Goal: navigate to news.ycombinator.com, find the top story matching keyword X, extract its score + comment count. Oracle: returned JSON has score:int and comments:int matching the live page.
 3. **`github-pr-list.json`** — public web. Goal: open github.com/{owner}/{repo}/pulls, list the open PR titles. Oracle: returned JSON has at least one PR title and the count matches the visible badge.
 

@@ -1,7 +1,7 @@
 /**
  * Statistical primitives for benchmark analysis.
  *
- * The bench harnesses (run-ab-experiment, run-multi-rep, run-competitive)
+ * The bench harnesses (run-multi-rep, run-competitive)
  * all need the same set of primitives: mean, stddev, Wilson CIs for
  * proportions, bootstrap CIs for differences, and effect-size measures.
  * They live here so the harnesses share one implementation.

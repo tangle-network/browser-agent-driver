@@ -38,8 +38,8 @@ Record the actual environment when comparing failures or timing.
 The local browser step installs Chromium but does not install operating-system dependencies; CI runs the same command on self-hosted runners whose browser libraries come from the host.
 A pass on one host does not prove a clean host has those dependencies.
 
-No configured check runs the credentialed Tier 1 or staging browser evaluations (`pnpm bench:tier1:gate`, `pnpm bench:tier2:repeat`).
-Their workflows were removed because the repository has neither `OPENAI_API_KEY` nor `AI_TANGLE_STORAGE_STATE`, so every run skipped the evaluation.
+No configured check runs credentialed or staging browser evaluations.
+The tier-gate workflows and their scripts (`bench:tier1:gate`, `bench:tier2:repeat`) were removed: the repository has neither `OPENAI_API_KEY` nor `AI_TANGLE_STORAGE_STATE`, so every run skipped the evaluation, and the pipeline was superseded by `pnpm bench:compete`.
 Local signoff cannot establish deployment health, live task quality, or behavior that no configured check exercises.
 
 The CI workflow runs after pushes to `main`.

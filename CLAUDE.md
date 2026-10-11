@@ -13,7 +13,7 @@ Resolve current commands, models, and defaults from [package.json](package.json)
 - For wallet setup, RPC interception, or extension failures, read [the wallet guide](docs/guides/wallet.md) and inspect the scripts in `bench/wallet/`.
   Historical app results and extension walkthroughs require a fresh check before reuse.
 - For planned work, read [the roadmap](docs/roadmap/browser-agent-ops.md).
-- For repository skills, inspect `skills/` and the current `skills:install` script.
+- For repository skills, note that `skills/macros/` and `skills/domain/` are runtime data loaded by the agent loop (`src/skills/macro-loader.ts`, `src/cli/commands/run.ts`) and ship in the npm package; the old installable prompt packs and the `skills:install` script were removed.
 
 ## Browser and experiment constraints
 
