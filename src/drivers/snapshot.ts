@@ -243,6 +243,13 @@ export class AriaSnapshotHelper {
       const refId = selector.slice(1);
       const entry = this.refMap.get(refId);
       if (entry) {
+        // Chrome date/time controls are not getByRole-resolvable ('Date' is
+        // not a Playwright role; its shadow spinbuttons carry unresolvable
+        // doubled names). The input itself is labeled, so getByLabel finds
+        // it — and fill('YYYY-MM-DD') works natively on input[type=date].
+        if (entry.role === 'Date' || entry.role === 'time') {
+          return page.getByLabel(entry.name, { exact: entry.name.length > 0 }).first();
+        }
         let roleLocator = page.getByRole(entry.role as Parameters<Page['getByRole']>[0], {
           name: entry.name,
           exact: entry.name.length > 0,
@@ -301,6 +308,11 @@ export class AriaSnapshotHelper {
   private parseAriaSnapshot(raw: string): string {
     const lines = raw.split('\n');
     const result: string[] = [];
+    // When set, we're inside a Chrome date/time control group: the
+    // spinbutton/picker children are unactionable noise (their refs never
+    // resolve — the wave-2/3 form-fill date loop) and get dropped until the
+    // indent returns to the group's level.
+    let dateGroupIndent: string | null = null;
 
     for (const line of lines) {
       const match = line.match(/^(\s*-\s+)(\w+)(?:\s+"([^"]*)")?(.*)$/);
@@ -310,6 +322,29 @@ export class AriaSnapshotHelper {
       }
 
       const [, indent, role, name, rest] = match;
+
+      // Drop children of a Date/time group (spinbuttons + picker button).
+      if (dateGroupIndent !== null) {
+        if (indent.length > dateGroupIndent.length) continue;
+        dateGroupIndent = null;
+      }
+
+      // Chrome's date/time control: expose it as ONE ref'd, fillable element
+      // and drop its shadow parts. getByRole cannot resolve 'Date' or its
+      // shadow spinbuttons (doubled-name artifacts like 'Month Month');
+      // resolveLocator special-cases this role to getByLabel, and filling
+      // the input with YYYY-MM-DD works natively.
+      if (role === 'Date' || role === 'time') {
+        const baseHash = stableHash(role, name || '');
+        const count = this.hashCounts.get(baseHash) || 0;
+        this.hashCounts.set(baseHash, count + 1);
+        const refId = count === 0 ? baseHash : `${baseHash}_${count}`;
+        this.refMap.set(refId, { role: 'Date', name: name || '' });
+        this.currElements.set(refId, { ref: refId, role: 'Date', name: name || '' });
+        result.push(`${indent}date "${name ?? ''}" [ref=${refId}] (date input — fill with YYYY-MM-DD)`);
+        dateGroupIndent = indent;
+        continue;
+      }
 
       // Skip decorative roles
       if (AriaSnapshotHelper.SKIP_ROLES.has(role)) {
