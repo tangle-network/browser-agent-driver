@@ -125,8 +125,13 @@ export async function decideImpl(
   // made the model conclude the page was broken and abort (bench wave 1).
 
   // Tighter snapshot budget on same-page turns; new pages keep enough
-  // content for extraction from docs/spec pages.
-  const snapshotBudget = samePageAsPrevious ? 8_000 : 24_000;
+  // content for extraction from docs/spec pages. Wave 5 cut the new-page
+  // budget 24k -> 12k: budgetSnapshot's keep-set (inputs, headings,
+  // content lines, then bulk links) already prioritizes decision-relevant
+  // content, and extractWithIndex is the model's documented expansion path
+  // for off-window text — the window note below teaches that on every
+  // truncated serve.
+  const snapshotBudget = samePageAsPrevious ? 8_000 : 12_000;
   let visibleSnapshot: string;
   let elementsHeader: string;
   if (useDiffOnly) {
@@ -142,7 +147,9 @@ export async function decideImpl(
     visibleSnapshot = useCompactFirstTurn
       ? compactFirstTurnSnapshot(state.snapshot)
       : budgetSnapshot(state.snapshot, snapshotBudget);
-    elementsHeader = 'ELEMENTS';
+    elementsHeader = state.snapshot.length > snapshotBudget
+      ? 'ELEMENTS (windowed — the full page is larger; use extractWithIndex with a wide query for off-window text instead of guessing)'
+      : 'ELEMENTS';
   }
   self.lastDecisionUrl = state.url;
 

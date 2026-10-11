@@ -146,3 +146,51 @@ function parseFlatJsonObject(text: string): Record<string, unknown> | null {
   } catch { /* not JSON */ }
   return null;
 }
+
+/**
+ * Goal-literal corroboration for text-in-snapshot style goals.
+ *
+ * The 8/15 of completions that still pay the full LLM verifier are mostly
+ * form tasks whose goal names an exact success value ("Verify the success
+ * message 'Account Created!' appears"). When every quoted literal in the
+ * goal appears VERBATIM in the final observation or in script/extract
+ * evidence, the success state is directly attested by the DOM — re-asking
+ * an LLM to judge it is pure cost, the same discipline as
+ * evidenceCorroboratesResult (exact value required, never fuzzy presence).
+ *
+ * Strict by construction: requires at least one quoted literal of ≥4 chars,
+ * and ALL such literals must be present. Unquoted goals return false.
+ */
+export function goalLiteralsCorroborated(
+  goal: string,
+  finalSnapshot: string,
+  goalVerificationEvidence: string[],
+  priorSnapshots: string[] = [],
+): boolean {
+  const literals = extractQuotedLiterals(goal);
+  if (literals.length === 0) return false;
+  // Form-consume flows replace the form with a success page: field-value
+  // literals ('Jordan', 'Pro ($9/mo)') vanish from the FINAL page but are
+  // attested in earlier observations. Every literal must appear verbatim
+  // SOMEWHERE in the run — final state, evidence, or a prior observation.
+  const haystack = [finalSnapshot, ...goalVerificationEvidence, ...priorSnapshots].join('\n');
+  return literals.every((lit) => haystack.includes(lit));
+}
+
+/** Quoted literals of ≥4 chars from goal text, both quote styles.
+ *  Guards against apostrophe artifacts: a quoted span that starts with an
+ *  English contraction tail ('s, 't, 're, 've, 'll, 'd, 'm) is the back
+ *  half of a possessive ("Alice Johnson's row"), not a literal; and
+ *  literals cap at 80 chars (success banners are short — longer spans are
+ *  quote-spanning capture noise). */
+function extractQuotedLiterals(text: string): string[] {
+  const out: string[] = [];
+  // Quotes only count as delimiters when they're not letter-flanked on the
+  // outside: the apostrophe in "Johnson's" has letters on both sides and is
+  // skipped entirely, so it can't swallow the opening quote of the real
+  // literal that follows ('Export complete for Alice Johnson').
+  for (const m of text.matchAll(/(?<![A-Za-z])'([^']{4,80})'(?![A-Za-z])|(?<![A-Za-z])"([^"]{4,80})"(?![A-Za-z])/g)) {
+    out.push(m[1] ?? m[2]);
+  }
+  return out;
+}

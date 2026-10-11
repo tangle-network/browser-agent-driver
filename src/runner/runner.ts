@@ -82,7 +82,7 @@ import {
   EXTENSION_TURNS_GRANTED,
 } from './constants.js';
 import { DEFI_BRAIN_CONTEXT } from './prompt-snippets.js';
-import { hasPlaceholderPattern, isMeaningfulRunScriptOutput, synthesizeFinalTurnCompletion, evidenceCorroboratesResult } from './completion-policy.js';
+import { hasPlaceholderPattern, isMeaningfulRunScriptOutput, synthesizeFinalTurnCompletion, evidenceCorroboratesResult, goalLiteralsCorroborated } from './completion-policy.js';
 import { validateObservedSelector } from './selector-guard.js';
 import { selectMicroPlanFollowUps } from './micro-plan.js';
 import { decideMaxTurnsExtension } from './max-turns-extension.js';
@@ -340,6 +340,7 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
         phaseTimings,
         wasteMetrics: deriveWasteMetrics(turns, runState.verificationRejectionCount, runState.firstSufficientEvidenceTurn),
       }
+      if (replayMetrics && !agentResult.replay) agentResult.replay = replayMetrics
       this.saveMemory(scenario, agentResult, turns)
       // Complete run manifest
       const lastTurn = agentResult.turns[agentResult.turns.length - 1]
@@ -503,6 +504,7 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
     // the same `turns` array, so the unified timeline is preserved and the loop
     // offset (`plannerStartTurn`) is advanced past the replayed turns.
     let replayTurnsConsumed = 0
+    let replayMetrics: AgentResult['replay']
     if (this.config.replay?.enabled && this.replayPlan && scenario.startUrl) {
       const replayOutcome = await createReplayController().replay(this.replayPlan, {
         goal: scenario.goal,
@@ -515,6 +517,13 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
         onEvent: (event) => this.handleReplayEvent(runId, event),
       })
 
+      replayMetrics = {
+        attempted: true,
+        outcome: replayOutcome.kind,
+        completedSteps: replayOutcome.completedSteps,
+        totalSteps: replayOutcome.totalSteps,
+        llmCallsUsed: replayOutcome.llmCallsUsed,
+      }
       for (const turn of replayOutcome.turns) {
         turns.push(turn)
         this.onTurn?.(turn)
@@ -1704,6 +1713,7 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
           const sanitized = sanitizeRunScript(action.script);
           if (!sanitized.ok) {
             this.brain.injectFeedback(sanitized.error);
+            this.noteExtractionMiss(runState, i);
           } else if (page) {
             try {
               const scriptResult = await page.evaluate(sanitized.script);
@@ -1712,6 +1722,11 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
                 : JSON.stringify(scriptResult, null, 2);
               runState.firstSufficientEvidenceTurn ??= i;
               pushGoalVerificationEvidence(runState.goalVerificationEvidence, `SCRIPT RESULT:\n${stringified ?? '(undefined)'}`);
+              if (isMeaningfulRunScriptOutput(stringified)) {
+                runState.resetExtractionMisses();
+              } else {
+                this.noteExtractionMiss(runState, i);
+              }
               if (typeof stringified === 'string' && stringified.length > 10) {
                 runState.recordEvidence(`EXTRACTED (turn ${i}): ${stringified.slice(0, 500)}`);
               }
@@ -1723,6 +1738,7 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
               this.brain.injectFeedback(
                 `SCRIPT ERROR: ${msg}`
               );
+              this.noteExtractionMiss(runState, i);
             }
           } else {
             this.brain.injectFeedback(
@@ -1752,6 +1768,11 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
                 runState.goalVerificationEvidence,
                 `EXTRACT RESULT (${matches.length} matches):\n${formatted}`,
               );
+              if (matches.length > 0) {
+                runState.resetExtractionMisses();
+              } else {
+                this.noteExtractionMiss(runState, i);
+              }
               if (formatted.length > 10) {
                 runState.recordEvidence(`EXTRACTED (turn ${i}): ${formatted.slice(0, 500)}`);
               }
@@ -1763,6 +1784,7 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
               this.brain.injectFeedback(
                 `EXTRACT ERROR: ${msg}`,
               );
+              this.noteExtractionMiss(runState, i);
             }
           } else {
             this.brain.injectFeedback(
@@ -1872,11 +1894,21 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
               !selfContradicting;
 
             // Deterministic corroboration: the claimed JSON echoes SCRIPT
-            // RESULT values field-for-field — hallucination is impossible by
-            // construction, so skip the verifier LLM entirely (the wave-1
-            // over-conservatism case: correct JSON re-prompted 3x).
+            // RESULT values field-for-field, OR every quoted literal in the
+            // goal appears verbatim in the final observation/evidence —
+            // hallucination is impossible by construction, so skip the
+            // verifier LLM entirely (the wave-1 over-conservatism case:
+            // correct JSON re-prompted 3x).
             const corroborated = !selfContradicting
-              && evidenceCorroboratesResult(agentResult, runState.goalVerificationEvidence);
+              && (
+                evidenceCorroboratesResult(agentResult, runState.goalVerificationEvidence)
+                || goalLiteralsCorroborated(
+                  scenario.goal,
+                  state.snapshot,
+                  runState.goalVerificationEvidence,
+                  turns.map((t) => t.state.snapshot),
+                )
+              );
 
             let verificationPath: 'corroborated' | 'fast-path' | 'llm' | 'llm-slim';
             if (corroborated) {
@@ -2572,6 +2604,27 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
       turns,
       totalMs: Date.now() - startTime,
     });
+  }
+
+  /**
+   * Track an unproductive extraction attempt and, at the threshold, tell the
+   * model to stop digging. The counter deliberately does NOT reset when the
+   * model alternates between runScript and extractWithIndex — the wave-4
+   * 15-turn dashboard-extract loop was exactly that oscillation, and the
+   * error-based abort ladder reset on every strategy switch.
+   */
+  private noteExtractionMiss(runState: RunState, turn: number): void {
+    const misses = runState.recordExtractionMiss();
+    if (misses === 4) {
+      this.brain.injectFeedback(
+        `STOP DIGGING: ${misses} consecutive extraction attempts have failed (rejected scripts, script errors, or empty results, across any strategy). ` +
+        `Do NOT call runScript or extractWithIndex again. Review the data ALREADY in this conversation (page snapshots, earlier results) and either ` +
+        `complete now with your best available answer, try ONE page navigation if the data is on a different page, or abort with the specific blocker.`
+      );
+      if (this.config.debug) {
+        console.log(`[Runner] Extraction miss threshold hit at turn ${turn} — hard-stop feedback injected`);
+      }
+    }
   }
 
   private selectFollowUpActions(primaryAction: Action, nextActions?: Action[]): Action[] {

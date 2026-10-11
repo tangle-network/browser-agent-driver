@@ -195,12 +195,16 @@ export async function buildDriverConfig(values: CliValues): Promise<DriverConfig
     if (!values.quiet) cliLog('attach', `connected to ${info.browser ?? 'Chrome'}`)
   }
 
-  if (values.memory !== undefined || values['memory-dir']) {
+  if (values.memory !== undefined || values['memory-dir'] || process.env.BAD_MEMORY_DIR) {
     cliOverrides.memory = {
       ...(cliOverrides.memory ?? {}),
     };
     if (values.memory !== undefined) cliOverrides.memory.enabled = values.memory;
     if (values['memory-dir']) cliOverrides.memory.dir = values['memory-dir'];
+    // CI convention: BAD_MEMORY_DIR points the trajectory/replay cache at a
+    // CI-archivable path (e.g. a workspace artifact dir). Lower precedence
+    // than the explicit --memory-dir flag.
+    if (!values['memory-dir'] && process.env.BAD_MEMORY_DIR) cliOverrides.memory.dir = process.env.BAD_MEMORY_DIR;
   }
 
   // Resource blocking

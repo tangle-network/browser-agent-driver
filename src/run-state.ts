@@ -71,6 +71,22 @@ export class RunState {
     this.consecutiveErrors = 0;
   }
 
+  /** Consecutive unproductive extraction attempts (rejected/errored/empty
+   *  runScript or extractWithIndex). Unlike consecutiveErrors this does NOT
+   *  reset when the model alternates strategies — the wave-4 15-turn loop
+   *  was exactly that: script-error, extract-empty, script-error, … with
+   *  the abort ladder resetting each time. */
+  extractionMisses = 0;
+
+  recordExtractionMiss(): number {
+    this.extractionMisses++;
+    return this.extractionMisses;
+  }
+
+  resetExtractionMisses(): void {
+    this.extractionMisses = 0;
+  }
+
   recordTokens(tokens: number | undefined): void {
     if (typeof tokens === 'number' && Number.isFinite(tokens) && tokens > 0) {
       this.totalTokensUsed += tokens;
