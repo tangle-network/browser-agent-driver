@@ -1,5 +1,11 @@
 # @tangle-network/browser-agent-driver
 
+## 0.36.3
+
+### Patch Changes
+
+- [#162](https://github.com/tangle-network/browser-agent-driver/pull/162) [`c94fcdd`](https://github.com/tangle-network/browser-agent-driver/commit/c94fcdd58676bdc36290f2faec77153bd4af3de9) Thanks [@drewstone](https://github.com/drewstone)! - chore: repo slimming — removed superseded bench pipelines (bench/scenarios, bench/external, bench/webbench, tier-gate/local-reliability/research scripts), the April `.evolve/` program journal, stale `.claude/commands` runbooks, and the installable skills prompt packs (`skills:install`). Runtime skills data (`skills/macros`, `skills/domain`) is unchanged and now explicitly listed in the npm `files` array so it ships with the package. README rewritten with current (2026-10-11) benchmark numbers; new `examples/` directory. Everything removed remains in git history.
+
 ## 0.36.2
 
 ### Patch Changes
