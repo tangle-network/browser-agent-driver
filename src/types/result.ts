@@ -26,6 +26,16 @@ export interface AgentResult {
   };
   /** Goal achievement verification (if goalVerification is enabled) */
   goalVerification?: GoalVerification;
+  /** Replay staleness metrics: present whenever a replay attempt ran.
+   *  outcome 'completed' (+achieved) is a replay HIT; 'healed'/'unverified'
+   *  are fail-closed fallbacks to the live agent. */
+  replay?: {
+    attempted: boolean;
+    outcome?: 'completed' | 'healed' | 'unverified' | 'no-candidate';
+    completedSteps?: number;
+    totalSteps?: number;
+    llmCallsUsed?: number;
+  };
 }
 
 export interface GoalVerification {

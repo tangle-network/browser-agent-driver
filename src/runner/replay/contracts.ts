@@ -252,6 +252,13 @@ export interface ReplayController {
 /** Options for the strict replay-candidate lookup. */
 export interface ReplayMatchOptions {
   /**
+   * Route-normalized start path (minted IDs compare as ':id'). When
+   * supplied, only trajectories recorded for the same route shape are
+   * eligible; trajectories recorded before startPath existed stay eligible.
+   * The wiring supplies it from `scenario.startUrl`.
+   */
+  path?: string;
+  /**
    * Origin to scope the lookup to. When supplied, only trajectories whose
    * normalized origin matches exactly are eligible. The replay WIRING always
    * supplies it from the live run's start URL (`scenario.startUrl`), and the

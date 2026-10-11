@@ -261,6 +261,7 @@ export class TestRunner {
         if (replayOrigin) {
           const candidate = this.store.findReplayCandidate(testCase.goal, {
             origin: replayOrigin,
+            path: new URL(testCase.startUrl).pathname,
             ...(this.config.replay.minSimilarity !== undefined
               ? { minSimilarity: this.config.replay.minSimilarity }
               : {}),
@@ -450,7 +451,7 @@ export class TestRunner {
           agentResult.turns,
           verified && agentResult.success,
           this.config.model || 'unknown',
-          { origin: getOrigin(testCase.startUrl) },
+          { origin: getOrigin(testCase.startUrl), startPath: testCase.startUrl },
         );
       }
 

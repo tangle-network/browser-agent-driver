@@ -30,6 +30,9 @@ export interface Trajectory {
   goal: string;
   /** Normalized origin for environment scoping (e.g. https://app.example.com) */
   origin?: string;
+  /** Route-normalized start path (minted-ID segments replaced by ':id'),
+   *  recorded at save time so replay matching can require the same route. */
+  startPath?: string;
   /** Steps taken */
   steps: TrajectoryStep[];
   /** Whether this trajectory succeeded */

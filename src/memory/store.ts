@@ -25,10 +25,16 @@ export interface TrajectoryStoreOptions {
 
 export interface TrajectorySaveOptions {
   origin?: string;
+  /** Route-normalized start path (see normalizeRoutePath) — recorded on the
+   *  trajectory so replay matching can require the same route shape. */
+  startPath?: string;
 }
 
 export interface TrajectoryMatchOptions {
   origin?: string;
+  /** Route-normalized path to require on candidates (trajectories recorded
+   *  before startPath existed stay eligible). */
+  path?: string;
 }
 
 /** Actions excluded from recorded replay trajectories — read-only, produce
@@ -66,6 +72,7 @@ export class TrajectoryStore implements ReplayCandidateSource {
       id: `traj_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       goal,
       origin: normalizedOrigin,
+      ...(options.startPath ? { startPath: normalizeRoutePath(options.startPath) } : {}),
       steps: turns
         .filter((t) => t.action.action !== 'complete' && t.action.action !== 'abort')
         // Read-only steps (script/extract/evaluate/verify) are not workflow
@@ -185,6 +192,14 @@ export class TrajectoryStore implements ReplayCandidateSource {
       candidates = candidates.filter((t) => normalizeOrigin(t.origin) === requestedOrigin);
     }
 
+    // Route-normalized path gate (wave 5): minted-ID path segments compare
+    // as ':id', so /users/4821 and /users/7310 match but /users and /orders
+    // do not. Trajectories recorded before startPath existed stay eligible.
+    const requestedPath = options.path ? normalizeRoutePath(options.path) : undefined;
+    if (requestedPath) {
+      candidates = candidates.filter((t) => !t.startPath || t.startPath === requestedPath);
+    }
+
     let best: ReplayCandidate | null = null;
     for (const trajectory of candidates) {
       const similarity = goalSimilarity(goal, trajectory.goal);
@@ -234,6 +249,23 @@ export class TrajectoryStore implements ReplayCandidateSource {
 
     return lines.join('\n');
   }
+}
+
+/** Route-normalize a URL or path: minted-ID segments (all-digit runs and
+ *  long hex/UUID-ish segments) become ':id', trailing slash stripped.
+ *  /users/4821/edit and /users/7310/edit both normalize to /users/:id/edit. */
+export function normalizeRoutePath(urlOrPath: string): string {
+  let pathname = urlOrPath;
+  try {
+    pathname = new URL(urlOrPath).pathname;
+  } catch {
+    // already a path
+  }
+  const segments = pathname.split('/').map((seg) =>
+    /^\d+$/.test(seg) || /^[0-9a-f]{8,}(?:-[0-9a-f]{4,})+$/i.test(seg) ? ':id' : seg,
+  );
+  const joined = segments.join('/');
+  return joined.length > 1 ? joined.replace(/\/+$/, '') : joined;
 }
 
 function normalizeOrigin(origin?: string): string | undefined {

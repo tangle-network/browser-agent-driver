@@ -1902,7 +1902,12 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
             const corroborated = !selfContradicting
               && (
                 evidenceCorroboratesResult(agentResult, runState.goalVerificationEvidence)
-                || goalLiteralsCorroborated(scenario.goal, state.snapshot, runState.goalVerificationEvidence)
+                || goalLiteralsCorroborated(
+                  scenario.goal,
+                  state.snapshot,
+                  runState.goalVerificationEvidence,
+                  turns.map((t) => t.state.snapshot),
+                )
               );
 
             let verificationPath: 'corroborated' | 'fast-path' | 'llm' | 'llm-slim';

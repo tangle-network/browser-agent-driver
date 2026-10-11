@@ -21,6 +21,7 @@ function makeTrajectory(input: {
     id: input.id,
     goal: input.goal,
     origin: input.origin,
+    ...(('startPath' in input && input.startPath !== undefined) ? { startPath: (input as { startPath?: string }).startPath } : {}),
     success: true,
     durationMs: input.durationMs,
     model: 'gpt-5.2',
@@ -148,5 +149,68 @@ describe('TrajectoryStore.save — read-only steps excluded (wave 4)', () => {
     ], true, 'gemini-2.5-flash');
     const actions = saved.steps.map((s) => (s.action as { action: string }).action);
     expect(actions).toEqual(['click', 'wait']);
+  });
+});
+
+describe('normalizeRoutePath + path-gated replay matching (wave 5)', () => {
+  it('normalizes minted-ID segments to :id', async () => {
+    const { normalizeRoutePath } = await import('../src/memory/store.js');
+    expect(normalizeRoutePath('https://app.example.com/users/4821/edit')).toBe('/users/:id/edit');
+    expect(normalizeRoutePath('/users/7310/edit')).toBe('/users/:id/edit');
+    expect(normalizeRoutePath('/users/9f3c2a1b-1234-5678-9abc-def012345678')).toBe('/users/:id');
+    expect(normalizeRoutePath('/dashboard/')).toBe('/dashboard');
+    expect(normalizeRoutePath('/')).toBe('/');
+  });
+
+  it('findReplayCandidate gates on route-normalized path', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'abd-traj-path-'));
+    const now = new Date().toISOString();
+    writeTrajectory(tmpDir, makeTrajectory({
+      id: 't-users',
+      goal: 'export the user report',
+      origin: 'https://example.com',
+      durationMs: 1000,
+      timestamp: now,
+      verified: [true],
+      startPath: '/users/:id',
+    } as never));
+    writeTrajectory(tmpDir, makeTrajectory({
+      id: 't-orders',
+      goal: 'export the user report',
+      origin: 'https://example.com',
+      durationMs: 1000,
+      timestamp: now,
+      verified: [true],
+      startPath: '/orders/:id',
+    } as never));
+    const store = new TrajectoryStore(tmpDir);
+    const hit = store.findReplayCandidate('export the user report', {
+      origin: 'https://example.com',
+      path: '/users/4821',
+    });
+    expect(hit?.trajectory.id).toBe('t-users');
+    const miss = store.findReplayCandidate('export the user report', {
+      origin: 'https://example.com',
+      path: '/admin/panel',
+    });
+    expect(miss).toBeNull();
+  });
+
+  it('trajectories without startPath stay eligible (backward compat)', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'abd-traj-compat-'));
+    writeTrajectory(tmpDir, makeTrajectory({
+      id: 't-legacy',
+      goal: 'export the user report',
+      origin: 'https://example.com',
+      durationMs: 1000,
+      timestamp: new Date().toISOString(),
+      verified: [true],
+    } as never));
+    const store = new TrajectoryStore(tmpDir);
+    const hit = store.findReplayCandidate('export the user report', {
+      origin: 'https://example.com',
+      path: '/anything',
+    });
+    expect(hit?.trajectory.id).toBe('t-legacy');
   });
 });
