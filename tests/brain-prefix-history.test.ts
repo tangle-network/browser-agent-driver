@@ -11,6 +11,8 @@ import { describe, expect, it } from 'vitest'
 import type { ModelMessage } from 'ai'
 import { buildSystemPromptImpl, type BrainSystemPromptHost } from '../src/brain/system-prompt.js'
 import { SYSTEM_PROMPT } from '../src/brain/prompts.js'
+import { Brain } from '../src/brain/index.js'
+import type { PageState } from '../src/types/page.js'
 import {
   HISTORY_TAIL_MESSAGES,
   materializeHistoryPrefix,
@@ -105,3 +107,26 @@ describe('buildSystemPrompt turn stability (prefix cache: system message must be
   })
 })
 
+
+describe('run-frozen system prompt (wave 3)', () => {
+  function freshBrain(): Brain {
+    return new Brain({ provider: 'google', model: 'gemini-2.5-flash', apiKey: 'sk-test', vision: false })
+  }
+  const searchPage = { url: 'https://news.ycombinator.com/', title: 'HN', snapshot: '- searchbox "Search" [ref=s1]\n- link "x" [ref=l1]' } as PageState
+  const plainPage = { url: 'https://example.com/about', title: 'About', snapshot: '- link "y" [ref=l2]' } as PageState
+
+  it('is byte-identical across pages with different conditional rule groups', () => {
+    const brain = freshBrain()
+    const first = brain.buildSystemForDecide('goal', searchPage, 1, 'google')
+    const second = brain.buildSystemForDecide('goal', plainPage, 3, 'google')
+    expect(second).toBe(first)
+  })
+
+  it('reset() unfreezes so the next run recomputes', () => {
+    const brain = freshBrain()
+    const first = brain.buildSystemForDecide('goal', searchPage, 1, 'google')
+    brain.reset()
+    const second = brain.buildSystemForDecide('goal', plainPage, 1, 'google')
+    expect(second).not.toBe(first)
+  })
+})

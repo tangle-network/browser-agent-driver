@@ -22,6 +22,7 @@ import {
 import { generateWithSandboxBackend } from '../providers/sandbox-backend.js';
 import { loadOptionalModule } from '../optional-dependency.js';
 import { JSON_TEXT_OUTPUT, createForceNonStreamingFetch } from './provider-fetch.js';
+import { ensureGeminiCache, geminiCacheEnabled, isCacheableSystemText } from './gemini-cache.js';
 import type { UserContent } from './types.js';
 
 export type BrainProvider =
@@ -407,14 +408,45 @@ export async function generateImpl(
     ? system
     : systemForSandbox;
 
+  // Explicit Gemini context caching: cache the (byte-stable) system prompt
+  // once per run/rep set and reference it by name. When the cache carries
+  // the system instruction, the request must NOT repeat it (the API
+  // rejects doubled system instructions), so `system` is dropped and the
+  // cache name rides providerOptions. Any failure falls back to the plain
+  // uncached request.
+  let cachedContentName: string | undefined;
+  if (
+    providerName === 'google'
+    && typeof systemForRequest === 'string'
+    && geminiCacheEnabled()
+    && isCacheableSystemText(systemForRequest)
+  ) {
+    const apiKey = resolveProviderApiKey(providerName, self.explicitApiKey);
+    if (apiKey) {
+      cachedContentName = await ensureGeminiCache({
+        apiKey,
+        model: modelName,
+        systemText: systemForRequest,
+        debug: self.debug,
+      });
+    }
+  }
+
   const generationSettings = {
     model,
-    system: systemForRequest,
+    ...(cachedContentName ? {} : { system: systemForRequest }),
     messages,
     ...(providerName === 'cli-bridge' ? { output: JSON_TEXT_OUTPUT } : {}),
     ...generationOptionsImpl(self, maxOutputTokens, { provider: providerName, model: modelName }),
     abortSignal: AbortSignal.timeout(self.llmTimeoutMs),
   };
+  // Merge the cache reference into providerOptions.google without clobbering
+  // sibling options (e.g. thinkingConfig from generationOptionsImpl).
+  if (cachedContentName) {
+    const s = generationSettings as { providerOptions?: Record<string, Record<string, unknown>> };
+    s.providerOptions = s.providerOptions ?? {};
+    s.providerOptions.google = { ...(s.providerOptions.google ?? {}), cachedContent: cachedContentName };
+  }
   const result = providerName === 'cli-bridge'
     ? await (async () => {
         const streamed = streamText(generationSettings);

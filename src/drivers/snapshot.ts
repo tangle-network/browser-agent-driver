@@ -99,6 +99,26 @@ export class AriaSnapshotHelper {
     'paragraph', 'separator', 'presentation', 'figure', 'figcaption',
   ]);
 
+  /**
+   * Structural container roles that are dropped when they carry no
+   * accessible name — they exist only to nest other elements and are
+   * information-free for the decision (browser-use's serializer makes the
+   * same call with its containment/paint-order pruning). Named containers
+   * stay: their text is often the data the agent is extracting (scores,
+   * counts, row labels).
+   */
+  static readonly STRUCTURAL_ROLES = new Set([
+    'row', 'cell', 'rowgroup', 'table', 'list', 'group', 'generic',
+    'banner', 'navigation', 'main', 'region', 'form', 'article', 'section',
+    'complementary', 'contentinfo',
+    'LayoutTable', 'LayoutTableRow', 'LayoutTableCell',
+  ]);
+
+  /** Per-node name display cap (browser-use caps per-node text the same
+   *  way). Display-only — refMap keeps the full name so getByRole
+   *  resolution and ref-hash stability are unaffected. */
+  static readonly NAME_DISPLAY_CAP = 120;
+
   private refMap = new Map<string, RefEntry>();
   /** Track how many times each base hash has been seen (for duplicate disambiguation) */
   private hashCounts = new Map<string, number>();
@@ -223,10 +243,30 @@ export class AriaSnapshotHelper {
       const refId = selector.slice(1);
       const entry = this.refMap.get(refId);
       if (entry) {
-        const roleLocator = page.getByRole(entry.role as Parameters<Page['getByRole']>[0], {
+        // Chrome date/time controls are not getByRole-resolvable ('Date' is
+        // not a Playwright role; its shadow spinbuttons carry unresolvable
+        // doubled names). The input itself is labeled, so getByLabel finds
+        // it — and fill('YYYY-MM-DD') works natively on input[type=date].
+        if (entry.role === 'Date' || entry.role === 'time') {
+          return page.getByLabel(entry.name, { exact: entry.name.length > 0 }).first();
+        }
+        let roleLocator = page.getByRole(entry.role as Parameters<Page['getByRole']>[0], {
           name: entry.name,
           exact: entry.name.length > 0,
         });
+        // Chrome's a11y tree can report a concatenated accessible name
+        // (aria-label + labelledby), e.g. date-editor spinbuttons surface in
+        // the snapshot as 'Month Month' while the element's computed name is
+        // 'Month'. An exact getByRole on the doubled name matches nothing
+        // and every action on the ref times out (the wave-2 form-fill date
+        // loop). Lazily union the deduped exact name — no cost when the
+        // doubled name matches, a working locator when it doesn't.
+        const deduped = dedupeRepeatedName(entry.name);
+        if (deduped) {
+          roleLocator = roleLocator.or(
+            page.getByRole(entry.role as Parameters<Page['getByRole']>[0], { name: deduped, exact: true }),
+          );
+        }
         // Suffixed refs (e.g., t31b3_2) represent the Nth duplicate of a role+name combo.
         // Use nth() to target the correct instance instead of always picking first().
         const suffixMatch = refId.match(/_(\d+)$/);
@@ -268,6 +308,11 @@ export class AriaSnapshotHelper {
   private parseAriaSnapshot(raw: string): string {
     const lines = raw.split('\n');
     const result: string[] = [];
+    // When set, we're inside a Chrome date/time control group: the
+    // spinbutton/picker children are unactionable noise (their refs never
+    // resolve — the wave-2/3 form-fill date loop) and get dropped until the
+    // indent returns to the group's level.
+    let dateGroupIndent: string | null = null;
 
     for (const line of lines) {
       const match = line.match(/^(\s*-\s+)(\w+)(?:\s+"([^"]*)")?(.*)$/);
@@ -278,8 +323,38 @@ export class AriaSnapshotHelper {
 
       const [, indent, role, name, rest] = match;
 
+      // Drop children of a Date/time group (spinbuttons + picker button).
+      if (dateGroupIndent !== null) {
+        if (indent.length > dateGroupIndent.length) continue;
+        dateGroupIndent = null;
+      }
+
+      // Chrome's date/time control: expose it as ONE ref'd, fillable element
+      // and drop its shadow parts. getByRole cannot resolve 'Date' or its
+      // shadow spinbuttons (doubled-name artifacts like 'Month Month');
+      // resolveLocator special-cases this role to getByLabel, and filling
+      // the input with YYYY-MM-DD works natively.
+      if (role === 'Date' || role === 'time') {
+        const baseHash = stableHash(role, name || '');
+        const count = this.hashCounts.get(baseHash) || 0;
+        this.hashCounts.set(baseHash, count + 1);
+        const refId = count === 0 ? baseHash : `${baseHash}_${count}`;
+        this.refMap.set(refId, { role: 'Date', name: name || '' });
+        this.currElements.set(refId, { ref: refId, role: 'Date', name: name || '' });
+        result.push(`${indent}date "${name ?? ''}" [ref=${refId}] (date input — fill with YYYY-MM-DD)`);
+        dateGroupIndent = indent;
+        continue;
+      }
+
       // Skip decorative roles
       if (AriaSnapshotHelper.SKIP_ROLES.has(role)) {
+        continue;
+      }
+
+      // Drop nameless structural wrappers and decorative images: they nest
+      // or decorate other elements but carry no decision-relevant content.
+      const restIsEmpty = !rest.trim() || rest.trim() === ':';
+      if (!name && ((AriaSnapshotHelper.STRUCTURAL_ROLES.has(role) && restIsEmpty) || ((role === 'image' || role === 'img') && restIsEmpty))) {
         continue;
       }
 
@@ -304,12 +379,24 @@ export class AriaSnapshotHelper {
 
         const cleanRest = rest.replace(/:$/, '').trim();
         const colon = rest.trimEnd().endsWith(':') ? ':' : '';
-        const nameStr = name ? ` "${name}"` : '';
+        // Display cap keeps long titles/labels from dominating the token
+        // budget; the ref still resolves via the full name in refMap.
+        const displayName = name && name.length > AriaSnapshotHelper.NAME_DISPLAY_CAP
+          ? `${name.slice(0, AriaSnapshotHelper.NAME_DISPLAY_CAP - 1)}…`
+          : name;
+        const nameStr = displayName ? ` "${displayName}"` : '';
         const refStr = ` [ref=${refId}]`;
         const propsStr = cleanRest ? ` ${cleanRest}` : '';
         result.push(`${indent}${role}${nameStr}${refStr}${propsStr}${colon}`);
       } else {
-        result.push(line);
+        // Cap free-text lines the same way (they carry no ref, so capping
+        // the display text is the whole line).
+        if (name && name.length > AriaSnapshotHelper.NAME_DISPLAY_CAP) {
+          const displayName = `${name.slice(0, AriaSnapshotHelper.NAME_DISPLAY_CAP - 1)}…`;
+          result.push(line.replace(`"${name}"`, `"${displayName}"`));
+        } else {
+          result.push(line);
+        }
       }
     }
 
@@ -430,4 +517,15 @@ export async function dismissOverlays(page: Page): Promise<'clicked' | 'found' |
   }
   // result === false: no overlay, no action needed
   return result;
+}
+
+/**
+ * Detect a doubled accessible name ('Month Month', 'Show more Show more') —
+ * the a11y-tree artifact of aria-label + labelledby concatenation — and
+ * return the deduped form. Returns undefined for normal names.
+ */
+function dedupeRepeatedName(name: string): string | undefined {
+  if (!name) return undefined;
+  const match = name.match(/^(.+) \1$/);
+  return match ? match[1] : undefined;
 }

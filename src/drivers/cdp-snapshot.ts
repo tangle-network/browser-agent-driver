@@ -82,6 +82,20 @@ export async function buildCdpSnapshot(cdp: CDPSession): Promise<CdpSnapshotResu
     'paragraph', 'separator', 'presentation', 'figure', 'figcaption',
   ]);
 
+  // Nameless structural containers: skip the node line (nesting noise — the
+  // wave-3 serializer port), but recurse into children at the same depth.
+  // NAMED containers keep their line: the name is often the data being
+  // extracted (scores, counts, row labels).
+  const STRUCTURAL_ROLES = new Set([
+    'row', 'cell', 'rowgroup', 'table', 'list', 'group',
+    'banner', 'navigation', 'main', 'region', 'form', 'article', 'section',
+    'complementary', 'contentinfo',
+    'LayoutTable', 'LayoutTableRow', 'LayoutTableCell',
+  ]);
+
+  // Per-node display-name cap; refMap keeps the full name for resolution.
+  const NAME_DISPLAY_CAP = 120;
+
   function walk(nodeId: string, depth: number): void {
     const node = nodeMap.get(nodeId);
     if (!node) return;
@@ -112,6 +126,33 @@ export async function buildCdpSnapshot(cdp: CDPSession): Promise<CdpSnapshotResu
     const value = node.value?.value;
     const indent = '  '.repeat(depth);
 
+    // Chrome date/time control: expose ONE ref'd fillable element and drop
+    // the shadow-DOM subtree entirely (its spinbuttons carry unresolvable
+    // doubled names — the wave-2/3 form-fill date loop). resolveLocator
+    // special-cases role 'Date' to getByLabel; fill('YYYY-MM-DD') works
+    // natively on input[type=date].
+    if (role === 'Date' || role === 'time') {
+      const baseHash = stableHash(role, name);
+      const count = hashCounts.get(baseHash) || 0;
+      hashCounts.set(baseHash, count + 1);
+      const refId = count === 0 ? baseHash : `${baseHash}_${count}`;
+      refMap.set(refId, { role: 'Date', name, backendNodeId: node.backendDOMNodeId });
+      elements.set(refId, { ref: refId, role: 'Date', name, value });
+      lines.push(`${indent}- date "${name}" [ref=${refId}] (date input — fill with YYYY-MM-DD)`);
+      return; // no recursion — shadow parts dropped
+    }
+
+    // Nameless structural wrappers and decorative images: skip the line,
+    // keep the children at the same depth.
+    if (!name && (STRUCTURAL_ROLES.has(role) || role === 'image' || role === 'img')) {
+      if (node.childIds) {
+        for (const childId of node.childIds) {
+          walk(childId, depth);
+        }
+      }
+      return;
+    }
+
     // Determine if this element gets a ref
     const needsRef = INTERACTIVE_ROLES.has(role) || role === 'heading' || role === 'dialog' || role === 'alertdialog';
 
@@ -127,7 +168,8 @@ export async function buildCdpSnapshot(cdp: CDPSession): Promise<CdpSnapshotResu
       refStr = ` [ref=${refId}]`;
     }
 
-    const nameStr = name ? ` "${name}"` : '';
+    const displayName = name.length > NAME_DISPLAY_CAP ? `${name.slice(0, NAME_DISPLAY_CAP - 1)}…` : name;
+    const nameStr = displayName ? ` "${displayName}"` : '';
     const valueStr = value !== undefined ? ` [value="${value}"]` : '';
 
     // Check if node has visible children (not just StaticText/InlineTextBox)

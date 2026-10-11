@@ -244,3 +244,68 @@ describe('INTERACTIVE_ROLES export', () => {
     expect(INTERACTIVE_ROLES.has('text')).toBe(false);
   });
 });
+
+describe('buildCdpSnapshot — wave-3 Date control + structural pruning', () => {
+  function axNode(id: string, parentId: string | undefined, role: string, name: string, childIds?: string[], value?: string) {
+    return {
+      nodeId: id,
+      ...(parentId ? { parentId } : {}),
+      role: { type: 'role', value: role },
+      name: { type: 'computedString', value: name },
+      ...(childIds ? { childIds } : {}),
+      ...(value !== undefined ? { value: { type: 'computedString', value } } : {}),
+    };
+  }
+
+  it('rewrites a Chrome Date group to one fillable ref and drops shadow parts', async () => {
+    const cdp = mockCdpSession({
+      'Accessibility.getFullAXTree': {
+        nodes: [
+          axNode('1', undefined, 'WebArea', 'Form', ['2', '3']),
+          axNode('2', '1', 'Date', 'Date of Birth', ['2a', '2b', '2c', '2d']),
+          axNode('2a', '2', 'spinbutton', 'Month Month', undefined, '0'),
+          axNode('2b', '2', 'spinbutton', 'Day Day', undefined, '0'),
+          axNode('2c', '2', 'spinbutton', 'Year Year', undefined, '0'),
+          axNode('2d', '2', 'button', 'Show date picker'),
+          axNode('3', '1', 'button', 'Next'),
+        ],
+      },
+    });
+    const result = await buildCdpSnapshot(cdp);
+    expect(result.snapshot).toContain('date "Date of Birth" [ref=');
+    expect(result.snapshot).toContain('YYYY-MM-DD');
+    expect(result.snapshot).not.toContain('spinbutton');
+    expect(result.snapshot).not.toContain('Show date picker');
+    expect(result.snapshot).toContain('button "Next"');
+    // The ref resolves through the Date role for the getByLabel path.
+    const ref = [...result.refMap.entries()].find(([, v]) => v.role === 'Date');
+    expect(ref).toBeDefined();
+  });
+
+  it('drops nameless structural wrappers but keeps their children and named content', async () => {
+    const longName = 'A'.repeat(180);
+    const cdp = mockCdpSession({
+      'Accessibility.getFullAXTree': {
+        nodes: [
+          axNode('1', undefined, 'WebArea', 'HN', ['2']),
+          axNode('2', '1', 'table', '', ['3']),
+          axNode('3', '2', 'row', '', ['4', '5']),
+          axNode('4', '3', 'cell', '', ['6']),
+          axNode('6', '4', 'link', longName),
+          axNode('5', '3', 'cell', '247 points'),
+        ],
+      },
+    });
+    const result = await buildCdpSnapshot(cdp);
+    expect(result.snapshot).not.toContain('- row');
+    expect(result.snapshot).not.toContain('- table');
+    // The link survives with its name capped for display…
+    expect(result.snapshot).toContain('…');
+    expect(result.snapshot).not.toContain(longName);
+    // …while the refMap keeps the full name for getByRole resolution.
+    const linkRef = [...result.refMap.values()].find((v) => v.role === 'link');
+    expect(linkRef?.name).toBe(longName);
+    // Named content (the extraction payload) survives.
+    expect(result.snapshot).toContain('247 points');
+  });
+});

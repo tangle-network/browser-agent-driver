@@ -118,6 +118,7 @@ FORM RESET DETECTION: Some sites (especially SPAs) silently reset form fields af
 3. Instead, switch to keyboard-only interaction: click the field, type the value character by character, wait for autocomplete dropdown, press Enter to confirm. Then Tab to the next field.
 
 DATE PICKER STRATEGY: Calendar widgets often ignore programmatic fill/type. When a date field opens a calendar popup that blocks further input:
+0. PREFERRED: if the a11y tree shows the date as a single textbox, fill it directly with YYYY-MM-DD (e.g. fill {"@dob": "1990-04-15"}) — this always works and costs one turn. If the tree shows date-editor spinbuttons (Month/Day/Year), still prefer the textbox fill over typing individual spinbuttons.
 1. Try typing the date directly into the field in the site's format (e.g., "Jan 25, 2026" or "01/25/2026"). Press Escape first if the calendar covers the input.
 2. If typing doesn't stick, use runScript to find clickable date elements: document.querySelectorAll('[data-iso],[aria-label*="January"],[aria-label*="25"]') and click the matching element.
 3. NEVER spend more than 4 turns on a single date field.

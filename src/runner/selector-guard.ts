@@ -21,6 +21,11 @@
 import type { Action } from '../types.js';
 
 const DOCUMENTED_FALLBACK = /^(?:\[data-testid=|\[aria-label=|text=|role=)/;
+// The documented fallbacks must be the WHOLE selector. A combinator after
+// the prefix (e.g. `[data-testid="dob"] input`) is a guessed CSS selector
+// with a documented-looking head — prompt rule 15 bans it and the guard
+// must agree.
+const COMBINATOR_AFTER_PREFIX = /^(?:\[[^\]]+\]|role=\w+(?:\[[^\]]+\])?)\s/;
 const STRUCTURAL_ALLOWLIST = new Set(['body', 'html']);
 
 function selectorsOf(action: Action): string[] {
@@ -60,6 +65,13 @@ export function validateObservedSelector(
     if (!selector) continue;
     if (selector.startsWith('@')) continue;
     if (STRUCTURAL_ALLOWLIST.has(selector)) continue;
+    if (COMBINATOR_AFTER_PREFIX.test(selector)) {
+      return (
+        `SELECTOR REJECTED: "${selector}" is a combinator with a documented-looking prefix — prompt rule 15 ` +
+        `bans invented combinators. Use the bare [data-testid="..."] selector itself, an @ref from the ` +
+        `ELEMENTS list, or extractWithIndex to find the inner element by content.`
+      );
+    }
     if (DOCUMENTED_FALLBACK.test(selector)) continue;
     if (snapshot.includes(selector)) continue;
     if (priorEvidence.some((entry) => entry.includes(selector))) continue;

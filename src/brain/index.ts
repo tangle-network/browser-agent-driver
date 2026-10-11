@@ -62,6 +62,8 @@ export class Brain implements BrainModelHost, BrainSystemPromptHost, BrainEvalua
   history: ModelMessage[] = [];
   /** Append-only compaction ledger — see materializeHistoryPrefix. */
   historySummary = '';
+  /** Run-frozen system prompt parts — see composeSystemPromptPartsImpl. */
+  frozenSystemParts?: string[];
   maxHistoryTurns: number;
   private visionEnabled: boolean;
   visionStrategy: 'always' | 'never' | 'auto';
@@ -207,6 +209,7 @@ export class Brain implements BrainModelHost, BrainSystemPromptHost, BrainEvalua
   reset(): void {
     this.history = [];
     this.historySummary = '';
+    this.frozenSystemParts = undefined;
   }
 
   /**
