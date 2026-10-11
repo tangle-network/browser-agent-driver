@@ -7,7 +7,7 @@
  *      "action" FIRST so a truncated response still contains the action.
  */
 
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { Brain } from '../src/brain/index.js'
 import { CORE_RULES, REASONING_SUFFIX } from '../src/brain/prompts.js'
 
@@ -21,16 +21,29 @@ function googleBrain() {
 }
 
 describe('Google generation options (thinking budget)', () => {
-  it('zeroes thinkingBudget for gemini flash models', () => {
+  afterEach(() => {
+    delete process.env.BAD_GOOGLE_THINKING_BUDGET
+  })
+
+  it('omits thinkingConfig by default (API default — zeroing regressed bench cells)', () => {
     const brain = googleBrain()
     // generationOptions is private; reach in for the test (same pattern as
     // tests/brain-proxy.integration.test.ts).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const opts = (brain as any).generationOptions(2000, { provider: 'google', model: 'gemini-2.5-flash' })
+    expect(opts.providerOptions?.google?.thinkingConfig).toBeUndefined()
+  })
+
+  it('honors BAD_GOOGLE_THINKING_BUDGET=<n> for A/B isolation runs', () => {
+    process.env.BAD_GOOGLE_THINKING_BUDGET = '0'
+    const brain = googleBrain()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const opts = (brain as any).generationOptions(2000, { provider: 'google', model: 'gemini-2.5-flash' })
     expect(opts.providerOptions?.google?.thinkingConfig?.thinkingBudget).toBe(0)
   })
 
   it('does NOT set thinkingBudget for gemini pro models (API rejects 0)', () => {
+    process.env.BAD_GOOGLE_THINKING_BUDGET = '0'
     const brain = googleBrain()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const opts = (brain as any).generationOptions(2000, { provider: 'google', model: 'gemini-2.5-pro' })
