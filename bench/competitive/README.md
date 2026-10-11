@@ -1,6 +1,12 @@
 # Competitive Benchmark — bad vs the field
 
-**Status:** scaffold (Gen 6 cycle, 2026-04-08). Not yet executed live.
+**Status:** superseded as design doc by [docs/COMPETITIVE-EVAL.md](../../docs/COMPETITIVE-EVAL.md),
+which documents the shipped runner (`pnpm bench:compete`), the adapter
+contract, install instructions, and the first live head-to-head
+(bad v0.19.0 vs browser-use 0.12.6, 2026-04-08). Kept for history; the
+"how to run" sections below describe the pre-implementation plan.
+For the harness-agnostic pivot and adapter-seam rationale see
+[docs/rfc/driver-pluggable-pivot-2026-10.md](../../docs/rfc/driver-pluggable-pivot-2026-10.md).
 
 ## Goal
 
