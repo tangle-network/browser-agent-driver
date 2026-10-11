@@ -128,3 +128,25 @@ describe('TrajectoryStore scoring', () => {
     expect(match?.id).toBe('same-goal-right-origin');
   });
 });
+
+describe('TrajectoryStore.save — read-only steps excluded (wave 4)', () => {
+  it('drops runScript/extract/evaluate/verifyPreview steps, keeps workflow actions incl. wait', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'abd-traj-save-'));
+    const store = new TrajectoryStore(tmpDir);
+    const turn = (action: object, i: number) => ({
+      turn: i,
+      state: { url: 'https://example.com', title: 't', snapshot: 'snap' } as never,
+      action: action as never,
+      durationMs: 10,
+    });
+    const saved = store.save('goal', [
+      turn({ action: 'click', selector: '@b1' }, 1),
+      turn({ action: 'runScript', script: 'document.title' }, 2),
+      turn({ action: 'extractWithIndex', query: 'p' }, 3),
+      turn({ action: 'wait', ms: 500 }, 4),
+      turn({ action: 'complete', result: 'done' }, 5),
+    ], true, 'gemini-2.5-flash');
+    const actions = saved.steps.map((s) => (s.action as { action: string }).action);
+    expect(actions).toEqual(['click', 'wait']);
+  });
+});

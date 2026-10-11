@@ -73,10 +73,16 @@ Was the goal actually achieved? Analyze the ${skipPageState ? 'claimed result an
     : self.buildUserContent(textContent, state.screenshot, true);
 
   // Verifier can use its own model, then the navigation model, then main.
+  // BAD_SUBCALL_MODEL routes execution-shaped sub-calls (verification;
+  // decide is NEVER sub-routed) to a cheaper model — the Alumnium pattern.
+  // Default is the primary model; adoption requires a bench arm showing
+  // pass rate holds.
+  const subcallModel = process.env.BAD_SUBCALL_MODEL?.trim();
   const verifyProvider = self.verifierProvider
     ? self.verifierProvider as typeof self.provider
     : (self.adaptiveModelRouting && self.navModelName ? (self.navProvider || self.provider) : undefined);
-  const verifyModel = self.verifierModel
+  const verifyModel = subcallModel
+    || self.verifierModel
     || (self.adaptiveModelRouting && self.navModelName ? self.navModelName : undefined);
 
   const result = await self.generate(
@@ -86,8 +92,14 @@ Was the goal actually achieved? Analyze the ${skipPageState ? 'claimed result an
 Check: page state matches goal, no errors, URL is expected, claimed result matches visible data.
 SUPPLEMENTAL TOOL EVIDENCE / SCRIPT RESULT in claimed results = verified DOM data, trustworthy even if page navigated away. Multi-page data collection is valid.`,
     [{ role: 'user', content: userContent }],
-    verifyProvider && verifyModel ? { provider: verifyProvider, model: verifyModel } : undefined,
-    600,
+    subcallModel
+      ? { provider: self.provider as 'openai' | 'anthropic' | 'google' | 'cli-bridge', model: subcallModel }
+      : (verifyProvider && verifyModel ? { provider: verifyProvider, model: verifyModel } : undefined),
+    // Gemini thinking tokens count against maxOutputTokens — at 600 the
+    // verdict JSON starves and truncation fails the parse (conservative
+    // reject), which reprompts the agent and was silently breaking replay's
+    // single verification call. Match the decide cap for google.
+    self.provider === 'google' ? 4096 : 600,
   );
 
   const raw = result.text;

@@ -31,6 +31,13 @@ export interface TrajectoryMatchOptions {
   origin?: string;
 }
 
+/** Actions excluded from recorded replay trajectories — read-only, produce
+ *  no replayable state change (see save()). `wait` stays: it preserves the
+ *  timing semantics of slow workflows (e.g. export completion polling). */
+const READ_ONLY_REPLAY_EXCLUDED_ACTIONS = new Set([
+  'runScript', 'extractWithIndex', 'evaluate', 'verifyPreview',
+]);
+
 export class TrajectoryStore implements ReplayCandidateSource {
   private storePath: string;
   private cache: Trajectory[] | null = null;
@@ -61,6 +68,13 @@ export class TrajectoryStore implements ReplayCandidateSource {
       origin: normalizedOrigin,
       steps: turns
         .filter((t) => t.action.action !== 'complete' && t.action.action !== 'abort')
+        // Read-only steps (script/extract/evaluate/verify) are not workflow
+        // actions: replaying them produces no state change, so their
+        // recorded expectedEffect fails effect verification and heals the
+        // replay for nothing (spike evidence: step 4 "return the export
+        // status text" healed an otherwise perfect 3/3 replay). The replay's
+        // final goal verification already covers confirmation.
+        .filter((t) => !READ_ONLY_REPLAY_EXCLUDED_ACTIONS.has(t.action.action))
         .map((t) => ({
           url: t.state.url,
           action: t.action,

@@ -4,7 +4,7 @@
  * recording into run metrics.
  */
 
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import type { ModelMessage } from 'ai'
 import { evidenceCorroboratesResult } from '../src/runner/completion-policy.js'
 import { verifyGoalCompletionImpl, type BrainGoalVerificationHost } from '../src/brain/tasks/goal-verification.js'
@@ -89,5 +89,51 @@ describe('verifyGoalCompletionImpl', () => {
     const out = await verifyGoalCompletionImpl(host, STATE, 'goal', 'claim')
     expect(out.achieved).toBe(false)
     expect(out.inputTokens).toBe(1234)
+  })
+})
+
+describe('verifyGoalCompletionImpl output cap (wave 4)', () => {
+  it('uses a 4096 cap for google (thinking counts against maxOutputTokens)', async () => {
+    const host = fakeHost('{"achieved":true,"confidence":0.9,"evidence":[],"missing":[]}')
+    await verifyGoalCompletionImpl(host, STATE, 'goal', 'claim')
+    expect(host.calls[0].maxTokens).toBe(4096)
+  })
+
+  it('keeps the 600 cap for non-google providers', async () => {
+    const host = fakeHost('{"achieved":true,"confidence":0.9,"evidence":[],"missing":[]}')
+    host.provider = 'openai'
+    await verifyGoalCompletionImpl(host, STATE, 'goal', 'claim')
+    expect(host.calls[0].maxTokens).toBe(600)
+  })
+})
+
+describe('verifyGoalCompletionImpl sub-call routing (BAD_SUBCALL_MODEL)', () => {
+  afterEach(() => {
+    delete process.env.BAD_SUBCALL_MODEL
+  })
+
+  it('routes verification to the sub-call model when set', async () => {
+    process.env.BAD_SUBCALL_MODEL = 'gemini-2.5-flash-lite'
+    const host = fakeHost('{"achieved":true,"confidence":0.9,"evidence":[],"missing":[]}')
+    const selections: unknown[] = []
+    const origGenerate = host.generate
+    host.generate = async (system: unknown, messages: never[], selection: unknown, maxTokens?: number) => {
+      selections.push(selection)
+      return origGenerate(system, messages, selection as never, maxTokens)
+    }
+    await verifyGoalCompletionImpl(host, STATE, 'goal', 'claim')
+    expect(selections[0]).toEqual({ provider: 'google', model: 'gemini-2.5-flash-lite' })
+  })
+
+  it('uses the primary model by default (no selection override)', async () => {
+    const host = fakeHost('{"achieved":true,"confidence":0.9,"evidence":[],"missing":[]}')
+    const selections: unknown[] = []
+    const origGenerate = host.generate
+    host.generate = async (system: unknown, messages: never[], selection: unknown, maxTokens?: number) => {
+      selections.push(selection)
+      return origGenerate(system, messages, selection as never, maxTokens)
+    }
+    await verifyGoalCompletionImpl(host, STATE, 'goal', 'claim')
+    expect(selections[0]).toBeUndefined()
   })
 })
