@@ -199,9 +199,12 @@ ${visibleSnapshot}`;
     : self.buildSystemForDecide(goal, state, turnInfo?.current ?? 1, effectiveProvider)
 
   const modelOpts = { provider: effectiveProvider, model: effectiveModel };
-  // Bump output budget near max turns so data-heavy completions don't truncate
+  // Bump output budget near max turns so data-heavy completions don't truncate.
+  // Google gets a higher flat cap: Gemini 2.5 Flash consumes output tokens on
+  // hidden thinking before the JSON body, so the 600 cap truncated mid-response
+  // (the format-hint retry below reuses this same cap).
   const nearingEnd = turnInfo && turnInfo.current >= turnInfo.max - 3;
-  const maxTokens = useCompactFirstTurn ? 500 : nearingEnd ? 1200 : 600;
+  const maxTokens = useCompactFirstTurn ? 500 : effectiveProvider === 'google' ? 2000 : nearingEnd ? 1200 : 600;
   const result = await self.generate(dynamicSystemPrompt, messages, modelOpts, maxTokens);
 
   let raw = result.text;

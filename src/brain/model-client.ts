@@ -119,6 +119,21 @@ export function generationOptionsImpl(
           },
         }
       : {}),
+    // Gemini 2.5 Flash burns its output budget on hidden thinking tokens
+    // before emitting the JSON decide() asked for — with the default
+    // thinking budget, a 600-token cap truncated responses mid-object and
+    // forced format-hint retries. Zero the thinking budget on flash models
+    // (decide needs the action, not deliberation). Pro models reject
+    // thinkingBudget 0, so leave their default alone.
+    ...(providerName === 'google' && /flash/i.test(modelName)
+      ? {
+          providerOptions: {
+            google: {
+              thinkingConfig: { thinkingBudget: 0 },
+            },
+          },
+        }
+      : {}),
   };
 }
 
