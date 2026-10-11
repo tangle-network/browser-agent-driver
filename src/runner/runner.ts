@@ -82,7 +82,7 @@ import {
   EXTENSION_TURNS_GRANTED,
 } from './constants.js';
 import { DEFI_BRAIN_CONTEXT } from './prompt-snippets.js';
-import { hasPlaceholderPattern, isMeaningfulRunScriptOutput } from './completion-policy.js';
+import { hasPlaceholderPattern, isMeaningfulRunScriptOutput, synthesizeFinalTurnCompletion } from './completion-policy.js';
 import { selectMicroPlanFollowUps } from './micro-plan.js';
 import { decideMaxTurnsExtension } from './max-turns-extension.js';
 import type { ResolvedExtensions } from '../extensions/types.js';
@@ -1513,6 +1513,21 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
             ...(cacheReadInputTokens !== undefined ? { cacheReadInputTokens } : {}),
             durationMs: decideDurationMs,
           });
+        }
+
+        // Terminal-action guarantee: on the final turn, a non-terminal action
+        // with script evidence already on the ledger completes from that
+        // evidence instead of dying at max turns with the answer on the floor.
+        const finalTurnCompletion = synthesizeFinalTurnCompletion(
+          action,
+          runState.goalVerificationEvidence,
+          i >= maxTurns - 1,
+        );
+        if (finalTurnCompletion.synthesized) {
+          action = finalTurnCompletion.action;
+          if (this.config.debug) {
+            console.log(`[Runner] Final turn — auto-completing from script evidence instead of ${decision.action.action}`);
+          }
         }
 
         // -- 4a. Narrate to the cursor overlay. Fire-and-forget.

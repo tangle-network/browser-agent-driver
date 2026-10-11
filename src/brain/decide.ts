@@ -148,15 +148,14 @@ Title: ${state.title}
 ${elementsHeader}:
 ${visibleSnapshot}`;
 
+  const isFinalTurn = turnInfo ? turnInfo.max - turnInfo.current <= 1 : false;
   if (turnInfo) {
     const remaining = turnInfo.max - turnInfo.current;
     const budgetUsed = turnInfo.current / turnInfo.max;
     textContent += `\n\nTURN: ${turnInfo.current}/${turnInfo.max} (${remaining} remaining)`;
-    if (remaining === 1) {
-      textContent += ` — FINAL TURN: return a terminal action only (complete or abort)`;
-    } else if (remaining <= 3) {
+    if (!isFinalTurn && remaining <= 3) {
       textContent += ` — RUNNING LOW, avoid exploratory navigation; prioritize completing the goal or aborting with a clear blocker reason`;
-    } else if (budgetUsed >= 0.5) {
+    } else if (!isFinalTurn && budgetUsed >= 0.5) {
       textContent += ` — HALF BUDGET USED. If you have extracted useful data, try completing now. Do not navigate away from pages with relevant content without attempting completion first`;
     }
   }
@@ -170,7 +169,22 @@ ${visibleSnapshot}`;
     textContent += `\n\n${extraContext}`;
   }
 
-  textContent += '\n\nWhat action should you take?';
+  if (isFinalTurn) {
+    // Structural done-only turn (browser-use's _force_done_after_last_step
+    // pattern): replace the open-ended action request with a terminal-only
+    // schema so the model cannot legally answer with another navigation or
+    // extraction step. The runner's terminal-action guarantee independently
+    // auto-completes from script evidence if a non-terminal action slips
+    // through anyway.
+    textContent += `
+
+FINAL TURN — respond with ONLY a terminal action. No other action is valid:
+{"action": "complete", "result": "<everything the goal asked for, using data you ALREADY extracted — do NOT claim you need another step>"}
+{"action": "abort", "reason": "<the specific blocker>"}
+If any earlier turn produced data that answers the goal (SCRIPT RESULT, EXTRACT RESULT, visible page content), put it in the complete result NOW.`;
+  } else {
+    textContent += '\n\nWhat action should you take?';
+  }
 
   const userContent = self.buildUserContent(textContent, state.screenshot, options?.forceVision === true);
   const useNavModel = shouldUseNavigationModel(self, state, extraContext, turnInfo);
