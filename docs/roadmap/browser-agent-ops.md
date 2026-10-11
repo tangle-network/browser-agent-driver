@@ -12,7 +12,7 @@ This is the single planning document for:
 - immediate priorities
 
 Use [RELIABILITY.md](/Users/drew/webb/browser-agent-driver/RELIABILITY.md) for the day-to-day run loop.
-Use [competitor-analysis-2026-03.md](/Users/drew/webb/browser-agent-driver/docs/research/competitor-analysis-2026-03.md) for external reference points.
+For external reference points, see docs/sota-browser-agents-2026-10.md (the March 2026 competitor analysis was removed from the tree in the 2026-10 repo slimming; consult git history).
 Use [README.md](/Users/drew/webb/browser-agent-driver/README.md) for package/API/CLI surface only.
 
 ## Mission

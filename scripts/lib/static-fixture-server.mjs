@@ -1,6 +1,6 @@
 /**
  * Tiny static HTTP server for serving local fixture HTML to bench scenarios
- * that use `__FIXTURE_BASE_URL__/...` placeholders. Used by run-tier1-gate
+ * that use `__FIXTURE_BASE_URL__/...` placeholders. Used by run-competitive
  * and run-multi-rep so they share one implementation.
  *
  * Returns { baseUrl, close }. Listens on 127.0.0.1, ephemeral port.

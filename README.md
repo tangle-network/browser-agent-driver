@@ -2,72 +2,40 @@
 
 General-purpose agentic browser automation. Completes real user outcomes on any website — search, extract, fill forms, compare prices, navigate complex UIs.
 
-**91.3% on WebVoyager (590 tasks, 15 sites) at $0.09/task.** 100% on held-out competitive bench. 95.7% on WebbBench-50 (excl. DataDome sites). Default model: `gpt-5.4`.
-
 ## Table of Contents
 
 - [Install](#install)
 - [Quick Start](#quick-start)
 - [How It Works](#how-it-works)
 - [Features](#features)
-  - [Vision + DOM Hybrid](#vision--dom-hybrid)
-  - [Stealth & Anti-Bot](#stealth--anti-bot)
-  - [CAPTCHA Solving](#captcha-solving)
-  - [Parallel Tab Execution](#parallel-tab-execution)
-  - [Multi-Model Orchestration](#multi-model-orchestration)
-  - [Design Audit](#design-audit)
-  - [Wallet & DeFi Testing](#wallet--defi-testing)
 - [Configuration](#configuration)
 - [CLI Reference](#cli-reference)
 - [SDK / Library Usage](#sdk--library-usage)
-- [Test Suites](#test-suites)
-- [Drivers](#drivers)
+- [Examples](#examples)
 - [Benchmarks](#benchmarks)
+- [Drivers](#drivers)
 - [GitHub Action](#github-action)
+- [Session Viewer](#session-viewer)
+- [Agent Discovery](#agent-discovery)
 - [Development](#development)
+- [License](#license)
 
 ## Install
 
-### CLI (recommended)
-
 ```bash
+# CLI installer — installs the `bad` command, downloads Chromium, adds PATH (Node.js 20+)
 curl -fsSL https://raw.githubusercontent.com/tangle-network/browser-agent-driver/main/scripts/install.sh | sh
-```
 
-Installs the `bad` command, downloads Chromium, adds PATH. Requires Node.js 20+.
-
-Or via npm:
-
-```bash
+# or via npm
 npm install -g @tangle-network/browser-agent-driver
 npx playwright install chromium
-```
 
-Do not install the unscoped `bad` package from npm. It is unrelated to Tangle. The `bad` command is installed by `@tangle-network/browser-agent-driver`.
-
-## Agent Discovery
-
-Agents should read the product manifest before generating Browser Agent integration code:
-
-- Manifest: https://tangle.tools/.well-known/tangle-browser-agent.json
-- Product page: https://tangle.tools/services/browser-agent
-- Scoped npm package: `@tangle-network/browser-agent-driver`
-- CLI binary: `bad`
-
-Safe discovery commands:
-
-```bash
-bad --help
-bad run --help
-bad snapshot --help
-```
-
-### As a library
-
-```bash
+# as a library
 pnpm add @tangle-network/browser-agent-driver
 pnpm add -D playwright
 ```
+
+Do not install the unscoped `bad` package from npm. It is unrelated to Tangle. The `bad` command is installed by `@tangle-network/browser-agent-driver`.
 
 ## Quick Start
 
@@ -84,14 +52,6 @@ bad run --goal "Compare MacBook Air prices" --url https://apple.com \
 
 # Test suite from case file
 bad run --cases ./my-tests.json --concurrency 4
-
-# Authenticated session
-bad run --goal "Check account settings" --url https://app.example.com \
-  --storage-state .auth/session.json
-
-# With proxy (residential or SOCKS5)
-bad run --goal "Search hotels in Tokyo" --url https://booking.com \
-  --proxy http://user:pass@proxy.example.com:port
 ```
 
 ### SDK
@@ -107,7 +67,8 @@ const driver = new PlaywrightDriver(page)
 const agent = new BrowserAgent({
   driver,
   config: {
-    model: 'gpt-5.4',
+    model: 'gemini-2.5-flash',
+    provider: 'google',
     observationMode: 'hybrid',    // vision + DOM
     plannerEnabled: true,          // plan-then-execute
   },
@@ -121,44 +82,6 @@ const result = await agent.run({
 console.log(result.success, result.reason)
 await browser.close()
 ```
-
-### Config File
-
-Create `bad.config.ts` (or `.js`, `.mjs`) in your project root:
-
-```typescript
-import { defineConfig } from '@tangle-network/browser-agent-driver'
-
-export default defineConfig({
-  provider: 'openai',
-  model: 'gpt-5.4',
-  observationMode: 'hybrid',
-  plannerEnabled: true,
-  headless: true,
-  concurrency: 4,
-  maxTurns: 30,
-  outputDir: './test-results',
-
-  // Per-role model routing (Gen 28)
-  models: {
-    planner:    { model: 'claude-opus-4-6', provider: 'anthropic' },
-    executor:   { model: 'gpt-4.1-mini' },
-    verifier:   { model: 'gpt-4.1-mini' },
-    supervisor: { model: 'gpt-5.4' },
-  },
-
-  // Parallel tabs for compound goals (Gen 21)
-  parallelTabs: { enabled: true, maxTabs: 3 },
-
-  // Proxy for anti-bot bypass
-  proxy: 'http://user:pass@proxy:port',  // or set BAD_PROXY_URL env
-
-  // Supervisor for stuck detection
-  supervisor: { enabled: true, useVision: true },
-})
-```
-
-Auto-detected by CLI and SDK. CLI flags override config values.
 
 ## How It Works
 
@@ -178,90 +101,27 @@ Recovery is automatic: cookie consent, modal blockers, A-B-A-B oscillation loops
 
 ## Features
 
-### Vision + DOM Hybrid
-
-The agent sees BOTH a screenshot and the accessibility tree. Screenshots show visual layout, SoM labels mark interactive elements with numbered badges, and the a11y tree provides precise `@ref` IDs for targeting.
-
-Three observation modes:
-- **`dom`** — a11y tree only (fastest, cheapest)
-- **`vision`** — screenshot + coordinates only
-- **`hybrid`** — both (default for benchmarks, most reliable)
-
-### Stealth & Anti-Bot
-
-Built-in evasion for Cloudflare, Akamai, and most WAF systems:
-
-- **System Chrome** (`channel: 'chrome'`) — real TLS/JA3/HTTP2 fingerprint, not bundled Chromium
-- **Patchright** — Playwright fork that patches CDP protocol leaks
-- **Mouse humanization** — Bezier curve movement (8-15 points), gaussian click offset
-- **Browser fingerprint** — navigator.webdriver, plugins, languages, WebGL, canvas noise, screenX/Y fix
-- **GPU rendering** — `--use-gl=desktop` for real WebGL fingerprint
-- **Resource blocking** — 99+ analytics/tracking domains blocked
-
-Unblocks 9/13 previously-blocked sites on WebbBench-50 with zero configuration.
-
-### CAPTCHA Solving
-
-Automatic CAPTCHA detection and solving during runs:
-
-- **reCAPTCHA v2** — checkbox click + image grid solver (LLM vision-based)
-- **Cloudflare Turnstile** — checkbox behavioral click
-- **Google "unusual traffic"** — detected and solver attempted
-
-```typescript
-// Enabled by default. To configure:
-{ captcha: { enabled: true, maxAttempts: 5 } }
-```
-
-### Parallel Tab Execution
-
-For compound goals ("compare X vs Y", "find 5 items matching criteria"), the agent decomposes the goal and runs sub-tasks in parallel browser tabs.
-
-```typescript
-{
-  parallelTabs: { enabled: true, maxTabs: 3 },
-}
-```
-
-The GoalDecomposer (1 cheap LLM call) classifies goals as simple or compound. Simple goals run as before. Compound goals get split into sub-goals, each running in its own tab via `Promise.all`, with results merged by the EvidenceMerger.
-
-### Multi-Model Orchestration
-
-Different agent roles can use different models for optimal cost/quality:
-
-```typescript
-{
-  models: {
-    planner:    { model: 'claude-opus-4-6', provider: 'anthropic' },  // best reasoning
-    executor:   { model: 'gpt-4.1-mini' },                            // cheap, follows plans
-    verifier:   { model: 'gpt-4.1-mini' },                            // structured yes/no
-    supervisor: { model: 'gpt-5.4' },                                 // strategic recovery
-  },
-}
-```
-
-Each role falls back to the main `model` when not configured. The planner needs top-tier reasoning; the executor just follows instructions.
+- **Vision + DOM Hybrid** — the agent sees both a screenshot (SoM-labeled interactive elements) and the a11y tree (precise `@ref` IDs). Observation modes: `dom` (fastest), `vision`, `hybrid` (most reliable).
+- **Stealth & Anti-Bot** — system Chrome (`channel: 'chrome'`, real TLS/JA3 fingerprint), Patchright (CDP leak patches), Bezier mouse humanization, fingerprint hardening (webdriver, WebGL, canvas noise, screenX/Y), 99+ analytics domains blocked. Unblocks most Cloudflare/Akamai WAF setups with zero configuration.
+- **CAPTCHA Solving** — reCAPTCHA v2 (checkbox + vision-based grid solver), Cloudflare Turnstile, Google "unusual traffic". On by default: `{ captcha: { enabled: true, maxAttempts: 5 } }`.
+- **Parallel Tab Execution** — compound goals ("compare X vs Y") are split by the GoalDecomposer (1 cheap LLM call) into sub-goals running in parallel tabs, merged by the EvidenceMerger: `{ parallelTabs: { enabled: true, maxTabs: 3 } }`.
+- **Multi-Model Orchestration** — per-role model routing (`planner` / `executor` / `verifier` / `supervisor`) across `openai`, `anthropic`, `google`, `claude-code`, `codex-cli`, `zai-coding-plan`, `cli-bridge`, `sandbox-backend`. Roles fall back to the main `model` when not configured.
 
 ### Design Audit
 
 Vision-powered design quality analysis with closed-loop improvement:
 
 ```bash
-# Audit any URL
-bad design-audit --url https://your-app.com
-
-# Multi-page crawl with cross-page systemic detection
-bad design-audit --url https://your-app.com --pages 10
-
-# Auto-fix: dispatch findings to a coding agent
-bad design-audit --url http://localhost:3000 --evolve claude-code --project-dir ~/my-app
+bad design-audit --url https://your-app.com                  # audit any URL
+bad design-audit --url https://your-app.com --pages 10       # multi-page crawl, systemic detection
+bad design-audit --url http://localhost:3000 --evolve claude-code --project-dir ~/my-app  # auto-fix
 ```
 
-Reports rank **Top Fixes by ROI** — the highest-leverage changes scored by `(impact * blast / effort)`. Multi-page systemic findings collapse automatically.
+Reports rank **Top Fixes by ROI** — the highest-leverage changes scored by `(impact * blast / effort)`.
 
-### Wallet & DeFi Testing
+### Wallet & DeFi Testing (specialized niche)
 
-Built-in MetaMask integration for DeFi app testing:
+A built-in MetaMask workflow for teams testing DeFi apps — a deliberate specialization, not the general-purpose path:
 
 ```bash
 pnpm wallet:setup      # download MetaMask
@@ -270,26 +130,40 @@ pnpm wallet:anvil      # start Anvil mainnet fork (100 ETH + 10 WETH + 10k USDC)
 pnpm wallet:validate   # run wallet test suite
 ```
 
-Supports connect, swap, supply workflows across Uniswap, Aave, SushiSwap, 1inch.
+Supports connect, swap, supply workflows across Uniswap, Aave, SushiSwap, 1inch. See [the wallet guide](./docs/guides/wallet.md).
 
 ## Configuration
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `provider` | string | `'openai'` | LLM provider |
-| `model` | string | `'gpt-5.4'` | LLM model |
-| `observationMode` | string | `'dom'` | `'dom'`, `'vision'`, or `'hybrid'` |
-| `plannerEnabled` | boolean | `false` | Plan-then-execute mode |
-| `headless` | boolean | `true` | Run browser headless |
-| `maxTurns` | number | `30` | Max turns per task |
-| `proxy` | string | — | Proxy URL (also `BAD_PROXY_URL` env) |
-| `models` | object | — | Per-role model overrides |
-| `parallelTabs` | object | — | `{ enabled, maxTabs }` |
-| `supervisor` | object | — | `{ enabled, useVision, model }` |
-| `captcha` | object | — | `{ enabled, maxAttempts }` |
-| `goalVerification` | boolean | `true` | Verify goal before accepting |
-| `vision` | boolean | `true` | Send screenshots to LLM |
-| `concurrency` | number | `1` | Parallel test cases |
+Create `bad.config.ts` (or `.js`, `.mjs`) in your project root:
+
+```typescript
+import { defineConfig } from '@tangle-network/browser-agent-driver'
+
+export default defineConfig({
+  model: 'gemini-2.5-flash',
+  provider: 'google',
+  observationMode: 'hybrid',
+  plannerEnabled: true,
+  headless: true,
+  concurrency: 4,
+  maxTurns: 30,
+  outputDir: './test-results',
+})
+```
+
+Auto-detected by CLI and SDK. CLI flags override config values.
+
+The **default provider is credential-aware**: with no explicit `provider`, `bad` uses OpenAI when `OPENAI_API_KEY` is set and otherwise falls back to the keyless `claude-code` provider. The bench-validated default model is `gemini-2.5-flash` (Google) — see [Benchmarks](#benchmarks). Key options:
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `provider` | credential-aware | `openai` if `OPENAI_API_KEY` set, else `claude-code` |
+| `model` | per-provider | LLM model (`gemini-2.5-flash` is the bench-validated choice) |
+| `observationMode` | `'dom'` | `'dom'`, `'vision'`, or `'hybrid'` |
+| `plannerEnabled` | `false` | Plan-then-execute mode |
+| `maxTurns` | `30` | Max turns per task |
+| `proxy` | — | Proxy URL (also `BAD_PROXY_URL` env) |
+| `models` | — | Per-role model overrides |
 
 See [Configuration Reference](./docs/guides/configuration.md) for all options.
 
@@ -303,134 +177,39 @@ bad view <run-dir>             # Open session viewer
 bad competitive [options]      # Head-to-head framework comparison
 ```
 
-### `bad snapshot`
-
-Deterministic, no-LLM DOM dump. Loads a URL, dismisses consent dialogs, waits for
-the chosen network state, emits the accessibility-tree snapshot. Intended for CI
-and downstream quality pipelines where the agentic loop is overkill.
-
-```bash
-bad snapshot --url https://example.com --json --out snap.json
-bad snapshot --url http://localhost:3000 --wait domcontentloaded
-```
-
-| Flag | Description |
-|------|-------------|
-| `--url URL` | URL to snapshot (required) |
-| `--json` | Emit structured JSON instead of human-readable text |
-| `--out FILE` | Write to file instead of stdout |
-| `--wait load\|domcontentloaded\|networkidle\|commit` | Playwright waitUntil. Default `networkidle` |
-| `--timeout MS` | Per-action timeout. Default `15000` |
-| `--no-dismiss-modals` | Skip consent/cookie dialog dismissal |
-| `--headed` | Show the browser window (default headless) |
-
-JSON shape: `{ schemaVersion, url, finalUrl, title, snapshot, timing, dismissed, errors }`.
-Exits non-zero on navigation failure or aria-snapshot error.
-
-### Report schema
-
-`<sink>/report.json` carries a top-level `schemaVersion` field. The current
-version is `"1"`. Consumers should verify this before destructuring. Adding an
-optional field is non-breaking; the version bumps only on removed fields,
-renamed fields, or changed value semantics.
-
-### Run options
-
-| Flag | Description |
-|------|-------------|
-| `--goal "..."` | Natural language goal |
-| `--url URL` | Starting URL |
-| `--cases file.json` | Test case file |
-| `--mode fast-explore\|full-evidence` | Run mode |
-| `--model MODEL` | LLM model |
-| `--provider openai\|anthropic\|google` | LLM provider |
-| `--observation-mode dom\|vision\|hybrid` | Observation mode |
-| `--headless` | Run headless (default) |
-| `--proxy URL` | Residential/SOCKS5/HTTP proxy |
-| `--profile default\|stealth\|benchmark-webvoyager` | Launch profile |
-| `--concurrency N` | Parallel cases |
-| `--show-cursor` | Animated cursor overlay in screenshots |
-| `--live` | Real-time SSE viewer |
+Full flag reference (run modes, execution profiles, auth sessions, adaptive model routing): [docs/guides/cli.md](./docs/guides/cli.md).
 
 ## SDK / Library Usage
 
 ```typescript
 import {
-  // Core
   BrowserAgent,
   PlaywrightDriver,
   SteelDriver,
   TestRunner,
-
-  // Config
+  MultiActorSession,
   defineConfig,
-
-  // Types
+  DesignAuditor,
+  detectCaptcha,
+  solveCaptcha,
   type AgentConfig,
   type Scenario,
   type AgentResult,
-  type Turn,
-
-  // Multi-actor (parallel users)
-  MultiActorSession,
-
-  // Design audit
-  runDesignAudit,
-
-  // CAPTCHA
-  detectCaptcha,
-  solveCaptcha,
 } from '@tangle-network/browser-agent-driver'
 ```
 
-### Multi-Actor Sessions
+## Examples
 
-```typescript
-import { MultiActorSession } from '@tangle-network/browser-agent-driver'
+Runnable recipes live in [`examples/`](./examples/README.md): SDK quickstart, authoring a bench task, replay-cache CI, the GitHub Action, and shareable run videos.
 
-const session = await MultiActorSession.create(browser, {
-  actors: {
-    admin:   { storageState: '.auth/admin.json' },
-    user:    {},
-  },
-  agentConfig: { model: 'gpt-5.4', observationMode: 'hybrid' },
-})
+## Benchmarks
 
-// Sequential
-await session.actor('admin').run({ goal: 'Create project', startUrl: '/admin' })
+Current bench (2026-10-11, gemini-2.5-flash, headless, external oracle, 5-task competitive corpus × 3 reps + n=5 variance arm): **15/15 main + 10/10 arm, $0.0223/run, 17.9s wall, 30% replay-cache hit rate.** browser-use on the same corpus: 12/15 @ $0.0126/run. Cost ratio 1.8×, accepted asymptote 1.3–1.6× (1.0× would sacrifice extraction accuracy and the replay moat). Replay-cache reruns cost ~10–20% of a live run with zero decide calls. Full methodology: [docs/bench-2026-10-11-hillclimb-program.md](./docs/bench-2026-10-11-hillclimb-program.md); competitive evaluation: [docs/COMPETITIVE-EVAL.md](./docs/COMPETITIVE-EVAL.md).
 
-// Parallel
-await session.parallel(
-  ['admin', { goal: 'Monitor dashboard', startUrl: '/admin' }],
-  ['user',  { goal: 'Submit form', startUrl: '/app' }],
-)
+Run it:
 
-await session.close()
-```
-
-## Test Suites
-
-```typescript
-import { TestRunner } from '@tangle-network/browser-agent-driver'
-
-const runner = new TestRunner({
-  driver,
-  config: { model: 'gpt-5.4', observationMode: 'hybrid' },
-  concurrency: 4,
-})
-
-const results = await runner.runSuite([
-  {
-    id: 'login',
-    goal: 'Log in with test@example.com / password123',
-    startUrl: 'https://app.example.com/login',
-  },
-  {
-    id: 'create-project',
-    goal: 'Create a new project called "Test Project"',
-    startUrl: 'https://app.example.com/projects',
-  },
-])
+```bash
+pnpm bench:compete
 ```
 
 ## Drivers
@@ -451,40 +230,6 @@ const driver = await SteelDriver.create({
 const agent = new BrowserAgent({ driver, config })
 ```
 
-## Benchmarks
-
-| Benchmark | Score | Cost | Notes |
-|-----------|-------|------|-------|
-| **WebVoyager** (590 tasks, 15 sites) | 91.3% | $0.09/task | Full run, Gen 25 |
-| **Competitive** (10 real-web sites) | 100% | $0.03/task | Held-out, never optimized |
-| **WebbBench-50** (50 diverse sites) | 88% raw, 95.7% excl. DataDome | — | Held-out generalization |
-
-### Competitive position
-
-| Agent | WebVoyager | Cost/task |
-|-------|-----------|-----------|
-| Surfer-2 | 97.1% | $1-5 |
-| Magnitude | 93.9% | ~$0.10 |
-| **bad** | **91.3%** | **$0.09** |
-| OpenAI Operator | 87% | ChatGPT Pro |
-
-### Running benchmarks
-
-```bash
-# WebVoyager full 590
-node scripts/run-scenario-track.mjs \
-  --cases bench/external/webvoyager/cases.json \
-  --config bench/scenarios/configs/vision-hybrid.mjs \
-  --model gpt-5.4 --modes fast-explore --concurrency 5 \
-  --out agent-results/webvoyager-full
-
-# Multi-rep validation (≥3 reps required for any claim)
-node scripts/run-multi-rep.mjs \
-  --cases bench/scenarios/cases/my-cases.json \
-  --config bench/scenarios/configs/vision-hybrid.mjs \
-  --reps 3 --out agent-results/my-validation
-```
-
 ## GitHub Action
 
 ```yaml
@@ -494,10 +239,9 @@ node scripts/run-multi-rep.mjs \
     pages: 5
     fail-on-score-below: '6.5'
     evolve: claude-code
-    openai-api-key: ${{ secrets.OPENAI_API_KEY }}
 ```
 
-Posts Top Fixes as a PR comment, uploads full report as artifact, optionally fails on score regressions.
+Posts Top Fixes as a PR comment, uploads the full report as an artifact, optionally fails on score regressions.
 
 ## Session Viewer
 
@@ -505,53 +249,22 @@ Posts Top Fixes as a PR comment, uploads full report as artifact, optionally fai
 bad view audit-results/stripe.com-1775502457141
 ```
 
-Web UI with per-turn screenshots, action JSON, reasoning, element highlights. Pair with `--show-cursor` for animated cursor recordings.
+Web UI with per-turn screenshots, action JSON, reasoning, element highlights. A run's `report.json` is also a complete trace that renders into a shareable video via [`run-capsule`](https://github.com/tangle-network/run-capsule) — see [examples/run-capsule.md](./examples/run-capsule.md).
 
-### Shareable run videos
+## Agent Discovery
 
-A run's `report.json` is a complete trace — per-turn screenshot, action, and reasoning — so it renders directly into a shareable video via [`run-capsule`](https://github.com/tangle-network/run-capsule), no extra capture step:
-
-```bash
-npx run-capsule --playwright agent-results/report.json --no-upload
-# → screen.mp4  (real product frames, each captioned with the agent's 💭 reasoning + action + URL)
-# → replay.mp4  (the unified storyboard)
-```
-
-For the **animated cursor**, run with `--show-cursor` (bakes the cursor + reasoning overlay into the run's own `recording.webm`) and hand that recording to `run-capsule` as the screen capsule — it's reused as-is rather than rebuilt, so the real cursor motion survives, with the reasoning storyboard rendered from the trace alongside:
-
-```bash
-bad run --goal "…" --url https://… --show-cursor
-npx run-capsule --playwright agent-results/report.json \
-  --video agent-results/cli-task/recording.webm --no-upload
-# → screen.mp4  (the real run recording — animated cursor + overlay)
-# → replay.mp4  (reasoning storyboard from the trace)
-```
-
-Needs a `run-capsule` whose Playwright adapter understands this driver's suite-shaped `report.json` ([tangle-network/run-capsule#4](https://github.com/tangle-network/run-capsule/pull/4); earlier versions read a bare `TestResult` and render an empty capsule for a suite) and, for `--video`, the recording-ingest path ([#5](https://github.com/tangle-network/run-capsule/pull/5)). Without `--video`, the `screen` capsule replays the per-turn screenshots — real frames only when the run captured them (vision is on by default unless you pass `--no-vision` or a vision-off benchmark profile, which blocks images for speed). Drop `--no-upload` for a temporary public link.
-
-## Guides
-
-- [Configuration Reference](./docs/guides/configuration.md)
-- [CLI Reference](./docs/guides/cli.md)
-- [Design Audit](./docs/guides/design-audit.md)
-- [Memory System](./docs/guides/memory.md)
-- [Benchmarks & Experiments](./docs/guides/benchmarks.md)
-- [Wallet & EVM Apps](./docs/guides/wallet.md)
-- [Providers](./docs/guides/providers.md)
-- [Custom Drivers](./docs/guides/custom-drivers.md)
+Agents integrating Browser Agent should start from the live manifest at https://browser.tangle.tools/llms.txt. The same discovery manifest (`llms.txt` + `tangle-agent.json`) ships in the npm package under `discovery/`.
 
 ## Development
 
 ```bash
 pnpm build              # TypeScript → dist/
-pnpm test               # 993 tests
+pnpm test               # vitest suite (~2,000 assertions across 174 files)
 pnpm lint               # type-check
 pnpm check:boundaries   # architecture boundaries
 ```
 
-## Publishing
-
-Automated via [Changesets](https://github.com/changesets/changesets) + OIDC trusted publishing. Add a changeset with `pnpm changeset`, merge the auto-generated release PR, and npm publish fires automatically with provenance attestation.
+Publishing is automated via [Changesets](https://github.com/changesets/changesets) + OIDC trusted publishing: add a changeset with `pnpm changeset`, merge the release PR, npm publish fires with provenance attestation.
 
 ## License
 

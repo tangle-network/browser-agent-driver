@@ -1,0 +1,22 @@
+# Design-audit GitHub Action on a deploy preview
+# Posts Top Fixes as a PR comment, uploads the full report as an artifact,
+# and optionally fails on score regressions. Action source:
+# https://github.com/tangle-network/browser-agent-driver/tree/main/.github/actions/design-audit
+
+name: design-audit
+on:
+  pull_request:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      # ... deploy your preview (Vercel/Netlify/etc.) and expose the URL ...
+      - uses: tangle-network/browser-agent-driver/.github/actions/design-audit@main
+        with:
+          url: ${{ steps.deploy.outputs.preview_url }}
+          pages: 5
+          fail-on-score-below: '6.5'
+          evolve: claude-code
+          # Optional: fail when any critical finding is present
+          # fail-on-critical: 'true'

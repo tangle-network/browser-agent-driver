@@ -27,17 +27,15 @@ Command:
 5. Promote fix only if pass rate is non-regressive and artifacts are complete.
 
 Local presets for faster iteration:
-- `npm run bench:local:smoke`
-- `npm run bench:local:tier1`
-- `npm run bench:local:tier2`
-- `npm run bench:local:nightly`
+- `pnpm bench:compete` — competitive corpus, fixture + real-web tasks
+- `pnpm bench:validate -- --cases <cases.json> --reps 3 --out agent-results/<label>` — multi-rep validation
 
 Tier2 local auth loop:
 - `pnpm auth:save-state`
 - `pnpm auth:check-state ./.auth/ai-tangle-tools.json ai.tangle.tools`
-- `pnpm bench:local:tier2`
+- `bad run --cases <cases.json> --storage-state ./.auth/ai-tangle-tools.json`
 
-Local runs append snapshots to `./agent-results/local-history.jsonl` so you can compare current reliability to the previous run without manual diffing.
+Local runs append snapshots to `./agent-results/`; compare against the previous run's artifacts rather than manual diffing.
 
 ## Experiment Rules
 
@@ -51,12 +49,10 @@ Local runs append snapshots to `./agent-results/local-history.jsonl` so you can 
 
 ## Non-Negotiables
 
-- No merge that reduces Tier 1 pass rate.
-- No merge that reduces Tier 2 pass rate without explicit rollback plan.
+- No merge that reduces deterministic-fixture pass rate.
+- No merge that reduces authenticated-flow pass rate without explicit rollback plan.
 - Every run must emit manifest + report + recording artifact.
-- Tier1 deterministic gate must pass on pull requests before merge.
-- Tier1 gate checks artifact completeness (report + manifest + recording), not pass rate alone.
-- Tier2 staging gate must pass on pull requests before merge when staging secrets are available.
+- `pnpm signoff --source head` must pass on the exact commit before merge (see docs/SIGNOFF.md).
 - Every failed gate run should preserve runtime diagnostics (console, network failures, trace on failure).
 
 ## Rollback

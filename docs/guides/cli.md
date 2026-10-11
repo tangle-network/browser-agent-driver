@@ -13,7 +13,7 @@ bad run --cases ./cases.json
 bad run --config ./ci.config.ts --cases ./cases.json
 
 # override model/concurrency
-bad run --cases ./cases.json --model gpt-5.4 --concurrency 4
+bad run --cases ./cases.json --model gemini-2.5-flash --provider google --concurrency 4
 ```
 
 ## Authenticated Sessions
@@ -67,9 +67,9 @@ Route verification to a cheaper model:
 
 ```bash
 bad run \
-  --model gpt-5.4 \
+  --model claude-sonnet-4-6 --provider anthropic \
   --model-adaptive \
-  --nav-model gpt-4.1-mini \
+  --nav-model gemini-2.5-flash --nav-provider google \
   --cases ./cases.json
 ```
 

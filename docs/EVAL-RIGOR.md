@@ -8,9 +8,11 @@ Ordinary documentation changes use the relevant repository checks.
 | Need | Command | Evidence |
 | --- | --- | --- |
 | Characterize one configuration | `pnpm bench:validate` | Per-run artifacts and mean/min/max summaries |
-| Compare baseline and candidate | `pnpm ab:experiment` | Paired scenarios, pass rates, uncertainty, and raw rows |
-| Screen a hypothesis queue | `pnpm research:pipeline --two-stage` | Screening and separate candidate validation artifacts |
 | Compare frameworks | `pnpm bench:compete` | Matched tasks, failures, costs, durations, and comparison summaries |
+
+For baseline-vs-candidate comparisons, run `pnpm bench:validate` on both arms
+under the same-day, same-machine, same-key control rules in
+[docs/bench-2026-10-11-hillclimb-program.md](bench-2026-10-11-hillclimb-program.md).
 
 Read each script's options and the current scenario/configuration files before running it.
 The scripts live in `scripts/`; [package.json](../package.json) owns their command mapping.

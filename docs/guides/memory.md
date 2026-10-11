@@ -165,14 +165,14 @@ For A/B experiments, isolate memory to prevent leakage between runs:
 
 ```bash
 # per-run isolation — each scenario gets its own memory scope
-node scripts/run-scenario-track.mjs \
-  --memory --memory-isolation per-run \
-  --cases ./cases.json
+node scripts/run-multi-rep.mjs \
+  --memory-isolation per-run \
+  --cases ./cases.json --reps 3 --out agent-results/multi-rep
 
-# shared isolation — scenarios on the same domain share memory within one track run
-node scripts/run-scenario-track.mjs \
-  --memory --memory-isolation shared \
-  --cases ./cases.json
+# shared isolation — scenarios on the same domain share memory within one run
+node scripts/run-multi-rep.mjs \
+  --memory-isolation shared \
+  --cases ./cases.json --reps 3 --out agent-results/multi-rep
 ```
 
 ## Run Registry (Orchestration API)

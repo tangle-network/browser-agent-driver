@@ -547,7 +547,7 @@ pnpm tsx bench/design/run-design-bench.ts --tier average --evolve
 Default provider is `claude-code` — uses your Claude Code subscription (no per-call API cost).
 With `--provider openai` or `--provider anthropic`, each standard page audit costs one LLM vision call (~5-10k tokens). `--audit-passes deep` runs three subjective calls per page; use it for serious review, not cheap smoke checks.
 
-| Operation | Pages | LLM Calls | Cost (claude-code) | Cost (openai gpt-5.4) |
+| Operation | Pages | LLM Calls | Cost (claude-code) | Cost (API provider, e.g. openai) |
 |-----------|-------|-----------|--------------------|-----------------------|
 | Single page audit | 1 | 1 | subscription | ~$0.15 |
 | Deep single page audit | 1 | 3 | subscription | ~$0.45 |

@@ -1,8 +1,18 @@
 # Providers
 
-Default provider is `openai` with `gpt-5.4`.
+The default provider is credential-aware: with no explicit `--provider`, `bad`
+uses OpenAI when `OPENAI_API_KEY` is set and otherwise falls back to the
+keyless `claude-code` provider. The bench-validated model is
+`gemini-2.5-flash` (Google).
 
-## OpenAI (default)
+## Google (bench-validated)
+
+```bash
+export GEMINI_API_KEY=...        # or GOOGLE_GENERATIVE_AI_API_KEY
+bad run --goal "..." --url https://... --provider google --model gemini-2.5-flash
+```
+
+## OpenAI
 
 ```bash
 export OPENAI_API_KEY=sk-...

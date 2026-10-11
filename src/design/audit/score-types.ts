@@ -1,7 +1,8 @@
 /**
  * design audit — type contract for the 8-layer architecture.
  *
- * RFC: docs/rfc/design-audit-world-class.md
+ * RFC: docs/rfc/design-audit-world-class.md (removed from the tree in the
+ * 2026-10 repo slimming; consult git history)
  *
  * This file is the stable contract that every layer's implementation
  * builds against. It exists to let parallel implementation work proceed

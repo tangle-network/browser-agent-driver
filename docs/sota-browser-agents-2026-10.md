@@ -36,7 +36,7 @@ layer compare. Sources prioritized from the last 6–9 months.
 | Steel.dev | — | Apache-2.0 | — | Open browser API, self-hostable, $0.08/browser-hr; maintains the community leaderboard (leaderboard.steel.dev) |
 | Playwright MCP | ~36k+ | Apache-2.0 | — | Microsoft's official browser MCP; the de-facto way coding agents get a browser |
 | BrowserOS | — | OSS Chromium fork | — | Consumer-side agentic browser (Atlas/Comet alternative); not a testing tool |
-| Magnitude | — | — | 93.9% WebVoyager | Vision-first; see our docs/research/competitor-analysis-2026-03.md |
+| Magnitude | — | — | 93.9% WebVoyager | Vision-first; see also docs/research/competitor-analysis-2026-03.md in git history (removed in the 2026-10 repo slimming) |
 
 **Benchmark ceiling (per leaderboard.steel.dev, Oct 2026)**: WebVoyager 99.19%
 (browser-control / Fable 5), Alumnium 98.5%, Surfer 2 97.1%. WebArena ~74.3%
