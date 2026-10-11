@@ -91,3 +91,18 @@ describe('verifyGoalCompletionImpl', () => {
     expect(out.inputTokens).toBe(1234)
   })
 })
+
+describe('verifyGoalCompletionImpl output cap (wave 4)', () => {
+  it('uses a 4096 cap for google (thinking counts against maxOutputTokens)', async () => {
+    const host = fakeHost('{"achieved":true,"confidence":0.9,"evidence":[],"missing":[]}')
+    await verifyGoalCompletionImpl(host, STATE, 'goal', 'claim')
+    expect(host.calls[0].maxTokens).toBe(4096)
+  })
+
+  it('keeps the 600 cap for non-google providers', async () => {
+    const host = fakeHost('{"achieved":true,"confidence":0.9,"evidence":[],"missing":[]}')
+    host.provider = 'openai'
+    await verifyGoalCompletionImpl(host, STATE, 'goal', 'claim')
+    expect(host.calls[0].maxTokens).toBe(600)
+  })
+})
