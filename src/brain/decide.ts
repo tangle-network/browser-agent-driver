@@ -146,6 +146,39 @@ export async function decideImpl(
   }
   self.lastDecisionUrl = state.url;
 
+  // Inline *new* markers (browser-use marks new elements in place):
+  // annotate added refs directly on their snapshot lines so the model sees
+  // what changed in context. Changed/removed entries and adds lost to
+  // budget truncation are appended as a compact tail block below — the
+  // full formatted SNAPSHOT CHANGES diff was pure duplication.
+  let changesTail: string[] = [];
+  if (!useDiffOnly && rawDiff && diffChanges > 0) {
+    const addedRefs = new Set(
+      rawDiff.added
+        .map((line) => line.match(/\[ref=([\w]+(?:_\d+)?)\]/)?.[1])
+        .filter((r): r is string => typeof r === 'string'),
+    );
+    const markedRefs = new Set<string>();
+    if (addedRefs.size > 0) {
+      visibleSnapshot = visibleSnapshot
+        .split('\n')
+        .map((line) => {
+          const ref = line.match(/\[ref=([\w]+(?:_\d+)?)\]/)?.[1];
+          if (ref && addedRefs.has(ref)) {
+            markedRefs.add(ref);
+            return `${line} *new*`;
+          }
+          return line;
+        })
+        .join('\n');
+    }
+    const unmatchedAdds = rawDiff.added.filter((line) => {
+      const ref = line.match(/\[ref=([\w]+(?:_\d+)?)\]/)?.[1];
+      return !ref || !markedRefs.has(ref);
+    });
+    changesTail = [...unmatchedAdds, ...rawDiff.changed, ...rawDiff.removed];
+  }
+
   // Build user message with stable prefix (GOAL) for prompt caching,
   // then dynamic per-turn content (turn budget, page state, elements).
   let textContent = `GOAL: ${goal}
@@ -169,9 +202,9 @@ ${visibleSnapshot}`;
     }
   }
 
-  // Append snapshot diff only when NOT using diff-only mode (avoid redundant info)
-  if (!useDiffOnly && state.snapshotDiff && state.snapshotDiff.length < state.snapshot.length * 0.3) {
-    textContent += `\n\nSNAPSHOT CHANGES (since last turn):\n${state.snapshotDiff}`;
+  // Changed/removed/unmatched-add entries ride as a compact tail block.
+  if (changesTail.length > 0) {
+    textContent += `\n\nSNAPSHOT CHANGES (since last turn):\n${changesTail.join('\n')}`;
   }
 
   if (extraContext) {

@@ -99,6 +99,26 @@ export class AriaSnapshotHelper {
     'paragraph', 'separator', 'presentation', 'figure', 'figcaption',
   ]);
 
+  /**
+   * Structural container roles that are dropped when they carry no
+   * accessible name — they exist only to nest other elements and are
+   * information-free for the decision (browser-use's serializer makes the
+   * same call with its containment/paint-order pruning). Named containers
+   * stay: their text is often the data the agent is extracting (scores,
+   * counts, row labels).
+   */
+  static readonly STRUCTURAL_ROLES = new Set([
+    'row', 'cell', 'rowgroup', 'table', 'list', 'group', 'generic',
+    'banner', 'navigation', 'main', 'region', 'form', 'article', 'section',
+    'complementary', 'contentinfo',
+    'LayoutTable', 'LayoutTableRow', 'LayoutTableCell',
+  ]);
+
+  /** Per-node name display cap (browser-use caps per-node text the same
+   *  way). Display-only — refMap keeps the full name so getByRole
+   *  resolution and ref-hash stability are unaffected. */
+  static readonly NAME_DISPLAY_CAP = 120;
+
   private refMap = new Map<string, RefEntry>();
   /** Track how many times each base hash has been seen (for duplicate disambiguation) */
   private hashCounts = new Map<string, number>();
@@ -296,6 +316,13 @@ export class AriaSnapshotHelper {
         continue;
       }
 
+      // Drop nameless structural wrappers and decorative images: they nest
+      // or decorate other elements but carry no decision-relevant content.
+      const restIsEmpty = !rest.trim() || rest.trim() === ':';
+      if (!name && ((AriaSnapshotHelper.STRUCTURAL_ROLES.has(role) && restIsEmpty) || ((role === 'image' || role === 'img') && restIsEmpty))) {
+        continue;
+      }
+
       if (INTERACTIVE_ROLES.has(role) || role === 'heading' || role === 'dialog' || role === 'alertdialog') {
         const baseHash = stableHash(role, name || '');
 
@@ -317,12 +344,24 @@ export class AriaSnapshotHelper {
 
         const cleanRest = rest.replace(/:$/, '').trim();
         const colon = rest.trimEnd().endsWith(':') ? ':' : '';
-        const nameStr = name ? ` "${name}"` : '';
+        // Display cap keeps long titles/labels from dominating the token
+        // budget; the ref still resolves via the full name in refMap.
+        const displayName = name && name.length > AriaSnapshotHelper.NAME_DISPLAY_CAP
+          ? `${name.slice(0, AriaSnapshotHelper.NAME_DISPLAY_CAP - 1)}…`
+          : name;
+        const nameStr = displayName ? ` "${displayName}"` : '';
         const refStr = ` [ref=${refId}]`;
         const propsStr = cleanRest ? ` ${cleanRest}` : '';
         result.push(`${indent}${role}${nameStr}${refStr}${propsStr}${colon}`);
       } else {
-        result.push(line);
+        // Cap free-text lines the same way (they carry no ref, so capping
+        // the display text is the whole line).
+        if (name && name.length > AriaSnapshotHelper.NAME_DISPLAY_CAP) {
+          const displayName = `${name.slice(0, AriaSnapshotHelper.NAME_DISPLAY_CAP - 1)}…`;
+          result.push(line.replace(`"${name}"`, `"${displayName}"`));
+        } else {
+          result.push(line);
+        }
       }
     }
 
