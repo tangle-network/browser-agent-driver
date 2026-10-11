@@ -29,7 +29,7 @@ import { ContextBudget } from '../context-budget.js';
 import { runOverridePipeline } from '../override-pipeline.js';
 import type { OverrideContext } from '../override-pipeline.js';
 
-import { withRetry, findElementForRef, safeHostname, pushGoalVerificationEvidence, capFeedbackText, sanitizeRunScript } from './utils.js';
+import { withRetry, findElementForRef, safeHostname, pushGoalVerificationEvidence, capFeedbackText, sanitizeRunScript, pageLooksBlocked, shouldRejectSurrender } from './utils.js';
 import { runExtractWithIndex, formatExtractWithIndexResult } from '../drivers/extract-with-index.js';
 import { buildSearchResultsGuidance, buildVisibleLinkRecommendation, getVisibleLinkRecommendation } from './search-guidance.js';
 import { buildGoalVerificationClaim, collectSearchWorkflowEvidence, shouldAcceptSearchWorkflowCompletion, shouldAcceptScriptBackedCompletion, detectCompletionContentTypeMismatch } from './goal-verification.js';
@@ -1907,6 +1907,11 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
                   state.snapshot,
                   runState.goalVerificationEvidence,
                   turns.map((t) => t.state.snapshot),
+                  // Form-control state evidence: payloads of actions that
+                  // executed without error (driver-confirmed fills/selects).
+                  turns
+                    .filter((t) => !t.error)
+                    .flatMap((t) => [JSON.stringify(t.action), ...(t.executedActions ?? []).map((a) => JSON.stringify(a))]),
                 )
               );
 
@@ -2244,6 +2249,32 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
           });
         }
 
+        // Premature-surrender guard (fail-closed, same pattern as the
+        // selector guard): an abort with ~zero executed actions and zero
+        // extraction evidence on a reachable page is a confabulation, not a
+        // verdict (the wave-5 dx weather window aborted at turn 1 with the
+        // data visible). Reject it and re-prompt toward the observation.
+        if (shouldRejectSurrender({
+          actionType: action.action,
+          executedTurns: turns.length,
+          evidenceCount: runState.goalVerificationEvidence.length,
+          state,
+        })) {
+          const elementCount = (state.snapshot.match(/\[ref=/g) ?? []).length;
+          this.brain.injectFeedback(
+            `SURRENDER REJECTED: you have not attempted a single action, and the current observation has ${elementCount} interactive elements plus page text. ` +
+            `Invented constraints ("a previous run failed", "the data is not here") are not evidence — the page in front of you is. ` +
+            `Work the goal from the ELEMENTS list and visible text now: extractWithIndex with a wide query or runScript pulls the data directly. ` +
+            `Abort stays available after genuine attempts fail.`
+          );
+          turn.error = 'premature surrender rejected (no actions attempted)';
+          turn.durationMs = Date.now() - turnStart;
+          runState.recordError();
+          turns.push(turn);
+          this.onTurn?.(turn);
+          continue;
+        }
+
         if (action.action === 'abort') {
           turns.push(turn);
           this.onTurn?.(turn);
@@ -2265,6 +2296,7 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
           this.onTurn?.(turn);
           continue;
         }
+
 
         // Fail-closed on guessed CSS selectors: a selector that appears in
         // neither the observation nor the run's own evidence is a
