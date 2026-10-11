@@ -6,7 +6,7 @@
 
 import { afterEach, describe, expect, it } from 'vitest'
 import type { ModelMessage } from 'ai'
-import { evidenceCorroboratesResult } from '../src/runner/completion-policy.js'
+import { evidenceCorroboratesResult, goalLiteralsCorroborated } from '../src/runner/completion-policy.js'
 import { verifyGoalCompletionImpl, type BrainGoalVerificationHost } from '../src/brain/tasks/goal-verification.js'
 import type { PageState } from '../src/types/page.js'
 
@@ -135,5 +135,46 @@ describe('verifyGoalCompletionImpl sub-call routing (BAD_SUBCALL_MODEL)', () => 
     }
     await verifyGoalCompletionImpl(host, STATE, 'goal', 'claim')
     expect(selections[0]).toBeUndefined()
+  })
+})
+
+describe('goalLiteralsCorroborated (text-in-snapshot corroboration)', () => {
+  const goal = "Fill the form. Verify the success message 'Account Created!' appears."
+
+  it('corroborates when every quoted literal appears verbatim in the final snapshot', () => {
+    expect(goalLiteralsCorroborated(goal, '- heading "Account Created!" [ref=h1]\n- text "Check your email"', [])).toBe(true)
+  })
+
+  it('corroborates via script evidence when the literal is not in the snapshot', () => {
+    expect(goalLiteralsCorroborated(goal, '- heading "Done"', ['SCRIPT RESULT:\nAccount Created!'])).toBe(true)
+  })
+
+  it('rejects when any literal is missing (strict: exact presence required)', () => {
+    expect(goalLiteralsCorroborated(goal, '- heading "Account"', [])).toBe(false)
+    expect(goalLiteralsCorroborated("Do X then verify 'Banner A' and 'Banner B' show", 'Banner A is here', [])).toBe(false)
+  })
+
+  it('rejects goals with no quoted literals', () => {
+    expect(goalLiteralsCorroborated('Fill the form and submit it', 'anything', [])).toBe(false)
+  })
+
+  it('ignores literals shorter than 4 chars', () => {
+    expect(goalLiteralsCorroborated("Click 'OK' to continue", 'nothing here', [])).toBe(false)
+  })
+})
+
+describe('goalLiteralsCorroborated — form-consume flows (wave 5 refinement)', () => {
+  const formGoal = "Fill every field: name 'Jordan', plan select 'Pro ($9/mo)'. Verify the success message 'Account Created!' appears."
+
+  it('corroborates when consumed field values live in prior observations and the banner in the final one', () => {
+    const finalSnap = '- heading "Account Created!" [ref=h1]'
+    const priorSnaps = ['- textbox "First Name" [value="Jordan"]\n- option "Pro ($9/mo)" [selected]']
+    expect(goalLiteralsCorroborated(formGoal, finalSnap, [], priorSnaps)).toBe(true)
+  })
+
+  it('still rejects when a literal appears nowhere in the run', () => {
+    const finalSnap = '- heading "Account Created!" [ref=h1]'
+    const priorSnaps = ['- textbox "First Name" [value="Alex"]']
+    expect(goalLiteralsCorroborated(formGoal, finalSnap, [], priorSnaps)).toBe(false)
   })
 })

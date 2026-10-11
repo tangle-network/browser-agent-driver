@@ -146,3 +146,42 @@ function parseFlatJsonObject(text: string): Record<string, unknown> | null {
   } catch { /* not JSON */ }
   return null;
 }
+
+/**
+ * Goal-literal corroboration for text-in-snapshot style goals.
+ *
+ * The 8/15 of completions that still pay the full LLM verifier are mostly
+ * form tasks whose goal names an exact success value ("Verify the success
+ * message 'Account Created!' appears"). When every quoted literal in the
+ * goal appears VERBATIM in the final observation or in script/extract
+ * evidence, the success state is directly attested by the DOM — re-asking
+ * an LLM to judge it is pure cost, the same discipline as
+ * evidenceCorroboratesResult (exact value required, never fuzzy presence).
+ *
+ * Strict by construction: requires at least one quoted literal of ≥4 chars,
+ * and ALL such literals must be present. Unquoted goals return false.
+ */
+export function goalLiteralsCorroborated(
+  goal: string,
+  finalSnapshot: string,
+  goalVerificationEvidence: string[],
+  priorSnapshots: string[] = [],
+): boolean {
+  const literals = extractQuotedLiterals(goal);
+  if (literals.length === 0) return false;
+  // Form-consume flows replace the form with a success page: field-value
+  // literals ('Jordan', 'Pro ($9/mo)') vanish from the FINAL page but are
+  // attested in earlier observations. Every literal must appear verbatim
+  // SOMEWHERE in the run — final state, evidence, or a prior observation.
+  const haystack = [finalSnapshot, ...goalVerificationEvidence, ...priorSnapshots].join('\n');
+  return literals.every((lit) => haystack.includes(lit));
+}
+
+/** Quoted literals of ≥4 chars from goal text, both quote styles. */
+function extractQuotedLiterals(text: string): string[] {
+  const out: string[] = [];
+  for (const m of text.matchAll(/'([^']{4,})'|"([^"]{4,})"/g)) {
+    out.push(m[1] ?? m[2]);
+  }
+  return out;
+}
