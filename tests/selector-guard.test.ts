@@ -56,3 +56,38 @@ describe('validateObservedSelector', () => {
   })
 })
 
+
+describe('validateObservedSelector — combinator tightening (wave 3)', () => {
+  const snapshot = '- textbox "Email" [ref=t1]\n- [data-testid="dob"] input "Date of Birth"'
+
+  it('rejects a combinator after a documented prefix', () => {
+    const err = validateObservedSelector(
+      { action: 'fill', fields: { '[data-testid="dob"] input': '1990-04-15' } },
+      snapshot,
+      [],
+    )
+    expect(err).toContain('SELECTOR REJECTED')
+    expect(err).toContain('combinator')
+  })
+
+  it('still allows the bare documented selector', () => {
+    expect(
+      validateObservedSelector(
+        { action: 'fill', fields: { '[data-testid="dob"]': '1990-04-15' } },
+        snapshot,
+        [],
+      ),
+    ).toBeNull()
+  })
+
+  it('still allows combinators that appear verbatim in the observation', () => {
+    const richSnapshot = '- textbox "Email" [ref=t1]\n- div.form-row > input[placeholder="Email"]'
+    expect(
+      validateObservedSelector(
+        { action: 'click', selector: 'div.form-row > input[placeholder="Email"]' },
+        richSnapshot,
+        [],
+      ),
+    ).toBeNull()
+  })
+})
