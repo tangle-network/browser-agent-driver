@@ -99,3 +99,50 @@ export function synthesizeFinalTurnCompletion<T extends { action: string }>(
   if (!isMeaningfulRunScriptOutput(result)) return { action, synthesized: false }
   return { action: { action: 'complete', result }, synthesized: true }
 }
+
+/**
+ * Evidence-corroborated completion: every top-level field of the claimed
+ * result JSON appears in at least one SCRIPT RESULT JSON with an equal,
+ * non-empty value.
+ *
+ * The over-conservatism fix (bench wave 1: hn rep3 completed with the
+ * correct JSON at turn 5 and was re-prompted three times before the LLM
+ * verifier accepted — $0.087 for one pass). When the claim is a faithful
+ * echo of deterministic DOM evidence, hallucination is impossible by
+ * construction; re-asking an LLM to confirm it is pure cost.
+ *
+ * Conservative shape: BOTH sides must parse as flat JSON objects, the
+ * claim must have ≥1 key, and EVERY claimed key must match a script-result
+ * value exactly (string-normalized). Nested objects compare via JSON.
+ */
+export function evidenceCorroboratesResult(
+  claimedResult: string,
+  goalVerificationEvidence: string[],
+): boolean {
+  const claim = parseFlatJsonObject(claimedResult);
+  if (!claim) return false;
+  const scriptObjects = goalVerificationEvidence
+    .filter((e) => e.startsWith('SCRIPT RESULT:'))
+    .map((e) => parseFlatJsonObject(e.slice('SCRIPT RESULT:'.length).trim()))
+    .filter((o): o is Record<string, unknown> => o !== null);
+  if (scriptObjects.length === 0) return false;
+  return Object.entries(claim).every(([key, value]) => {
+    if (value === null || value === undefined || value === '') return false;
+    return scriptObjects.some(
+      (obj) => key in obj && String(obj[key]) === String(value) && obj[key] !== null && obj[key] !== '',
+    );
+  });
+}
+
+function parseFlatJsonObject(text: string): Record<string, unknown> | null {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith('{')) return null;
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const keys = Object.keys(parsed);
+      return keys.length > 0 ? parsed as Record<string, unknown> : null;
+    }
+  } catch { /* not JSON */ }
+  return null;
+}

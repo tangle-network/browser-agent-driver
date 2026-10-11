@@ -60,6 +60,8 @@ export class Brain implements BrainModelHost, BrainSystemPromptHost, BrainEvalua
   baseUrl?: string;
   debug: boolean;
   history: ModelMessage[] = [];
+  /** Append-only compaction ledger — see materializeHistoryPrefix. */
+  historySummary = '';
   maxHistoryTurns: number;
   private visionEnabled: boolean;
   visionStrategy: 'always' | 'never' | 'auto';
@@ -204,6 +206,7 @@ export class Brain implements BrainModelHost, BrainSystemPromptHost, BrainEvalua
   /** Reset conversation history (call between scenarios) */
   reset(): void {
     this.history = [];
+    this.historySummary = '';
   }
 
   /**
@@ -361,8 +364,9 @@ export class Brain implements BrainModelHost, BrainSystemPromptHost, BrainEvalua
     state: PageState,
     goal: string,
     claimedResult: string,
+    options?: { skipPageState?: boolean },
   ): Promise<GoalVerification> {
-    return verifyGoalCompletionImpl(this, state, goal, claimedResult);
+    return verifyGoalCompletionImpl(this, state, goal, claimedResult, options);
   }
 
   /**

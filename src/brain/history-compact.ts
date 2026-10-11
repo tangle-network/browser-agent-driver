@@ -163,3 +163,60 @@ function summarizeElements(text: string, selectors: string[]): string {
     },
   );
 }
+
+// ── Prefix-stable history (wave 2) ──────────────────────────────────────
+//
+// compactHistory() above rewrites older messages in place every turn as the
+// zone boundaries shift — the same message mutates intact → stripped →
+// deep-compacted as it ages, which busts the provider's implicit prefix
+// cache on EVERY turn (bench: bad's cache-hit rate ~17% vs browser-use's
+// 36%, cache hits clustering at ~1k tokens).
+//
+// materializeHistoryPrefix() is the append-only alternative:
+//   - The tail (last HISTORY_TAIL_MESSAGES messages) is never rewritten.
+//   - When the tail overflows, the oldest messages are summarized ONCE and
+//     the summary lines are APPENDED to a persistent summary block that
+//     lives at the front of the conversation. Prior content is never
+//     re-edited, so the request prefix is byte-stable between
+//     materializations (one cache bust per ~HISTORY_TAIL_MESSAGES/2 turns
+//     instead of every turn), and old context is preserved as summaries
+//     rather than dropped outright.
+
+/** Tail size in messages (user+assistant pairs ×2). 8 = 4 full turns intact. */
+export const HISTORY_TAIL_MESSAGES = 8;
+
+export interface MaterializingHistoryHost {
+  history: ModelMessage[];
+  /** Append-only compaction ledger. Mutated in place by
+   *  materializeHistoryPrefix; cleared on Brain.reset(). */
+  historySummary: string;
+}
+
+/**
+ * Build the message list for the next decide call, materializing the
+ * summary block when the tail overflows. Mutates host.history (drops
+ * summarized messages) and host.historySummary (appends summary lines).
+ */
+export function materializeHistoryPrefix(host: MaterializingHistoryHost): ModelMessage[] {
+  if (host.history.length > HISTORY_TAIL_MESSAGES) {
+    const excess = host.history.length - HISTORY_TAIL_MESSAGES;
+    const olds = host.history.slice(0, excess);
+    host.history = host.history.slice(excess);
+    const lines = olds.map((msg) =>
+      msg.role === 'assistant'
+        ? deepCompactAssistant(typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content))
+        : deepCompactUser(msg),
+    );
+    host.historySummary = host.historySummary
+      ? `${host.historySummary}\n${lines.join('\n')}`
+      : lines.join('\n');
+  }
+  const messages: ModelMessage[] = [];
+  if (host.historySummary) {
+    messages.push({
+      role: 'user',
+      content: `PRIOR TURNS (compacted, oldest first):\n${host.historySummary}`,
+    });
+  }
+  return [...messages, ...host.history];
+}

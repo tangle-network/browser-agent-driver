@@ -19,8 +19,9 @@ import {
   VISION_FIRST_PROMPT,
   UNIFIED_VISION_DOM_PROMPT,
   FIRST_TURN_COMPACT_PROMPT,
+  HEAVY_PAGE_RULES,
 } from './prompts.js';
-import { compactHistory } from './history-compact.js';
+import { compactHistory, materializeHistoryPrefix } from './history-compact.js';
 import type { BrainDecision, UserContent } from './types.js';
 import type { BrainProvider, ModelSelection, GenerateResult } from './model-client.js';
 
@@ -41,6 +42,9 @@ export interface BrainDecideHost {
   compactFirstTurn: boolean;
   lastDecisionUrl?: string;
   history: ModelMessage[];
+  /** Append-only compaction ledger for prefix-stable history
+   *  (materializeHistoryPrefix). Mutated during decide; cleared on reset. */
+  historySummary: string;
   maxHistoryTurns: number;
   debug: boolean;
   baseUrl?: string;
@@ -174,6 +178,14 @@ ${visibleSnapshot}`;
     textContent += `\n\n${extraContext}`;
   }
 
+  // Turn-varying rules ride the tail user message, NOT the system prompt —
+  // the system message must stay byte-stable across turns or it busts the
+  // provider's implicit prefix cache every time it changes. Heavy-page
+  // guidance used to appear in the system prompt at turn > 10.
+  if (turnInfo && turnInfo.current > 10 && state.snapshot.length <= 10_000) {
+    textContent += `\n\n${HEAVY_PAGE_RULES}`;
+  }
+
   if (isFinalTurn) {
     // Structural done-only turn (browser-use's _force_done_after_last_step
     // pattern): replace the open-ended action request with a terminal-only
@@ -209,7 +221,7 @@ If any earlier turn produced data that answers the goal (SCRIPT RESULT, EXTRACT 
   }
 
   const messages: ModelMessage[] = [
-    ...compactHistory(self.history),
+    ...materializeHistoryPrefix(self),
     { role: 'user', content: userContent },
   ];
 

@@ -43,22 +43,34 @@ export async function verifyGoalCompletionImpl(
   state: PageState,
   goal: string,
   claimedResult: string,
+  options?: {
+    /** When the run already holds deterministic DOM evidence (SCRIPT
+     *  RESULT entries, included in the claim), skip the fresh 24k-token
+     *  page snapshot and the forced screenshot — the evidence is the
+     *  ground truth the verifier needs, the page may have navigated on. */
+    skipPageState?: boolean;
+  },
 ): Promise<GoalVerification> {
-  const siteBoundaryNote = buildFirstPartyBoundaryNote(goal, state.url);
-  const textContent = `GOAL: ${goal}
-
-AGENT'S CLAIMED RESULT: ${claimedResult}
-
-CURRENT PAGE:
+  const skipPageState = options?.skipPageState === true;
+  const siteBoundaryNote = skipPageState ? '' : buildFirstPartyBoundaryNote(goal, state.url);
+  const pageBlock = skipPageState
+    ? ''
+    : `CURRENT PAGE:
 URL: ${state.url}
 Title: ${state.title}
 
 ELEMENTS:
-${budgetSnapshot(state.snapshot)}${siteBoundaryNote ? `\n\n${siteBoundaryNote}` : ''}
+${budgetSnapshot(state.snapshot)}`;
+  const textContent = `GOAL: ${goal}
 
-Was the goal actually achieved? Analyze the current page state carefully.`;
+AGENT'S CLAIMED RESULT: ${claimedResult}
 
-  const userContent = self.buildUserContent(textContent, state.screenshot, true);
+${pageBlock}${siteBoundaryNote ? `\n\n${siteBoundaryNote}` : ''}
+Was the goal actually achieved? Analyze the ${skipPageState ? 'claimed result and its embedded evidence' : 'current page state'} carefully.`;
+
+  const userContent = skipPageState
+    ? self.buildUserContent(textContent)
+    : self.buildUserContent(textContent, state.screenshot, true);
 
   // Verifier can use its own model, then the navigation model, then main.
   const verifyProvider = self.verifierProvider
@@ -79,6 +91,11 @@ SUPPLEMENTAL TOOL EVIDENCE / SCRIPT RESULT in claimed results = verified DOM dat
   );
 
   const raw = result.text;
+  const callUsage = {
+    ...(result.inputTokens !== undefined ? { inputTokens: result.inputTokens } : {}),
+    ...(result.outputTokens !== undefined ? { outputTokens: result.outputTokens } : {}),
+    ...(result.cacheReadInputTokens !== undefined ? { cacheReadInputTokens: result.cacheReadInputTokens } : {}),
+  };
 
   if (self.debug) {
     console.log('[Brain] Goal verification:', raw.slice(0, 300));
@@ -97,6 +114,7 @@ SUPPLEMENTAL TOOL EVIDENCE / SCRIPT RESULT in claimed results = verified DOM dat
         : 0.5,
       evidence: Array.isArray(parsed.evidence) ? parsed.evidence : [],
       missing: Array.isArray(parsed.missing) ? parsed.missing : [],
+      ...callUsage,
     };
   } catch {
     // Parse failure — assume not verified (conservative)
@@ -105,6 +123,7 @@ SUPPLEMENTAL TOOL EVIDENCE / SCRIPT RESULT in claimed results = verified DOM dat
       confidence: 0,
       evidence: [],
       missing: ['Failed to parse goal verification response'],
+      ...callUsage,
     };
   }
 }

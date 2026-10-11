@@ -37,6 +37,7 @@ export type TurnEvent =
   | ExecuteCompletedEvent
   | VerifyStartedEvent
   | VerifyCompletedEvent
+  | GoalVerificationCompletedEvent
   | RecoveryFiredEvent
   | OverrideAppliedEvent
   | TurnCompletedEvent
@@ -147,6 +148,17 @@ export interface VerifyCompletedEvent extends BaseEvent {
   verified: boolean
   reason?: string
   durationMs: number
+}
+
+/** Goal-completion verification outcome, incl. the verifier call's own
+ *  token usage (absent on deterministic accept paths that skip the LLM). */
+export interface GoalVerificationCompletedEvent extends BaseEvent {
+  type: 'goal-verification-completed'
+  achieved: boolean
+  path: 'corroborated' | 'fast-path' | 'llm' | 'llm-slim'
+  inputTokens?: number
+  outputTokens?: number
+  cacheReadInputTokens?: number
 }
 
 export interface RecoveryFiredEvent extends BaseEvent {

@@ -82,7 +82,8 @@ import {
   EXTENSION_TURNS_GRANTED,
 } from './constants.js';
 import { DEFI_BRAIN_CONTEXT } from './prompt-snippets.js';
-import { hasPlaceholderPattern, isMeaningfulRunScriptOutput, synthesizeFinalTurnCompletion } from './completion-policy.js';
+import { hasPlaceholderPattern, isMeaningfulRunScriptOutput, synthesizeFinalTurnCompletion, evidenceCorroboratesResult } from './completion-policy.js';
+import { validateObservedSelector } from './selector-guard.js';
 import { selectMicroPlanFollowUps } from './micro-plan.js';
 import { decideMaxTurnsExtension } from './max-turns-extension.js';
 import type { ResolvedExtensions } from '../extensions/types.js';
@@ -1870,7 +1871,27 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
               hasScriptEvidence &&
               !selfContradicting;
 
-            if (fastPathEligible) {
+            // Deterministic corroboration: the claimed JSON echoes SCRIPT
+            // RESULT values field-for-field — hallucination is impossible by
+            // construction, so skip the verifier LLM entirely (the wave-1
+            // over-conservatism case: correct JSON re-prompted 3x).
+            const corroborated = !selfContradicting
+              && evidenceCorroboratesResult(agentResult, runState.goalVerificationEvidence);
+
+            let verificationPath: 'corroborated' | 'fast-path' | 'llm' | 'llm-slim';
+            if (corroborated) {
+              verificationPath = 'corroborated';
+              goalResult = {
+                achieved: true,
+                confidence: 0.9,
+                evidence: ['Evidence-corroborated: every claimed result field matches a SCRIPT RESULT value exactly.'],
+                missing: [],
+              };
+              if (this.config.debug) {
+                console.log('[Runner] Goal verification: accepted via script-evidence corroboration (no LLM call)');
+              }
+            } else if (fastPathEligible) {
+              verificationPath = 'fast-path';
               goalResult = {
                 achieved: true,
                 confidence: 0.9,
@@ -1884,6 +1905,7 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
               // Force LLM verification — the agent claims success but its
               // own text suggests failure. The LLM verifier reads the actual
               // content and makes the right call.
+              verificationPath = hasScriptEvidence ? 'llm-slim' : 'llm';
               if (this.config.debug) {
                 console.log('[Runner] Fast-path blocked: agent result contains self-contradicting language, forcing LLM verification');
               }
@@ -1891,14 +1913,36 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
                 state,
                 scenario.goal,
                 buildGoalVerificationClaim(agentResult, verificationEvidence),
+                { skipPageState: hasScriptEvidence },
               );
             } else {
+              verificationPath = hasScriptEvidence ? 'llm-slim' : 'llm';
               goalResult = await this.brain.verifyGoalCompletion(
                 state,
                 scenario.goal,
                 buildGoalVerificationClaim(agentResult, verificationEvidence),
+                { skipPageState: hasScriptEvidence },
               );
             }
+
+            // Record the verifier call's own token usage into run metrics —
+            // previously invisible in cost accounting (report.json totals and
+            // events.jsonl). Deterministic paths carry no usage fields.
+            if (goalResult && (goalResult.inputTokens !== undefined || goalResult.outputTokens !== undefined)) {
+              turn.inputTokens = (turn.inputTokens ?? 0) + (goalResult.inputTokens ?? 0);
+              turn.outputTokens = (turn.outputTokens ?? 0) + (goalResult.outputTokens ?? 0);
+              turn.tokensUsed = (turn.tokensUsed ?? 0) + (goalResult.inputTokens ?? 0) + (goalResult.outputTokens ?? 0);
+            }
+            this.bus.emitNow({
+              type: 'goal-verification-completed',
+              runId,
+              turn: i,
+              achieved: goalResult?.achieved === true,
+              path: verificationPath,
+              ...(goalResult?.inputTokens !== undefined ? { inputTokens: goalResult.inputTokens } : {}),
+              ...(goalResult?.outputTokens !== undefined ? { outputTokens: goalResult.outputTokens } : {}),
+              ...(goalResult?.cacheReadInputTokens !== undefined ? { cacheReadInputTokens: goalResult.cacheReadInputTokens } : {}),
+            });
 
             if (this.config.debug) {
               console.log(`[Runner] Goal verification: achieved=${goalResult.achieved}, confidence=${goalResult.confidence}`);
@@ -2183,6 +2227,21 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
         if (disallowedSearchClick) {
           this.brain.injectFeedback(disallowedSearchClick);
           turn.error = disallowedSearchClick;
+          turn.durationMs = Date.now() - turnStart;
+          runState.recordError();
+          turns.push(turn);
+          this.onTurn?.(turn);
+          continue;
+        }
+
+        // Fail-closed on guessed CSS selectors: a selector that appears in
+        // neither the observation nor the run's own evidence is a
+        // hallucination — executing it burns the turn and invites the
+        // blind-selector loop. Reject with the recovery path named.
+        const guessedSelector = validateObservedSelector(action, state.snapshot, runState.goalVerificationEvidence);
+        if (guessedSelector) {
+          this.brain.injectFeedback(guessedSelector);
+          turn.error = guessedSelector;
           turn.durationMs = Date.now() - turnStart;
           runState.recordError();
           turns.push(turn);

@@ -72,7 +72,7 @@ export function composeSystemPromptPartsImpl(self: BrainSystemPromptHost, goal: 
       parts.push(`\n\nUSER RULES (data extraction):\n${self.extensionRules.dataExtraction}`)
     }
   }
-  if (state.snapshot.length > 10_000 || turn > 10) {
+  if (state.snapshot.length > 10_000) {
     parts.push(HEAVY_PAGE_RULES)
     if (self.extensionRules?.heavy) {
       parts.push(`\n\nUSER RULES (heavy page):\n${self.extensionRules.heavy}`)
