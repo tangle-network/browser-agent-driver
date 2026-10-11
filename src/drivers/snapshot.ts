@@ -223,10 +223,23 @@ export class AriaSnapshotHelper {
       const refId = selector.slice(1);
       const entry = this.refMap.get(refId);
       if (entry) {
-        const roleLocator = page.getByRole(entry.role as Parameters<Page['getByRole']>[0], {
+        let roleLocator = page.getByRole(entry.role as Parameters<Page['getByRole']>[0], {
           name: entry.name,
           exact: entry.name.length > 0,
         });
+        // Chrome's a11y tree can report a concatenated accessible name
+        // (aria-label + labelledby), e.g. date-editor spinbuttons surface in
+        // the snapshot as 'Month Month' while the element's computed name is
+        // 'Month'. An exact getByRole on the doubled name matches nothing
+        // and every action on the ref times out (the wave-2 form-fill date
+        // loop). Lazily union the deduped exact name — no cost when the
+        // doubled name matches, a working locator when it doesn't.
+        const deduped = dedupeRepeatedName(entry.name);
+        if (deduped) {
+          roleLocator = roleLocator.or(
+            page.getByRole(entry.role as Parameters<Page['getByRole']>[0], { name: deduped, exact: true }),
+          );
+        }
         // Suffixed refs (e.g., t31b3_2) represent the Nth duplicate of a role+name combo.
         // Use nth() to target the correct instance instead of always picking first().
         const suffixMatch = refId.match(/_(\d+)$/);
@@ -430,4 +443,15 @@ export async function dismissOverlays(page: Page): Promise<'clicked' | 'found' |
   }
   // result === false: no overlay, no action needed
   return result;
+}
+
+/**
+ * Detect a doubled accessible name ('Month Month', 'Show more Show more') —
+ * the a11y-tree artifact of aria-label + labelledby concatenation — and
+ * return the deduped form. Returns undefined for normal names.
+ */
+function dedupeRepeatedName(name: string): string | undefined {
+  if (!name) return undefined;
+  const match = name.match(/^(.+) \1$/);
+  return match ? match[1] : undefined;
 }
