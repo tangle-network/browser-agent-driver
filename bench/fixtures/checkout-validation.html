@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Checkout - Benchmark Fixture</title>
+  <style>
+    body { font-family: system-ui; max-width: 640px; margin: 40px auto; padding: 0 20px; }
+    fieldset { border: 1px solid #ddd; border-radius: 8px; padding: 20px; margin-bottom: 16px; }
+    legend { font-weight: 600; padding: 0 8px; }
+    label { display: block; margin: 12px 0 4px; font-weight: 500; }
+    input[type=text], input[type=email], input[type=tel] { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+    input.invalid { border-color: #b91c1c; }
+    .radio-row label { display: inline-flex; align-items: center; gap: 6px; margin-right: 20px; font-weight: normal; }
+    .field-error { color: #b91c1c; font-size: 12px; min-height: 15px; margin: 2px 0 0; }
+    .hidden { display: none; }
+    button.submit { padding: 12px 28px; border: none; border-radius: 4px; cursor: pointer; font-size: 15px; background: #28a745; color: white; margin-top: 8px; }
+    #error-summary { background: #fef2f2; border: 1px solid #fca5a5; border-radius: 6px; padding: 12px 16px; color: #7f1d1d; margin-bottom: 16px; }
+    #error-summary.hidden { display: none; }
+    #success { background: #d4edda; border: 1px solid #c3e6cb; border-radius: 8px; padding: 20px; margin-top: 20px; }
+    #success.hidden { display: none; }
+  </style>
+</head>
+<body>
+  <h1>Checkout</h1>
+  <div id="error-summary" class="hidden" role="alert"></div>
+
+  <form id="checkout-form" novalidate>
+    <fieldset>
+      <legend>Account</legend>
+      <div class="radio-row" role="radiogroup" aria-label="Account type">
+        <label><input type="radio" name="accountType" value="personal" checked data-testid="type-personal"> Personal</label>
+        <label><input type="radio" name="accountType" value="business" data-testid="type-business"> Business</label>
+      </div>
+      <div id="vat-block" class="hidden">
+        <label for="vat">VAT ID (required for business accounts)</label>
+        <input id="vat" type="text" data-testid="vat" placeholder="VAT-123456">
+        <p class="field-error" id="err-vat"></p>
+      </div>
+      <label for="email">Email</label>
+      <input id="email" type="email" data-testid="email">
+      <p class="field-error" id="err-email"></p>
+      <label for="phone">Phone</label>
+      <input id="phone" type="tel" data-testid="phone" placeholder="+1 (555) 123-4567">
+      <p class="field-error" id="err-phone"></p>
+    </fieldset>
+
+    <fieldset>
+      <legend>Payment</legend>
+      <label for="card">Card number</label>
+      <input id="card" type="text" data-testid="card" placeholder="4111111111111111">
+      <p class="field-error" id="err-card"></p>
+      <label for="expiry">Expiry (MM/YY)</label>
+      <input id="expiry" type="text" data-testid="expiry" placeholder="MM/YY">
+      <p class="field-error" id="err-expiry"></p>
+      <label for="zip">Billing ZIP</label>
+      <input id="zip" type="text" data-testid="zip" placeholder="98101">
+      <p class="field-error" id="err-zip"></p>
+    </fieldset>
+
+    <button type="submit" class="submit" data-testid="place-order">Place order</button>
+  </form>
+
+  <div id="success" class="hidden" role="alert">
+    <h2>Order confirmed!</h2>
+    <p>Order ID: ORD-7421 · A receipt was sent to your email.</p>
+  </div>
+
+  <script>
+    (function () {
+      const form = document.getElementById('checkout-form');
+      const vatBlock = document.getElementById('vat-block');
+      const summary = document.getElementById('error-summary');
+      const success = document.getElementById('success');
+
+      form.querySelectorAll('input[name=accountType]').forEach((r) => {
+        r.addEventListener('change', () => {
+          const business = form.querySelector('input[name=accountType]:checked').value === 'business';
+          vatBlock.classList.toggle('hidden', !business);
+        });
+      });
+
+      const rules = [
+        { id: 'email', re: /^[^@\s]+@[^@\s]+\.[^@\s]+$/, msg: 'Enter a valid email address (name@example.com).' },
+        { id: 'phone', re: /^\+1 \(\d{3}\) \d{3}-\d{4}$/, msg: 'Phone must use the exact format +1 (555) 123-4567 — digits alone are rejected.' },
+        { id: 'card', re: /^\d{16}$/, msg: 'Card number must be 16 digits with NO spaces or dashes.' },
+        { id: 'expiry', re: /^(0[1-9]|1[0-2])\/\d{2}$/, msg: 'Expiry must be MM/YY with a leading zero (e.g. 09/28, not 9/28).' },
+        { id: 'zip', re: /^\d{5}$/, msg: 'ZIP must be exactly 5 digits.' },
+      ];
+
+      function isBusiness() {
+        return form.querySelector('input[name=accountType]:checked').value === 'business';
+      }
+
+      function validate() {
+        const failures = [];
+        for (const rule of rules) {
+          const input = document.getElementById(rule.id);
+          const err = document.getElementById('err-' + rule.id);
+          const ok = rule.re.test(input.value.trim());
+          input.classList.toggle('invalid', !ok);
+          err.textContent = ok ? '' : rule.msg;
+          if (!ok) failures.push(rule.id);
+        }
+        if (isBusiness()) {
+          const vat = document.getElementById('vat');
+          const err = document.getElementById('err-vat');
+          const ok = /^VAT-\d{6}$/.test(vat.value.trim());
+          vat.classList.toggle('invalid', !ok);
+          err.textContent = ok ? '' : 'VAT ID must look like VAT-123456 (prefix VAT-, then exactly 6 digits).';
+          if (!ok) failures.push('vat');
+        }
+        return failures;
+      }
+
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const failures = validate();
+        if (failures.length > 0) {
+          summary.classList.remove('hidden');
+          summary.textContent = `Cannot place order: ${failures.length} field(s) need correction: ${failures.join(', ')}.`;
+          success.classList.add('hidden');
+          return;
+        }
+        summary.classList.add('hidden');
+        form.classList.add('hidden');
+        success.classList.remove('hidden');
+      });
+    })();
+  </script>
+</body>
+</html>

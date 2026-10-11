@@ -1,0 +1,14 @@
+{
+  "id": "checkout-validation-traps",
+  "name": "Checkout form with interdependent required fields and strict format validation",
+  "goal": "Complete the checkout form at the start URL and place the order. Use these values EXACTLY as the business buyer gave them to you:\n\n- Account type: select 'Business' (this reveals a required VAT ID field)\n- VAT ID: VAT-448201\n- Email: marta.ellison@example.com\n- Phone: 4155550132\n- Card number: 4111 1111 1111 1111\n- Expiry: 9/28\n- Billing ZIP: 98101\n\nWARNING: this form has strict client-side format validation. Several of the values above are in the buyer's shorthand and will be REJECTED as written. If the form shows a field error on submit, read the error message, reformat ONLY that field to the format the error demands, and submit again. Keep iterating until the order is accepted.\n\nVerify the success message 'Order confirmed!' appears. Complete with a summary of which fields had to be reformatted.",
+  "startUrl": "__FIXTURE_BASE_URL__/checkout-validation.html",
+  "fixture": "checkout-validation.html",
+  "maxTurns": 25,
+  "timeoutMs": 420000,
+  "tags": ["form-fill", "blocker-recovery", "product-usage"],
+  "oracle": {
+    "type": "text-in-snapshot",
+    "expectedText": "Order confirmed!"
+  }
+}

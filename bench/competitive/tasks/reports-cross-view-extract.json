@@ -1,0 +1,17 @@
+{
+  "id": "reports-cross-view-extract",
+  "name": "Cross-view extraction: combine Orders and Customers tabs to total West-region orders",
+  "goal": "Open the sales reports page at the start URL. It has two tabs: 'Orders' (order ID, customer ID, amount) and 'Customers' (customer ID, name, region). Neither tab alone contains enough information.\n\nFind the TOTAL dollar amount of all orders placed by customers in the 'West' region, and the NUMBER of such orders. You will need both tabs: first learn which customer IDs are in the West region, then sum only those customers' order amounts.\n\nDo NOT report the 'Grand total (all regions)' shown on the Orders tab — that is all regions combined, not West.\n\nReturn ONLY a JSON object with EXACTLY these two keys:\n  - \"west_total\": the total as a dollar string (e.g. \"$6,075.75\")\n  - \"west_order_count\": the number of West orders as an integer (e.g. 5, NOT a string)\n\nComplete with EXACTLY this JSON object as your final result.",
+  "startUrl": "__FIXTURE_BASE_URL__/reports-combine.html",
+  "fixture": "reports-combine.html",
+  "maxTurns": 10,
+  "timeoutMs": 240000,
+  "tags": ["extraction", "scraping"],
+  "oracle": {
+    "type": "json-shape-match",
+    "expectedShape": {
+      "west_total": "re:^\\$?6,?075\\.75$",
+      "west_order_count": "re:^5$"
+    }
+  }
+}

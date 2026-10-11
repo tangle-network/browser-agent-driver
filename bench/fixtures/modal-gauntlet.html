@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Overlay Gauntlet - Benchmark Fixture</title>
+  <style>
+    body { font-family: system-ui; max-width: 760px; margin: 40px auto; padding: 0 20px; }
+    .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.55); display: flex; align-items: center; justify-content: center; }
+    .overlay.hidden, .cookie-bar.hidden, .notif-bar.hidden { display: none; }
+    .dialog { background: white; border-radius: 10px; padding: 28px; max-width: 420px; box-shadow: 0 8px 40px rgba(0,0,0,0.35); }
+    .dialog h2 { margin-top: 0; }
+    .dialog input { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; margin: 8px 0; }
+    .btn { padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+    .btn-primary { background: #0066cc; color: white; }
+    .btn-quiet { background: none; color: #666; text-decoration: underline; font-size: 13px; padding: 6px; }
+    .error { color: #b91c1c; font-size: 13px; min-height: 18px; margin: 4px 0; }
+    .cookie-bar { position: fixed; bottom: 0; left: 0; right: 0; background: #1a1a2e; color: white; padding: 14px 24px; display: flex; justify-content: space-between; align-items: center; gap: 12px; z-index: 300; }
+    .cookie-bar p { margin: 0; font-size: 14px; }
+    .cookie-bar .btn { white-space: nowrap; }
+    .btn-accept { background: #28a745; color: white; }
+    .btn-manage { background: #444; color: white; }
+    .notif-bar { position: fixed; top: 0; left: 0; right: 0; background: #fff8e1; border-bottom: 1px solid #e0c97f; padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; z-index: 400; }
+    #newsletter-modal { z-index: 500; }
+    #prefs-modal { z-index: 600; }
+    #report-overlay { z-index: 700; background: rgba(255,255,255,0.97); }
+    .status { margin-top: 24px; padding: 12px; background: #f5f5f5; border-radius: 6px; font-family: monospace; font-size: 13px; }
+    .prefs-opt { display: block; margin: 8px 0; }
+    .prefs-opt input { width: auto; }
+  </style>
+</head>
+<body>
+  <!-- Layer 1 (bottom): cookie consent bar -->
+  <div class="cookie-bar" id="cookie-bar" role="banner" aria-label="Cookie consent">
+    <p>We use cookies to analyze traffic and personalize content. See our <a href="/privacy" style="color:#9ec1ff;">cookie policy</a>.</p>
+    <div style="display:flex; gap:8px;">
+      <button class="btn btn-manage" id="manage-prefs" data-testid="manage-prefs">Manage preferences</button>
+      <button class="btn btn-accept" id="cookie-accept" data-testid="cookie-accept">Accept all</button>
+    </div>
+  </div>
+
+  <!-- Layer 2: notification permission bar -->
+  <div class="notif-bar" id="notif-bar" role="alert" aria-label="Notification permission">
+    <span>🔔 Want alerts when new reports drop? Enable notifications.</span>
+    <div style="display:flex; gap:8px;">
+      <button class="btn btn-primary" id="notif-enable" data-testid="notif-enable">Enable</button>
+      <button class="btn btn-quiet" id="notif-dismiss" data-testid="notif-dismiss">Not now</button>
+    </div>
+  </div>
+
+  <!-- Layer 3: newsletter modal -->
+  <div class="overlay" id="newsletter-modal" role="dialog" aria-label="Newsletter signup">
+    <div class="dialog">
+      <h2>Before you continue…</h2>
+      <p>Get the monthly analyst digest in your inbox.</p>
+      <label for="newsletter-email">Email address</label>
+      <input id="newsletter-email" type="email" placeholder="you@example.com" data-testid="newsletter-email">
+      <div class="error" id="newsletter-error" role="alert"></div>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px;">
+        <button class="btn btn-primary" id="newsletter-subscribe" data-testid="newsletter-subscribe">Subscribe</button>
+        <button class="btn btn-quiet" id="newsletter-dismiss" data-testid="newsletter-dismiss">No thanks, maybe later</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Layer 4 (only if "Manage preferences" is clicked): cookie preferences modal -->
+  <div class="overlay hidden" id="prefs-modal" role="dialog" aria-label="Cookie preferences">
+    <div class="dialog">
+      <h2>Cookie preferences</h2>
+      <label class="prefs-opt"><input type="checkbox" checked disabled> Strictly necessary (always on)</label>
+      <label class="prefs-opt"><input type="checkbox" id="pref-analytics" data-testid="pref-analytics"> Analytics</label>
+      <label class="prefs-opt"><input type="checkbox" id="pref-marketing" data-testid="pref-marketing"> Marketing</label>
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px;">
+        <button class="btn btn-primary" id="prefs-save" data-testid="prefs-save">Save preferences</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main content (gated until all overlays dismissed) -->
+  <main>
+    <h1>Investor Relations</h1>
+    <p>Quarterly results and board materials for shareholders.</p>
+    <button class="btn btn-primary" id="open-report" data-testid="open-report">Open Q3 board pack</button>
+    <div class="status" id="status" role="status" data-testid="status">Status: 3 overlays open</div>
+  </main>
+
+  <!-- Report view -->
+  <div class="overlay hidden" id="report-overlay" role="dialog" aria-label="Q3 board pack">
+    <div class="dialog" style="max-width: 560px;">
+      <h2>Q3 Board Pack</h2>
+      <p>Revenue $4.2M (+9% QoQ) · Net retention 118% · Cash runway 31 months.</p>
+      <p><strong>Report opened: Q3 board pack</strong></p>
+      <button class="btn btn-quiet" id="report-close" data-testid="report-close">Close report</button>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const status = document.getElementById('status');
+      const open = { cookie: true, notif: true, newsletter: true, prefs: false };
+
+      function refreshStatus() {
+        const n = Object.values(open).filter(Boolean).length;
+        status.textContent = n > 0 ? `Status: ${n} overlays open` : 'Status: all overlays dismissed';
+      }
+
+      function hide(id, key) {
+        document.getElementById(id).classList.add('hidden');
+        open[key] = false;
+        refreshStatus();
+      }
+
+      document.getElementById('cookie-accept').addEventListener('click', () => hide('cookie-bar', 'cookie'));
+      document.getElementById('manage-prefs').addEventListener('click', () => {
+        document.getElementById('prefs-modal').classList.remove('hidden');
+        open.prefs = true;
+        refreshStatus();
+      });
+      document.getElementById('prefs-save').addEventListener('click', () => {
+        hide('prefs-modal', 'prefs');
+        hide('cookie-bar', 'cookie');
+      });
+
+      document.getElementById('notif-dismiss').addEventListener('click', () => hide('notif-bar', 'notif'));
+      document.getElementById('notif-enable').addEventListener('click', () => hide('notif-bar', 'notif'));
+
+      document.getElementById('newsletter-dismiss').addEventListener('click', () => hide('newsletter-modal', 'newsletter'));
+      document.getElementById('newsletter-subscribe').addEventListener('click', () => {
+        const email = document.getElementById('newsletter-email').value.trim();
+        const err = document.getElementById('newsletter-error');
+        if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+          hide('newsletter-modal', 'newsletter');
+        } else {
+          err.textContent = 'Enter a valid email address to subscribe, or choose "No thanks" to skip.';
+        }
+      });
+
+      document.getElementById('open-report').addEventListener('click', () => {
+        const n = Object.values(open).filter(Boolean).length;
+        if (n > 0) {
+          status.textContent = `Blocked: dismiss ${n} overlay(s) before opening the report`;
+          return;
+        }
+        document.getElementById('report-overlay').classList.remove('hidden');
+        status.textContent = 'Report opened: Q3 board pack';
+      });
+      document.getElementById('report-close').addEventListener('click', () => {
+        document.getElementById('report-overlay').classList.add('hidden');
+      });
+
+      refreshStatus();
+    })();
+  </script>
+</body>
+</html>

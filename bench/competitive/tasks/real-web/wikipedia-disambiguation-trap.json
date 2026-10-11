@@ -1,0 +1,18 @@
+{
+  "id": "wikipedia-disambiguation-trap",
+  "name": "Wikipedia — disambiguation trap: Mercury the ELEMENT, not the first link",
+  "goal": "Open https://en.wikipedia.org/wiki/Mercury — note this is a DISAMBIGUATION page listing several topics named Mercury. The FIRST link listed (the planet) is NOT the one you want.\n\nNavigate to the article about Mercury the CHEMICAL ELEMENT and extract from that article:\n  1. Its atomic number (integer)\n  2. Its chemical symbol (string)\n\nReturn ONLY a JSON object with EXACTLY these two keys:\n  - \"atomic_number\": the atomic number as an integer (e.g. 47, NOT a string)\n  - \"symbol\": the chemical symbol (e.g. \"Ag\")\n\nExample correct output (for a different element):\n  {\"atomic_number\": 47, \"symbol\": \"Ag\"}\n\nIf you find yourself on the planet article, you are on the WRONG page — the planet article has no atomic number. Go back and choose the element link. Complete with EXACTLY this JSON object as your final result.",
+  "startUrl": "https://en.wikipedia.org/wiki/Mercury",
+  "maxTurns": 8,
+  "timeoutMs": 180000,
+  "expectedDurationSec": 30,
+  "expectedTokenBudget": 15000,
+  "tags": ["extraction", "research"],
+  "oracle": {
+    "type": "json-shape-match",
+    "expectedShape": {
+      "atomic_number": "re:^80$",
+      "symbol": "re:^Hg$"
+    }
+  }
+}

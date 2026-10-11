@@ -1,0 +1,14 @@
+{
+  "id": "modal-stack-dismissal",
+  "name": "Overlay gauntlet: dismiss stacked cookie/newsletter/notification overlays, then open report",
+  "goal": "Open the investor relations page at the start URL. It is covered by THREE stacked overlays: a cookie consent bar at the bottom, a notification permission bar at the top, and a newsletter signup modal in the center. Dismiss ALL of them without subscribing to anything:\n\n- Cookie bar: click 'Accept all'.\n- Notification bar: click 'Not now'.\n- Newsletter modal: click the small 'No thanks, maybe later' link. Do NOT click 'Subscribe' with an empty or invalid email — it will show a validation error and the modal will stay open.\n\nOnly when every overlay is gone, click the 'Open Q3 board pack' button. Verify the page status shows 'Report opened: Q3 board pack'. Complete with a summary of the actions you took.",
+  "startUrl": "__FIXTURE_BASE_URL__/modal-gauntlet.html",
+  "fixture": "modal-gauntlet.html",
+  "maxTurns": 12,
+  "timeoutMs": 300000,
+  "tags": ["blocker-recovery", "product-usage"],
+  "oracle": {
+    "type": "text-in-snapshot",
+    "expectedText": "Report opened: Q3 board pack"
+  }
+}
