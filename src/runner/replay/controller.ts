@@ -183,6 +183,16 @@ export class SelfHealingReplayController implements ReplayController {
     }
 
     // -- all steps replayed: the single permitted LLM round-trip --
+    // Settle before the final observation: the replayed steps run at
+    // browser-I/O speed (no LLM latency between actions), so async UI
+    // updates that a live agent naturally out-waits (e.g. 'Exporting…' →
+    // 'Export complete') haven't landed yet. Without the settle, the final
+    // verification judges a mid-flight page and the replay falls through
+    // for nothing (spike evidence, dashboard-edit-export).
+    const finalSettleMs = ctx.finalSettleMs ?? 1500;
+    if (finalSettleMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, finalSettleMs));
+    }
     const finalState = (await this.safeObserve(ctx)) ?? lastState ?? this.minimalState(ctx);
     const finalResult = buildClaim(plan, finalState, totalSteps);
     const goalVerification = await ctx.verifyGoal(finalState, ctx.goal, finalResult);

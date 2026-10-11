@@ -166,6 +166,10 @@ export interface ReplayContext {
   signal?: AbortSignal;
   /** Verbose logging passthrough. */
   debug?: boolean;
+  /** Settle delay before the final post-replay observation/verification
+   *  (async UI updates need time to land at browser-I/O replay speed).
+   *  Default 1500ms in the controller. */
+  finalSettleMs?: number;
   /** Optional structured event sink (runner bridges this to its TurnEventBus). */
   onEvent?: (event: ReplayEvent) => void;
 }
