@@ -39,7 +39,13 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="browser-use bench runner")
     parser.add_argument("--goal", required=True, help="Task goal in natural language")
     parser.add_argument("--url", required=True, help="Starting URL")
-    parser.add_argument("--model", default="gpt-5.2", help="OpenAI model id")
+    parser.add_argument("--model", default="gpt-5.2", help="Model id")
+    parser.add_argument(
+        "--provider",
+        default=os.environ.get("BENCH_PROVIDER", "openai"),
+        choices=["openai", "google"],
+        help="LLM provider: openai (ChatOpenAI, honors --base-url) or google (ChatGoogle, GEMINI_API_KEY)",
+    )
     parser.add_argument(
         "--base-url",
         default=os.environ.get("OPENAI_BASE_URL"),
@@ -57,10 +63,16 @@ async def run() -> dict[str, Any]:
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # Token capture: monkey-patch ChatOpenAI.ainvoke to tee every usage
+    # Token capture: monkey-patch the provider's ainvoke to tee every usage
     # block into a totals dict. browser-use 0.12.x does not expose tokens
     # on the AgentHistoryList; the LLM wrapper does, so we intercept there.
-    from browser_use.llm.openai.chat import ChatOpenAI
+    # Both ChatOpenAI and ChatGoogle return ChatInvokeCompletion with a
+    # .usage carrying prompt_tokens / completion_tokens / prompt_cached_tokens,
+    # so one patch shape covers both providers.
+    if args.provider == "google":
+        from browser_use.llm.google.chat import ChatGoogle as ChatClass
+    else:
+        from browser_use.llm.openai.chat import ChatOpenAI as ChatClass
 
     totals = {
         "llm_calls": 0,
@@ -69,7 +81,7 @@ async def run() -> dict[str, Any]:
         "cached_input_tokens": 0,
         "total_tokens": 0,
     }
-    original_ainvoke = ChatOpenAI.ainvoke
+    original_ainvoke = ChatClass.ainvoke
 
     async def patched_ainvoke(self, messages, output_format=None, **kwargs):  # type: ignore[no-untyped-def]
         result = await original_ainvoke(self, messages, output_format=output_format, **kwargs)
@@ -86,7 +98,7 @@ async def run() -> dict[str, Any]:
             totals["total_tokens"] += total
         return result
 
-    ChatOpenAI.ainvoke = patched_ainvoke  # type: ignore[method-assign]
+    ChatClass.ainvoke = patched_ainvoke  # type: ignore[method-assign]
 
     # Build the agent. directly_open_url=True means browser-use opens the
     # URL directly instead of via search, which is the closer comparison
@@ -96,12 +108,17 @@ async def run() -> dict[str, Any]:
     from browser_use import Agent
     from browser_use.browser.profile import BrowserProfile
 
-    llm_kwargs: dict[str, Any] = {"model": args.model}
-    if args.base_url:
-        llm_kwargs["base_url"] = args.base_url
-        # Local endpoints (Ollama etc.) accept any non-empty key.
-        llm_kwargs["api_key"] = os.environ.get("OPENAI_API_KEY") or "local-smoke"
-    llm = ChatOpenAI(**llm_kwargs)
+    if args.provider == "google":
+        # ChatGoogle resolves its key from GEMINI_API_KEY /
+        # GOOGLE_GENERATIVE_AI_API_KEY when api_key is not passed.
+        llm = ChatClass(model=args.model)
+    else:
+        llm_kwargs: dict[str, Any] = {"model": args.model}
+        if args.base_url:
+            llm_kwargs["base_url"] = args.base_url
+            # Local endpoints (Ollama etc.) accept any non-empty key.
+            llm_kwargs["api_key"] = os.environ.get("OPENAI_API_KEY") or "local-smoke"
+        llm = ChatClass(**llm_kwargs)
     full_task = f"{args.goal}\n\nStart at: {args.url}"
 
     agent_state: dict[str, Any] = {
@@ -239,6 +256,7 @@ async def run() -> dict[str, Any]:
         "result_text": result_text,
         "error_reason": agent_state["errors"],
         "model": args.model,
+        "provider": args.provider,
         "screenshot_path": str(screenshot_path) if screenshot_path.exists() else None,
     }
 
