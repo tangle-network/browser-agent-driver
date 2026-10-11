@@ -184,3 +184,56 @@ export function sanitizeRunScript(
   }
   return { ok: true, script };
 }
+
+// ── Premature-surrender guard (wave 6) ──────────────────────────────────
+
+/**
+ * Hard-blocked page detection for the surrender guard's exemption. Only
+ * well-known hard blocks exempt an early abort: navigation failures,
+ * anti-bot interstitials, and access-denied walls. Conservative on
+ * purpose — a healthy page with data visible must never qualify (the
+ * wave-5 surrender case was exactly that).
+ */
+export function pageLooksBlocked(state: { url?: string; snapshot?: string }): boolean {
+  const url = String(state.url ?? '');
+  if (url.startsWith('chrome-error://')) return true;
+  const text = String(state.snapshot ?? '').toLowerCase();
+  const markers = [
+    'just a moment...',
+    'verifying you are human',
+    'checking your browser before',
+    'cloudflare ray id',
+    'cf-chl-',
+    'cf-mitigated',
+    'recaptcha',
+    'hcaptcha',
+    'please complete the captcha',
+    'access denied',
+    '403 forbidden',
+    '429 too many requests',
+  ];
+  return markers.some((m) => text.includes(m));
+}
+
+/**
+ * The surrender decision: an abort with (nearly) zero executed actions and
+ * zero extraction evidence on a reachable page is a confabulation, not a
+ * verdict — the wave-5 dashboard-extract weather window aborted at turn 1
+ * on a byte-identical healthy snapshot because the model invented a
+ * "previous failed run". Reject it and re-prompt toward the observation.
+ *
+ * Threshold: turns.length < 2 covers turn-1 aborts and turn-2 aborts after
+ * a no-op first turn, while leaving genuine quick-exit paths (blocked
+ * page, or any evidence-bearing attempt) alone.
+ */
+export function shouldRejectSurrender(input: {
+  actionType: string;
+  executedTurns: number;
+  evidenceCount: number;
+  state: { url?: string; snapshot?: string };
+}): boolean {
+  if (input.actionType !== 'abort') return false;
+  if (input.executedTurns >= 2) return false;
+  if (input.evidenceCount > 0) return false;
+  return !pageLooksBlocked(input.state);
+}
