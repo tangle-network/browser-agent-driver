@@ -185,11 +185,12 @@ export function goalLiteralsCorroborated(
  *  quote-spanning capture noise). */
 function extractQuotedLiterals(text: string): string[] {
   const out: string[] = [];
-  for (const m of text.matchAll(/'([^']{4,})'|"([^"]{4,})"/g)) {
-    const lit = m[1] ?? m[2];
-    if (lit.length > 80) continue;
-    if (/^(?:s|t|re|ve|ll|d|m)\s/i.test(lit)) continue;
-    out.push(lit);
+  // Quotes only count as delimiters when they're not letter-flanked on the
+  // outside: the apostrophe in "Johnson's" has letters on both sides and is
+  // skipped entirely, so it can't swallow the opening quote of the real
+  // literal that follows ('Export complete for Alice Johnson').
+  for (const m of text.matchAll(/(?<![A-Za-z])'([^']{4,80})'(?![A-Za-z])|(?<![A-Za-z])"([^"]{4,80})"(?![A-Za-z])/g)) {
+    out.push(m[1] ?? m[2]);
   }
   return out;
 }

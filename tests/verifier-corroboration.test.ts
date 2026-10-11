@@ -190,3 +190,20 @@ describe('extractQuotedLiterals apostrophe guard (wave 5)', () => {
     )).toBe(true)
   })
 })
+
+describe('extractQuotedLiterals — letter-flanked apostrophes are not delimiters', () => {
+  it("captures the real literal after a possessive (the swallowed-quote case)", () => {
+    const goal = "Click the 'Users' tab. Edit Alice Johnson's row. Verify the workflow status shows 'Export complete for Alice Johnson'."
+    expect(goalLiteralsCorroborated(
+      goal,
+      '- text "Export complete for Alice Johnson"',
+      [],
+      ['- tab "Users" [ref=t1]'],
+    )).toBe(true)
+  })
+
+  it('still requires every real literal verbatim', () => {
+    const goal = "Click the 'Users' tab. Verify 'Export complete for Alice Johnson' appears."
+    expect(goalLiteralsCorroborated(goal, '- text "Export complete for Bob Smith"', [], ['- tab "Users"'])).toBe(false)
+  })
+})
