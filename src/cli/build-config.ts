@@ -225,7 +225,7 @@ export async function buildDriverConfig(values: CliValues): Promise<DriverConfig
     cliOverrides.microPlan = {
       ...(cliOverrides.microPlan ?? {}),
       enabled: true,
-      maxActionsPerTurn: cliOverrides.microPlan?.maxActionsPerTurn ?? 2,
+      maxActionsPerTurn: cliOverrides.microPlan?.maxActionsPerTurn ?? 4,
     };
   } else if (profile === 'benchmark-webbench' || profile === 'benchmark-webbench-stealth') {
     if (!values['llm-timeout']) cliOverrides.llmTimeoutMs = 20_000;
@@ -249,7 +249,7 @@ export async function buildDriverConfig(values: CliValues): Promise<DriverConfig
     cliOverrides.microPlan = {
       ...(cliOverrides.microPlan ?? {}),
       enabled: true,
-      maxActionsPerTurn: cliOverrides.microPlan?.maxActionsPerTurn ?? 2,
+      maxActionsPerTurn: cliOverrides.microPlan?.maxActionsPerTurn ?? 4,
     };
   } else if (profile === 'benchmark-webvoyager') {
     if (values.vision === undefined) cliOverrides.vision = true;
@@ -258,7 +258,7 @@ export async function buildDriverConfig(values: CliValues): Promise<DriverConfig
     cliOverrides.microPlan = {
       ...(cliOverrides.microPlan ?? {}),
       enabled: true,
-      maxActionsPerTurn: cliOverrides.microPlan?.maxActionsPerTurn ?? 2,
+      maxActionsPerTurn: cliOverrides.microPlan?.maxActionsPerTurn ?? 4,
     };
   }
 

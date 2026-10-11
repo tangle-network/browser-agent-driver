@@ -265,10 +265,11 @@ describe('shouldEscalateVision', () => {
     expect(shouldEscalateVision(input)).toBe(true);
   });
 
-  it('returns true when vision is explicitly enabled (default strategy)', () => {
+  it('returns false when vision is explicitly enabled (default strategy is auto)', () => {
     const input = { ...defaultInput(), config: { vision: true } };
-    // vision=true with no visionStrategy → 'always'
-    expect(shouldEscalateVision(input)).toBe(true);
+    // vision=true with no visionStrategy → 'auto' (Wave 1: was 'always') →
+    // no escalation triggers on a neutral page → no screenshot.
+    expect(shouldEscalateVision(input)).toBe(false);
   });
 
   it('returns false in auto mode when nothing triggers escalation', () => {

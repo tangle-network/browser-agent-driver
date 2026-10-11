@@ -190,7 +190,7 @@ const DEFAULTS: DriverConfig = {
   vision: true,
   goalVerification: true,
   qualityThreshold: 0,
-  microPlan: { enabled: true, maxActionsPerTurn: 2 },
+  microPlan: { enabled: true, maxActionsPerTurn: 4 },
   scout: {
     enabled: false,
     useVision: false,

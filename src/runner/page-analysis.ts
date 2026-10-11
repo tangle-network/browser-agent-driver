@@ -96,7 +96,7 @@ export function shouldEscalateVision(input: {
   supervisorSignalSeverity: 'none' | 'soft' | 'hard';
   extraContext: string;
 }): boolean {
-  const strategy = input.config.visionStrategy ?? (input.config.vision !== false ? 'always' : 'never');
+  const strategy = input.config.visionStrategy ?? (input.config.vision !== false ? 'auto' : 'never');
   if (strategy === 'never') return false;
   if (strategy === 'always') return true;
 

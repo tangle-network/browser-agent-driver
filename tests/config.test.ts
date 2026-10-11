@@ -330,3 +330,19 @@ describe('toAgentConfig', () => {
     expect(agentConfig.systemPrompt).toBe('Custom prompt for experiment');
   });
 });
+
+describe('Wave-1 production defaults', () => {
+  it('microPlan defaults to 4 actions per turn', async () => {
+    // loadConfig() with no config file resolves to the bare DEFAULTS object.
+    const config = await loadConfig();
+    expect(config.microPlan?.enabled).toBe(true);
+    expect(config.microPlan?.maxActionsPerTurn).toBe(4);
+  });
+
+  it('brain visionStrategy defaults to auto (screenshot-on-demand), not always', async () => {
+    const { Brain } = await import('../src/brain/index.js');
+    const brain = new Brain({ provider: 'google', model: 'gemini-2.5-flash', apiKey: 'sk-test', vision: true });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((brain as any).visionStrategy).toBe('auto');
+  });
+});
