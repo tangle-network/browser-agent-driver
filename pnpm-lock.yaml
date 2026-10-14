@@ -52,6 +52,9 @@ importers:
       '@changesets/cli':
         specifier: ^2.30.0
         version: 2.31.1(@types/node@22.20.5)
+      '@changesets/get-release-plan':
+        specifier: 4.0.16
+        version: 4.0.16
       '@tangle-network/agent-app':
         specifier: 0.60.168
         version: 0.60.168(@modelcontextprotocol/sdk@1.32.1(zod@4.6.5))(@tangle-network/agent-eval@0.182.0(@modelcontextprotocol/sdk@1.32.1(zod@4.6.5)))(@tangle-network/agent-integrations@0.54.2(@opentelemetry/api@1.9.1)(@types/node@22.20.5))(@tangle-network/agent-interface@2.20.1)(playwright@1.64.0)(zod@4.6.5)

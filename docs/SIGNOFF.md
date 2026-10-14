@@ -19,7 +19,11 @@ Keep those commands aligned with the corresponding [CI job](../.github/workflows
 ## What it checks
 
 The runner checks the selected revision in a clean worktree with a frozen dependency install.
-It runs type checking, module boundary checks, a build, a Chromium binary installation, and unit tests.
+It runs the Changesets release-plan parser, module boundary checks, a type-checked build, a Chromium binary installation, and unit tests.
+The build invokes `tsc`, so a separate `tsc --noEmit` pass would repeat the same type checking.
+`pnpm lint` remains available as a no-output developer check.
+`pnpm run check:changesets` uses the same release-plan API as Changesets, accepts empty release plans, and rejects malformed frontmatter or unknown package names before merge.
+It does not impose a new changeset requirement on documentation or already-versioned release PRs, and does not need a local base-branch ref.
 The test suite runs twice with recorded randomized ordering.
 Tests depend on both the completed build and browser installation.
 
@@ -35,14 +39,27 @@ Read the current workflow before changing the supported runtime set.
 
 Host operating system, architecture, libraries, filesystem, and resource contention remain outside the worktree.
 Record the actual environment when comparing failures or timing.
-The local browser step installs Chromium but does not install operating-system dependencies; CI runs the same command on self-hosted runners whose browser libraries come from the host.
+The local browser step installs Chromium but does not install operating-system dependencies; CI uses `playwright install --with-deps chromium` on `ubuntu-latest` to install those host libraries as well.
 A pass on one host does not prove a clean host has those dependencies.
 
 No configured check runs credentialed or staging browser evaluations.
-The tier-gate workflows and their scripts (`bench:tier1:gate`, `bench:tier2:repeat`) were removed: the repository has neither `OPENAI_API_KEY` nor `AI_TANGLE_STORAGE_STATE`, so every run skipped the evaluation, and the pipeline was superseded by `pnpm bench:compete`.
+The retired tier-gate workflows were superseded by `pnpm bench:compete`; that credentialed benchmark is outside local signoff.
 Local signoff cannot establish deployment health, live task quality, or behavior that no configured check exercises.
 
 The CI workflow runs after pushes to `main`.
 It does not provide pull-request checks.
 Failures create or update the shared post-merge failure issue.
 Inspect that result before claiming the corresponding hosted verification passed.
+
+## Release handoff
+
+The Changesets workflow dispatches `publish-npm.yml` at the created version tag,
+so a later push to `main` cannot silently change the requested publish revision.
+The workflow filename and OIDC permissions stay unchanged; npm documents
+[tag-based trusted publishing](https://docs.npmjs.com/trusted-publishers/).
+A version tag avoids advancing with `main`; it is not a claim that tags cannot be moved.
+The publish workflow checks the requested version and npm availability before
+installing dependencies, building, installing Chromium, or running tests.
+The existing build and complete browser-enabled test suite still run before publishing.
+Only an explicit npm `E404` permits an unpublished version; registry failures stop the job.
+A release-target rejection saves that work; it is not a successful qualification.

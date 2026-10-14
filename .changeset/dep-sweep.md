@@ -1,1 +1,5 @@
-{"type":"patch","releases":["browser-agent-driver"],"dependencies":[]}
+---
+"@tangle-network/browser-agent-driver": patch
+---
+
+Refresh dependencies.
