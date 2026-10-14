@@ -117,7 +117,7 @@
     "@ai-sdk/google": "^3.0.33",
     "@changesets/changelog-github": "^0.6.0",
     "@changesets/cli": "^2.30.0",
-    "@tangle-network/agent-app": "0.48.3",
+    "@tangle-network/agent-app": "0.60.168",
     "@tangle-network/agent-eval": "0.182.0",
     "@tangle-network/agent-integrations": "0.54.2",
     "@types/node": "^22.20.4",
