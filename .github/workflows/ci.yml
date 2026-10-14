@@ -34,8 +34,9 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm lint
+      - run: pnpm run check:changesets
       - run: pnpm check:boundaries
+      # Build invokes tsc, including type checking; a separate lint repeats it.
       - run: pnpm build
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps chromium

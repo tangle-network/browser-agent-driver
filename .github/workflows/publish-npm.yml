@@ -37,27 +37,18 @@ jobs:
           cache: pnpm
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build
-        run: pnpm build
-
-      - name: Install Playwright browsers
-        run: pnpm exec playwright install --with-deps chromium
-
-      - name: Test
-        run: pnpm test
-
       - name: Validate publish target
         id: validate
+        env:
+          RELEASE_EVENT: ${{ github.event_name }}
+          REQUESTED_VERSION: ${{ github.event.inputs.version }}
         run: |
           PKG_NAME="@tangle-network/browser-agent-driver"
           PKG_VERSION="$(node -p "require('./package.json').version")"
           EXPECTED_VERSION=""
 
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            EXPECTED_VERSION="${{ github.event.inputs.version }}"
+          if [ "${RELEASE_EVENT}" = "workflow_dispatch" ]; then
+            EXPECTED_VERSION="${REQUESTED_VERSION}"
           elif [ "${GITHUB_REF_TYPE}" = "tag" ] && [[ "${GITHUB_REF_NAME}" == browser-agent-driver-v* ]]; then
             EXPECTED_VERSION="${GITHUB_REF_NAME#browser-agent-driver-v}"
           fi
@@ -72,12 +63,33 @@ jobs:
             exit 1
           fi
 
-          if npm view "${PKG_NAME}@${PKG_VERSION}" version --registry https://registry.npmjs.org >/dev/null 2>&1; then
+          REGISTRY_RESULT="$(mktemp)"
+          trap 'rm -f "$REGISTRY_RESULT"' EXIT
+          if npm view "${PKG_NAME}@${PKG_VERSION}" version --json --registry https://registry.npmjs.org \
+              --fetch-retries=0 --fetch-timeout=15000 > "$REGISTRY_RESULT"; then
             echo "${PKG_NAME}@${PKG_VERSION} is already published."
+            exit 1
+          fi
+          # Only an explicit not-found response means the version is available.
+          # Authentication, network, and malformed responses must fail closed.
+          if ! node -e 'const fs = require("node:fs"); const result = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); process.exit(result.error?.code === "E404" ? 0 : 1)' "$REGISTRY_RESULT"; then
+            echo "Cannot verify npm version availability; refusing to publish."
             exit 1
           fi
 
           echo "version=${PKG_VERSION}" >> "${GITHUB_OUTPUT}"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Test
+        run: pnpm test
 
       - name: Publish to npm (trusted publishing via OIDC)
         # Auth: GitHub OIDC validated against the trusted publisher at
