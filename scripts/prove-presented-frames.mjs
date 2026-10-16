@@ -1,6 +1,6 @@
 // Real Chromium integration/calibration; no agent/model/API calls.
 import { createServer } from 'node:http';
-import { mkdir,mkdtemp,readFile,writeFile } from 'node:fs/promises';
+import { mkdir,mkdtemp,readFile,rm,writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
@@ -68,10 +68,10 @@ try{
  if(reviewBoundaries){
   const runtime=await import('playwright');
   for(const scenario of ['overlap','persistent','page-forgery']){
-   const id=`review-${scenario}`;let browser,context,capture,result={id,scenario};
+   const id=`review-${scenario}`;let browser,context,capture,profileDir,result={id,scenario};
    try{
     const options={viewport:{width:480,height:300},deviceScaleFactor:1,recordVideo:{dir:resolve(out,id,'video'),size:{width:480,height:300}}};
-    if(scenario==='persistent')context=await runtime.chromium.launchPersistentContext(await mkdtemp(resolve(tmpdir(),'bad-review-profile-')),{...options,headless:true});
+    if(scenario==='persistent'){profileDir=await mkdtemp(resolve(tmpdir(),'bad-review-profile-'));context=await runtime.chromium.launchPersistentContext(profileDir,{...options,headless:true})}
     else{browser=await runtime.chromium.launch({headless:true});context=await browser.newContext(options)}
     const page=context.pages()[0]??await context.newPage();await page.goto(`${url}?control=delayed`);
     result.browserOwnerNull=context.browser()===null;
@@ -98,7 +98,7 @@ try{
     if(scenario==='page-forgery'&&(result.attackProbe.visibleGlobals.length||result.attackProbe.invoked))throw new Error('Input binding leaked into page main world');
     result.status='PASS';
    }catch(error){result.status='FAIL';result.failure=String(error);if(capture&&!result.report)result.report=await capture.stop()}
-   finally{await context?.close();await browser?.close()}
+   finally{try{await context?.close()}finally{try{await browser?.close()}finally{if(profileDir){await rm(profileDir,{recursive:true});result.profileRemoved=true}}}}
    boundaryCases.push(result);await writeFile(resolve(out,id+'.json'),JSON.stringify(result,null,2)+'\n');
   }
   if(boundaryCases.some(c=>c.status!=='PASS'))throw new Error('Review boundaries failed: '+boundaryCases.filter(c=>c.status!=='PASS').map(c=>c.scenario).join(', '));
