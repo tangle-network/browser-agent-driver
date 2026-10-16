@@ -362,6 +362,7 @@ export function toAgentConfig(config: DriverConfig): AgentConfig {
     observability: config.observability
       ? {
           enabled: config.observability.enabled,
+          presentedFrames: config.observability.presentedFrames,
           captureConsole: config.observability.captureConsole,
           captureNetwork: config.observability.captureNetwork,
           tracePolicy: config.observability.tracePolicy,

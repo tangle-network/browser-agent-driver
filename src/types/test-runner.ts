@@ -74,6 +74,8 @@ export interface CriterionResult {
 }
 
 export interface TestResult {
+  /** Native browser-frame observations; calibration/unknowns stay explicit. */
+  presentedFrames?: import('../observability/presented-frames.js').PresentedFrameReport;
   testCase: TestCase;
   agentResult: AgentResult;
   /** Agent's self-reported success */
