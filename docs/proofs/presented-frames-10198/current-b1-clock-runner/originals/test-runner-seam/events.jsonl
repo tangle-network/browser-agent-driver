@@ -1,0 +1,2 @@
+{"type":"run-started","runId":"run_1792172405364_z6ok17","turn":0,"goal":"Observe fixture only; intentional abort before inference","startUrl":"","maxTurns":30,"ts":"2026-10-16T17:40:05.364Z","seq":1}
+{"type":"run-completed","runId":"run_1792172405364_z6ok17","turn":0,"success":false,"totalTurns":0,"totalMs":1,"reason":"observation-only proof: stop before model turn","ts":"2026-10-16T17:40:05.365Z","seq":2}
