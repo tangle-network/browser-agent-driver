@@ -1,0 +1,1335 @@
+{
+  "source": "3d764f17321322689ecb71f13192ca5c03129798",
+  "executableSource": "e3a468dcb16edd36ee9a581cce234ba2afdbf0d3",
+  "base": "616e54b3d0d8c09edec7b4a5ac1fc520e28b2aee",
+  "gate": "beelink1-f02ec80a283dfba2e9a3f17b539f0832",
+  "scope": "Delayed controls and no-model real TestRunner serialization; actual presentation UNKNOWN",
+  "files": [
+    {
+      "original": "originals/patchright-delayed/presented-frame-00001.png",
+      "retained": "originals/patchright-delayed/presented-frame-00001.png",
+      "bytes": 5623,
+      "sha256": "8dc58bd5d650460d22f7150cd53f36e3c20cf2df1db54812bdb7717b7582e57a"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00002.png",
+      "retained": "originals/patchright-delayed/presented-frame-00002.png",
+      "bytes": 5624,
+      "sha256": "514eccd9e1dfbcbe7417d3fa0e8220a41adfe0e1c5acb5a5c5575676b6c7787f"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00003.png",
+      "retained": "originals/patchright-delayed/presented-frame-00003.png",
+      "bytes": 5623,
+      "sha256": "8dc58bd5d650460d22f7150cd53f36e3c20cf2df1db54812bdb7717b7582e57a"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00004.png",
+      "retained": "originals/patchright-delayed/presented-frame-00004.png",
+      "bytes": 5624,
+      "sha256": "514eccd9e1dfbcbe7417d3fa0e8220a41adfe0e1c5acb5a5c5575676b6c7787f"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00005.png",
+      "retained": "originals/patchright-delayed/presented-frame-00005.png",
+      "bytes": 5635,
+      "sha256": "7f0bd8b9a0b1da580a6d573b1e83057167f8e98d146e4399e365c52aed2658ca"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00006.png",
+      "retained": "originals/patchright-delayed/presented-frame-00006.png",
+      "bytes": 5635,
+      "sha256": "27cc7f68e7bb54ee4d85d9d4a9946d965f5f0fe37d35581edfa38bbcf6e231cc"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00007.png",
+      "retained": "originals/patchright-delayed/presented-frame-00007.png",
+      "bytes": 5635,
+      "sha256": "7f0bd8b9a0b1da580a6d573b1e83057167f8e98d146e4399e365c52aed2658ca"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00008.png",
+      "retained": "originals/patchright-delayed/presented-frame-00008.png",
+      "bytes": 5635,
+      "sha256": "27cc7f68e7bb54ee4d85d9d4a9946d965f5f0fe37d35581edfa38bbcf6e231cc"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00009.png",
+      "retained": "originals/patchright-delayed/presented-frame-00009.png",
+      "bytes": 5635,
+      "sha256": "7f0bd8b9a0b1da580a6d573b1e83057167f8e98d146e4399e365c52aed2658ca"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00010.png",
+      "retained": "originals/patchright-delayed/presented-frame-00010.png",
+      "bytes": 5635,
+      "sha256": "27cc7f68e7bb54ee4d85d9d4a9946d965f5f0fe37d35581edfa38bbcf6e231cc"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00011.png",
+      "retained": "originals/patchright-delayed/presented-frame-00011.png",
+      "bytes": 5635,
+      "sha256": "7f0bd8b9a0b1da580a6d573b1e83057167f8e98d146e4399e365c52aed2658ca"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00012.png",
+      "retained": "originals/patchright-delayed/presented-frame-00012.png",
+      "bytes": 5635,
+      "sha256": "27cc7f68e7bb54ee4d85d9d4a9946d965f5f0fe37d35581edfa38bbcf6e231cc"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00013.png",
+      "retained": "originals/patchright-delayed/presented-frame-00013.png",
+      "bytes": 5635,
+      "sha256": "7f0bd8b9a0b1da580a6d573b1e83057167f8e98d146e4399e365c52aed2658ca"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00014.png",
+      "retained": "originals/patchright-delayed/presented-frame-00014.png",
+      "bytes": 5635,
+      "sha256": "27cc7f68e7bb54ee4d85d9d4a9946d965f5f0fe37d35581edfa38bbcf6e231cc"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00015.png",
+      "retained": "originals/patchright-delayed/presented-frame-00015.png",
+      "bytes": 5635,
+      "sha256": "7f0bd8b9a0b1da580a6d573b1e83057167f8e98d146e4399e365c52aed2658ca"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00016.png",
+      "retained": "originals/patchright-delayed/presented-frame-00016.png",
+      "bytes": 5635,
+      "sha256": "27cc7f68e7bb54ee4d85d9d4a9946d965f5f0fe37d35581edfa38bbcf6e231cc"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00017.png",
+      "retained": "originals/patchright-delayed/presented-frame-00017.png",
+      "bytes": 5635,
+      "sha256": "7f0bd8b9a0b1da580a6d573b1e83057167f8e98d146e4399e365c52aed2658ca"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00018.png",
+      "retained": "originals/patchright-delayed/presented-frame-00018.png",
+      "bytes": 5635,
+      "sha256": "27cc7f68e7bb54ee4d85d9d4a9946d965f5f0fe37d35581edfa38bbcf6e231cc"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00019.png",
+      "retained": "originals/patchright-delayed/presented-frame-00019.png",
+      "bytes": 5635,
+      "sha256": "7f0bd8b9a0b1da580a6d573b1e83057167f8e98d146e4399e365c52aed2658ca"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00020.png",
+      "retained": "originals/patchright-delayed/presented-frame-00020.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00021.png",
+      "retained": "originals/patchright-delayed/presented-frame-00021.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00022.png",
+      "retained": "originals/patchright-delayed/presented-frame-00022.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00023.png",
+      "retained": "originals/patchright-delayed/presented-frame-00023.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00024.png",
+      "retained": "originals/patchright-delayed/presented-frame-00024.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00025.png",
+      "retained": "originals/patchright-delayed/presented-frame-00025.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00026.png",
+      "retained": "originals/patchright-delayed/presented-frame-00026.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00027.png",
+      "retained": "originals/patchright-delayed/presented-frame-00027.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00028.png",
+      "retained": "originals/patchright-delayed/presented-frame-00028.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00029.png",
+      "retained": "originals/patchright-delayed/presented-frame-00029.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00030.png",
+      "retained": "originals/patchright-delayed/presented-frame-00030.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00031.png",
+      "retained": "originals/patchright-delayed/presented-frame-00031.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00032.png",
+      "retained": "originals/patchright-delayed/presented-frame-00032.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00033.png",
+      "retained": "originals/patchright-delayed/presented-frame-00033.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00034.png",
+      "retained": "originals/patchright-delayed/presented-frame-00034.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00035.png",
+      "retained": "originals/patchright-delayed/presented-frame-00035.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00036.png",
+      "retained": "originals/patchright-delayed/presented-frame-00036.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00037.png",
+      "retained": "originals/patchright-delayed/presented-frame-00037.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00038.png",
+      "retained": "originals/patchright-delayed/presented-frame-00038.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00039.png",
+      "retained": "originals/patchright-delayed/presented-frame-00039.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00040.png",
+      "retained": "originals/patchright-delayed/presented-frame-00040.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00041.png",
+      "retained": "originals/patchright-delayed/presented-frame-00041.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00042.png",
+      "retained": "originals/patchright-delayed/presented-frame-00042.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00043.png",
+      "retained": "originals/patchright-delayed/presented-frame-00043.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00044.png",
+      "retained": "originals/patchright-delayed/presented-frame-00044.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00045.png",
+      "retained": "originals/patchright-delayed/presented-frame-00045.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00046.png",
+      "retained": "originals/patchright-delayed/presented-frame-00046.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00047.png",
+      "retained": "originals/patchright-delayed/presented-frame-00047.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00048.png",
+      "retained": "originals/patchright-delayed/presented-frame-00048.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00049.png",
+      "retained": "originals/patchright-delayed/presented-frame-00049.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00050.png",
+      "retained": "originals/patchright-delayed/presented-frame-00050.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00051.png",
+      "retained": "originals/patchright-delayed/presented-frame-00051.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00052.png",
+      "retained": "originals/patchright-delayed/presented-frame-00052.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00053.png",
+      "retained": "originals/patchright-delayed/presented-frame-00053.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00054.png",
+      "retained": "originals/patchright-delayed/presented-frame-00054.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00055.png",
+      "retained": "originals/patchright-delayed/presented-frame-00055.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00056.png",
+      "retained": "originals/patchright-delayed/presented-frame-00056.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00057.png",
+      "retained": "originals/patchright-delayed/presented-frame-00057.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00058.png",
+      "retained": "originals/patchright-delayed/presented-frame-00058.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00059.png",
+      "retained": "originals/patchright-delayed/presented-frame-00059.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00060.png",
+      "retained": "originals/patchright-delayed/presented-frame-00060.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00061.png",
+      "retained": "originals/patchright-delayed/presented-frame-00061.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00062.png",
+      "retained": "originals/patchright-delayed/presented-frame-00062.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00063.png",
+      "retained": "originals/patchright-delayed/presented-frame-00063.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00064.png",
+      "retained": "originals/patchright-delayed/presented-frame-00064.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00065.png",
+      "retained": "originals/patchright-delayed/presented-frame-00065.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00066.png",
+      "retained": "originals/patchright-delayed/presented-frame-00066.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frame-00067.png",
+      "retained": "originals/patchright-delayed/presented-frame-00067.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/patchright-delayed/presented-frames.json",
+      "retained": "originals/patchright-delayed/presented-frames.json.raw.txt",
+      "bytes": 55425,
+      "sha256": "b127761f383cfd06ed0c8c7a1da091a27f4c2fcc74e546252a2eca02926de96d"
+    },
+    {
+      "original": "originals/patchright-delayed/video/page@46d7d5d99193f641ec0050557681981e.webm",
+      "retained": "originals/patchright-delayed/video/page@46d7d5d99193f641ec0050557681981e.webm",
+      "bytes": 9854,
+      "sha256": "2fc39da9bcd52e271792acdbf07ad6f54b6a5b85429c1b24eede7f7b102022b9"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00001.png",
+      "retained": "originals/playwright-delayed/presented-frame-00001.png",
+      "bytes": 5624,
+      "sha256": "514eccd9e1dfbcbe7417d3fa0e8220a41adfe0e1c5acb5a5c5575676b6c7787f"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00002.png",
+      "retained": "originals/playwright-delayed/presented-frame-00002.png",
+      "bytes": 5623,
+      "sha256": "8dc58bd5d650460d22f7150cd53f36e3c20cf2df1db54812bdb7717b7582e57a"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00003.png",
+      "retained": "originals/playwright-delayed/presented-frame-00003.png",
+      "bytes": 5624,
+      "sha256": "514eccd9e1dfbcbe7417d3fa0e8220a41adfe0e1c5acb5a5c5575676b6c7787f"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00004.png",
+      "retained": "originals/playwright-delayed/presented-frame-00004.png",
+      "bytes": 5623,
+      "sha256": "8dc58bd5d650460d22f7150cd53f36e3c20cf2df1db54812bdb7717b7582e57a"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00005.png",
+      "retained": "originals/playwright-delayed/presented-frame-00005.png",
+      "bytes": 5624,
+      "sha256": "514eccd9e1dfbcbe7417d3fa0e8220a41adfe0e1c5acb5a5c5575676b6c7787f"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00006.png",
+      "retained": "originals/playwright-delayed/presented-frame-00006.png",
+      "bytes": 5623,
+      "sha256": "8dc58bd5d650460d22f7150cd53f36e3c20cf2df1db54812bdb7717b7582e57a"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00007.png",
+      "retained": "originals/playwright-delayed/presented-frame-00007.png",
+      "bytes": 5635,
+      "sha256": "27cc7f68e7bb54ee4d85d9d4a9946d965f5f0fe37d35581edfa38bbcf6e231cc"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00008.png",
+      "retained": "originals/playwright-delayed/presented-frame-00008.png",
+      "bytes": 5635,
+      "sha256": "7f0bd8b9a0b1da580a6d573b1e83057167f8e98d146e4399e365c52aed2658ca"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00009.png",
+      "retained": "originals/playwright-delayed/presented-frame-00009.png",
+      "bytes": 5635,
+      "sha256": "27cc7f68e7bb54ee4d85d9d4a9946d965f5f0fe37d35581edfa38bbcf6e231cc"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00010.png",
+      "retained": "originals/playwright-delayed/presented-frame-00010.png",
+      "bytes": 5635,
+      "sha256": "7f0bd8b9a0b1da580a6d573b1e83057167f8e98d146e4399e365c52aed2658ca"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00011.png",
+      "retained": "originals/playwright-delayed/presented-frame-00011.png",
+      "bytes": 5635,
+      "sha256": "27cc7f68e7bb54ee4d85d9d4a9946d965f5f0fe37d35581edfa38bbcf6e231cc"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00012.png",
+      "retained": "originals/playwright-delayed/presented-frame-00012.png",
+      "bytes": 5635,
+      "sha256": "7f0bd8b9a0b1da580a6d573b1e83057167f8e98d146e4399e365c52aed2658ca"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00013.png",
+      "retained": "originals/playwright-delayed/presented-frame-00013.png",
+      "bytes": 5635,
+      "sha256": "27cc7f68e7bb54ee4d85d9d4a9946d965f5f0fe37d35581edfa38bbcf6e231cc"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00014.png",
+      "retained": "originals/playwright-delayed/presented-frame-00014.png",
+      "bytes": 5635,
+      "sha256": "7f0bd8b9a0b1da580a6d573b1e83057167f8e98d146e4399e365c52aed2658ca"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00015.png",
+      "retained": "originals/playwright-delayed/presented-frame-00015.png",
+      "bytes": 5635,
+      "sha256": "27cc7f68e7bb54ee4d85d9d4a9946d965f5f0fe37d35581edfa38bbcf6e231cc"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00016.png",
+      "retained": "originals/playwright-delayed/presented-frame-00016.png",
+      "bytes": 5635,
+      "sha256": "7f0bd8b9a0b1da580a6d573b1e83057167f8e98d146e4399e365c52aed2658ca"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00017.png",
+      "retained": "originals/playwright-delayed/presented-frame-00017.png",
+      "bytes": 5635,
+      "sha256": "27cc7f68e7bb54ee4d85d9d4a9946d965f5f0fe37d35581edfa38bbcf6e231cc"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00018.png",
+      "retained": "originals/playwright-delayed/presented-frame-00018.png",
+      "bytes": 5635,
+      "sha256": "7f0bd8b9a0b1da580a6d573b1e83057167f8e98d146e4399e365c52aed2658ca"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00019.png",
+      "retained": "originals/playwright-delayed/presented-frame-00019.png",
+      "bytes": 5635,
+      "sha256": "27cc7f68e7bb54ee4d85d9d4a9946d965f5f0fe37d35581edfa38bbcf6e231cc"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00020.png",
+      "retained": "originals/playwright-delayed/presented-frame-00020.png",
+      "bytes": 5635,
+      "sha256": "7f0bd8b9a0b1da580a6d573b1e83057167f8e98d146e4399e365c52aed2658ca"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00021.png",
+      "retained": "originals/playwright-delayed/presented-frame-00021.png",
+      "bytes": 5635,
+      "sha256": "27cc7f68e7bb54ee4d85d9d4a9946d965f5f0fe37d35581edfa38bbcf6e231cc"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00022.png",
+      "retained": "originals/playwright-delayed/presented-frame-00022.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00023.png",
+      "retained": "originals/playwright-delayed/presented-frame-00023.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00024.png",
+      "retained": "originals/playwright-delayed/presented-frame-00024.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00025.png",
+      "retained": "originals/playwright-delayed/presented-frame-00025.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00026.png",
+      "retained": "originals/playwright-delayed/presented-frame-00026.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00027.png",
+      "retained": "originals/playwright-delayed/presented-frame-00027.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00028.png",
+      "retained": "originals/playwright-delayed/presented-frame-00028.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00029.png",
+      "retained": "originals/playwright-delayed/presented-frame-00029.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00030.png",
+      "retained": "originals/playwright-delayed/presented-frame-00030.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00031.png",
+      "retained": "originals/playwright-delayed/presented-frame-00031.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00032.png",
+      "retained": "originals/playwright-delayed/presented-frame-00032.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00033.png",
+      "retained": "originals/playwright-delayed/presented-frame-00033.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00034.png",
+      "retained": "originals/playwright-delayed/presented-frame-00034.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00035.png",
+      "retained": "originals/playwright-delayed/presented-frame-00035.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00036.png",
+      "retained": "originals/playwright-delayed/presented-frame-00036.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00037.png",
+      "retained": "originals/playwright-delayed/presented-frame-00037.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00038.png",
+      "retained": "originals/playwright-delayed/presented-frame-00038.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00039.png",
+      "retained": "originals/playwright-delayed/presented-frame-00039.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00040.png",
+      "retained": "originals/playwright-delayed/presented-frame-00040.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00041.png",
+      "retained": "originals/playwright-delayed/presented-frame-00041.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00042.png",
+      "retained": "originals/playwright-delayed/presented-frame-00042.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00043.png",
+      "retained": "originals/playwright-delayed/presented-frame-00043.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00044.png",
+      "retained": "originals/playwright-delayed/presented-frame-00044.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00045.png",
+      "retained": "originals/playwright-delayed/presented-frame-00045.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00046.png",
+      "retained": "originals/playwright-delayed/presented-frame-00046.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00047.png",
+      "retained": "originals/playwright-delayed/presented-frame-00047.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00048.png",
+      "retained": "originals/playwright-delayed/presented-frame-00048.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00049.png",
+      "retained": "originals/playwright-delayed/presented-frame-00049.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00050.png",
+      "retained": "originals/playwright-delayed/presented-frame-00050.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00051.png",
+      "retained": "originals/playwright-delayed/presented-frame-00051.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00052.png",
+      "retained": "originals/playwright-delayed/presented-frame-00052.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00053.png",
+      "retained": "originals/playwright-delayed/presented-frame-00053.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00054.png",
+      "retained": "originals/playwright-delayed/presented-frame-00054.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00055.png",
+      "retained": "originals/playwright-delayed/presented-frame-00055.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00056.png",
+      "retained": "originals/playwright-delayed/presented-frame-00056.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00057.png",
+      "retained": "originals/playwright-delayed/presented-frame-00057.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00058.png",
+      "retained": "originals/playwright-delayed/presented-frame-00058.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00059.png",
+      "retained": "originals/playwright-delayed/presented-frame-00059.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00060.png",
+      "retained": "originals/playwright-delayed/presented-frame-00060.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00061.png",
+      "retained": "originals/playwright-delayed/presented-frame-00061.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00062.png",
+      "retained": "originals/playwright-delayed/presented-frame-00062.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00063.png",
+      "retained": "originals/playwright-delayed/presented-frame-00063.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00064.png",
+      "retained": "originals/playwright-delayed/presented-frame-00064.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00065.png",
+      "retained": "originals/playwright-delayed/presented-frame-00065.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00066.png",
+      "retained": "originals/playwright-delayed/presented-frame-00066.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00067.png",
+      "retained": "originals/playwright-delayed/presented-frame-00067.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00068.png",
+      "retained": "originals/playwright-delayed/presented-frame-00068.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frame-00069.png",
+      "retained": "originals/playwright-delayed/presented-frame-00069.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/playwright-delayed/presented-frames.json",
+      "retained": "originals/playwright-delayed/presented-frames.json.raw.txt",
+      "bytes": 60220,
+      "sha256": "dc722c12aa81f8d224e57af6b0b85523d86ec736c19245e40342698335962ad4"
+    },
+    {
+      "original": "originals/playwright-delayed/video/page@41707f8d02bdb1888ff21fa113532364.webm",
+      "retained": "originals/playwright-delayed/video/page@41707f8d02bdb1888ff21fa113532364.webm",
+      "bytes": 12046,
+      "sha256": "e786112114ed5ab422d479088fa82bfdeed6c82fcf016cc2ad4dc0c12b6ca2f4"
+    },
+    {
+      "original": "originals/report.json",
+      "retained": "originals/report.json.raw.txt",
+      "bytes": 137887,
+      "sha256": "84f611ba98285452383de621878afe7d7290b46597f8c7170a039cdc80fab7e9"
+    },
+    {
+      "original": "originals/test-runner-seam/events.jsonl",
+      "retained": "originals/test-runner-seam/events.jsonl",
+      "bytes": 411,
+      "sha256": "ff243c4bcda871ce0f707e1327f41a7819f4ff4eeca9e532426be12290585923"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00001.png",
+      "retained": "originals/test-runner-seam/presented-frame-00001.png",
+      "bytes": 5623,
+      "sha256": "8dc58bd5d650460d22f7150cd53f36e3c20cf2df1db54812bdb7717b7582e57a"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00002.png",
+      "retained": "originals/test-runner-seam/presented-frame-00002.png",
+      "bytes": 5624,
+      "sha256": "514eccd9e1dfbcbe7417d3fa0e8220a41adfe0e1c5acb5a5c5575676b6c7787f"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00003.png",
+      "retained": "originals/test-runner-seam/presented-frame-00003.png",
+      "bytes": 5623,
+      "sha256": "8dc58bd5d650460d22f7150cd53f36e3c20cf2df1db54812bdb7717b7582e57a"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00004.png",
+      "retained": "originals/test-runner-seam/presented-frame-00004.png",
+      "bytes": 5624,
+      "sha256": "514eccd9e1dfbcbe7417d3fa0e8220a41adfe0e1c5acb5a5c5575676b6c7787f"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00005.png",
+      "retained": "originals/test-runner-seam/presented-frame-00005.png",
+      "bytes": 5623,
+      "sha256": "8dc58bd5d650460d22f7150cd53f36e3c20cf2df1db54812bdb7717b7582e57a"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00006.png",
+      "retained": "originals/test-runner-seam/presented-frame-00006.png",
+      "bytes": 5624,
+      "sha256": "514eccd9e1dfbcbe7417d3fa0e8220a41adfe0e1c5acb5a5c5575676b6c7787f"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00007.png",
+      "retained": "originals/test-runner-seam/presented-frame-00007.png",
+      "bytes": 5623,
+      "sha256": "8dc58bd5d650460d22f7150cd53f36e3c20cf2df1db54812bdb7717b7582e57a"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00008.png",
+      "retained": "originals/test-runner-seam/presented-frame-00008.png",
+      "bytes": 5635,
+      "sha256": "27cc7f68e7bb54ee4d85d9d4a9946d965f5f0fe37d35581edfa38bbcf6e231cc"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00009.png",
+      "retained": "originals/test-runner-seam/presented-frame-00009.png",
+      "bytes": 5635,
+      "sha256": "7f0bd8b9a0b1da580a6d573b1e83057167f8e98d146e4399e365c52aed2658ca"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00010.png",
+      "retained": "originals/test-runner-seam/presented-frame-00010.png",
+      "bytes": 5635,
+      "sha256": "27cc7f68e7bb54ee4d85d9d4a9946d965f5f0fe37d35581edfa38bbcf6e231cc"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00011.png",
+      "retained": "originals/test-runner-seam/presented-frame-00011.png",
+      "bytes": 5635,
+      "sha256": "7f0bd8b9a0b1da580a6d573b1e83057167f8e98d146e4399e365c52aed2658ca"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00012.png",
+      "retained": "originals/test-runner-seam/presented-frame-00012.png",
+      "bytes": 5635,
+      "sha256": "27cc7f68e7bb54ee4d85d9d4a9946d965f5f0fe37d35581edfa38bbcf6e231cc"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00013.png",
+      "retained": "originals/test-runner-seam/presented-frame-00013.png",
+      "bytes": 5635,
+      "sha256": "7f0bd8b9a0b1da580a6d573b1e83057167f8e98d146e4399e365c52aed2658ca"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00014.png",
+      "retained": "originals/test-runner-seam/presented-frame-00014.png",
+      "bytes": 5635,
+      "sha256": "27cc7f68e7bb54ee4d85d9d4a9946d965f5f0fe37d35581edfa38bbcf6e231cc"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00015.png",
+      "retained": "originals/test-runner-seam/presented-frame-00015.png",
+      "bytes": 5635,
+      "sha256": "7f0bd8b9a0b1da580a6d573b1e83057167f8e98d146e4399e365c52aed2658ca"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00016.png",
+      "retained": "originals/test-runner-seam/presented-frame-00016.png",
+      "bytes": 5635,
+      "sha256": "27cc7f68e7bb54ee4d85d9d4a9946d965f5f0fe37d35581edfa38bbcf6e231cc"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00017.png",
+      "retained": "originals/test-runner-seam/presented-frame-00017.png",
+      "bytes": 5635,
+      "sha256": "7f0bd8b9a0b1da580a6d573b1e83057167f8e98d146e4399e365c52aed2658ca"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00018.png",
+      "retained": "originals/test-runner-seam/presented-frame-00018.png",
+      "bytes": 5635,
+      "sha256": "27cc7f68e7bb54ee4d85d9d4a9946d965f5f0fe37d35581edfa38bbcf6e231cc"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00019.png",
+      "retained": "originals/test-runner-seam/presented-frame-00019.png",
+      "bytes": 5635,
+      "sha256": "7f0bd8b9a0b1da580a6d573b1e83057167f8e98d146e4399e365c52aed2658ca"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00020.png",
+      "retained": "originals/test-runner-seam/presented-frame-00020.png",
+      "bytes": 5635,
+      "sha256": "27cc7f68e7bb54ee4d85d9d4a9946d965f5f0fe37d35581edfa38bbcf6e231cc"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00021.png",
+      "retained": "originals/test-runner-seam/presented-frame-00021.png",
+      "bytes": 5635,
+      "sha256": "7f0bd8b9a0b1da580a6d573b1e83057167f8e98d146e4399e365c52aed2658ca"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00022.png",
+      "retained": "originals/test-runner-seam/presented-frame-00022.png",
+      "bytes": 5635,
+      "sha256": "27cc7f68e7bb54ee4d85d9d4a9946d965f5f0fe37d35581edfa38bbcf6e231cc"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00023.png",
+      "retained": "originals/test-runner-seam/presented-frame-00023.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00024.png",
+      "retained": "originals/test-runner-seam/presented-frame-00024.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00025.png",
+      "retained": "originals/test-runner-seam/presented-frame-00025.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00026.png",
+      "retained": "originals/test-runner-seam/presented-frame-00026.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00027.png",
+      "retained": "originals/test-runner-seam/presented-frame-00027.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00028.png",
+      "retained": "originals/test-runner-seam/presented-frame-00028.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00029.png",
+      "retained": "originals/test-runner-seam/presented-frame-00029.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00030.png",
+      "retained": "originals/test-runner-seam/presented-frame-00030.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00031.png",
+      "retained": "originals/test-runner-seam/presented-frame-00031.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00032.png",
+      "retained": "originals/test-runner-seam/presented-frame-00032.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00033.png",
+      "retained": "originals/test-runner-seam/presented-frame-00033.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00034.png",
+      "retained": "originals/test-runner-seam/presented-frame-00034.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00035.png",
+      "retained": "originals/test-runner-seam/presented-frame-00035.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00036.png",
+      "retained": "originals/test-runner-seam/presented-frame-00036.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00037.png",
+      "retained": "originals/test-runner-seam/presented-frame-00037.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00038.png",
+      "retained": "originals/test-runner-seam/presented-frame-00038.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00039.png",
+      "retained": "originals/test-runner-seam/presented-frame-00039.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00040.png",
+      "retained": "originals/test-runner-seam/presented-frame-00040.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00041.png",
+      "retained": "originals/test-runner-seam/presented-frame-00041.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00042.png",
+      "retained": "originals/test-runner-seam/presented-frame-00042.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00043.png",
+      "retained": "originals/test-runner-seam/presented-frame-00043.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00044.png",
+      "retained": "originals/test-runner-seam/presented-frame-00044.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00045.png",
+      "retained": "originals/test-runner-seam/presented-frame-00045.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00046.png",
+      "retained": "originals/test-runner-seam/presented-frame-00046.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00047.png",
+      "retained": "originals/test-runner-seam/presented-frame-00047.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00048.png",
+      "retained": "originals/test-runner-seam/presented-frame-00048.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00049.png",
+      "retained": "originals/test-runner-seam/presented-frame-00049.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00050.png",
+      "retained": "originals/test-runner-seam/presented-frame-00050.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00051.png",
+      "retained": "originals/test-runner-seam/presented-frame-00051.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00052.png",
+      "retained": "originals/test-runner-seam/presented-frame-00052.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00053.png",
+      "retained": "originals/test-runner-seam/presented-frame-00053.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00054.png",
+      "retained": "originals/test-runner-seam/presented-frame-00054.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00055.png",
+      "retained": "originals/test-runner-seam/presented-frame-00055.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00056.png",
+      "retained": "originals/test-runner-seam/presented-frame-00056.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00057.png",
+      "retained": "originals/test-runner-seam/presented-frame-00057.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00058.png",
+      "retained": "originals/test-runner-seam/presented-frame-00058.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00059.png",
+      "retained": "originals/test-runner-seam/presented-frame-00059.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00060.png",
+      "retained": "originals/test-runner-seam/presented-frame-00060.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00061.png",
+      "retained": "originals/test-runner-seam/presented-frame-00061.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00062.png",
+      "retained": "originals/test-runner-seam/presented-frame-00062.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00063.png",
+      "retained": "originals/test-runner-seam/presented-frame-00063.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00064.png",
+      "retained": "originals/test-runner-seam/presented-frame-00064.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00065.png",
+      "retained": "originals/test-runner-seam/presented-frame-00065.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00066.png",
+      "retained": "originals/test-runner-seam/presented-frame-00066.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00067.png",
+      "retained": "originals/test-runner-seam/presented-frame-00067.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00068.png",
+      "retained": "originals/test-runner-seam/presented-frame-00068.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00069.png",
+      "retained": "originals/test-runner-seam/presented-frame-00069.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00070.png",
+      "retained": "originals/test-runner-seam/presented-frame-00070.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00071.png",
+      "retained": "originals/test-runner-seam/presented-frame-00071.png",
+      "bytes": 5637,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frame-00072.png",
+      "retained": "originals/test-runner-seam/presented-frame-00072.png",
+      "bytes": 5640,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9"
+    },
+    {
+      "original": "originals/test-runner-seam/presented-frames.json",
+      "retained": "originals/test-runner-seam/presented-frames.json.raw.txt",
+      "bytes": 62613,
+      "sha256": "26cee0246c7713db2553cf846d66e07fdc3461320a8a66395b49f92906fe4eee"
+    },
+    {
+      "original": "originals/test-runner-seam/runtime-log.json",
+      "retained": "originals/test-runner-seam/runtime-log.json.raw.txt",
+      "bytes": 66808,
+      "sha256": "de9738e5feb106da0d2c93543e58ad3ab50920e14571012bfbd368cca11e5c9e"
+    },
+    {
+      "original": "originals/test-runner-seam/test-result.json",
+      "retained": "originals/test-runner-seam/test-result.json.raw.txt",
+      "bytes": 67612,
+      "sha256": "bd80d958bc6135340b15290a3f9a0482775deb17ec1f15fb829f55754f204c5e"
+    },
+    {
+      "original": "originals/test-runner-seam/trace.zip",
+      "retained": "originals/test-runner-seam/trace.zip",
+      "bytes": 121540,
+      "sha256": "cc783ead44d62bd7f6e6f5c9e3eda68ba8cb5290ffd468b6f3c325d9ca2f35bb"
+    },
+    {
+      "original": "audit.json.raw.txt",
+      "retained": "audit.json.raw.txt",
+      "bytes": 41156,
+      "sha256": "8573b5fb17413c1f09f0832fd8d608d1e43a762639b2c0c9ed87811fd3a4b9c2"
+    },
+    {
+      "original": "gate.log.raw.txt",
+      "retained": "gate.log.raw.txt",
+      "bytes": 11907,
+      "sha256": "de3faa22aeecbd33cb47f65c437d05c19df0602fb9765ed674fb2c57a68ab78f"
+    },
+    {
+      "original": "terminal-watch.json.raw.txt",
+      "retained": "terminal-watch.json.raw.txt",
+      "bytes": 17191,
+      "sha256": "b14c5a9d77fcf7721fe305473270ffe89dd960f7f862926f80ae472236978678"
+    }
+  ]
+}

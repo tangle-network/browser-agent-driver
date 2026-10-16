@@ -1,0 +1,19 @@
+{
+  "status": "PASS",
+  "checks": {
+    "zeroTurnsTokensAndIntentionalAbort": true,
+    "resultEqualsNative": true,
+    "runtimeLogEqualsNative": true,
+    "nativeObserved": true,
+    "feedbackBracketed": true
+  },
+  "nativeStatus": "NATIVE_FRAMES_OBSERVED",
+  "nativeErrors": [],
+  "attemptStatus": "BRACKETED",
+  "mode": "Intentional beforeTurn abort, no model inference or application success claim",
+  "turns": 0,
+  "tokens": 0,
+  "result": "test-runner-seam/test-result.json",
+  "runtimeLog": "test-runner-seam/runtime-log.json",
+  "frames": 79
+}

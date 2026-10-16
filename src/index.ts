@@ -206,3 +206,8 @@ export { slackFormatter } from './formatters/slack.js';
 // Showcase
 export { runShowcase, quickCapture } from "./showcase/index.js";
 export type { ShowcaseConfig, ShowcaseStep, ShowcaseResult, QuickCaptureConfig } from "./showcase/types.js";
+
+// Shared native-frame observability seam; no independent command or service.
+export { startPresentedFrameCapture } from './observability/presented-frames.js';
+export type { PresentedFrameCapture, PresentedFrameReport } from './observability/presented-frames.js';
+export type { PresentedFrameOptions } from './types/config.js';

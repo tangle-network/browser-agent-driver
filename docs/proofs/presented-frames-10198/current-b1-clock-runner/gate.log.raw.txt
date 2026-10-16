@@ -1,0 +1,131 @@
+beelink-gate: gate_id=beelink1-f02ec80a283dfba2e9a3f17b539f0832; reconnect with beelink-gate --attach beelink1-f02ec80a283dfba2e9a3f17b539f0832
+Running as unit: beelink-gate-beelink1-f02ec80a283dfba2e9a3f17b539f0832.service; invocation ID: f15ab9e35e4b481aa76dea079d32237f
+beelink-gate: submitted gate_id=beelink1-f02ec80a283dfba2e9a3f17b539f0832
+beelink-gate: install reserve 11588136960 bytes from the other beelink's newest cold receipt for checkout shape full
+beelink-gate: using second checkout browser-agent-driver@dev
+beelink-gate: lock, host slot and CPU pressure (0.17, limit 20) admitted on beelink1 after 0s gate_id=beelink1-f02ec80a283dfba2e9a3f17b539f0832
+beelink-gate: install reserve 11588136960 bytes from the other beelink's newest cold receipt for checkout shape full
+beelink-gate: fetching 3d764f17321322689ecb71f13192ca5c03129798 and 2 tracking branch(es) into /home/drew/.cache/beelink-gate/github.com/tangle-network/browser-agent-driver@dev
+From github.com:tangle-network/browser-agent-driver
+ * branch            3d764f17321322689ecb71f13192ca5c03129798 -> FETCH_HEAD
+ * [new branch]      main       -> origin/main
+ * [new branch]      feat/presented-frame-measurement-10198 -> origin/feat/presented-frame-measurement-10198
+HEAD is now at 3d764f1 Retain producer endpoint findings and pre-command refusal
+beelink-gate: install reserve after checkout: gate bytes +16760832 (checkout and package stores, du 930 ms); host free fell 16764928 bytes over the same window; records 10754179072 (measured)
+Lockfile is up to date, resolution step is skipped
+Progress: resolved 1, reused 0, downloaded 0, added 0
+Packages: +391
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Progress: resolved 391, reused 318, downloaded 66, added 103
+Progress: resolved 391, reused 318, downloaded 71, added 389
+Progress: resolved 391, reused 318, downloaded 72, added 389
+Progress: resolved 391, reused 318, downloaded 72, added 390
+Progress: resolved 391, reused 318, downloaded 73, added 390
+Progress: resolved 391, reused 318, downloaded 73, added 391, done
+
+dependencies:
++ @ai-sdk/openai 3.0.127
++ ai 6.0.305
++ axe-core 4.14.0
++ chalk 5.6.2
++ openai 6.49.0
++ patchright 1.60.2
++ pngjs 7.0.0
+
+optionalDependencies:
++ ai-sdk-provider-claude-code 3.5.3
++ ai-sdk-provider-codex-cli 1.5.0
++ ffmpeg-static 5.3.0
+
+devDependencies:
++ @ai-sdk/anthropic 3.0.130
++ @ai-sdk/google 3.0.132
++ @changesets/changelog-github 0.6.0
++ @changesets/cli 2.31.1
++ @changesets/get-release-plan 4.0.16
++ @tangle-network/agent-app 0.60.168
++ @tangle-network/agent-eval 0.182.0
++ @tangle-network/agent-integrations 0.54.2
++ @types/node 22.20.5
++ @types/pngjs 6.0.5
++ classic-level 3.0.0
++ pixelmatch 7.2.0
++ playwright 1.64.0
++ tsx 4.23.15
++ typescript 5.9.3
++ vitest 4.1.11
+
+
+> @tangle-network/browser-agent-driver@0.36.3 postinstall /home/drew/.cache/beelink-gate/github.com/tangle-network/browser-agent-driver@dev
+> node ./scripts/postinstall-provider-patches.mjs
+
+[postinstall] patched ai-sdk-provider-claude-code
+
+> @tangle-network/browser-agent-driver@0.36.3 prepare /home/drew/.cache/beelink-gate/github.com/tangle-network/browser-agent-driver@dev
+> node ./scripts/install-git-hooks.mjs
+
+╭ Warning ─────────────────────────────────────────────────────────────────────╮
+│                                                                              │
+│   Ignored build scripts: classic-level@3.0.0, cpu-features@0.0.10,           │
+│   esbuild@0.28.2, ffmpeg-static@5.3.0, ssh2@1.17.0.                          │
+│   Run "pnpm approve-builds" to pick which dependencies should be allowed     │
+│   to run scripts.                                                            │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+Done in 7s using pnpm v10.33.3
+v22.23.3
+beelink-gate: install reserve after install: gate bytes +838389760 (checkout and package stores, du 914 ms); host free fell 861896704 bytes over the same window; records 11575808000 (measured)
+beelink-gate: running bash -c set\ -e\;\ node\ --version\;\ pnpm\ --version\;\ git\ rev-parse\ HEAD\ origin/main\;\ pnpm\ run\ check:changesets\;\ pnpm\ run\ check:boundaries\;\ pnpm\ run\ build\;\ pnpm\ exec\ playwright\ install\ chromium\;\ pnpm\ exec\ patchright\ install\ chromium\;\ DESIGN_EVIDENCE=/home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798\ node\ scripts/prove-presented-frames.mjs\ --clock-and-runner
+10.33.3
+3d764f17321322689ecb71f13192ca5c03129798
+616e54b3d0d8c09edec7b4a5ac1fc520e28b2aee
+
+> @tangle-network/browser-agent-driver@0.36.3 check:changesets /home/drew/.cache/beelink-gate/github.com/tangle-network/browser-agent-driver@dev
+> node ./scripts/check-release-plan.mjs
+
+Validated 3 changeset(s), 1 release(s).
+
+> @tangle-network/browser-agent-driver@0.36.3 check:boundaries /home/drew/.cache/beelink-gate/github.com/tangle-network/browser-agent-driver@dev
+> node ./scripts/check-boundaries.mjs
+
+Boundary check passed (274 files).
+
+> @tangle-network/browser-agent-driver@0.36.3 build /home/drew/.cache/beelink-gate/github.com/tangle-network/browser-agent-driver@dev
+> tsc && node ./scripts/copy-static-assets.mjs
+
+copied 24 rubric fragment(s) to dist/
+copied 9 rubric anchor(s) to dist/
+copied 4 ethics rule(s) to dist/
+copied 1 viewer asset(s) to dist/
+Downloading Chrome for Testing 148.0.7778.96 (playwright chromium v1223) from https://cdn.playwright.dev/builds/cft/148.0.7778.96/linux64/chrome-linux64.zip
+|                                                                                |   0% of 175.4 MiB
+|■■■■■■■■                                                                        |  10% of 175.4 MiB
+|■■■■■■■■■■■■■■■■                                                                |  20% of 175.4 MiB
+|■■■■■■■■■■■■■■■■■■■■■■■■                                                        |  30% of 175.4 MiB
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                                |  40% of 175.4 MiB
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                        |  50% of 175.4 MiB
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                |  60% of 175.4 MiB
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                        |  70% of 175.4 MiB
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                |  80% of 175.4 MiB
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■        |  90% of 175.4 MiB
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■| 100% of 175.4 MiB
+Chrome for Testing 148.0.7778.96 (playwright chromium v1223) downloaded to /home/drew/.cache/ms-playwright/chromium-1223
+Downloading Chrome Headless Shell 148.0.7778.96 (playwright chromium-headless-shell v1223) from https://cdn.playwright.dev/builds/cft/148.0.7778.96/linux64/chrome-headless-shell-linux64.zip
+|                                                                                |   0% of 113.2 MiB
+|■■■■■■■■                                                                        |  10% of 113.2 MiB
+|■■■■■■■■■■■■■■■■                                                                |  20% of 113.2 MiB
+|■■■■■■■■■■■■■■■■■■■■■■■■                                                        |  30% of 113.2 MiB
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                                |  40% of 113.2 MiB
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                        |  50% of 113.2 MiB
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                |  60% of 113.2 MiB
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                        |  70% of 113.2 MiB
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                |  80% of 113.2 MiB
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■        |  90% of 113.2 MiB
+|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■| 100% of 113.2 MiB
+Chrome Headless Shell 148.0.7778.96 (playwright chromium-headless-shell v1223) downloaded to /home/drew/.cache/ms-playwright/chromium_headless_shell-1223
+{"status":"PASS","cases":2,"report":"/home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/report.json"}
+beelink-gate: evicted LRU cache /home/drew/.cache/beelink-gate/github.com/tangle-network/traces@light
+beelink-gate: evicted LRU cache /home/drew/.cache/beelink-gate/github.com/tangle-network/discovery-lab@dev
+beelink-gate: cache prune: cache_before=43703214080 cache_after=37618769920 free_before=191961960448 free_after=198034673664
+beelink-gate receipt: sha=3d764f17321322689ecb71f13192ca5c03129798 install=install command=bash -c set\ -e\;\ node\ --version\;\ pnpm\ --version\;\ git\ rev-parse\ HEAD\ origin/main\;\ pnpm\ run\ check:changesets\;\ pnpm\ run\ check:boundaries\;\ pnpm\ run\ build\;\ pnpm\ exec\ playwright\ install\ chromium\;\ pnpm\ exec\ patchright\ install\ chromium\;\ DESIGN_EVIDENCE=/home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798\ node\ scripts/prove-presented-frames.mjs\ --clock-and-runner exit=0 duration=74s waited=0s host=beelink1 timed_out=0 watchdog=0 load=15.13 preview=none class=dev cpu_s=26.1 node=v22.23.3 rebuild=none cpu_pressure=0.17 starved=0 cgroup=beelink-gate-dev cache=ok sparse=none checkout=cold workers=8 reaped=0 bundle=none host_cpu=11.96 gate_id=beelink1-f02ec80a283dfba2e9a3f17b539f0832
+beelink-gate timing: {"cache_lock_wait_ms": {"cleanup": 0, "precheck": 0}, "cache_prune_work_ms": {"cleanup": 20894, "precheck": 12307}, "capacity_claim_wait_ms": 6, "cleanup_s": 24, "command_s": 23, "fetch_s": 2, "pre_command_s": 27}

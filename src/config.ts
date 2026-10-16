@@ -123,14 +123,7 @@ export interface DriverConfig {
     maxScoreGap?: number;
     readOnlyTop2Challenger?: boolean;
   };
-  observability?: {
-    enabled?: boolean;
-    captureConsole?: boolean;
-    captureNetwork?: boolean;
-    tracePolicy?: 'off' | 'on-failure' | 'always';
-    maxConsoleEntries?: number;
-    maxNetworkEntries?: number;
-  };
+  observability?: AgentConfig['observability'];
 
   // Output
   outputDir?: string;
@@ -362,6 +355,7 @@ export function toAgentConfig(config: DriverConfig): AgentConfig {
     observability: config.observability
       ? {
           enabled: config.observability.enabled,
+          presentedFrames: config.observability.presentedFrames,
           captureConsole: config.observability.captureConsole,
           captureNetwork: config.observability.captureNetwork,
           tracePolicy: config.observability.tracePolicy,

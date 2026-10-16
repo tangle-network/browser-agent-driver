@@ -1,0 +1,133 @@
+{
+  "source": "f303a0ab3020a1a69ca89f0f835ca65630b681fb",
+  "nativePngsVerified": 405,
+  "cases": [
+    {
+      "case": "playwright-immediate",
+      "browser": "HeadlessChrome/156.0.8078.4",
+      "nativeFrames": 70,
+      "videoFramesDecoded": 55,
+      "attempt": {
+        "input": 1,
+        "status": "BRACKETED",
+        "lastNegative": 7,
+        "firstPositive": 8,
+        "intervalMs": [
+          20.7470703125,
+          37.4130859375
+        ],
+        "captureGapMs": 16.666015625
+      },
+      "maxGapMs": 16.667236328125,
+      "receivedMinusNativeMs": [
+        -14.343017578125,
+        -8.31494140625
+      ],
+      "shaPixelAudit": "PASS"
+    },
+    {
+      "case": "playwright-delayed",
+      "browser": "HeadlessChrome/156.0.8078.4",
+      "nativeFrames": 67,
+      "videoFramesDecoded": 53,
+      "attempt": {
+        "input": 1,
+        "status": "BRACKETED",
+        "lastNegative": 19,
+        "firstPositive": 20,
+        "intervalMs": [
+          255.922607421875,
+          272.5888671875
+        ],
+        "captureGapMs": 16.666259765625
+      },
+      "maxGapMs": 16.667236328125,
+      "receivedMinusNativeMs": [
+        -14.26708984375,
+        -8.301025390625
+      ],
+      "shaPixelAudit": "PASS"
+    },
+    {
+      "case": "playwright-never",
+      "browser": "HeadlessChrome/156.0.8078.4",
+      "nativeFrames": 67,
+      "videoFramesDecoded": 53,
+      "attempt": {
+        "input": 1,
+        "status": "NO_FEEDBACK_OBSERVED",
+        "reason": "No predicate-positive frame observed in declared window; capture gaps remain explicit, not proof of absence between frames."
+      },
+      "maxGapMs": 16.6669921875,
+      "receivedMinusNativeMs": [
+        -14.2470703125,
+        -9.2529296875
+      ],
+      "shaPixelAudit": "PASS"
+    },
+    {
+      "case": "patchright-immediate",
+      "browser": "HeadlessChrome/148.0.7778.96",
+      "nativeFrames": 67,
+      "videoFramesDecoded": 52,
+      "attempt": {
+        "input": 1,
+        "status": "BRACKETED",
+        "lastNegative": 4,
+        "firstPositive": 5,
+        "intervalMs": [
+          0,
+          8.7060546875
+        ],
+        "captureGapMs": 16.98291015625
+      },
+      "maxGapMs": 17.711669921875,
+      "receivedMinusNativeMs": [
+        0.614013671875,
+        2.68310546875
+      ],
+      "shaPixelAudit": "PASS"
+    },
+    {
+      "case": "patchright-delayed",
+      "browser": "HeadlessChrome/148.0.7778.96",
+      "nativeFrames": 67,
+      "videoFramesDecoded": 51,
+      "attempt": {
+        "input": 1,
+        "status": "BRACKETED",
+        "lastNegative": 19,
+        "firstPositive": 20,
+        "intervalMs": [
+          243.2109375,
+          260.363037109375
+        ],
+        "captureGapMs": 17.152099609375
+      },
+      "maxGapMs": 20.23291015625,
+      "receivedMinusNativeMs": [
+        0.2958984375,
+        1.804931640625
+      ],
+      "shaPixelAudit": "PASS"
+    },
+    {
+      "case": "patchright-never",
+      "browser": "HeadlessChrome/148.0.7778.96",
+      "nativeFrames": 67,
+      "videoFramesDecoded": 52,
+      "attempt": {
+        "input": 1,
+        "status": "NO_FEEDBACK_OBSERVED",
+        "reason": "No predicate-positive frame observed in declared window; capture gaps remain explicit, not proof of absence between frames."
+      },
+      "maxGapMs": 18.425048828125,
+      "receivedMinusNativeMs": [
+        0.358154296875,
+        2.1279296875
+      ],
+      "shaPixelAudit": "PASS"
+    }
+  ],
+  "qualification": "Fixture discrimination only; producer quantization, epoch alignment, total capture overhead and2x40 application conformance UNKNOWN; videos inspected as decoded sequences, not native playback."
+}

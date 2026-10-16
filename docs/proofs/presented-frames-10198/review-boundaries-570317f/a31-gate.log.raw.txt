@@ -1,0 +1,181 @@
+beelink-gate: gate_id=beelink1-a31b48c1d56b3c73f741fb4b8e7cb6c7; reconnect with beelink-gate --attach beelink1-a31b48c1d56b3c73f741fb4b8e7cb6c7
+Running as unit: beelink-gate-beelink1-a31b48c1d56b3c73f741fb4b8e7cb6c7.service; invocation ID: ce71b11a5cc54743b098123032faad1f
+beelink-gate: submitted gate_id=beelink1-a31b48c1d56b3c73f741fb4b8e7cb6c7
+beelink-gate: install reserve 10737418240 bytes from beelink1's newest warm receipt for checkout shape full
+beelink-gate: waiting 0s of 1800s: beelink1 host CPU pressure (some avg60) 43.43 over its ceiling of 40
+beelink-gate: using second checkout browser-agent-driver@dev
+beelink-gate: lock, host slot and CPU pressure (0.00, limit 20) admitted on beelink1 after 19s gate_id=beelink1-a31b48c1d56b3c73f741fb4b8e7cb6c7
+beelink-gate: install reserve 10737418240 bytes from beelink1's newest warm receipt for checkout shape full
+beelink-gate: fetching 570317ff4df073e38097605723bfd6af9881c48d and 2 tracking branch(es) into /home/drew/.cache/beelink-gate/github.com/tangle-network/browser-agent-driver@dev
+From github.com:tangle-network/browser-agent-driver
+ * branch            570317ff4df073e38097605723bfd6af9881c48d -> FETCH_HEAD
+   fd846d8..570317f  feat/presented-frame-measurement-10198 -> origin/feat/presented-frame-measurement-10198
+Previous HEAD position was fd846d8 fix: isolate trusted capture inputs and reject overlapping windows
+HEAD is now at 570317f fix: retain boundary diagnostics before observation assertions
+Removing dist/
+Removing node_modules/
+beelink-gate: install reserve after checkout: gate bytes +0 (checkout and package stores, du 1146 ms); host free fell -958464 bytes over the same window; records 10737418240 (measured)
+Lockfile is up to date, resolution step is skipped
+Progress: resolved 1, reused 0, downloaded 0, added 0
+Packages: +391
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Progress: resolved 391, reused 386, downloaded 0, added 0
+Progress: resolved 391, reused 390, downloaded 1, added 344
+Progress: resolved 391, reused 390, downloaded 1, added 391, done
+
+dependencies:
++ @ai-sdk/openai 3.0.127
++ ai 6.0.305
++ axe-core 4.14.0
++ chalk 5.6.2
++ openai 6.49.0
++ patchright 1.60.2
++ pngjs 7.0.0
+
+optionalDependencies:
++ ai-sdk-provider-claude-code 3.5.3
++ ai-sdk-provider-codex-cli 1.5.0
++ ffmpeg-static 5.3.0
+
+devDependencies:
++ @ai-sdk/anthropic 3.0.130
++ @ai-sdk/google 3.0.132
++ @changesets/changelog-github 0.6.0
++ @changesets/cli 2.31.1
++ @changesets/get-release-plan 4.0.16
++ @tangle-network/agent-app 0.60.168
++ @tangle-network/agent-eval 0.182.0
++ @tangle-network/agent-integrations 0.54.2
++ @types/node 22.20.5
++ @types/pngjs 6.0.5
++ classic-level 3.0.0
++ pixelmatch 7.2.0
++ playwright 1.64.0
++ tsx 4.23.15
++ typescript 5.9.3
++ vitest 4.1.11
+
+
+> @tangle-network/browser-agent-driver@0.36.3 postinstall /home/drew/.cache/beelink-gate/github.com/tangle-network/browser-agent-driver@dev
+> node ./scripts/postinstall-provider-patches.mjs
+
+[postinstall] patched ai-sdk-provider-claude-code
+
+> @tangle-network/browser-agent-driver@0.36.3 prepare /home/drew/.cache/beelink-gate/github.com/tangle-network/browser-agent-driver@dev
+> node ./scripts/install-git-hooks.mjs
+
+╭ Warning ─────────────────────────────────────────────────────────────────────╮
+│                                                                              │
+│   Ignored build scripts: classic-level@3.0.0, cpu-features@0.0.10,           │
+│   esbuild@0.28.2, ffmpeg-static@5.3.0, ssh2@1.17.0.                          │
+│   Run "pnpm approve-builds" to pick which dependencies should be allowed     │
+│   to run scripts.                                                            │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+Done in 5.5s using pnpm v10.33.3
+v22.23.3
+beelink-gate: install reserve after install: gate bytes +0 (checkout and package stores, du 1343 ms); host free fell 34705408 bytes over the same window; records 10737418240 (measured)
+beelink-gate: running bash -c $'set -e\nnode --version\npnpm --version\ngit rev-parse HEAD origin/main\npnpm run check:changesets\npnpm run check:boundaries\nnode --check scripts/prove-presented-frames.mjs\npnpm exec playwright install chromium\npnpm exec patchright install chromium\nmkdir -p /home/drew/.local/state/agent-work/browser-measurement/570317ff4df073e38097605723bfd6af9881c48d\ntask_source=$(mktemp)\ncp src/observability/presented-frames.ts "$task_source"\ntrap \'cp "$task_source" src/observability/presented-frames.ts; rm -f "$task_source"\' EXIT\ngit show 47766e03063a60b191bba729db0a825ecea5107b:src/observability/presented-frames.ts > src/observability/presented-frames.ts\npnpm run build\nbaseline_exit=0\nDESIGN_EVIDENCE=/home/drew/.local/state/agent-work/browser-measurement/570317ff4df073e38097605723bfd6af9881c48d/baseline node scripts/prove-presented-frames.mjs --review-boundaries || baseline_exit=$?\nprintf \'Old component actual exit=%s; qualification retained independently\\n\' "$baseline_exit"\ncp "$task_source" src/observability/presented-frames.ts\npnpm run build\ncurrent_exit=0\nDESIGN_EVIDENCE=/home/drew/.local/state/agent-work/browser-measurement/570317ff4df073e38097605723bfd6af9881c48d/current node scripts/prove-presented-frames.mjs --review-boundaries || current_exit=$?\nprintf \'Current source actual exit=%s\\n\' "$current_exit"\ngit diff --exit-code -- src scripts package.json pnpm-lock.yaml .changeset\npython3 -c \'import hashlib,json,pathlib,subprocess\np=pathlib.Path("/home/drew/.local/state/agent-work/browser-measurement/570317ff4df073e38097605723bfd6af9881c48d");b=json.loads((p/\'"\'"\'baseline/report.json\'"\'"\').read_text());c=json.loads((p/\'"\'"\'current/report.json\'"\'"\').read_text());rows={x[\'"\'"\'scenario\'"\'"\']:x for x in b.get(\'"\'"\'boundaryCases\'"\'"\',[])}\no=rows.get(\'"\'"\'overlap\'"\'"\',{});f=rows.get(\'"\'"\'page-forgery\'"\'"\',{});oldhash=hashlib.sha256(subprocess.check_output([\'"\'"\'git\'"\'"\',\'"\'"\'show\'"\'"\',\'"\'"\'47766e03063a60b191bba729db0a825ecea5107b:src/observability/presented-frames.ts\'"\'"\'])).hexdigest();newhash=hashlib.sha256(pathlib.Path(\'"\'"\'src/observability/presented-frames.ts\'"\'"\').read_bytes()).hexdigest()\nassert b[\'"\'"\'captureSourceSha256\'"\'"\']==oldhash and c[\'"\'"\'captureSourceSha256\'"\'"\']==newhash\nsummary={\'"\'"\'oldComponent\'"\'"\':\'"\'"\'47766e03063a60b191bba729db0a825ecea5107b\'"\'"\',\'"\'"\'currentSource\'"\'"\':c[\'"\'"\'source\'"\'"\'],\'"\'"\'oldCaptureSourceSha256\'"\'"\':oldhash,\'"\'"\'currentCaptureSourceSha256\'"\'"\':newhash,\'"\'"\'oldCaptureArtifactSha256\'"\'"\':b[\'"\'"\'captureArtifactSha256\'"\'"\'],\'"\'"\'currentCaptureArtifactSha256\'"\'"\':c[\'"\'"\'captureArtifactSha256\'"\'"\'],\'"\'"\'baselineStatus\'"\'"\':b[\'"\'"\'status\'"\'"\'],\'"\'"\'baselineFailure\'"\'"\':b.get(\'"\'"\'failure\'"\'"\'),\'"\'"\'baselineIntegration\'"\'"\':b.get(\'"\'"\'integration\'"\'"\'),\'"\'"\'baselineCases\'"\'"\':[{k:x.get(k) for k in [\'"\'"\'scenario\'"\'"\',\'"\'"\'status\'"\'"\',\'"\'"\'failure\'"\'"\',\'"\'"\'browserOwnerNull\'"\'"\',\'"\'"\'attackProbe\'"\'"\',\'"\'"\'profileRemoved\'"\'"\']} for x in b.get(\'"\'"\'boundaryCases\'"\'"\',[])],\'"\'"\'baselineOverlapAttributionReproduced\'"\'"\':[a[\'"\'"\'status\'"\'"\'] for a in o.get(\'"\'"\'report\'"\'"\',{}).get(\'"\'"\'attempts\'"\'"\',[])]==[\'"\'"\'UNKNOWN\'"\'"\',\'"\'"\'BRACKETED\'"\'"\'],\'"\'"\'baselineForgedInputReproduced\'"\'"\':f.get(\'"\'"\'attackProbe\'"\'"\',{}).get(\'"\'"\'invoked\'"\'"\',0)>0 and len(f.get(\'"\'"\'report\'"\'"\',{}).get(\'"\'"\'inputs\'"\'"\',[]))==2,\'"\'"\'currentStatus\'"\'"\':c[\'"\'"\'status\'"\'"\'],\'"\'"\'currentIntegration\'"\'"\':c.get(\'"\'"\'integration\'"\'"\'),\'"\'"\'currentCases\'"\'"\':[{k:x.get(k) for k in [\'"\'"\'scenario\'"\'"\',\'"\'"\'status\'"\'"\',\'"\'"\'failure\'"\'"\',\'"\'"\'browserOwnerNull\'"\'"\',\'"\'"\'attackProbe\'"\'"\',\'"\'"\'profileRemoved\'"\'"\']} for x in c.get(\'"\'"\'boundaryCases\'"\'"\',[])],\'"\'"\'presentation\'"\'"\':\'"\'"\'UNKNOWN\'"\'"\'}\n(p/\'"\'"\'phase-summary.json\'"\'"\').write_text(json.dumps(summary,indent=2)+\'"\'"\'\\n\'"\'"\');print(json.dumps(summary,indent=2))\nassert c[\'"\'"\'status\'"\'"\']==\'"\'"\'PASS\'"\'"\' and c[\'"\'"\'unexpectedModelRequests\'"\'"\']==0 and c[\'"\'"\'integration\'"\'"\'][\'"\'"\'status\'"\'"\']==\'"\'"\'PASS\'"\'"\'\nassert len(c[\'"\'"\'cases\'"\'"\'])==2 and len(c[\'"\'"\'boundaryCases\'"\'"\'])==3 and all(x[\'"\'"\'status\'"\'"\']==\'"\'"\'PASS\'"\'"\' for x in c[\'"\'"\'boundaryCases\'"\'"\'])\nassert next(x for x in c[\'"\'"\'boundaryCases\'"\'"\'] if x[\'"\'"\'scenario\'"\'"\']==\'"\'"\'persistent\'"\'"\')[\'"\'"\'profileRemoved\'"\'"\']\n\'\ntest "$current_exit" -eq 0'
+10.33.3
+570317ff4df073e38097605723bfd6af9881c48d
+616e54b3d0d8c09edec7b4a5ac1fc520e28b2aee
+
+> @tangle-network/browser-agent-driver@0.36.3 check:changesets /home/drew/.cache/beelink-gate/github.com/tangle-network/browser-agent-driver@dev
+> node ./scripts/check-release-plan.mjs
+
+Validated 3 changeset(s), 1 release(s).
+
+> @tangle-network/browser-agent-driver@0.36.3 check:boundaries /home/drew/.cache/beelink-gate/github.com/tangle-network/browser-agent-driver@dev
+> node ./scripts/check-boundaries.mjs
+
+Boundary check passed (274 files).
+
+> @tangle-network/browser-agent-driver@0.36.3 build /home/drew/.cache/beelink-gate/github.com/tangle-network/browser-agent-driver@dev
+> tsc && node ./scripts/copy-static-assets.mjs
+
+copied 24 rubric fragment(s) to dist/
+copied 9 rubric anchor(s) to dist/
+copied 4 ethics rule(s) to dist/
+copied 1 viewer asset(s) to dist/
+{"status":"FAIL","cases":1,"report":"/home/drew/.local/state/agent-work/browser-measurement/570317ff4df073e38097605723bfd6af9881c48d/baseline/report.json","failure":"Error: patchright-delayed: native/input provenance failed [\"Native frame epochs are out of capture order; no sorting away failed provenance.\"]"}
+Old component actual exit=1; qualification retained independently
+
+> @tangle-network/browser-agent-driver@0.36.3 build /home/drew/.cache/beelink-gate/github.com/tangle-network/browser-agent-driver@dev
+> tsc && node ./scripts/copy-static-assets.mjs
+
+copied 24 rubric fragment(s) to dist/
+copied 9 rubric anchor(s) to dist/
+copied 4 ethics rule(s) to dist/
+copied 1 viewer asset(s) to dist/
+{"status":"FAIL","cases":2,"report":"/home/drew/.local/state/agent-work/browser-measurement/570317ff4df073e38097605723bfd6af9881c48d/current/report.json","failure":"Error: Review boundaries failed: page-forgery"}
+Current source actual exit=1
+{
+  "oldComponent": "47766e03063a60b191bba729db0a825ecea5107b",
+  "currentSource": "570317ff4df073e38097605723bfd6af9881c48d",
+  "oldCaptureSourceSha256": "f8df8ac39378108f3c5a2a63b644f56a9d391a2c28e82b11d2debfffdb76b32a",
+  "currentCaptureSourceSha256": "e4424f1deffb08ed55eea4d0274d575c85ad35fca6b32c16b527e2fc7b8db668",
+  "oldCaptureArtifactSha256": "873540c127c229f5bbebf1fb625cbfda147c26e6122338d65d676506f4a347f4",
+  "currentCaptureArtifactSha256": "79b86193dffab2a927cc8661072c081a07a714332da68052d7649837e409a4aa",
+  "baselineStatus": "FAIL",
+  "baselineFailure": "Error: patchright-delayed: native/input provenance failed [\"Native frame epochs are out of capture order; no sorting away failed provenance.\"]",
+  "baselineIntegration": null,
+  "baselineCases": [],
+  "baselineOverlapAttributionReproduced": false,
+  "baselineForgedInputReproduced": false,
+  "currentStatus": "FAIL",
+  "currentIntegration": {
+    "status": "PASS",
+    "checks": {
+      "zeroTurnsTokensAndIntentionalAbort": true,
+      "resultEqualsNative": true,
+      "runtimeLogEqualsNative": true,
+      "nativeObserved": true,
+      "feedbackBracketed": true
+    },
+    "nativeStatus": "NATIVE_FRAMES_OBSERVED",
+    "nativeErrors": [],
+    "attemptStatus": "BRACKETED",
+    "mode": "Intentional beforeTurn abort, no model inference or application success claim",
+    "turns": 0,
+    "tokens": 0,
+    "result": "test-runner-seam/test-result.json",
+    "runtimeLog": "test-runner-seam/runtime-log.json",
+    "frames": 79
+  },
+  "currentCases": [
+    {
+      "scenario": "overlap",
+      "status": "PASS",
+      "failure": null,
+      "browserOwnerNull": false,
+      "attackProbe": null,
+      "profileRemoved": null
+    },
+    {
+      "scenario": "persistent",
+      "status": "PASS",
+      "failure": null,
+      "browserOwnerNull": false,
+      "attackProbe": null,
+      "profileRemoved": true
+    },
+    {
+      "scenario": "page-forgery",
+      "status": "FAIL",
+      "failure": "Error: Missing native observation: [\"Native frame epochs are out of capture order; no sorting away failed provenance.\"]",
+      "browserOwnerNull": false,
+      "attackProbe": {
+        "visibleGlobals": [],
+        "invoked": 0,
+        "syntheticClickDispatched": true
+      },
+      "profileRemoved": null
+    }
+  ],
+  "presentation": "UNKNOWN"
+}
+Traceback (most recent call last):
+  File "<string>", line 7, in <module>
+AssertionError
+beelink-gate receipt: sha=570317ff4df073e38097605723bfd6af9881c48d install=install command=bash -c $'set -e\nnode --version\npnpm --version\ngit rev-parse HEAD origin/main\npnpm run check:changesets\npnpm run check:boundaries\nnode --check scripts/prove-presented-frames.mjs\npnpm exec playwright install chromium\npnpm exec patchright install chromium\nmkdir -p /home/drew/.local/state/agent-work/browser-measurement/570317ff4df073e38097605723bfd6af9881c48d\ntask_source=$(mktemp)\ncp src/observability/presented-frames.ts "$task_source"\ntrap \'cp "$task_source" src/observability/presented-frames.ts; rm -f "$task_source"\' EXIT\ngit show 47766e03063a60b191bba729db0a825ecea5107b:src/observability/presented-frames.ts > src/observability/presented-frames.ts\npnpm run build\nbaseline_exit=0\nDESIGN_EVIDENCE=/home/drew/.local/state/agent-work/browser-measurement/570317ff4df073e38097605723bfd6af9881c48d/baseline node scripts/prove-presented-frames.mjs --review-boundaries || baseline_exit=$?\nprintf \'Old component actual exit=%s; qualification retained independently\\n\' "$baseline_exit"\ncp "$task_source" src/observability/presented-frames.ts\npnpm run build\ncurrent_exit=0\nDESIGN_EVIDENCE=/home/drew/.local/state/agent-work/browser-measurement/570317ff4df073e38097605723bfd6af9881c48d/current node scripts/prove-presented-frames.mjs --review-boundaries || current_exit=$?\nprintf \'Current source actual exit=%s\\n\' "$current_exit"\ngit diff --exit-code -- src scripts package.json pnpm-lock.yaml .changeset\npython3 -c \'import hashlib,json,pathlib,subprocess\np=pathlib.Path("/home/drew/.local/state/agent-work/browser-measurement/570317ff4df073e38097605723bfd6af9881c48d");b=json.loads((p/\'"\'"\'baseline/report.json\'"\'"\').read_text());c=json.loads((p/\'"\'"\'current/report.json\'"\'"\').read_text());rows={x[\'"\'"\'scenario\'"\'"\']:x for x in b.get(\'"\'"\'boundaryCases\'"\'"\',[])}\no=rows.get(\'"\'"\'overlap\'"\'"\',{});f=rows.get(\'"\'"\'page-forgery\'"\'"\',{});oldhash=hashlib.sha256(subprocess.check_output([\'"\'"\'git\'"\'"\',\'"\'"\'show\'"\'"\',\'"\'"\'47766e03063a60b191bba729db0a825ecea5107b:src/observability/presented-frames.ts\'"\'"\'])).hexdigest();newhash=hashlib.sha256(pathlib.Path(\'"\'"\'src/observability/presented-frames.ts\'"\'"\').read_bytes()).hexdigest()\nassert b[\'"\'"\'captureSourceSha256\'"\'"\']==oldhash and c[\'"\'"\'captureSourceSha256\'"\'"\']==newhash\nsummary={\'"\'"\'oldComponent\'"\'"\':\'"\'"\'47766e03063a60b191bba729db0a825ecea5107b\'"\'"\',\'"\'"\'currentSource\'"\'"\':c[\'"\'"\'source\'"\'"\'],\'"\'"\'oldCaptureSourceSha256\'"\'"\':oldhash,\'"\'"\'currentCaptureSourceSha256\'"\'"\':newhash,\'"\'"\'oldCaptureArtifactSha256\'"\'"\':b[\'"\'"\'captureArtifactSha256\'"\'"\'],\'"\'"\'currentCaptureArtifactSha256\'"\'"\':c[\'"\'"\'captureArtifactSha256\'"\'"\'],\'"\'"\'baselineStatus\'"\'"\':b[\'"\'"\'status\'"\'"\'],\'"\'"\'baselineFailure\'"\'"\':b.get(\'"\'"\'failure\'"\'"\'),\'"\'"\'baselineIntegration\'"\'"\':b.get(\'"\'"\'integration\'"\'"\'),\'"\'"\'baselineCases\'"\'"\':[{k:x.get(k) for k in [\'"\'"\'scenario\'"\'"\',\'"\'"\'status\'"\'"\',\'"\'"\'failure\'"\'"\',\'"\'"\'browserOwnerNull\'"\'"\',\'"\'"\'attackProbe\'"\'"\',\'"\'"\'profileRemoved\'"\'"\']} for x in b.get(\'"\'"\'boundaryCases\'"\'"\',[])],\'"\'"\'baselineOverlapAttributionReproduced\'"\'"\':[a[\'"\'"\'status\'"\'"\'] for a in o.get(\'"\'"\'report\'"\'"\',{}).get(\'"\'"\'attempts\'"\'"\',[])]==[\'"\'"\'UNKNOWN\'"\'"\',\'"\'"\'BRACKETED\'"\'"\'],\'"\'"\'baselineForgedInputReproduced\'"\'"\':f.get(\'"\'"\'attackProbe\'"\'"\',{}).get(\'"\'"\'invoked\'"\'"\',0)>0 and len(f.get(\'"\'"\'report\'"\'"\',{}).get(\'"\'"\'inputs\'"\'"\',[]))==2,\'"\'"\'currentStatus\'"\'"\':c[\'"\'"\'status\'"\'"\'],\'"\'"\'currentIntegration\'"\'"\':c.get(\'"\'"\'integration\'"\'"\'),\'"\'"\'currentCases\'"\'"\':[{k:x.get(k) for k in [\'"\'"\'scenario\'"\'"\',\'"\'"\'status\'"\'"\',\'"\'"\'failure\'"\'"\',\'"\'"\'browserOwnerNull\'"\'"\',\'"\'"\'attackProbe\'"\'"\',\'"\'"\'profileRemoved\'"\'"\']} for x in c.get(\'"\'"\'boundaryCases\'"\'"\',[])],\'"\'"\'presentation\'"\'"\':\'"\'"\'UNKNOWN\'"\'"\'}\n(p/\'"\'"\'phase-summary.json\'"\'"\').write_text(json.dumps(summary,indent=2)+\'"\'"\'\\n\'"\'"\');print(json.dumps(summary,indent=2))\nassert c[\'"\'"\'status\'"\'"\']==\'"\'"\'PASS\'"\'"\' and c[\'"\'"\'unexpectedModelRequests\'"\'"\']==0 and c[\'"\'"\'integration\'"\'"\'][\'"\'"\'status\'"\'"\']==\'"\'"\'PASS\'"\'"\'\nassert len(c[\'"\'"\'cases\'"\'"\'])==2 and len(c[\'"\'"\'boundaryCases\'"\'"\'])==3 and all(x[\'"\'"\'status\'"\'"\']==\'"\'"\'PASS\'"\'"\' for x in c[\'"\'"\'boundaryCases\'"\'"\'])\nassert next(x for x in c[\'"\'"\'boundaryCases\'"\'"\'] if x[\'"\'"\'scenario\'"\'"\']==\'"\'"\'persistent\'"\'"\')[\'"\'"\'profileRemoved\'"\'"\']\n\'\ntest "$current_exit" -eq 0' exit=1 duration=97s waited=19s host=beelink1 timed_out=0 watchdog=0 load=33.98 preview=none class=dev cpu_s=51.1 node=v22.23.3 rebuild=none cpu_pressure=0.00 starved=0 cgroup=beelink-gate-dev cache=ok sparse=none checkout=warm workers=2 reaped=0 bundle=none host_cpu=39.94 gate_id=beelink1-a31b48c1d56b3c73f741fb4b8e7cb6c7
+beelink-gate timing: {"cache_lock_wait_ms": {"cleanup": 0, "precheck": 0}, "cache_prune_work_ms": {"cleanup": 17783, "precheck": 14499}, "capacity_claim_wait_ms": 9, "cleanup_s": 20, "command_s": 48, "fetch_s": 1, "pre_command_s": 29}

@@ -1,0 +1,62 @@
+{
+  "source": "aff77c05be21377a68eb369c5d66ebeede45b6d5",
+  "gateId": "beelink2-46752688ac318875ffc50ce1ca0cedcc",
+  "state": "terminal",
+  "receipt": {
+    "at": "2026-10-16T05:19:41Z",
+    "host": "beelink2",
+    "repo": "github.com/tangle-network/browser-agent-driver",
+    "sha": "aff77c05be21377a68eb369c5d66ebeede45b6d5",
+    "mode": "install",
+    "command": "bash -c set\\ -e\\;\\ pnpm\\ run\\ check:changesets\\;\\ pnpm\\ run\\ check:boundaries\\;\\ pnpm\\ run\\ build\\;\\ pnpm\\ exec\\ playwright\\ install\\ chromium\\;\\ pnpm\\ exec\\ patchright\\ install\\ chromium\\;\\ DESIGN_EVIDENCE=/home/drew/.local/state/agent-work/browser-measurement/aff77c05be21377a68eb369c5d66ebeede45b6d5\\ node\\ scripts/prove-presented-frames.mjs",
+    "exit": 2,
+    "waited_s": 1,
+    "ran_s": 29,
+    "timed_out": false,
+    "watchdog": false,
+    "launcher": "drew-GTR-Pro",
+    "start_load": 11.46,
+    "start_cpu_pressure": 1.22,
+    "starved": false,
+    "cgroup": "beelink-gate-dev",
+    "cache_unpruned": false,
+    "class": "dev",
+    "cpu_s": 14.1,
+    "node": "v22.23.3",
+    "rebuild": null,
+    "reaped": 0,
+    "bundle": null,
+    "start_host_cpu_pressure": 5.77,
+    "gate_id": "beelink2-46752688ac318875ffc50ce1ca0cedcc",
+    "base_sha": "616e54b3d0d8c09edec7b4a5ac1fc520e28b2aee",
+    "pr_number": null,
+    "lane": "op-gtm:dedupe-sweep",
+    "sparse": null,
+    "sparse_spec": "full",
+    "checkout_temperature": "cold",
+    "reason_scope": "host_last_10000_receipts",
+    "install_reserve_bytes": 11588136960,
+    "reserve_basis": "measured",
+    "reserve_gate_bytes": 850718720,
+    "reserve_host_free_drop": 387112960,
+    "reserve_du_ms": 846,
+    "timing": {
+      "fetch_s": 1,
+      "pre_command_s": 16,
+      "command_s": 8,
+      "cleanup_s": 5,
+      "capacity_claim_wait_ms": 5,
+      "cache_lock_wait_ms": {
+        "precheck": 0,
+        "cleanup": 0
+      },
+      "cache_prune_work_ms": {
+        "precheck": 3637,
+        "cleanup": 4831
+      }
+    },
+    "reason": "first"
+  },
+  "remoteExit": 2,
+  "attachExit": 2
+}

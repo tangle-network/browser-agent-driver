@@ -1,0 +1,26 @@
+{
+  "at": "2026-10-16T05:34:59.902900+00:00",
+  "scope": "Exact observed browser revisions, Chromium producer source",
+  "sources": [
+    {
+      "version": "156",
+      "revision": "f842f52ef39fd97b449eb27cff414bf05a98ddce",
+      "url": "https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/content/browser/devtools/protocol/page_handler.cc",
+      "retained_file": "chromium-156-page_handler.cc",
+      "sha256": "008a11651f5048ea8630f4a2d0f710904d1595c890287b55aa1a0517d8fd4dab",
+      "finding": "Expected display reference_time, fallback TimeTicks::Now; epoch conversion uses Time::Now - (TimeTicks::Now - timestamp). Native optional field alone does not establish actual presentation."
+    },
+    {
+      "version": "148",
+      "revision": "8625e066febc721e015ea99842da12901eb7ed73",
+      "url": "https://chromium.googlesource.com/chromium/src/+/8625e066febc721e015ea99842da12901eb7ed73/content/browser/devtools/protocol/page_handler.cc",
+      "retained_file": "chromium-148-page_handler.cc",
+      "sha256": "2dc695f7f1339c3df461d11d95b5929628d014845713cfeca30ac95fe4bdf8d6",
+      "finding": "Time::Now at screencast metadata build; does not identify actual frame presentation."
+    }
+  ],
+  "conclusion": "Neither current timestamp producer qualifies actual presentation. Future Playwright timestamp is consistent with expected display time; no arbitrary clock-offset correction justified. Calibration/application2x40 remains UNKNOWN. Existing owner corrects live provenance and exercises no-model TestRunner structured-report seam.",
+  "liveSource": "e3a468dcb16edd36ee9a581cce234ba2afdbf0d3",
+  "qualification": "Actual presentation UNKNOWN:156 expected-display reference with undisclosed current-time fallback;148 metadata-build wall time. No fitted subtraction can create an actual presentation endpoint.",
+  "runtimeFollowup": "New clock diagnostic/TestRunner proof did not run: normal gate03ec exit75 before command; no typecheck/runtime PASS for new source."
+}

@@ -39,6 +39,9 @@ importers:
       patchright:
         specifier: 1.60.2
         version: 1.60.2
+      pngjs:
+        specifier: ^7.0.0
+        version: 7.0.0
     devDependencies:
       '@ai-sdk/anthropic':
         specifier: ^3.0.49
@@ -79,9 +82,6 @@ importers:
       playwright:
         specifier: ^1.40.0
         version: 1.64.0
-      pngjs:
-        specifier: ^7.0.0
-        version: 7.0.0
       tsx:
         specifier: ^4.22.5
         version: 4.23.15

@@ -34,6 +34,7 @@ import type { ProjectStore } from './memory/project-store.js';
 import { AppKnowledge } from './memory/knowledge.js';
 import { RunRegistry } from './memory/run-registry.js';
 import { generateReport } from './test-report.js';
+import { startPresentedFrameCapture, type PresentedFrameReport } from './observability/presented-frames.js';
 
 const DEFAULT_MAX_TURNS = 30;
 
@@ -47,6 +48,7 @@ interface RuntimeObservabilityOutcome {
 }
 
 interface RuntimeObservabilityHandle {
+  finalizeFrames(): Promise<PresentedFrameReport | undefined>;
   finalize(outcome?: RuntimeObservabilityOutcome): Promise<void>;
 }
 
@@ -235,11 +237,10 @@ export class TestRunner {
     let timeToFirstTurnMs: number | undefined;
     const observedTurns: Turn[] = [];
     const partialPhaseTimings: AgentResult['phaseTimings'] = {};
-    if (testCase.setup && page) {
-      await testCase.setup(page);
-    }
-
     try {
+      if (testCase.setup && page) {
+        await testCase.setup(page);
+      }
       // Look up reference trajectory
       let referenceTrajectory: string | undefined;
       if (this.store) {
@@ -483,6 +484,9 @@ export class TestRunner {
         screenshots: screenshots.length > 0 ? screenshots : undefined,
         runtime: this.buildRuntimeConfig(),
       };
+
+      // Stop native observation before the existing video lifecycle closes the page.
+      result.presentedFrames = await runtimeObservability?.finalizeFrames();
 
       // Emit video artifact if available.
       //
@@ -1178,6 +1182,7 @@ export class TestRunner {
       return null;
     }
 
+    const presentedFrames = config?.presentedFrames ? await startPresentedFrameCapture(page, config.presentedFrames, this.artifactSink, testCase.id) : undefined;
     const captureConsole = config?.captureConsole !== false;
     const captureNetwork = config?.captureNetwork !== false;
     const tracePolicy = config?.tracePolicy ?? 'on-failure';
@@ -1268,7 +1273,9 @@ export class TestRunner {
     }
 
     return {
+      finalizeFrames: () => presentedFrames?.stop() ?? Promise.resolve(undefined),
       finalize: async (outcome?: RuntimeObservabilityOutcome) => {
+        const presentedFrameReport = await presentedFrames?.stop();
         if (captureConsole) {
           if (typeof (page as Page & { off?: unknown }).off === 'function') {
             page.off('console', onConsole);
@@ -1323,6 +1330,7 @@ export class TestRunner {
         if (!this.artifactSink) return;
         const driverDiagnostics = driver?.getDiagnostics?.();
         const runtimeLog = {
+          presentedFrames: presentedFrameReport,
           startedAt: observabilityStartedAt,
           finishedAt: new Date().toISOString(),
           tracePolicy,

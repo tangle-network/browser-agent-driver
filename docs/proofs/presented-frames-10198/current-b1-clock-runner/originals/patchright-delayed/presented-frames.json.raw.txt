@@ -1,0 +1,1612 @@
+{
+  "schemaVersion": 1,
+  "status": "NATIVE_FRAMES_OBSERVED",
+  "calibration": "UNCHECKED",
+  "config": {
+    "input": {
+      "selector": "#trigger",
+      "event": "click"
+    },
+    "feedback": {
+      "roi": {
+        "x": 20,
+        "y": 100,
+        "width": 40,
+        "height": 40
+      },
+      "rgba": [
+        0,
+        255,
+        0,
+        255
+      ],
+      "channelTolerance": 0,
+      "minimumFraction": 1
+    },
+    "observationWindowMs": 700,
+    "maxFrames": 200,
+    "backend": "patchright@1.60.2"
+  },
+  "provenance": {
+    "transport": "CDP Page.screencastFrame.metadata.timestamp (raw epoch seconds), no client Date.now fallback",
+    "timestampProducer": {
+      "meaning": "METADATA_BUILD_WALL_TIME",
+      "source": "https://chromium.googlesource.com/chromium/src/+/8625e066febc721e015ea99842da12901eb7ed73/content/browser/devtools/protocol/page_handler.cc#155",
+      "conversion": "Time::Now() at metadata construction",
+      "actualPresentation": "UNKNOWN"
+    },
+    "browser": {
+      "protocolVersion": "1.3",
+      "product": "HeadlessChrome/148.0.7778.96",
+      "revision": "@8625e066febc721e015ea99842da12901eb7ed73",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/148.0.7778.96 Safari/537.36",
+      "jsVersion": "14.8.178.14"
+    },
+    "viewport": {
+      "width": 480,
+      "height": 300
+    },
+    "declaredBackend": "patchright@1.60.2",
+    "inputClock": "performance.timeOrigin + trusted event.timeStamp",
+    "topFrameOnly": true,
+    "format": "png",
+    "receivedClock": "Node Date.now diagnostic only",
+    "timestampQuantizationMs": null,
+    "clockAlignmentUncertaintyMs": null
+  },
+  "clockRelation": {
+    "status": "DIAGNOSTIC_ONLY",
+    "samples": [
+      {
+        "phase": "start",
+        "nodeBeforeEpochMs": 1792172402806,
+        "nodeAfterEpochMs": 1792172402807,
+        "nodeElapsedMs": 0.999641999999767,
+        "renderer": {
+          "dateNowMs": 1792172402807,
+          "timeOrigin": 1792172402776.9,
+          "performanceNowMs": 30.40000009536743,
+          "epochMs": 1792172402807.2998
+        },
+        "rendererEpochMinusNodeRangeMs": [
+          0.2998046875,
+          1.2998046875
+        ]
+      },
+      {
+        "phase": "stop",
+        "nodeBeforeEpochMs": 1792172403933,
+        "nodeAfterEpochMs": 1792172403934,
+        "nodeElapsedMs": 0.7934660000000804,
+        "renderer": {
+          "dateNowMs": 1792172403933,
+          "timeOrigin": 1792172402776.9,
+          "performanceNowMs": 1157.1000001430511,
+          "epochMs": 1792172403934
+        },
+        "rendererEpochMinusNodeRangeMs": [
+          0,
+          1
+        ]
+      }
+    ],
+    "metadataEpochMinusArrivalRangeMs": [
+      -4.945068359375,
+      -0.534912109375
+    ],
+    "actualPresentation": "UNKNOWN"
+  },
+  "inputs": [
+    {
+      "epochMs": 1792172402876.2998,
+      "timeOrigin": 1792172402776.9,
+      "eventTimestamp": 99.40000009536743,
+      "trusted": true,
+      "event": "click",
+      "selector": "#trigger",
+      "sequence": 1,
+      "receivedEpochMs": 1792172402877
+    }
+  ],
+  "frames": [
+    {
+      "sequence": 1,
+      "nativeEpochSeconds": 1792172402.82152,
+      "epochMs": 1792172402821.52,
+      "receivedEpochMs": 1792172402824,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172402.82152
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": false,
+      "sha256": "8dc58bd5d650460d22f7150cd53f36e3c20cf2df1db54812bdb7717b7582e57a",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00001.png",
+      "decodeMs": 2.6875270000000455
+    },
+    {
+      "sequence": 2,
+      "nativeEpochSeconds": 1792172402.836154,
+      "epochMs": 1792172402836.154,
+      "receivedEpochMs": 1792172402838,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172402.836154
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": false,
+      "sha256": "514eccd9e1dfbcbe7417d3fa0e8220a41adfe0e1c5acb5a5c5575676b6c7787f",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00002.png",
+      "decodeMs": 1.852328999999827
+    },
+    {
+      "sequence": 3,
+      "nativeEpochSeconds": 1792172402.853117,
+      "epochMs": 1792172402853.117,
+      "receivedEpochMs": 1792172402855,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172402.853117
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": false,
+      "sha256": "8dc58bd5d650460d22f7150cd53f36e3c20cf2df1db54812bdb7717b7582e57a",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00003.png",
+      "decodeMs": 2.0723079999997935
+    },
+    {
+      "sequence": 4,
+      "nativeEpochSeconds": 1792172402.869687,
+      "epochMs": 1792172402869.687,
+      "receivedEpochMs": 1792172402871,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172402.869687
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": false,
+      "sha256": "514eccd9e1dfbcbe7417d3fa0e8220a41adfe0e1c5acb5a5c5575676b6c7787f",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00004.png",
+      "decodeMs": 1.798725000000104
+    },
+    {
+      "sequence": 5,
+      "nativeEpochSeconds": 1792172402.885804,
+      "epochMs": 1792172402885.804,
+      "receivedEpochMs": 1792172402888,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172402.885804
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": false,
+      "sha256": "7f0bd8b9a0b1da580a6d573b1e83057167f8e98d146e4399e365c52aed2658ca",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00005.png",
+      "decodeMs": 1.9605090000000018
+    },
+    {
+      "sequence": 6,
+      "nativeEpochSeconds": 1792172402.902528,
+      "epochMs": 1792172402902.528,
+      "receivedEpochMs": 1792172402904,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172402.902528
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": false,
+      "sha256": "27cc7f68e7bb54ee4d85d9d4a9946d965f5f0fe37d35581edfa38bbcf6e231cc",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00006.png",
+      "decodeMs": 2.164694000000054
+    },
+    {
+      "sequence": 7,
+      "nativeEpochSeconds": 1792172402.919447,
+      "epochMs": 1792172402919.447,
+      "receivedEpochMs": 1792172402921,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172402.919447
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": false,
+      "sha256": "7f0bd8b9a0b1da580a6d573b1e83057167f8e98d146e4399e365c52aed2658ca",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00007.png",
+      "decodeMs": 1.8297849999999016
+    },
+    {
+      "sequence": 8,
+      "nativeEpochSeconds": 1792172402.935415,
+      "epochMs": 1792172402935.415,
+      "receivedEpochMs": 1792172402937,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172402.935415
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": false,
+      "sha256": "27cc7f68e7bb54ee4d85d9d4a9946d965f5f0fe37d35581edfa38bbcf6e231cc",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00008.png",
+      "decodeMs": 1.769452999999885
+    },
+    {
+      "sequence": 9,
+      "nativeEpochSeconds": 1792172402.952264,
+      "epochMs": 1792172402952.2642,
+      "receivedEpochMs": 1792172402954,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172402.952264
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": false,
+      "sha256": "7f0bd8b9a0b1da580a6d573b1e83057167f8e98d146e4399e365c52aed2658ca",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00009.png",
+      "decodeMs": 2.242685000000165
+    },
+    {
+      "sequence": 10,
+      "nativeEpochSeconds": 1792172402.9689,
+      "epochMs": 1792172402968.9,
+      "receivedEpochMs": 1792172402970,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172402.9689
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": false,
+      "sha256": "27cc7f68e7bb54ee4d85d9d4a9946d965f5f0fe37d35581edfa38bbcf6e231cc",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00010.png",
+      "decodeMs": 1.9417750000002343
+    },
+    {
+      "sequence": 11,
+      "nativeEpochSeconds": 1792172402.98526,
+      "epochMs": 1792172402985.26,
+      "receivedEpochMs": 1792172402987,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172402.98526
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": false,
+      "sha256": "7f0bd8b9a0b1da580a6d573b1e83057167f8e98d146e4399e365c52aed2658ca",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00011.png",
+      "decodeMs": 1.7363259999997354
+    },
+    {
+      "sequence": 12,
+      "nativeEpochSeconds": 1792172403.002568,
+      "epochMs": 1792172403002.568,
+      "receivedEpochMs": 1792172403004,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.002568
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": false,
+      "sha256": "27cc7f68e7bb54ee4d85d9d4a9946d965f5f0fe37d35581edfa38bbcf6e231cc",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00012.png",
+      "decodeMs": 1.8039770000000317
+    },
+    {
+      "sequence": 13,
+      "nativeEpochSeconds": 1792172403.019026,
+      "epochMs": 1792172403019.0261,
+      "receivedEpochMs": 1792172403020,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.019026
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": false,
+      "sha256": "7f0bd8b9a0b1da580a6d573b1e83057167f8e98d146e4399e365c52aed2658ca",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00013.png",
+      "decodeMs": 2.245034999999916
+    },
+    {
+      "sequence": 14,
+      "nativeEpochSeconds": 1792172403.03577,
+      "epochMs": 1792172403035.77,
+      "receivedEpochMs": 1792172403037,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.03577
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": false,
+      "sha256": "27cc7f68e7bb54ee4d85d9d4a9946d965f5f0fe37d35581edfa38bbcf6e231cc",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00014.png",
+      "decodeMs": 2.080240000000231
+    },
+    {
+      "sequence": 15,
+      "nativeEpochSeconds": 1792172403.052172,
+      "epochMs": 1792172403052.1719,
+      "receivedEpochMs": 1792172403053,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.052172
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": false,
+      "sha256": "7f0bd8b9a0b1da580a6d573b1e83057167f8e98d146e4399e365c52aed2658ca",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00015.png",
+      "decodeMs": 1.4171650000002955
+    },
+    {
+      "sequence": 16,
+      "nativeEpochSeconds": 1792172403.069105,
+      "epochMs": 1792172403069.105,
+      "receivedEpochMs": 1792172403070,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.069105
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": false,
+      "sha256": "27cc7f68e7bb54ee4d85d9d4a9946d965f5f0fe37d35581edfa38bbcf6e231cc",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00016.png",
+      "decodeMs": 1.2447040000001834
+    },
+    {
+      "sequence": 17,
+      "nativeEpochSeconds": 1792172403.086303,
+      "epochMs": 1792172403086.303,
+      "receivedEpochMs": 1792172403088,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.086303
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": false,
+      "sha256": "7f0bd8b9a0b1da580a6d573b1e83057167f8e98d146e4399e365c52aed2658ca",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00017.png",
+      "decodeMs": 2.226527999999689
+    },
+    {
+      "sequence": 18,
+      "nativeEpochSeconds": 1792172403.102651,
+      "epochMs": 1792172403102.651,
+      "receivedEpochMs": 1792172403104,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.102651
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": false,
+      "sha256": "27cc7f68e7bb54ee4d85d9d4a9946d965f5f0fe37d35581edfa38bbcf6e231cc",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00018.png",
+      "decodeMs": 1.919706000000133
+    },
+    {
+      "sequence": 19,
+      "nativeEpochSeconds": 1792172403.119065,
+      "epochMs": 1792172403119.065,
+      "receivedEpochMs": 1792172403120,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.119065
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": false,
+      "sha256": "7f0bd8b9a0b1da580a6d573b1e83057167f8e98d146e4399e365c52aed2658ca",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00019.png",
+      "decodeMs": 1.2760849999999664
+    },
+    {
+      "sequence": 20,
+      "nativeEpochSeconds": 1792172403.135702,
+      "epochMs": 1792172403135.702,
+      "receivedEpochMs": 1792172403137,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.135702
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00020.png",
+      "decodeMs": 1.2948780000001534
+    },
+    {
+      "sequence": 21,
+      "nativeEpochSeconds": 1792172403.152251,
+      "epochMs": 1792172403152.251,
+      "receivedEpochMs": 1792172403154,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.152251
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00021.png",
+      "decodeMs": 1.5345350000002327
+    },
+    {
+      "sequence": 22,
+      "nativeEpochSeconds": 1792172403.168715,
+      "epochMs": 1792172403168.715,
+      "receivedEpochMs": 1792172403170,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.168715
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00022.png",
+      "decodeMs": 1.3895950000000994
+    },
+    {
+      "sequence": 23,
+      "nativeEpochSeconds": 1792172403.186485,
+      "epochMs": 1792172403186.485,
+      "receivedEpochMs": 1792172403188,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.186485
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00023.png",
+      "decodeMs": 1.9550449999997
+    },
+    {
+      "sequence": 24,
+      "nativeEpochSeconds": 1792172403.202814,
+      "epochMs": 1792172403202.8142,
+      "receivedEpochMs": 1792172403204,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.202814
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00024.png",
+      "decodeMs": 1.6831560000000536
+    },
+    {
+      "sequence": 25,
+      "nativeEpochSeconds": 1792172403.218837,
+      "epochMs": 1792172403218.837,
+      "receivedEpochMs": 1792172403220,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.218837
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00025.png",
+      "decodeMs": 1.5076350000003913
+    },
+    {
+      "sequence": 26,
+      "nativeEpochSeconds": 1792172403.235859,
+      "epochMs": 1792172403235.859,
+      "receivedEpochMs": 1792172403237,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.235859
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00026.png",
+      "decodeMs": 1.514255999999932
+    },
+    {
+      "sequence": 27,
+      "nativeEpochSeconds": 1792172403.25306,
+      "epochMs": 1792172403253.06,
+      "receivedEpochMs": 1792172403255,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.25306
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00027.png",
+      "decodeMs": 1.5319220000001224
+    },
+    {
+      "sequence": 28,
+      "nativeEpochSeconds": 1792172403.268933,
+      "epochMs": 1792172403268.933,
+      "receivedEpochMs": 1792172403270,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.268933
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00028.png",
+      "decodeMs": 1.4142030000002705
+    },
+    {
+      "sequence": 29,
+      "nativeEpochSeconds": 1792172403.285656,
+      "epochMs": 1792172403285.656,
+      "receivedEpochMs": 1792172403287,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.285656
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00029.png",
+      "decodeMs": 3.5733479999998963
+    },
+    {
+      "sequence": 30,
+      "nativeEpochSeconds": 1792172403.302173,
+      "epochMs": 1792172403302.1729,
+      "receivedEpochMs": 1792172403303,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.302173
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00030.png",
+      "decodeMs": 1.5020290000002205
+    },
+    {
+      "sequence": 31,
+      "nativeEpochSeconds": 1792172403.319174,
+      "epochMs": 1792172403319.174,
+      "receivedEpochMs": 1792172403320,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.319174
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00031.png",
+      "decodeMs": 1.3472710000000916
+    },
+    {
+      "sequence": 32,
+      "nativeEpochSeconds": 1792172403.335526,
+      "epochMs": 1792172403335.526,
+      "receivedEpochMs": 1792172403337,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.335526
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00032.png",
+      "decodeMs": 1.7036849999999504
+    },
+    {
+      "sequence": 33,
+      "nativeEpochSeconds": 1792172403.352222,
+      "epochMs": 1792172403352.222,
+      "receivedEpochMs": 1792172403353,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.352222
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00033.png",
+      "decodeMs": 1.3140950000001794
+    },
+    {
+      "sequence": 34,
+      "nativeEpochSeconds": 1792172403.36902,
+      "epochMs": 1792172403369.02,
+      "receivedEpochMs": 1792172403370,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.36902
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00034.png",
+      "decodeMs": 1.2455330000002505
+    },
+    {
+      "sequence": 35,
+      "nativeEpochSeconds": 1792172403.385358,
+      "epochMs": 1792172403385.3582,
+      "receivedEpochMs": 1792172403387,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.385358
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00035.png",
+      "decodeMs": 1.280598000000282
+    },
+    {
+      "sequence": 36,
+      "nativeEpochSeconds": 1792172403.402182,
+      "epochMs": 1792172403402.1821,
+      "receivedEpochMs": 1792172403404,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.402182
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00036.png",
+      "decodeMs": 1.546773999999914
+    },
+    {
+      "sequence": 37,
+      "nativeEpochSeconds": 1792172403.420369,
+      "epochMs": 1792172403420.369,
+      "receivedEpochMs": 1792172403422,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.420369
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00037.png",
+      "decodeMs": 1.2814469999998437
+    },
+    {
+      "sequence": 38,
+      "nativeEpochSeconds": 1792172403.435867,
+      "epochMs": 1792172403435.8672,
+      "receivedEpochMs": 1792172403437,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.435867
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00038.png",
+      "decodeMs": 1.3963020000001052
+    },
+    {
+      "sequence": 39,
+      "nativeEpochSeconds": 1792172403.452205,
+      "epochMs": 1792172403452.2048,
+      "receivedEpochMs": 1792172403454,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.452205
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00039.png",
+      "decodeMs": 1.2643499999999221
+    },
+    {
+      "sequence": 40,
+      "nativeEpochSeconds": 1792172403.46902,
+      "epochMs": 1792172403469.0198,
+      "receivedEpochMs": 1792172403470,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.46902
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00040.png",
+      "decodeMs": 1.3945150000004105
+    },
+    {
+      "sequence": 41,
+      "nativeEpochSeconds": 1792172403.485842,
+      "epochMs": 1792172403485.842,
+      "receivedEpochMs": 1792172403487,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.485842
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00041.png",
+      "decodeMs": 1.6217109999997774
+    },
+    {
+      "sequence": 42,
+      "nativeEpochSeconds": 1792172403.50211,
+      "epochMs": 1792172403502.11,
+      "receivedEpochMs": 1792172403503,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.50211
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00042.png",
+      "decodeMs": 1.4576830000000882
+    },
+    {
+      "sequence": 43,
+      "nativeEpochSeconds": 1792172403.519227,
+      "epochMs": 1792172403519.227,
+      "receivedEpochMs": 1792172403521,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.519227
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00043.png",
+      "decodeMs": 2.1002309999998943
+    },
+    {
+      "sequence": 44,
+      "nativeEpochSeconds": 1792172403.535511,
+      "epochMs": 1792172403535.511,
+      "receivedEpochMs": 1792172403537,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.535511
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00044.png",
+      "decodeMs": 1.4201619999998911
+    },
+    {
+      "sequence": 45,
+      "nativeEpochSeconds": 1792172403.55241,
+      "epochMs": 1792172403552.41,
+      "receivedEpochMs": 1792172403554,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.55241
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00045.png",
+      "decodeMs": 1.5328240000003461
+    },
+    {
+      "sequence": 46,
+      "nativeEpochSeconds": 1792172403.568906,
+      "epochMs": 1792172403568.906,
+      "receivedEpochMs": 1792172403570,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.568906
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00046.png",
+      "decodeMs": 2.019234000000324
+    },
+    {
+      "sequence": 47,
+      "nativeEpochSeconds": 1792172403.585268,
+      "epochMs": 1792172403585.268,
+      "receivedEpochMs": 1792172403586,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.585268
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00047.png",
+      "decodeMs": 1.5588870000001407
+    },
+    {
+      "sequence": 48,
+      "nativeEpochSeconds": 1792172403.602731,
+      "epochMs": 1792172403602.731,
+      "receivedEpochMs": 1792172403604,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.602731
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00048.png",
+      "decodeMs": 1.2696140000002742
+    },
+    {
+      "sequence": 49,
+      "nativeEpochSeconds": 1792172403.619053,
+      "epochMs": 1792172403619.053,
+      "receivedEpochMs": 1792172403620,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.619053
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00049.png",
+      "decodeMs": 1.3553240000001097
+    },
+    {
+      "sequence": 50,
+      "nativeEpochSeconds": 1792172403.635822,
+      "epochMs": 1792172403635.822,
+      "receivedEpochMs": 1792172403638,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.635822
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00050.png",
+      "decodeMs": 1.562264000000141
+    },
+    {
+      "sequence": 51,
+      "nativeEpochSeconds": 1792172403.652618,
+      "epochMs": 1792172403652.618,
+      "receivedEpochMs": 1792172403655,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.652618
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00051.png",
+      "decodeMs": 1.6672189999999318
+    },
+    {
+      "sequence": 52,
+      "nativeEpochSeconds": 1792172403.668959,
+      "epochMs": 1792172403668.959,
+      "receivedEpochMs": 1792172403671,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.668959
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00052.png",
+      "decodeMs": 1.9502629999997225
+    },
+    {
+      "sequence": 53,
+      "nativeEpochSeconds": 1792172403.685164,
+      "epochMs": 1792172403685.164,
+      "receivedEpochMs": 1792172403686,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.685164
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00053.png",
+      "decodeMs": 1.2531959999996616
+    },
+    {
+      "sequence": 54,
+      "nativeEpochSeconds": 1792172403.702083,
+      "epochMs": 1792172403702.083,
+      "receivedEpochMs": 1792172403703,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.702083
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00054.png",
+      "decodeMs": 1.2423759999996946
+    },
+    {
+      "sequence": 55,
+      "nativeEpochSeconds": 1792172403.72001,
+      "epochMs": 1792172403720.01,
+      "receivedEpochMs": 1792172403723,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.72001
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00055.png",
+      "decodeMs": 1.1826160000000527
+    },
+    {
+      "sequence": 56,
+      "nativeEpochSeconds": 1792172403.735594,
+      "epochMs": 1792172403735.594,
+      "receivedEpochMs": 1792172403737,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.735594
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00056.png",
+      "decodeMs": 1.2636869999996634
+    },
+    {
+      "sequence": 57,
+      "nativeEpochSeconds": 1792172403.755845,
+      "epochMs": 1792172403755.845,
+      "receivedEpochMs": 1792172403757,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.755845
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00057.png",
+      "decodeMs": 2.6621470000000045
+    },
+    {
+      "sequence": 58,
+      "nativeEpochSeconds": 1792172403.76928,
+      "epochMs": 1792172403769.28,
+      "receivedEpochMs": 1792172403771,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.76928
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00058.png",
+      "decodeMs": 1.3618810000002668
+    },
+    {
+      "sequence": 59,
+      "nativeEpochSeconds": 1792172403.785465,
+      "epochMs": 1792172403785.465,
+      "receivedEpochMs": 1792172403786,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.785465
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00059.png",
+      "decodeMs": 1.3220890000002328
+    },
+    {
+      "sequence": 60,
+      "nativeEpochSeconds": 1792172403.802159,
+      "epochMs": 1792172403802.1592,
+      "receivedEpochMs": 1792172403805,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.802159
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00060.png",
+      "decodeMs": 1.3436729999998533
+    },
+    {
+      "sequence": 61,
+      "nativeEpochSeconds": 1792172403.819292,
+      "epochMs": 1792172403819.292,
+      "receivedEpochMs": 1792172403821,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.819292
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00061.png",
+      "decodeMs": 1.3148190000001705
+    },
+    {
+      "sequence": 62,
+      "nativeEpochSeconds": 1792172403.836055,
+      "epochMs": 1792172403836.055,
+      "receivedEpochMs": 1792172403841,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.836055
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00062.png",
+      "decodeMs": 1.269155999999839
+    },
+    {
+      "sequence": 63,
+      "nativeEpochSeconds": 1792172403.852179,
+      "epochMs": 1792172403852.179,
+      "receivedEpochMs": 1792172403854,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.852179
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00063.png",
+      "decodeMs": 1.6677009999998518
+    },
+    {
+      "sequence": 64,
+      "nativeEpochSeconds": 1792172403.868711,
+      "epochMs": 1792172403868.711,
+      "receivedEpochMs": 1792172403870,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.868711
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00064.png",
+      "decodeMs": 1.2688389999998435
+    },
+    {
+      "sequence": 65,
+      "nativeEpochSeconds": 1792172403.88528,
+      "epochMs": 1792172403885.2798,
+      "receivedEpochMs": 1792172403886,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.88528
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00065.png",
+      "decodeMs": 1.3314839999998185
+    },
+    {
+      "sequence": 66,
+      "nativeEpochSeconds": 1792172403.901841,
+      "epochMs": 1792172403901.8408,
+      "receivedEpochMs": 1792172403903,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.901841
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "c3e099a66048fadec2852e1253d60a1a457a3444da6885132d3ceb71356ea8c9",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00066.png",
+      "decodeMs": 1.2318249999998443
+    },
+    {
+      "sequence": 67,
+      "nativeEpochSeconds": 1792172403.919808,
+      "epochMs": 1792172403919.8079,
+      "receivedEpochMs": 1792172403922,
+      "metadata": {
+        "offsetTop": 0,
+        "pageScaleFactor": 1,
+        "deviceWidth": 480,
+        "deviceHeight": 300,
+        "scrollOffsetX": 0,
+        "scrollOffsetY": 0,
+        "timestamp": 1792172403.919808
+      },
+      "width": 480,
+      "height": 300,
+      "feedback": true,
+      "sha256": "02f5ed79b86a9b87d82f756e16d4e562c657b5d3a9a5f37b5fd1c12ff3e445e2",
+      "uri": "file:///home/drew/.local/state/agent-work/browser-measurement/3d764f17321322689ecb71f13192ca5c03129798/patchright-delayed/presented-frame-00067.png",
+      "decodeMs": 1.6067199999997683
+    }
+  ],
+  "attempts": [
+    {
+      "input": 1,
+      "status": "BRACKETED",
+      "lastNegative": 19,
+      "firstPositive": 20,
+      "intervalMs": [
+        242.76513671875,
+        259.402099609375
+      ],
+      "captureGapMs": 16.636962890625
+    }
+  ],
+  "cadence": {
+    "intervalsMs": [
+      14.634033203125,
+      16.962890625,
+      16.570068359375,
+      16.116943359375,
+      16.72412109375,
+      16.9189453125,
+      15.968017578125,
+      16.84912109375,
+      16.6357421875,
+      16.360107421875,
+      17.30810546875,
+      16.4580078125,
+      16.743896484375,
+      16.40185546875,
+      16.93310546875,
+      17.197998046875,
+      16.347900390625,
+      16.4140625,
+      16.636962890625,
+      16.549072265625,
+      16.464111328125,
+      17.77001953125,
+      16.3291015625,
+      16.022705078125,
+      17.02197265625,
+      17.201171875,
+      15.873046875,
+      16.722900390625,
+      16.516845703125,
+      17.001220703125,
+      16.351806640625,
+      16.696044921875,
+      16.798095703125,
+      16.338134765625,
+      16.823974609375,
+      18.186767578125,
+      15.498291015625,
+      16.337646484375,
+      16.81494140625,
+      16.822265625,
+      16.26806640625,
+      17.116943359375,
+      16.283935546875,
+      16.89892578125,
+      16.49609375,
+      16.362060546875,
+      17.462890625,
+      16.322021484375,
+      16.76904296875,
+      16.7958984375,
+      16.341064453125,
+      16.205078125,
+      16.9189453125,
+      17.927001953125,
+      15.583984375,
+      20.2509765625,
+      13.43505859375,
+      16.18505859375,
+      16.694091796875,
+      17.1328125,
+      16.762939453125,
+      16.1240234375,
+      16.531982421875,
+      16.56884765625,
+      16.56103515625,
+      17.967041015625
+    ],
+    "maxGapMs": 20.2509765625
+  },
+  "errors": [],
+  "limits": [
+    "Chromium screencast pixels/native metadata; exact producer may report expected display reference or metadata-build wall time, not acknowledged actual presentation.",
+    "Input uses trusted top-frame event timeOrigin + timeStamp; Node arrival is diagnostic only.",
+    "Conditional metadata/input clock brackets are not actual presented latency; producer endpoint accuracy, timestamp quantization and clock alignment remain UNKNOWN.",
+    "No presented-latency conformance or2x40 calibration follows from capture alone. Quantization/overhead and delayed/never controls require actual qualification.",
+    "PNG predicate is fixed before capture; unrelated paint, DOM/rAF and action duration cannot satisfy feedback."
+  ]
+}

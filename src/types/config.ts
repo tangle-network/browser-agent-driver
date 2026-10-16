@@ -133,7 +133,19 @@ export interface AgentConfig {
   tokenBudget?: number;
 }
 
+/** Opt-in native Chromium frame observation; caller owns the frozen feedback criterion. */
+export interface PresentedFrameOptions {
+  input: { selector: string; event: 'click' | 'keydown' | 'input' };
+  feedback: { roi: { x: number; y: number; width: number; height: number }; rgba: [number, number, number, number]; channelTolerance: number; minimumFraction: number };
+  observationWindowMs: number;
+  maxFrames: number;
+  /** Caller-declared backend label; exact Chromium product/revision is observed separately. */
+  backend?: string;
+}
+
 export interface ObservabilityConfig {
+  /** Disabled by default. Raw frames, native provenance and uncertainty flow through ArtifactSink/report. */
+  presentedFrames?: PresentedFrameOptions;
   /** Enable runtime observability artifacts (default: true) */
   enabled?: boolean;
   /** Capture browser console warnings/errors and page errors (default: true) */
