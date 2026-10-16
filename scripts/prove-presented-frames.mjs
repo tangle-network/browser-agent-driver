@@ -4,17 +4,20 @@ import { mkdir,readFile,writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { startPresentedFrameCapture } from '../dist/observability/presented-frames.js';
+import { TestRunner } from '../dist/test-runner.js';
+import { PlaywrightDriver } from '../dist/drivers/playwright.js';
 import { FilesystemSink } from '../dist/artifacts/filesystem-sink.js';
 const out=resolve(process.env.DESIGN_EVIDENCE??'/tmp/browser-presented-frames');await mkdir(out,{recursive:true});
 const html=`<!doctype html><style>:root{--fixture-delay:240ms;--fixture-window:700ms;--fixture-positive:rgb(0,255,0)}body{margin:0;background:white}button{position:absolute;left:20px;top:20px}#feedback{position:absolute;left:20px;top:100px;width:40px;height:40px;background:rgb(20,20,20)}canvas{position:absolute;right:0;bottom:0}</style><button id="trigger">Show feedback</button><div id="feedback"></div><canvas width="2" height="2"></canvas><script>let tick=0;const ctx=document.querySelector('canvas').getContext('2d');function paint(){ctx.fillStyle=(tick++%2)?'red':'blue';ctx.fillRect(0,0,2,2);requestAnimationFrame(paint)}paint();document.querySelector('button').addEventListener('click',e=>{window.fixtureInputEpoch=performance.timeOrigin+e.timeStamp;const control=new URL(location).searchParams.get('control');const update=()=>{document.querySelector('#feedback').style.background=getComputedStyle(document.documentElement).getPropertyValue('--fixture-positive');window.fixtureMutationEpoch=performance.timeOrigin+performance.now()};if(control==='immediate')update();if(control==='delayed')setTimeout(update,parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fixture-delay')))});</script>`;
-const server=createServer((req,res)=>{res.writeHead(200,{'content-type':'text/html'});res.end(html)});await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const url=`http://127.0.0.1:${server.address().port}`;
-const cases=[];let failure;
+const server=createServer((req,res)=>{if(req.url?.startsWith('/forbidden-model')){unexpectedModelRequests++;res.writeHead(500);res.end('Inference forbidden in observation proof');return}res.writeHead(200,{'content-type':'text/html'});res.end(html)});await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const url=`http://127.0.0.1:${server.address().port}`;
+const clockAndRunner=process.argv.includes('--clock-and-runner');
+const cases=[];let failure,integration;let unexpectedModelRequests=0;
 try{
  for(const backend of ['playwright','patchright']){
   const runtime=await import(backend);const packageVersion=JSON.parse(await readFile(`node_modules/${backend}/package.json`,'utf8')).version;
   const browser=await runtime.chromium.launch({headless:true});
   try{
-   for(const control of ['immediate','delayed','never']){
+   for(const control of (clockAndRunner?['delayed']:['immediate','delayed','never'])){
     const id=`${backend}-${control}`;const context=await browser.newContext({viewport:{width:480,height:300},deviceScaleFactor:1,recordVideo:{dir:resolve(out,id,'video'),size:{width:480,height:300}}});const page=await context.newPage();let capture;
     try{
      await page.goto(`${url}?control=${control}`);
@@ -32,11 +35,34 @@ try{
    }
   }finally{await browser.close()}
  }
- for(const backend of ['playwright','patchright']){
+ if(!clockAndRunner)for(const backend of ['playwright','patchright']){
   const immediate=cases.find(c=>c.backend===backend&&c.control==='immediate').report.attempts[0];
   const delayed=cases.find(c=>c.backend===backend&&c.control==='delayed').report.attempts[0];
   if(!(delayed.intervalMs[0]>immediate.intervalMs[1]))throw new Error(`${backend}: delayed feedback not distinguished from immediate brackets`);
  }
+ if(clockAndRunner){
+  // Existing real TestRunner + PlaywrightDriver. Its maintained beforeTurn hook
+  // stops before inference; warmup is disabled, provider URL stays loopback.
+  process.env.BAD_NO_WARMUP='1';
+  const runtime=await import('playwright');const browser=await runtime.chromium.launch({headless:true});
+  try{
+   const context=await browser.newContext({viewport:{width:480,height:300},deviceScaleFactor:1});
+   try{
+    const page=await context.newPage();await page.goto(`${url}?control=delayed`);
+    const sink=new FilesystemSink(out);const id='test-runner-seam';
+    const config={input:{selector:'#trigger',event:'click'},feedback:{roi:{x:20,y:100,width:40,height:40},rgba:[0,255,0,255],channelTolerance:0,minimumFraction:1},observationWindowMs:700,maxFrames:200,backend:'real-TestRunner-PlaywrightDriver'};
+    const runner=new TestRunner({driver:new PlaywrightDriver(page),artifactSink:sink,config:{provider:'openai',baseUrl:url+'/forbidden-model',vision:false,observability:{presentedFrames:config}},beforeTurn:async()=>{throw new Error('observation-only proof: stop before model turn')}});
+    const result=await runner.runTest({id,name:'Real no-model report integration',startUrl:'',goal:'Observe fixture only; intentional abort before inference',setup:async p=>{await p.locator('#trigger').click();await p.waitForTimeout(config.observationWindowMs*1.5)}});
+    const native=JSON.parse(await readFile(resolve(out,id,'presented-frames.json'),'utf8'));
+    const log=JSON.parse(await readFile(resolve(out,id,'runtime-log.json'),'utf8'));
+    if(result.turnsUsed!==0||result.tokensUsed!==0||result.agentSuccess||!String(result.agentResult.reason).includes('stop before model turn'))throw new Error('No-model stop contract failed');
+    if(native.status!=='NATIVE_FRAMES_OBSERVED'||native.attempts[0]?.status!=='BRACKETED'||JSON.stringify(result.presentedFrames)!==JSON.stringify(native)||JSON.stringify(log.presentedFrames)!==JSON.stringify(native))throw new Error('TestResult/runtime-log/native artifact disagree');
+    await writeFile(resolve(out,id,'test-result.json'),JSON.stringify(result,null,2)+'\n');
+    integration={status:'PASS',mode:'Intentional beforeTurn abort, no model inference or application success claim',turns:result.turnsUsed,tokens:result.tokensUsed,result:`${id}/test-result.json`,runtimeLog:`${id}/runtime-log.json`,frames:native.frames.length};
+   }finally{await context.close()}
+  }finally{await browser.close()}
+ }
 }catch(error){failure=String(error)}finally{await new Promise(resolve=>server.close(resolve))}
-const result={source:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),at:new Date().toISOString(),node:process.version,status:failure?'FAIL':'PASS',failure,calibration:{nativeTimestampProvenance:'Direct optional CDP metadata.timestamp; absent is UNKNOWN; no hidden publicAPI fallback',controls:'Fixed pixel ROI/color; immediate vs delayed vs never; heartbeat outside ROI forces capture cadence',presentationConformance:'UNCHECKED: fixture discrimination is not2x40/live application qualification, physical display timing or bounded clock quantization'},cases};
+if(unexpectedModelRequests)failure=`Unexpected model requests: ${unexpectedModelRequests}`;
+const result={mode:clockAndRunner?'clock-provenance-and-TestRunner':'feedback-controls',integration,unexpectedModelRequests,source:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),at:new Date().toISOString(),node:process.version,status:failure?'FAIL':'PASS',failure,calibration:{nativeTimestampProvenance:'Direct optional CDP metadata.timestamp; absent is UNKNOWN; no hidden publicAPI fallback',controls:'Fixed pixel ROI/color; immediate vs delayed vs never; heartbeat outside ROI forces capture cadence',presentationConformance:'UNCHECKED: exact156 producer is expected-display-reference-or-current-time; exact148 is metadata-build-time. Neither acknowledges actual presentation; no2x40/application latency qualification.'},cases};
 await writeFile(resolve(out,'report.json'),JSON.stringify(result,null,2)+'\n');console.log(JSON.stringify({status:result.status,cases:cases.length,report:resolve(out,'report.json'),failure}));if(failure)process.exitCode=1;

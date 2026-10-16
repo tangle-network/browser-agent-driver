@@ -5,11 +5,13 @@ import type { PresentedFrameOptions } from '../types/config.js';
 
 interface Input { sequence: number; epochMs: number; timeOrigin: number; eventTimestamp: number; receivedEpochMs: number; trusted: boolean; event: string; selector: string; }
 interface Frame { sequence: number; nativeEpochSeconds: number | null; epochMs: number | null; receivedEpochMs: number; metadata: Record<string, unknown>; width: number; height: number; feedback: boolean; sha256: string; uri: string; decodeMs: number; }
+interface ClockSample { phase: 'start' | 'stop'; nodeBeforeEpochMs: number; nodeAfterEpochMs: number; nodeElapsedMs: number; renderer: { dateNowMs: number; timeOrigin: number; performanceNowMs: number; epochMs: number } | null; rendererEpochMinusNodeRangeMs?: [number, number]; error?: string; }
 export interface PresentedFrameReport {
   schemaVersion: 1;
   status: 'NATIVE_FRAMES_OBSERVED' | 'UNKNOWN';
   calibration: 'UNCHECKED';
   provenance: Record<string, unknown>;
+  clockRelation: { status: 'DIAGNOSTIC_ONLY'; samples: ClockSample[]; metadataEpochMinusArrivalRangeMs: [number, number] | null; actualPresentation: 'UNKNOWN' };
   config: PresentedFrameOptions;
   inputs: Input[];
   frames: Frame[];
@@ -20,12 +22,19 @@ export interface PresentedFrameReport {
 }
 export interface PresentedFrameCapture { stop(): Promise<PresentedFrameReport>; }
 
-/** Existing observability adapter. Never substitute callback arrival for native frame swap. */
+/** Existing screencast observation adapter. Metadata is not actual presentation acknowledgment. */
+function timestampProducer(browser: { revision?: string }): Record<string, unknown> {
+  const revision = String(browser.revision ?? '').replace(/^@/, '');
+  const source = `https://chromium.googlesource.com/chromium/src/+/${revision}/content/browser/devtools/protocol/page_handler.cc`;
+  if (revision === 'f842f52ef39fd97b449eb27cff414bf05a98ddce') return { meaning: 'EXPECTED_DISPLAY_REFERENCE_OR_CURRENT_MONOTONIC_TIME', source: source + '#153', conversion: 'Time::Now() - (TimeTicks::Now() - reference_time)', fallback: 'reference_time absent -> TimeTicks::Now(); per-frame fallback not disclosed', actualPresentation: 'UNKNOWN' };
+  if (revision === '8625e066febc721e015ea99842da12901eb7ed73') return { meaning: 'METADATA_BUILD_WALL_TIME', source: source + '#155', conversion: 'Time::Now() at metadata construction', actualPresentation: 'UNKNOWN' };
+  return { meaning: 'UNKNOWN', source, actualPresentation: 'UNKNOWN', reason: 'Exact producer revision has not been source-audited; presence of metadata.timestamp does not establish its semantics.' };
+}
 export async function startPresentedFrameCapture(page: Page, config: PresentedFrameOptions, sink: ArtifactSink | undefined, testId: string): Promise<PresentedFrameCapture> {
-  const report: PresentedFrameReport = { schemaVersion: 1, status: 'UNKNOWN', calibration: 'UNCHECKED', config, provenance: {}, inputs: [], frames: [], attempts: [], cadence: { intervalsMs: [], maxGapMs: null }, errors: [], limits: [
-    'Chromium screencast frame-swap epoch metadata, not hardware/photon timing.',
+  const report: PresentedFrameReport = { schemaVersion: 1, status: 'UNKNOWN', calibration: 'UNCHECKED', config, provenance: {}, clockRelation: { status: 'DIAGNOSTIC_ONLY', samples: [], metadataEpochMinusArrivalRangeMs: null, actualPresentation: 'UNKNOWN' }, inputs: [], frames: [], attempts: [], cadence: { intervalsMs: [], maxGapMs: null }, errors: [], limits: [
+    'Chromium screencast pixels/native metadata; exact producer may report expected display reference or metadata-build wall time, not acknowledged actual presentation.',
     'Input uses trusted top-frame event timeOrigin + timeStamp; Node arrival is diagnostic only.',
-    'Producer timestamp quantization and clock-alignment accuracy are unspecified; no precision beyond retained frame bracket is claimed.',
+    'Conditional metadata/input clock brackets are not actual presented latency; producer endpoint accuracy, timestamp quantization and clock alignment remain UNKNOWN.',
     'No presented-latency conformance or2x40 calibration follows from capture alone. Quantization/overhead and delayed/never controls require actual qualification.',
     'PNG predicate is fixed before capture; unrelated paint, DOM/rAF and action duration cannot satisfy feedback.',
   ] };
@@ -36,8 +45,23 @@ export async function startPresentedFrameCapture(page: Page, config: PresentedFr
   const baseline = new Promise<void>(resolve => { baselineSaved = resolve; });
   const binding = `__bad_presented_${randomUUID().replaceAll('-', '')}`;
   const track = (work: Promise<void>) => { pending.add(work); work.finally(() => pending.delete(work)).catch(() => {}); };
+  const sampleClock = async (phase: ClockSample['phase']) => {
+    if (!session) return;
+    const nodeBeforeEpochMs = Date.now(), started = performance.now();
+    let renderer: ClockSample['renderer'] = null, error: string | undefined;
+    try {
+      const response = await session.send('Runtime.evaluate', { expression: 'JSON.stringify({dateNowMs:Date.now(),timeOrigin:performance.timeOrigin,performanceNowMs:performance.now(),epochMs:performance.timeOrigin+performance.now()})', returnByValue: true });
+      if (response.exceptionDetails || typeof response.result.value !== 'string') throw new Error('Renderer clock response unavailable');
+      const value = JSON.parse(response.result.value);
+      if (![value.dateNowMs, value.timeOrigin, value.performanceNowMs, value.epochMs].every(Number.isFinite)) throw new Error('Renderer clock fields invalid');
+      renderer = value;
+    } catch (e) { error = String(e); }
+    const nodeAfterEpochMs = Date.now();
+    report.clockRelation.samples.push({ phase, nodeBeforeEpochMs, nodeAfterEpochMs, nodeElapsedMs: performance.now() - started, renderer, ...(renderer ? { rendererEpochMinusNodeRangeMs: [renderer.epochMs - nodeAfterEpochMs, renderer.epochMs - nodeBeforeEpochMs] as [number, number] } : {}), ...(error ? { error } : {}) });
+  };
   const stop = (): Promise<PresentedFrameReport> => stopped ??= (async () => {
     if (session) {
+      await sampleClock('stop');
       try { await session.send('Page.stopScreencast'); } catch (e) { report.errors.push(`stop: ${String(e)}`); }
       try {
         await session.send('Runtime.evaluate', { expression: `globalThis[${JSON.stringify(binding + '_abort')}]?.abort()` });
@@ -49,6 +73,8 @@ export async function startPresentedFrameCapture(page: Page, config: PresentedFr
     }
     await Promise.allSettled([...pending]);
     report.frames.sort((a, b) => a.sequence - b.sequence);
+    const clockDeltas = report.frames.filter(f => f.epochMs !== null).map(f => f.epochMs! - f.receivedEpochMs);
+    report.clockRelation.metadataEpochMinusArrivalRangeMs = clockDeltas.length ? [Math.min(...clockDeltas), Math.max(...clockDeltas)] : null;
     const valid = report.frames.every(f => f.epochMs !== null && f.uri);
     const ordered = report.frames.every((f, i, frames) => !i || (f.epochMs !== null && frames[i - 1].epochMs !== null && f.epochMs >= frames[i - 1].epochMs!));
     if (!ordered) report.errors.push('Native frame epochs are out of capture order; no sorting away failed provenance.');
@@ -89,7 +115,8 @@ export async function startPresentedFrameCapture(page: Page, config: PresentedFr
     if (page.context().browser()?.browserType().name() !== 'chromium') throw new Error('Native frame metadata adapter supports Chromium only.');
     const { PNG } = await import('pngjs');
     session = await page.context().newCDPSession(page);
-    report.provenance = { transport: 'CDP Page.screencastFrame.metadata.timestamp (raw epoch seconds), no Date.now fallback', browser: await session.send('Browser.getVersion'), viewport: page.viewportSize(), declaredBackend: config.backend ?? 'unknown', inputClock: 'performance.timeOrigin + trusted event.timeStamp', topFrameOnly: true, format: 'png', receivedClock: 'Node Date.now diagnostic only', timestampQuantizationMs: null, clockAlignmentUncertaintyMs: null };
+    const browser = await session.send('Browser.getVersion');
+    report.provenance = { transport: 'CDP Page.screencastFrame.metadata.timestamp (raw epoch seconds), no client Date.now fallback', timestampProducer: timestampProducer(browser), browser, viewport: page.viewportSize(), declaredBackend: config.backend ?? 'unknown', inputClock: 'performance.timeOrigin + trusted event.timeStamp', topFrameOnly: true, format: 'png', receivedClock: 'Node Date.now diagnostic only', timestampQuantizationMs: null, clockAlignmentUncertaintyMs: null };
     session.on('Runtime.bindingCalled', event => {
       if (!accepting || event.name !== binding) return;
       try { const value = JSON.parse(event.payload); report.inputs.push({ ...value, sequence: report.inputs.length + 1, receivedEpochMs: Date.now() }); }
@@ -123,6 +150,7 @@ export async function startPresentedFrameCapture(page: Page, config: PresentedFr
       })().catch(e => { report.errors.push(`frame${sequence}: ${String(e)}`); }));
     });
     await session.send('Runtime.enable');
+    await sampleClock('start');
     await session.send('Runtime.addBinding', { name: binding });
     const source = `(${function install(name: string, selector: string, eventType: string) {
       if (window.top !== window) return;
