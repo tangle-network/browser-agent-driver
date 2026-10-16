@@ -41,16 +41,19 @@ export async function startPresentedFrameCapture(page: Page, config: PresentedFr
   const pending = new Set<Promise<void>>();
   let session: CDPSession | undefined, scriptId: string | undefined, stopped: Promise<PresentedFrameReport> | undefined;
   let accepting = true, frameSequence = 0;
+  const inputContexts = new Set<number>();
   let baselineSaved!: () => void;
   const baseline = new Promise<void>(resolve => { baselineSaved = resolve; });
   const binding = `__bad_presented_${randomUUID().replaceAll('-', '')}`;
   const track = (work: Promise<void>) => { pending.add(work); work.finally(() => pending.delete(work)).catch(() => {}); };
   const sampleClock = async (phase: ClockSample['phase']) => {
     if (!session) return;
+    const contextId = [...inputContexts].at(-1);
     const nodeBeforeEpochMs = Date.now(), started = performance.now();
     let renderer: ClockSample['renderer'] = null, error: string | undefined;
     try {
-      const response = await session.send('Runtime.evaluate', { expression: 'JSON.stringify({dateNowMs:Date.now(),timeOrigin:performance.timeOrigin,performanceNowMs:performance.now(),epochMs:performance.timeOrigin+performance.now()})', returnByValue: true });
+      if (contextId === undefined) throw new Error('Isolated input context unavailable for clock diagnostic');
+      const response = await session.send('Runtime.evaluate', { expression: 'JSON.stringify({dateNowMs:Date.now(),timeOrigin:performance.timeOrigin,performanceNowMs:performance.now(),epochMs:performance.timeOrigin+performance.now()})', contextId, returnByValue: true });
       if (response.exceptionDetails || typeof response.result.value !== 'string') throw new Error('Renderer clock response unavailable');
       const value = JSON.parse(response.result.value);
       if (![value.dateNowMs, value.timeOrigin, value.performanceNowMs, value.epochMs].every(Number.isFinite)) throw new Error('Renderer clock fields invalid');
@@ -64,7 +67,7 @@ export async function startPresentedFrameCapture(page: Page, config: PresentedFr
       await sampleClock('stop');
       try { await session.send('Page.stopScreencast'); } catch (e) { report.errors.push(`stop: ${String(e)}`); }
       try {
-        await session.send('Runtime.evaluate', { expression: `globalThis[${JSON.stringify(binding + '_abort')}]?.abort()` });
+        for (const contextId of inputContexts) await session.send('Runtime.evaluate', { expression: `globalThis[${JSON.stringify(binding + '_abort')}]?.abort()`, contextId });
         if (scriptId) await session.send('Page.removeScriptToEvaluateOnNewDocument', { identifier: scriptId });
         await session.send('Runtime.removeBinding', { name: binding });
       } catch (e) { report.errors.push(`input cleanup: ${String(e)}`); }
@@ -89,7 +92,7 @@ export async function startPresentedFrameCapture(page: Page, config: PresentedFr
       report.attempts.push(attempt);
       if (report.status === 'UNKNOWN' || !input.trusted) { attempt.reason = 'Missing native provenance, retained pixels, or trusted input.'; continue; }
       const end = input.epochMs + config.observationWindowMs;
-      if (report.inputs.some(other => other.sequence !== input.sequence && other.epochMs >= input.epochMs && other.epochMs <= end)) { attempt.reason = 'Overlapping input windows; feedback attribution is ambiguous.'; continue; }
+      if (report.inputs.some(other => other.sequence !== input.sequence && other.epochMs <= end && other.epochMs + config.observationWindowMs >= input.epochMs)) { attempt.reason = 'Overlapping input windows; feedback attribution is ambiguous.'; continue; }
       const before = report.frames.filter(f => f.epochMs! <= input.epochMs).at(-1);
       if (!before || before.feedback) { attempt.reason = 'No negative feedback frame at input boundary; pre-existing feedback is not acknowledgment.'; continue; }
       const frames = report.frames.filter(f => f.epochMs! >= input.epochMs && f.epochMs! <= end);
@@ -112,14 +115,27 @@ export async function startPresentedFrameCapture(page: Page, config: PresentedFr
       || roi.x < 0 || roi.y < 0 || roi.width <= 0 || roi.height <= 0 || config.observationWindowMs <= 0 || !Number.isInteger(config.maxFrames) || config.maxFrames < 2
       || channelTolerance < 0 || channelTolerance > 255 || minimumFraction <= 0 || minimumFraction > 1 || rgba.length !== 4 || rgba.some(c => c < 0 || c > 255)) throw new Error('Invalid explicit input/pixel/window/frame bounds.');
     if (!sink) throw new Error('ArtifactSink required: raw pixel retention is part of measurement.');
-    if (page.context().browser()?.browserType().name() !== 'chromium') throw new Error('Native frame metadata adapter supports Chromium only.');
     const { PNG } = await import('pngjs');
     session = await page.context().newCDPSession(page);
     const browser = await session.send('Browser.getVersion');
-    report.provenance = { transport: 'CDP Page.screencastFrame.metadata.timestamp (raw epoch seconds), no client Date.now fallback', timestampProducer: timestampProducer(browser), browser, viewport: page.viewportSize(), declaredBackend: config.backend ?? 'unknown', inputClock: 'performance.timeOrigin + trusted event.timeStamp', topFrameOnly: true, format: 'png', receivedClock: 'Node Date.now diagnostic only', timestampQuantizationMs: null, clockAlignmentUncertaintyMs: null };
+    let topFrameId = (await session.send('Page.getFrameTree')).frameTree.frame.id;
+    session.on('Page.frameNavigated', ({ frame }) => {
+      if (!frame.parentId) { topFrameId = frame.id; inputContexts.clear(); }
+    });
+    session.on('Runtime.executionContextCreated', ({ context }) => {
+      const aux = context.auxData as { frameId?: string } | undefined;
+      if (context.name === binding && aux?.frameId === topFrameId) inputContexts.add(context.id);
+    });
+    session.on('Runtime.executionContextDestroyed', event => inputContexts.delete(event.executionContextId));
+    session.on('Runtime.executionContextsCleared', () => inputContexts.clear());
+    report.provenance = { transport: 'CDP Page.screencastFrame.metadata.timestamp (raw epoch seconds), no client Date.now fallback', timestampProducer: timestampProducer(browser), browser, viewport: page.viewportSize(), declaredBackend: config.backend ?? 'unknown', inputClock: 'performance.timeOrigin + trusted event.timeStamp', topFrameOnly: true, format: 'png', receivedClock: 'Node Date.now diagnostic only', timestampQuantizationMs: null, clockAlignmentUncertaintyMs: null, inputIsolation: 'Named CDP isolated world; binding execution context must match the top frame' };
     session.on('Runtime.bindingCalled', event => {
-      if (!accepting || event.name !== binding) return;
-      try { const value = JSON.parse(event.payload); report.inputs.push({ ...value, sequence: report.inputs.length + 1, receivedEpochMs: Date.now() }); }
+      if (!accepting || event.name !== binding || !inputContexts.has(event.executionContextId)) return;
+      try {
+        const value = JSON.parse(event.payload);
+        if (!value || ![value.epochMs, value.timeOrigin, value.eventTimestamp].every(Number.isFinite) || value.timeOrigin <= 0 || value.eventTimestamp < 0 || value.epochMs !== value.timeOrigin + value.eventTimestamp || value.trusted !== true || value.event !== config.input.event || value.selector !== config.input.selector) throw new Error('Invalid isolated input provenance');
+        report.inputs.push({ epochMs: value.epochMs, timeOrigin: value.timeOrigin, eventTimestamp: value.eventTimestamp, trusted: true, event: value.event, selector: value.selector, sequence: report.inputs.length + 1, receivedEpochMs: Date.now() });
+      }
       catch (e) { report.errors.push(`input payload: ${String(e)}`); }
     });
     session.on('Page.screencastFrame', event => {
@@ -149,9 +165,9 @@ export async function startPresentedFrameCapture(page: Page, config: PresentedFr
         report.frames.push({ sequence, nativeEpochSeconds, epochMs: nativeEpochSeconds === null ? null : nativeEpochSeconds * 1000, receivedEpochMs, metadata: { ...event.metadata }, width: png.width, height: png.height, feedback, sha256: createHash('sha256').update(data).digest('hex'), uri, decodeMs });
       })().catch(e => { report.errors.push(`frame${sequence}: ${String(e)}`); }));
     });
+    await session.send('Page.enable');
     await session.send('Runtime.enable');
-    await sampleClock('start');
-    await session.send('Runtime.addBinding', { name: binding });
+    await session.send('Runtime.addBinding', { name: binding, executionContextName: binding });
     const source = `(${function install(name: string, selector: string, eventType: string) {
       if (window.top !== window) return;
       const globals = globalThis as unknown as Record<string, unknown>;
@@ -161,8 +177,11 @@ export async function startPresentedFrameCapture(page: Page, config: PresentedFr
         (globals[name] as (payload: string) => void)(JSON.stringify({ epochMs: performance.timeOrigin + event.timeStamp, timeOrigin: performance.timeOrigin, eventTimestamp: event.timeStamp, trusted: event.isTrusted, event: event.type, selector }));
       }, { capture: true, signal: abort.signal });
     }.toString()})(${JSON.stringify(binding)},${JSON.stringify(config.input.selector)},${JSON.stringify(config.input.event)})`;
-    scriptId = (await session.send('Page.addScriptToEvaluateOnNewDocument', { source })).identifier;
-    await session.send('Runtime.evaluate', { expression: source });
+    scriptId = (await session.send('Page.addScriptToEvaluateOnNewDocument', { source, worldName: binding })).identifier;
+    const { executionContextId } = await session.send('Page.createIsolatedWorld', { frameId: topFrameId, worldName: binding });
+    inputContexts.add(executionContextId);
+    await session.send('Runtime.evaluate', { expression: source, contextId: executionContextId });
+    await sampleClock('start');
     await session.send('Page.startScreencast', { format: 'png', everyNthFrame: 1 });
     let timer: ReturnType<typeof setTimeout> | undefined;
     try { await Promise.race([baseline, new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('No retained raw baseline frame within declared observation window.')), config.observationWindowMs); })]); }
