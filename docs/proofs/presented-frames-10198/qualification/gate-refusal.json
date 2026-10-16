@@ -1,0 +1,26 @@
+{
+  "pid": 1013868,
+  "sha": "e3a468dcb16edd36ee9a581cce234ba2afdbf0d3",
+  "gateId": "beelink2-03ec2e978652aa973ae50aff7827dc70",
+  "operation": "clock-provenance-and-TestRunner",
+  "state": "terminal",
+  "elapsedSeconds": 32,
+  "remote": {
+    "jobExists": true,
+    "exit": 75,
+    "receipt": null,
+    "unit": {
+      "LoadState": "not-found",
+      "ActiveState": "inactive",
+      "SubState": "dead"
+    }
+  },
+  "attach": {
+    "exit": 75,
+    "stdout": "",
+    "stderr": "beelink-gate: install reserve 10737418240 bytes from beelink2's newest warm receipt for checkout shape full\nbeelink-gate: disk reserve needs 4763246592 bytes; pruning owned idle cache\nbeelink-gate: evicted LRU cache /home/drew/.cache/beelink-gate/github.com/tangle-network/agent-runtime@1\nbeelink-gate: evicted LRU cache /home/drew/.cache/beelink-gate/github.com/tangle-network/agent-runtime\nbeelink-gate: cache prune failed: bounded cache removal /home/drew/.cache/beelink-gate/.locks/.evicted-867b8670cc9a45db9f4e731f059a9966: exit -9\nbeelink-gate: REFUSED beelink2 has 171133665280 bytes free, below its 150 GiB disk floor plus 10737418240 bytes last-seen install reserve; use the other beelink or ask the host owner to recover capacity\nbeelink-gate: TEMPFAIL next_allowed=2026-10-16T05:52:18Z beelink2 is below its disk floor\n"
+  },
+  "notificationExit": 0,
+  "notification": "ACCEPTED id=7540b8fde5324a52990eba61fabaa2f2 retry_owner=fleet nothing resent",
+  "notificationError": ""
+}

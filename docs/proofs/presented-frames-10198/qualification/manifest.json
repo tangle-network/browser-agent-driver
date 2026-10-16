@@ -1,0 +1,9 @@
+{
+  "source": "e3a468dcb16edd36ee9a581cce234ba2afdbf0d3",
+  "runtime": "UNCHECKED: gate03ec pre-command75",
+  "filesSha256": {
+    "README.md": "aa8f6311d0d81bef213face94f515ad991864367951a8a208f4c76f3a9bd8eb3",
+    "gate-refusal.json": "14fd21cb68d17c06dee16b10af1ce913c67edb80d87bf3a3696d62174ee06240",
+    "source-contract.json": "152cb6d374f17958818da6a78e91bf9faef185f04c2c6fc309945cbfc89e2f20"
+  }
+}
