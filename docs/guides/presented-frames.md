@@ -25,8 +25,8 @@ Node arrivals and PNG decode cost are diagnostic, not substitute clocks.
 Each fixed-predicate attempt retains last-negative / first-positive frame IDs,
 interval bounds, capture gap and all observed cadence intervals. A no-feedback
 observation needs coverage through its declared window and is not proof of absence
-between captured frames. Raw PNGs preserve exact pixels and hashes. Recorder
-frames are browser frame-swap observations, not hardware-to-photon timing.
+between captured frames. Raw PNGs preserve exact pixels and hashes. Recorder frames retain screencast pixels and revision-specific protocol metadata;
+these do not acknowledge actual presentation.
 Producer quantization and input/frame clock accuracy remain explicit unknowns;
 no precise point estimate or latency conformance is inferred.
 
@@ -34,7 +34,7 @@ The real integration fixture in `scripts/prove-presented-frames.mjs` runs actual
 Playwright and patchright Chromium, with immediate/delayed/never feedback and an
 unrelated cadence heartbeat outside the ROI. Its structured `report.json` checks
 native/input/pixel provenance and delayed-feedback discrimination. This is bounded
-fixture calibration, not a2x40 live application claim. Consumer-specific predicates,
+fixture discrimination, not a2x40 live application claim. Consumer-specific predicates,
 conditions, capture overhead/quantization/clock uncertainty and all unresolved
 attempts still need qualification. An independent second reference is optional
 stricter analysis. Never reinterpret rAF, DOM mutation or execute-duration as a
