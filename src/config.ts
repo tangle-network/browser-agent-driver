@@ -123,14 +123,7 @@ export interface DriverConfig {
     maxScoreGap?: number;
     readOnlyTop2Challenger?: boolean;
   };
-  observability?: {
-    enabled?: boolean;
-    captureConsole?: boolean;
-    captureNetwork?: boolean;
-    tracePolicy?: 'off' | 'on-failure' | 'always';
-    maxConsoleEntries?: number;
-    maxNetworkEntries?: number;
-  };
+  observability?: AgentConfig['observability'];
 
   // Output
   outputDir?: string;
