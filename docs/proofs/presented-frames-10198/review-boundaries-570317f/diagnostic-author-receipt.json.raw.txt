@@ -1,0 +1,45 @@
+{
+  "at": "2026-10-16T18:06:52.725618+00:00",
+  "state": "terminal-success",
+  "steps": [
+    {
+      "cmd": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "git",
+        "add",
+        "scripts/prove-presented-frames.mjs"
+      ],
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "git",
+        "commit",
+        "-m",
+        "fix: retain boundary diagnostics before observation assertions"
+      ],
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "git",
+        "-c",
+        "http.lowSpeedLimit=1",
+        "-c",
+        "http.lowSpeedTime=30",
+        "push",
+        "origin",
+        "HEAD:feat/presented-frame-measurement-10198"
+      ],
+      "exit": 0
+    }
+  ],
+  "source": "570317ff4df073e38097605723bfd6af9881c48d"
+}

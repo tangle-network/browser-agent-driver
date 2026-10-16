@@ -1,0 +1,47 @@
+{
+  "nativeEqualsRuntimeLog": true,
+  "TestResultFilePresent": false,
+  "status": "UNKNOWN",
+  "errors": [
+    "Native frame epochs are out of capture order; no sorting away failed provenance."
+  ],
+  "regressions": [
+    {
+      "before": {
+        "sequence": 30,
+        "epochMs": 1792173584780.0852,
+        "receivedEpochMs": 1792173584771,
+        "metadata": {
+          "offsetTop": 0,
+          "pageScaleFactor": 1,
+          "deviceWidth": 480,
+          "deviceHeight": 300,
+          "scrollOffsetX": 0,
+          "scrollOffsetY": 0,
+          "timestamp": 1792173584.780085,
+          "monotonicTimestamp": 1165183.424132
+        },
+        "sha256": "7f0bd8b9a0b1da580a6d573b1e83057167f8e98d146e4399e365c52aed2658ca"
+      },
+      "after": {
+        "sequence": 31,
+        "epochMs": 1792173584763.419,
+        "receivedEpochMs": 1792173584776,
+        "metadata": {
+          "offsetTop": 0,
+          "pageScaleFactor": 1,
+          "deviceWidth": 480,
+          "deviceHeight": 300,
+          "scrollOffsetX": 0,
+          "scrollOffsetY": 0,
+          "timestamp": 1792173584.763419,
+          "monotonicTimestamp": 1165183.407466
+        },
+        "sha256": "fa793d2f7ffa0c4e54a3d9c039c9ecd0e27bdb5df4569f87d702df38c92bb5b4"
+      },
+      "deltaMs": -16.666259765625
+    }
+  ],
+  "boundaryCasesRun": 0,
+  "currentSourceRun": false
+}

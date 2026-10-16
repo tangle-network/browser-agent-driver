@@ -1,0 +1,20 @@
+ai-agent-hooks: hook=pre-commit
+ai-agent-hooks: changed_files=1
+ai-agent-hooks: artifacts=/home/drew/code/browser-agent-driver/.git/worktrees/browser-agent-driver-feat-presented-frame-measurement-10198/ai-agent-hooks/runs/2026-10-16T18-06-50.490Z-pre-commit
+- ok merge-conflict-markers
+- ok suspicious-secrets
+[feat/presented-frame-measurement-10198 570317f] fix: retain boundary diagnostics before observation assertions
+ 1 file changed, 26 insertions(+), 23 deletions(-)
+ai-agent-hooks: hook=pre-push
+ai-agent-hooks: changed_files=1
+ai-agent-hooks: artifacts=/home/drew/code/browser-agent-driver/.git/worktrees/browser-agent-driver-feat-presented-frame-measurement-10198/ai-agent-hooks/runs/2026-10-16T18-06-51.113Z-pre-push
+- ok no-cross-name-default-push
+- ok merge-conflict-markers
+- ok mergeable-with-base
+- ok suspicious-secrets
+remote: 
+remote: GitHub found 7 vulnerabilities on tangle-network/browser-agent-driver's default branch (3 high, 4 moderate). To find out more, visit:        
+remote:      https://github.com/tangle-network/browser-agent-driver/security/dependabot        
+remote: 
+To https://github.com/tangle-network/browser-agent-driver.git
+   fd846d8..570317f  HEAD -> feat/presented-frame-measurement-10198

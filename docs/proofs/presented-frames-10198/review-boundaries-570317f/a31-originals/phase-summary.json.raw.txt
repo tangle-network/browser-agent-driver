@@ -1,0 +1,65 @@
+{
+  "oldComponent": "47766e03063a60b191bba729db0a825ecea5107b",
+  "currentSource": "570317ff4df073e38097605723bfd6af9881c48d",
+  "oldCaptureSourceSha256": "f8df8ac39378108f3c5a2a63b644f56a9d391a2c28e82b11d2debfffdb76b32a",
+  "currentCaptureSourceSha256": "e4424f1deffb08ed55eea4d0274d575c85ad35fca6b32c16b527e2fc7b8db668",
+  "oldCaptureArtifactSha256": "873540c127c229f5bbebf1fb625cbfda147c26e6122338d65d676506f4a347f4",
+  "currentCaptureArtifactSha256": "79b86193dffab2a927cc8661072c081a07a714332da68052d7649837e409a4aa",
+  "baselineStatus": "FAIL",
+  "baselineFailure": "Error: patchright-delayed: native/input provenance failed [\"Native frame epochs are out of capture order; no sorting away failed provenance.\"]",
+  "baselineIntegration": null,
+  "baselineCases": [],
+  "baselineOverlapAttributionReproduced": false,
+  "baselineForgedInputReproduced": false,
+  "currentStatus": "FAIL",
+  "currentIntegration": {
+    "status": "PASS",
+    "checks": {
+      "zeroTurnsTokensAndIntentionalAbort": true,
+      "resultEqualsNative": true,
+      "runtimeLogEqualsNative": true,
+      "nativeObserved": true,
+      "feedbackBracketed": true
+    },
+    "nativeStatus": "NATIVE_FRAMES_OBSERVED",
+    "nativeErrors": [],
+    "attemptStatus": "BRACKETED",
+    "mode": "Intentional beforeTurn abort, no model inference or application success claim",
+    "turns": 0,
+    "tokens": 0,
+    "result": "test-runner-seam/test-result.json",
+    "runtimeLog": "test-runner-seam/runtime-log.json",
+    "frames": 79
+  },
+  "currentCases": [
+    {
+      "scenario": "overlap",
+      "status": "PASS",
+      "failure": null,
+      "browserOwnerNull": false,
+      "attackProbe": null,
+      "profileRemoved": null
+    },
+    {
+      "scenario": "persistent",
+      "status": "PASS",
+      "failure": null,
+      "browserOwnerNull": false,
+      "attackProbe": null,
+      "profileRemoved": true
+    },
+    {
+      "scenario": "page-forgery",
+      "status": "FAIL",
+      "failure": "Error: Missing native observation: [\"Native frame epochs are out of capture order; no sorting away failed provenance.\"]",
+      "browserOwnerNull": false,
+      "attackProbe": {
+        "visibleGlobals": [],
+        "invoked": 0,
+        "syntheticClickDispatched": true
+      },
+      "profileRemoved": null
+    }
+  ],
+  "presentation": "UNKNOWN"
+}
