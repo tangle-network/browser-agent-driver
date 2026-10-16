@@ -43,28 +43,6 @@ try{
   const delayed=cases.find(c=>c.backend===backend&&c.control==='delayed').report.attempts[0];
   if(!(delayed.intervalMs[0]>immediate.intervalMs[1]))throw new Error(`${backend}: delayed feedback not distinguished from immediate brackets`);
  }
- if(clockAndRunner){
-  // Existing real TestRunner + PlaywrightDriver. Its maintained beforeTurn hook
-  // stops before inference; warmup is disabled, provider URL stays loopback.
-  process.env.BAD_NO_WARMUP='1';
-  const runtime=await import('playwright');const browser=await runtime.chromium.launch({headless:true});
-  try{
-   const context=await browser.newContext({viewport:{width:480,height:300},deviceScaleFactor:1});
-   try{
-    const page=await context.newPage();await page.goto(`${url}?control=delayed`);
-    const sink=new FilesystemSink(out);const id='test-runner-seam';
-    const config={input:{selector:'#trigger',event:'click'},feedback:{roi:{x:20,y:100,width:40,height:40},rgba:[0,255,0,255],channelTolerance:0,minimumFraction:1},observationWindowMs:700,maxFrames:200,backend:'real-TestRunner-PlaywrightDriver'};
-    const runner=new TestRunner({driver:new PlaywrightDriver(page),artifactSink:sink,config:{provider:'openai',baseUrl:url+'/forbidden-model',vision:false,observability:{presentedFrames:config}},beforeTurn:async()=>{throw new Error('observation-only proof: stop before model turn')}});
-    const result=await runner.runTest({id,name:'Real no-model report integration',startUrl:'',goal:'Observe fixture only; intentional abort before inference',setup:async p=>{await p.locator('#trigger').click();await p.waitForTimeout(config.observationWindowMs*1.5)}});
-    const native=JSON.parse(await readFile(resolve(out,id,'presented-frames.json'),'utf8'));
-    const log=JSON.parse(await readFile(resolve(out,id,'runtime-log.json'),'utf8'));
-    if(result.turnsUsed!==0||result.tokensUsed!==0||result.agentSuccess||!String(result.agentResult.reason).includes('stop before model turn'))throw new Error('No-model stop contract failed');
-    if(native.status!=='NATIVE_FRAMES_OBSERVED'||native.attempts[0]?.status!=='BRACKETED'||JSON.stringify(result.presentedFrames)!==JSON.stringify(native)||JSON.stringify(log.presentedFrames)!==JSON.stringify(native))throw new Error('TestResult/runtime-log/native artifact disagree');
-    await writeFile(resolve(out,id,'test-result.json'),JSON.stringify(result,null,2)+'\n');
-    integration={status:'PASS',mode:'Intentional beforeTurn abort, no model inference or application success claim',turns:result.turnsUsed,tokens:result.tokensUsed,result:`${id}/test-result.json`,runtimeLog:`${id}/runtime-log.json`,frames:native.frames.length};
-   }finally{await context.close()}
-  }finally{await browser.close()}
- }
  if(reviewBoundaries){
   const runtime=await import('playwright');
   for(const scenario of ['overlap','persistent','page-forgery']){
@@ -101,8 +79,33 @@ try{
    finally{try{await context?.close()}finally{try{await browser?.close()}finally{if(profileDir){await rm(profileDir,{recursive:true});result.profileRemoved=true}}}}
    boundaryCases.push(result);await writeFile(resolve(out,id+'.json'),JSON.stringify(result,null,2)+'\n');
   }
-  if(boundaryCases.some(c=>c.status!=='PASS'))throw new Error('Review boundaries failed: '+boundaryCases.filter(c=>c.status!=='PASS').map(c=>c.scenario).join(', '));
  }
+ if(clockAndRunner){
+  // Existing real TestRunner + PlaywrightDriver. Its maintained beforeTurn hook
+  // stops before inference; warmup is disabled, provider URL stays loopback.
+  process.env.BAD_NO_WARMUP='1';
+  const runtime=await import('playwright');const browser=await runtime.chromium.launch({headless:true});
+  try{
+   const context=await browser.newContext({viewport:{width:480,height:300},deviceScaleFactor:1});
+   try{
+    const page=await context.newPage();await page.goto(`${url}?control=delayed`);
+    const sink=new FilesystemSink(out);const id='test-runner-seam';
+    const config={input:{selector:'#trigger',event:'click'},feedback:{roi:{x:20,y:100,width:40,height:40},rgba:[0,255,0,255],channelTolerance:0,minimumFraction:1},observationWindowMs:700,maxFrames:200,backend:'real-TestRunner-PlaywrightDriver'};
+    const runner=new TestRunner({driver:new PlaywrightDriver(page),artifactSink:sink,config:{provider:'openai',baseUrl:url+'/forbidden-model',vision:false,observability:{presentedFrames:config}},beforeTurn:async()=>{throw new Error('observation-only proof: stop before model turn')}});
+    const result=await runner.runTest({id,name:'Real no-model report integration',startUrl:'',goal:'Observe fixture only; intentional abort before inference',setup:async p=>{await p.locator('#trigger').click();await p.waitForTimeout(config.observationWindowMs*1.5)}});
+    const native=JSON.parse(await readFile(resolve(out,id,'presented-frames.json'),'utf8'));
+    const log=JSON.parse(await readFile(resolve(out,id,'runtime-log.json'),'utf8'));
+    await writeFile(resolve(out,id,'test-result.json'),JSON.stringify(result,null,2)+'\n');
+    const checks={zeroTurnsTokensAndIntentionalAbort:result.turnsUsed===0&&result.tokensUsed===0&&!result.agentSuccess&&String(result.agentResult.reason).includes('stop before model turn'),resultEqualsNative:JSON.stringify(result.presentedFrames)===JSON.stringify(native),runtimeLogEqualsNative:JSON.stringify(log.presentedFrames)===JSON.stringify(native),nativeObserved:native.status==='NATIVE_FRAMES_OBSERVED',feedbackBracketed:native.attempts[0]?.status==='BRACKETED'};
+    integration={status:Object.values(checks).every(Boolean)?'PASS':'FAIL',checks,nativeStatus:native.status,nativeErrors:native.errors,attemptStatus:native.attempts[0]?.status,mode:'Intentional beforeTurn abort, no model inference or application success claim',turns:result.turnsUsed,tokens:result.tokensUsed,result:`${id}/test-result.json`,runtimeLog:`${id}/runtime-log.json`,frames:native.frames.length};
+    await writeFile(resolve(out,id,'integration-checks.json'),JSON.stringify(integration,null,2)+'\n');
+    if(!checks.zeroTurnsTokensAndIntentionalAbort)throw new Error('No-model stop contract failed');
+    if(!checks.resultEqualsNative||!checks.runtimeLogEqualsNative)throw new Error('Structured report mismatch: '+JSON.stringify(checks));
+    if(!checks.nativeObserved||!checks.feedbackBracketed)throw new Error('Native observation unqualified: '+JSON.stringify({status:native.status,errors:native.errors,attempt:native.attempts[0]}));
+   }finally{await context.close()}
+  }finally{await browser.close()}
+ }
+ if(boundaryCases.some(c=>c.status!=='PASS'))throw new Error('Review boundaries failed: '+boundaryCases.filter(c=>c.status!=='PASS').map(c=>c.scenario).join(', '));
 }catch(error){failure=String(error)}finally{await new Promise(resolve=>server.close(resolve))}
 if(unexpectedModelRequests)failure=`Unexpected model requests: ${unexpectedModelRequests}`;
 const result={mode:reviewBoundaries?'review-boundaries-and-TestRunner':clockAndRunner?'clock-provenance-and-TestRunner':'feedback-controls',captureSourceSha256:createHash('sha256').update(await readFile('src/observability/presented-frames.ts')).digest('hex'),captureArtifactSha256:createHash('sha256').update(await readFile('dist/observability/presented-frames.js')).digest('hex'),boundaryCases,integration,unexpectedModelRequests,source:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),at:new Date().toISOString(),node:process.version,status:failure?'FAIL':'PASS',failure,calibration:{nativeTimestampProvenance:'Direct optional CDP metadata.timestamp; absent is UNKNOWN; no hidden publicAPI fallback',controls:'Fixed pixel ROI/color; immediate vs delayed vs never; heartbeat outside ROI forces capture cadence',presentationConformance:'UNCHECKED: exact156 producer is expected-display-reference-or-current-time; exact148 is metadata-build-time. Neither acknowledges actual presentation; no2x40/application latency qualification.'},cases};
