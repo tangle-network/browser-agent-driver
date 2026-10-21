@@ -1,5 +1,11 @@
 # @tangle-network/browser-agent-driver
 
+## 0.36.4
+
+### Patch Changes
+
+- [#165](https://github.com/tangle-network/browser-agent-driver/pull/165) [`2f08520`](https://github.com/tangle-network/browser-agent-driver/commit/2f08520fb1127e5d66b10a64b923ee45c36720b3) Thanks [@drewstone](https://github.com/drewstone)! - Refresh dependencies.
+
 ## 0.36.3
 
 ### Patch Changes
