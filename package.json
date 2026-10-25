@@ -101,50 +101,50 @@
     "playwright": "^1.40.0"
   },
   "dependencies": {
-    "@ai-sdk/openai": "^3.0.36",
-    "ai": "^6.0.104",
-    "axe-core": "^4.11.2",
-    "chalk": "^5.4.1",
-    "openai": "^6.34.0",
-    "patchright": "1.60.2"
+    "@ai-sdk/openai": "^4.0.102",
+    "ai": "^7.0.153",
+    "axe-core": "^4.14.0",
+    "chalk": "^6.0.1",
+    "openai": "^7.43.0",
+    "patchright": "1.64.2"
   },
   "optionalDependencies": {
-    "ai-sdk-provider-claude-code": "3.5.3",
-    "ai-sdk-provider-codex-cli": "^1.1.0",
+    "ai-sdk-provider-claude-code": "4.4.1",
+    "ai-sdk-provider-codex-cli": "^2.3.0",
     "ffmpeg-static": "^5.3.0"
   },
   "devDependencies": {
-    "@ai-sdk/anthropic": "^3.0.49",
-    "@ai-sdk/google": "^3.0.33",
-    "@changesets/changelog-github": "^0.6.0",
-    "@changesets/cli": "^2.30.0",
-    "@changesets/get-release-plan": "4.0.16",
-    "@tangle-network/agent-app": "0.60.168",
-    "@tangle-network/agent-eval": "0.182.0",
-    "@tangle-network/agent-integrations": "0.54.2",
-    "@types/node": "^22.20.4",
+    "@ai-sdk/anthropic": "^4.0.88",
+    "@ai-sdk/google": "^4.0.105",
+    "@changesets/changelog-github": "^1.0.1",
+    "@changesets/cli": "^3.0.3",
+    "@changesets/get-release-plan": "5.0.2",
+    "@tangle-network/agent-app": "0.63.31",
+    "@tangle-network/agent-eval": "0.221.7",
+    "@tangle-network/agent-integrations": "0.75.4",
+    "@types/node": "^26.6.5",
     "@types/pngjs": "^6.0.5",
     "classic-level": "^3.0.0",
-    "pixelmatch": "^7.1.0",
-    "playwright": "^1.40.0",
+    "pixelmatch": "^8.0.0",
+    "playwright": "^1.64.1",
     "pngjs": "^7.0.0",
-    "tsx": "^4.22.5",
-    "typescript": "^5.3.0",
-    "vitest": "^4.1.0"
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
   },
   "pnpm": {
     "overrides": {
-      "vite": "7.3.6",
-      "vitest": "^4.1.0",
-      "hono": "4.12.34",
-      "ws": "^8.21.0",
-      "esbuild": "^0.28.1",
-      "picomatch": "^4.0.4",
-      "postcss": "8.5.24",
-      "js-yaml@^3": "4.3.1",
-      "js-yaml@^4": "4.3.1",
-      "fast-uri": "3.1.6",
-      "qs": ">=6.16.0"
+      "vite": "8.3.5",
+      "vitest": "^5.0.5",
+      "hono": "4.13.14",
+      "ws": "^8.22.0",
+      "esbuild": "^0.28.2",
+      "picomatch": "^4.0.7",
+      "postcss": "8.5.31",
+      "js-yaml@^3": "4.3.2",
+      "js-yaml@^4": "4.3.2",
+      "fast-uri": "3.1.9",
+      "qs": ">=6.16.1"
     }
   }
 }
