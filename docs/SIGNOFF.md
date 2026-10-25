@@ -1,14 +1,14 @@
 # Local signoff
 
-Before merging, run the complete signoff against the committed revision through the admitted Beelink gate. It owns the outer frozen install; the maintained signoff runner retains its own clean-worktree frozen install:
+Before merging, qualify the affected behavior at the committed revision through the admitted Beelink gate. Workflow/docs-only changes use YAML, content, link, diff, and static checks. The complete signoff below is the comprehensive reference, selected when the changed surface requires its full coverage. Its admitted wrapper owns the outer frozen install; the maintained signoff runner retains its own clean-worktree frozen install:
 
 ```bash
 beelink-gate auto https://github.com/tangle-network/browser-agent-driver.git <full-sha> -- bash -lc 'mkdir -p "${XDG_STATE_HOME:-$HOME/.local/state}/browser-agent-driver" && pnpm signoff --source head --json "${XDG_STATE_HOME:-$HOME/.local/state}/browser-agent-driver/$(git rev-parse HEAD)-signoff.json"'
 ```
 
-Attach the resulting revision, verdict, and proof to the pull request.
+Attach the resulting revision, selected checks, verdict, and proof to the pull request.
 The default working-tree mode is useful during edits but does not prove that every required file was committed.
-A failed, interrupted, or narrowed run cannot authorize a merge.
+A failed or interrupted check does not establish that behavior. A narrowed run proves only the named affected surface; report its scope without claiming complete signoff.
 
 The runner comes from `@tangle-network/agent-app`.
 Read [its maintained documentation](https://github.com/tangle-network/agent-app/blob/main/docs/local-signoff.md) for execution and replay options.
