@@ -257,12 +257,7 @@ Agents integrating Browser Agent should start from the live manifest at https://
 
 ## Development
 
-```bash
-pnpm build              # TypeScript → dist/
-pnpm test               # vitest suite (~2,000 assertions across 174 files)
-pnpm lint               # type-check
-pnpm check:boundaries   # architecture boundaries
-```
+Use the canonical [admitted local signoff](./docs/SIGNOFF.md) for frozen installation, type-checked build, architecture/release-plan checks and browser-enabled integration qualification. It runs against the exact committed revision; paid benchmarks remain separately authorized experiments.
 
 Publishing is automated via [Changesets](https://github.com/changesets/changesets) + OIDC trusted publishing: add a changeset with `pnpm changeset`, merge the release PR, npm publish fires with provenance attestation.
 

@@ -6,7 +6,7 @@ Resolve current commands, models, and defaults from [package.json](package.json)
 ## Read for the task
 
 - Before experiments or performance claims, read [evaluation rigor](docs/EVAL-RIGOR.md).
-- Before merging, read [sign-off](docs/SIGNOFF.md) and run `pnpm signoff --source head` with the runtime in `.nvmrc`.
+- Before merging, use the canonical admitted local command in [sign-off](docs/SIGNOFF.md), with the runtime in `.nvmrc`.
   Attach proof for the exact committed revision.
   Keep [signoff.config.mjs](signoff.config.mjs) aligned with the checks it mirrors.
   Report local proof separately from credentialed browser and staging checks.
@@ -43,16 +43,8 @@ Verify the published artifact before claiming a release is available.
 
 ## Notes: committing changes
 
-`pnpm install` runs `prepare` to set this checkout's local `core.hooksPath` to
-`.githooks`. After installing with lifecycle scripts disabled, run `pnpm prepare`
-to enable the hook. This replaces any previously configured hooks path for this
-checkout; keep personal checks in a wrapper that also runs the repository check.
+Keep the configured Git hooks enabled. `scripts/install-git-hooks.mjs` owns repository hook installation. If the configured path resolves to missing hook files, repair the maintained authoring setup before committing; do not replace or bypass the hooks.
 
 Commits touching `src/` or `bench/` must stage an added or modified
 `.changeset/*.md` alongside the code (`pnpm changeset`, then `git add .changeset`).
-Unstaged files, deleted changesets, nested Markdown, and `.changeset/README.md`
-do not satisfy the check. For changes without consumer impact, use an empty
-changeset (`pnpm changeset --empty`) or deliberately opt out for that commit with
-`git commit --no-verify`. This bypasses all pre-commit checks, not just this one.
-Run the check directly with `sh scripts/check-changeset.sh` and its isolated Git
-regression tests with `sh tests/check-changeset.sh` (also included in `pnpm test`).
+Unstaged files, deleted changesets, nested Markdown, and `.changeset/README.md` do not satisfy the check. For changes without consumer impact, use an empty changeset (`pnpm changeset --empty`). Preserve normal hooks for every commit.
