@@ -11,7 +11,7 @@
  * concise tool surfaces.
  */
 
-import { tool, jsonSchema } from 'ai'
+import { tool, jsonSchema, type Tool } from 'ai'
 import * as fs from 'node:fs'
 import { loadJob } from '../jobs/store.js'
 import { aggregateJob, leaderboard, longitudinalFor, compareRuns, tierBuckets } from './aggregate.js'
@@ -32,7 +32,11 @@ function rowsForJob(jobId: string, jobsDir?: string): AggregateRow[] {
   return aggregateJob(job)
 }
 
-export function buildReportTools(ctx: ReportToolsContext = {}) {
+/** The report agent's tools by name. Declared so the exported type does not name ai's internal types. */
+type ReportToolName = 'queryJob' | 'fetchAudit' | 'compareRuns' | 'longitudinal' | 'tierBuckets'
+  | 'renderTemplate' | 'fetchTokens' | 'diffTokens' | 'runFreshAudit'
+
+export function buildReportTools(ctx: ReportToolsContext = {}): Record<ReportToolName, Tool> {
   return {
     queryJob: tool({
       description: 'Return aggregated rows for every audited target in a job (filtered/ranked). Use this for any leaderboard, ranking, or scope query.',
