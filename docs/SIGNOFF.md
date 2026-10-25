@@ -1,20 +1,19 @@
 # Local signoff
 
-Before merging, run the complete signoff against the committed revision:
+Before merging, qualify the affected behavior at the committed revision through the admitted Beelink gate. Workflow/docs-only changes use YAML, content, link, diff, and static checks. The complete signoff below is the comprehensive reference, selected when the changed surface requires its full coverage. Its admitted wrapper owns the outer frozen install; the maintained signoff runner retains its own clean-worktree frozen install:
 
 ```bash
-nvm use
-pnpm signoff --source head --json /tmp/browser-agent-driver-signoff.json
+beelink-gate auto https://github.com/tangle-network/browser-agent-driver.git <full-sha> -- bash -lc 'mkdir -p "${XDG_STATE_HOME:-$HOME/.local/state}/browser-agent-driver" && pnpm signoff --source head --json "${XDG_STATE_HOME:-$HOME/.local/state}/browser-agent-driver/$(git rev-parse HEAD)-signoff.json"'
 ```
 
-Attach the resulting revision, verdict, and proof to the pull request.
+Attach the resulting revision, selected checks, verdict, and proof to the pull request.
 The default working-tree mode is useful during edits but does not prove that every required file was committed.
-A failed, interrupted, or narrowed run cannot authorize a merge.
+A failed or interrupted check does not establish that behavior. A narrowed run proves only the named affected surface; report its scope without claiming complete signoff.
 
 The runner comes from `@tangle-network/agent-app`.
 Read [its maintained documentation](https://github.com/tangle-network/agent-app/blob/main/docs/local-signoff.md) for execution and replay options.
 [signoff.config.mjs](../signoff.config.mjs) owns this repository's checks and dependencies.
-Keep those commands aligned with the corresponding [CI job](../.github/workflows/ci.yml).
+The configuration is the single local check owner; publication retains its own qualification.
 
 ## What it checks
 
@@ -34,22 +33,18 @@ A cache can reuse downloaded package bytes; it does not replace the fresh instal
 ## Limits
 
 The local configuration uses the runtime in `.nvmrc` through its explicit `nodeVersion` setting.
-CI currently also tests Node 20; the local Node 22 run does not cover that additional runtime.
-Read the current workflow before changing the supported runtime set.
+The local signoff does not prove every runtime accepted by `package.json` engines; no additional runtime matrix is implied.
 
 Host operating system, architecture, libraries, filesystem, and resource contention remain outside the worktree.
 Record the actual environment when comparing failures or timing.
-The local browser step installs Chromium but does not install operating-system dependencies; CI uses `playwright install --with-deps chromium` on `ubuntu-latest` to install those host libraries as well.
+The local browser step installs Chromium but does not install operating-system dependencies. The Beelink host must already provide those libraries; the retained npm publisher provisions its own browser dependencies.
 A pass on one host does not prove a clean host has those dependencies.
 
 No configured check runs credentialed or staging browser evaluations.
 The retired tier-gate workflows were superseded by `pnpm bench:compete`; that credentialed benchmark is outside local signoff.
 Local signoff cannot establish deployment health, live task quality, or behavior that no configured check exercises.
 
-The CI workflow runs after pushes to `main`.
-It does not provide pull-request checks.
-Failures create or update the shared post-merge failure issue.
-Inspect that result before claiming the corresponding hosted verification passed.
+Generic PR/push CI and its failure-issue reporter are retired. Local signoff does not establish a served-release or publication result.
 
 ## Release handoff
 
