@@ -7,9 +7,9 @@
  *   - Changesets default `changeset tag` writes a `vX.Y.Z` style tag.
  *     We let it do that for compatibility with anyone reading the
  *     unprefixed convention (npm, GitHub release auto-discovery, etc).
- *   - The repo's existing publish workflows trigger on
- *     `browser-agent-driver-vX.Y.Z` (prefixed). We push that too so
- *     the tag-driven publish chain fires automatically.
+ *   - publish-npm.yml publishes from `browser-agent-driver-vX.Y.Z`. A tag pushed
+ *     with GITHUB_TOKEN triggers nothing, so changesets.yml dispatches publish
+ *     when this script prints a `New tag:` line (changesets/action's signal).
  *
  * Idempotent: safe to re-run, won't double-tag if the prefixed tag
  * already exists.
@@ -46,11 +46,11 @@ if (existing.stdout === prefixedTag) {
   console.log(`release-tag: ${prefixedTag} already exists, skipping create`)
 } else {
   sh('git', ['tag', prefixedTag, 'HEAD'])
-  console.log(`release-tag: created ${prefixedTag}`)
+  console.log(`New tag: ${prefixedTag}`)
 }
 
 // 3. Push everything (commits + all new tags)
 sh('git', ['push', '--follow-tags'])
 sh('git', ['push', 'origin', prefixedTag])
 
-console.log(`release-tag: pushed ${prefixedTag} — publish workflows should fire now`)
+console.log(`release-tag: pushed ${prefixedTag}`)
