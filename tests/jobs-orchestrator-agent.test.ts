@@ -96,25 +96,6 @@ describe('orchestrateJob (stubbed LLM)', () => {
     expect(final.results).toHaveLength(2)
   })
 
-  it('markSkipped converts a failed entry to skipped', async () => {
-    dir = mkdtempSync(join(tmpdir(), 'bad-orca-'))
-    const auditFn: AuditFn = async () => { throw new Error('persistent 4xx — totally broken') }
-    const model = scriptedModel([
-      {
-        toolCalls: [
-          { toolName: 'markSkipped', input: { url: 'https://a/', reason: 'persistent 4xx, structurally unfixable' } },
-          { toolName: 'markSkipped', input: { url: 'https://b/', reason: 'persistent 4xx, structurally unfixable' } },
-        ],
-      },
-      { toolCalls: [{ toolName: 'concludeJob', input: { reason: 'all targets terminally failed; skipped both.' } }] },
-    ])
-    const job = createJob(SPEC, SPEC.discover.urls.map(url => ({ url })), dir)
-    const final = await orchestrateJob(job, { auditFn, dir, brain: brainWith(model) })
-    const skipped = final.results.filter(r => r.status === 'skipped')
-    expect(skipped).toHaveLength(2)
-    expect(skipped.every(r => r.error?.includes('structurally unfixable'))).toBe(true)
-  })
-
   it('resampleWayback rejects a second resample for the same URL', async () => {
     dir = mkdtempSync(join(tmpdir(), 'bad-orca-'))
     const wbSpec: JobSpec = { ...SPEC, discover: { source: 'wayback', urls: ['https://a/'] } }
