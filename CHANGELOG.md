@@ -1,5 +1,13 @@
 # @tangle-network/browser-agent-driver
 
+## 0.37.0
+
+### Minor Changes
+
+- [#171](https://github.com/tangle-network/browser-agent-driver/pull/171) [`02d7e25`](https://github.com/tangle-network/browser-agent-driver/commit/02d7e255292ccd3970f174f30b355af3f5828a88) Thanks [@drewstone](https://github.com/drewstone)! - Update dependencies to their latest versions and patch fast-uri, hono, vite, undici, js-yaml, body-parser, csv-parse and zod advisories.
+  
+  Requires Node 22.12 or later: ai 7, @ai-sdk/openai 4, openai 7 and chalk 6 no longer support Node 20.
+
 ## 0.36.4
 
 ### Patch Changes
