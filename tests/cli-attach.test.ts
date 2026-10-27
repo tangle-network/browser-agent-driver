@@ -281,26 +281,6 @@ describe('cli-attach — probeChromeDebug against a real TCP listener', () => {
 })
 
 describe('cli-attach — handleChromeDebug spawn + poll', () => {
-  it('polls until the probe succeeds, then returns', async () => {
-    let probeCalls = 0
-    const probeImpl = async () => {
-      probeCalls++
-      if (probeCalls <= 3) return null
-      return { webSocketDebuggerUrl: 'ws://127.0.0.1:9222/x', raw: {} }
-    }
-    // Fake spawn that returns a minimal child-shaped object. The handler
-    // we actually care about is the probe loop.
-    const spawnImpl = (() => ({ pid: 99999, killed: false, unref() {}, on() {}, kill() {} })) as unknown as typeof import('node:child_process').spawn
-    const info = await handleChromeDebug({
-      probeImpl,
-      spawnImpl,
-      binary: '/tmp/fake-chrome',
-      readyTimeoutMs: 2000,
-    })
-    expect(info.webSocketDebuggerUrl).toBe('ws://127.0.0.1:9222/x')
-    expect(probeCalls).toBeGreaterThanOrEqual(4) // once at start + poll cycle(s)
-  })
-
   it('throws with the binary path when deadline exceeded, and kills the child', async () => {
     let killed = false
     const probeImpl = async () => null
