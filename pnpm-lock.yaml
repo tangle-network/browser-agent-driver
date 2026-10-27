@@ -57,7 +57,7 @@ importers:
         version: 5.0.2
       '@tangle-network/agent-app':
         specifier: 0.63.73
-        version: 0.63.73(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7))(@tangle-network/agent-eval@1.0.0(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7)))(@tangle-network/agent-integrations@0.75.4(@opentelemetry/api@1.9.1)(@types/node@22.20.5))(@tangle-network/agent-interface@5.10.1)(playwright@1.64.1)(zod@4.6.7)
+        version: 0.63.73(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7))(@tangle-network/agent-eval@1.0.0(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7)))(@tangle-network/agent-integrations@0.75.4(@opentelemetry/api@1.9.1)(@types/node@22.20.5))(@tangle-network/agent-interface@5.10.2)(playwright@1.64.1)(zod@4.6.7)
       '@tangle-network/agent-eval':
         specifier: 1.0.0
         version: 1.0.0(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7))
@@ -870,8 +870,8 @@ packages:
     resolution: {integrity: sha512-GBBz6MW3fk630ZHFYLO76im5WA4Lxyewv2QeBht+jBsNgYEDXv7qomfmr/jzfubJUxL8XJf5G/WtmqDro7riZg==}
     engines: {node: '>=20.19.0'}
 
-  '@tangle-network/agent-interface@5.10.1':
-    resolution: {integrity: sha512-gIrHfS1oxUEhq3ZYEOvoBE2dH4lK0xCy5rWjgpryJthzDYBhG8F74Xygz7cQ+QUCkN5LKqfcgQtpJyElXFRJ7Q==}
+  '@tangle-network/agent-interface@5.10.2':
+    resolution: {integrity: sha512-CqnwLl7PrTxImvyUAoUFXNQ9+OJDOzTHchUARRldsBBuNMTiGlglMqjonOxh7COR6PSViR//xEnmNYh8a+VC7Q==}
 
   '@tangle-network/agent-trace-contract@2.2.0':
     resolution: {integrity: sha512-M7UrrKmaQIvrW2S1PCIsTOHBqP/hKiSjIAbV/Shso78zTYet0bzhJ/vfwfCEs0bfAl1oDsh/tQlZZp66o+YgPg==}
@@ -1893,8 +1893,8 @@ packages:
     resolution: {integrity: sha512-vYt7UD1U9Wg6138shLtLOvdAu+8DsC/ilFtEVHcH+wydcSpNE20AfSOduf6MkRFahL5FY7X1oU7nKVZFtfq8Fg==}
     engines: {node: '>=6'}
 
-  qs@6.16.1:
-    resolution: {integrity: sha512-5Px6J7rfHBAGUhNQ3es4YzcOdBBw0SDcVtThJml4RdnKw4tKs2epA0kPZ+K8X+WiHktT93RHVcQ/3ym5aTCgtg==}
+  qs@6.17.0:
+    resolution: {integrity: sha512-5LK5BZ2XDHMvcUJaf0CQ5HL3aVgKbpklvByC7qLSxYkfE8COEEbJg5xCHWCTqzqi0Gs4Jn5Mv5v3R38W6edscA==}
     engines: {node: '>=0.6'}
 
   range-parser@1.3.0:
@@ -2778,12 +2778,12 @@ snapshots:
 
   '@standard-schema/spec@1.1.0': {}
 
-  '@tangle-network/agent-app@0.63.73(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7))(@tangle-network/agent-eval@1.0.0(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7)))(@tangle-network/agent-integrations@0.75.4(@opentelemetry/api@1.9.1)(@types/node@22.20.5))(@tangle-network/agent-interface@5.10.1)(playwright@1.64.1)(zod@4.6.7)':
+  '@tangle-network/agent-app@0.63.73(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7))(@tangle-network/agent-eval@1.0.0(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7)))(@tangle-network/agent-integrations@0.75.4(@opentelemetry/api@1.9.1)(@types/node@22.20.5))(@tangle-network/agent-interface@5.10.2)(playwright@1.64.1)(zod@4.6.7)':
     dependencies:
       '@tangle-network/agent-core': 1.0.0(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7))
       '@tangle-network/agent-eval': 1.0.0(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7))
       '@tangle-network/agent-integrations': 0.75.4(@opentelemetry/api@1.9.1)(@types/node@22.20.5)
-      '@tangle-network/agent-interface': 5.10.1
+      '@tangle-network/agent-interface': 5.10.2
       '@tangle-network/agent-trace-contract': 2.2.0
       '@tangle-network/charts': 0.21.21
       proper-lockfile: 4.1.2
@@ -2794,7 +2794,7 @@ snapshots:
 
   '@tangle-network/agent-core@1.0.0(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7))':
     dependencies:
-      '@tangle-network/agent-interface': 5.10.1
+      '@tangle-network/agent-interface': 5.10.2
       '@tangle-network/agent-trace-contract': 2.2.0
       zod: 4.6.7
     optionalDependencies:
@@ -2805,7 +2805,7 @@ snapshots:
       '@asteasolutions/zod-to-openapi': 9.1.0(zod@4.6.7)
       '@hono/node-server': 2.1.5(hono@4.13.14)
       '@tangle-network/agent-core': 1.0.0(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7))
-      '@tangle-network/agent-interface': 5.10.1
+      '@tangle-network/agent-interface': 5.10.2
       '@tangle-network/agent-trace-contract': 2.2.0
       '@tangle-network/harness-sessions': 1.0.1(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7))
       hono: 4.13.14
@@ -2849,7 +2849,7 @@ snapshots:
       - snappy
       - socks
 
-  '@tangle-network/agent-interface@5.10.1':
+  '@tangle-network/agent-interface@5.10.2':
     dependencies:
       '@noble/hashes': 2.4.0
       spdx-expression-parse: 5.0.0
@@ -3060,7 +3060,7 @@ snapshots:
       http-errors: 2.0.1
       iconv-lite: 0.7.3
       on-finished: 2.4.2
-      qs: 6.16.1
+      qs: 6.17.0
       raw-body: 3.0.2
       type-is: 2.1.0
     transitivePeerDependencies:
@@ -3279,7 +3279,7 @@ snapshots:
       once: 1.4.0
       parseurl: 1.3.3
       proxy-addr: 2.0.8
-      qs: 6.16.1
+      qs: 6.17.0
       range-parser: 1.3.0
       router: 2.2.0
       send: 1.2.1
@@ -3803,7 +3803,7 @@ snapshots:
 
   punycode@2.3.1: {}
 
-  qs@6.16.1:
+  qs@6.17.0:
     dependencies:
       es-define-property: 1.0.1
       side-channel: 1.1.1
