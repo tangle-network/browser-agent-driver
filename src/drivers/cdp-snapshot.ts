@@ -96,6 +96,11 @@ export async function buildCdpSnapshot(cdp: CDPSession): Promise<CdpSnapshotResu
   // Per-node display-name cap; refMap keeps the full name for resolution.
   const NAME_DISPLAY_CAP = 120;
 
+  // Parent of the text node that produced the last line, to join siblings,
+  // and whether a space separates that text from the next sibling.
+  let lastTextParent: string | undefined;
+  let spaceBefore = false;
+
   // `named` is the accessible name of the nearest emitted ancestor: text it
   // already carries (a button's label, a link's text) is not repeated.
   function walk(nodeId: string, depth: number, named = ''): void {
@@ -118,15 +123,27 @@ export async function buildCdpSnapshot(cdp: CDPSession): Promise<CdpSnapshotResu
     // Visible text the page shows outside any named element: a to-do's
     // label, a cart line's price, an order total. Without it the model
     // cannot tell repeated controls apart ("Toggle Todo" x3) and the goal
-    // verifier cannot read the values a goal names.
+    // verifier cannot read the values a goal names. Adjacent text nodes
+    // render as one string ("Item total: $" + "39.98"), so they share a line.
     if (role === 'StaticText') {
-      const text = (node.name?.value || '').replace(/\s+/g, ' ').trim();
-      if (text && !named.includes(text)) {
-        const shown = text.length > NAME_DISPLAY_CAP ? `${text.slice(0, NAME_DISPLAY_CAP - 1)}…` : text;
-        lines.push(`${'  '.repeat(depth)}- text: ${shown}`);
+      const raw = (node.name?.value || '').replace(/\s+/g, ' ');
+      const text = raw.trim();
+      if (!text) {
+        if (raw) spaceBefore = true;
+        return;
       }
+      const prefix = `${'  '.repeat(depth)}- text: `;
+      const joins = !!node.parentId && lastTextParent === node.parentId && !!lines[lines.length - 1]?.startsWith(prefix);
+      lastTextParent = undefined;
+      if (named.includes(text)) return;
+      const shown = text.length > NAME_DISPLAY_CAP ? `${text.slice(0, NAME_DISPLAY_CAP - 1)}…` : text;
+      if (joins) lines[lines.length - 1] += `${spaceBefore || raw.startsWith(' ') ? ' ' : ''}${shown}`;
+      else lines.push(`${prefix}${shown}`);
+      lastTextParent = node.parentId;
+      spaceBefore = raw.endsWith(' ');
       return;
     }
+    lastTextParent = undefined;
 
     if (!role || SKIP_ROLES.has(role)) {
       // No role or structural role — recurse into children at same depth

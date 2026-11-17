@@ -55,7 +55,9 @@ type Matcher = (state: PageState) => PatternMatch | null
 // web. The user wants to dismiss them and proceed. There's no scenario
 // where "click Accept on the cookie banner" is the wrong choice.
 
-const COOKIE_ACCEPT_RE = /\b(accept(?:\s+all)?|agree|got\s+it|i\s+understand|allow\s+all|allow\s+cookies|continue)\b/i
+// The whole accessible name must be the accept phrase: "Continue Shopping"
+// or "Accept invitation" is a page action, not a banner dismissal.
+const COOKIE_ACCEPT_RE = /^\s*(accept(?:\s+all)?(?:\s+cookies)?|i\s+agree|agree|got\s+it|i\s+understand|allow\s+all(?:\s+cookies)?|allow\s+cookies|ok(?:ay)?|continue)\s*[.!]?\s*$/i
 
 /**
  * Extract a `[ref=…]` token from a line regardless of position. Real ARIA
@@ -90,14 +92,15 @@ const cookieBannerMatcher: Matcher = (state) => {
     if (!COOKIE_ACCEPT_RE.test(text)) continue
     // Filter out generic accepts that aren't on a banner. Require the line
     // to mention "button" or "link" AND for the snapshot to mention
-    // "cookie" / "consent" / "privacy" / "gdpr" / "tracking" within 500
-    // chars of this line.
+    // "cookie" / "consent" / "gdpr" within 500 chars of this line. Not
+    // "privacy": snapshots carry page text, and a footer "Privacy Policy"
+    // link sits next to most checkout buttons.
     if (!/\b(button|link)\b/i.test(line)) continue
     const lineIdx = state.snapshot.indexOf(line)
     const windowStart = Math.max(0, lineIdx - 500)
     const windowEnd = Math.min(state.snapshot.length, lineIdx + 500)
     const window = state.snapshot.slice(windowStart, windowEnd).toLowerCase()
-    if (!/cookie|consent|privacy|gdpr|tracking/i.test(window)) continue
+    if (!/cookie|consent|gdpr/i.test(window)) continue
     return {
       action: { action: 'click', selector: `@${ref}` },
       patternId: 'cookie-banner-accept',
