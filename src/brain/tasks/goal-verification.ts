@@ -63,7 +63,7 @@ Method:
 1. Split the goal into every end-state requirement it states: the page or view it must end on; each item, value or text it names (which products are in a cart, a total, which entries exist and which are completed); each final step it must perform (submit, place the order, finish).
 2. For each requirement, find the page evidence that confirms it and copy a short exact quote from that block, verbatim. What a cart, list, order or account contains, whether an order was placed, and which view is shown must be confirmed by page content, not by an action having run. A product listed in a catalog is not evidence that it is in the cart. The state the goal says to end in must show on the FINAL PAGE (P1). Values the goal says to type or select (a username, a name, a postal code) are confirmed by block A; a step such as signing in is confirmed by a page that only shows after it (quote that page).
 3. If the claim states a value (a total, an item, a count), compare it with the page; a mismatch fails that requirement.
-4. A requirement with no confirming quote is not met. achieved is true only if every requirement is met.
+4. A requirement with no confirming quote is not met. achieved is true only if every requirement is met. "source" is the id of the block the quote is copied from; the quote is checked against that block alone.
 
 Respond with ONLY JSON:
 {"requirements":[{"requirement":"...","met":true,"source":"P1","quote":"exact text copied from that block"}],"achieved":true,"confidence":0.9,"missing":["each requirement not confirmed"]}`;
@@ -204,12 +204,17 @@ Was the goal achieved? Check every requirement against the page evidence.`;
       unconfirmed.push(label);
       continue;
     }
+    // The quote must be in the block it cites: block A holds strings the
+    // agent wrote (typed text, extract queries), so a quote found only there
+    // cannot stand in for a page that shows it.
     const quote = typeof requirement.quote === 'string' ? requirement.quote : '';
-    if (!quoteIsOnPage(quote, blocks)) {
-      unconfirmed.push(`${label} (the cited text is not on any observed page)`);
+    const source = String(requirement.source ?? '').toUpperCase().match(/\b(P\d|R\d|A)\b/)?.[1];
+    const cited = blocks.find((block) => block.id === source);
+    if (!cited || !quoteIsOnPage(quote, [cited])) {
+      unconfirmed.push(`${label} (the quoted text is not in the cited block ${source ?? '(none)'})`);
       continue;
     }
-    confirmed.push(`${label}: ${String(requirement.source ?? '').slice(0, 8)} "${quote.slice(0, 160)}"`);
+    confirmed.push(`${label}: ${cited.id} "${quote.slice(0, 160)}"`);
   }
   const verifierMissing = Array.isArray(parsed.missing) ? parsed.missing.map(String) : [];
   const achieved = parsed.achieved === true && requirements.length > 0 && unconfirmed.length === 0;
