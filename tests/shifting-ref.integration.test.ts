@@ -153,4 +153,30 @@ describe('page text the goal verifier quotes (#177)', () => {
     expect(quoteIsOnPage('Item total: $39.98', [{ text: snapshot }])).toBe(true);
     expect(quoteIsOnPage('Tax: $39.98', [{ text: snapshot }])).toBe(false);
   }, 30_000);
+
+  // Live 0.38.2 runs: login spent up to 14 turns because the verifier's "Logged in as tomsmith"
+  // spans two snapshot lines, and todo rep 4 lost a correct end state to rejected list quotes.
+  it('accepts a quote that runs across adjacent lines or omits snapshot markup (login, todo-4 shape)', async () => {
+    const page = await (await browser.newContext()).newPage();
+    const driver = new PlaywrightDriver(page, { captureScreenshots: false });
+    await page.setContent(`<main>
+      <h2>Secure Area</h2><p>Logged in as <span>tomsmith</span></p>
+      <ul>
+        <li><input type="checkbox" aria-label="Toggle Todo"><label>buy milk</label></li>
+        <li><input type="checkbox" aria-label="Toggle Todo" checked><label>write report</label></li>
+        <li><input type="checkbox" aria-label="Toggle Todo"><label>call Ana</label></li>
+      </ul>
+      <div>Tax: $3</div><div>9.98</div>
+    </main>`);
+    const { snapshot } = await driver.observe();
+    const onPage = (quote: string) => quoteIsOnPage(quote, [{ text: snapshot }]);
+    expect(snapshot).not.toContain('Logged in as tomsmith'); // two text runs, two lines
+    expect(onPage('Logged in as tomsmith')).toBe(true);
+    expect(onPage('checkbox "Toggle Todo" [checked]\nLabelText\nwrite report')).toBe(true);
+    expect(onPage('buy milk ... write report ... call Ana')).toBe(true);
+    // Still refused: a value stitched from two records, and text the page does not show.
+    expect(onPage('Tax: $39.98')).toBe(false);
+    expect(onPage('Logged in as admin')).toBe(false);
+    expect(onPage('checkbox "Toggle Todo" [checked]\nLabelText\ncall Ana')).toBe(false);
+  }, 30_000);
 });
