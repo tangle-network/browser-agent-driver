@@ -63,7 +63,7 @@ Method:
 1. Split the goal into every end-state requirement it states: the page or view it must end on; each item, value or text it names (which products are in a cart, a total, which entries exist and which are completed); each final step it must perform (submit, place the order, finish).
 2. For each requirement, find the page evidence that confirms it and copy a short exact quote from that block, verbatim. What a cart, list, order or account contains, whether an order was placed, and which view is shown must be confirmed by page content, not by an action having run. A product listed in a catalog is not evidence that it is in the cart. The state the goal says to end in must show on the FINAL PAGE (P1). Values the goal says to type or select (a username, a name, a postal code) are confirmed by block A; a step such as signing in is confirmed by a page that only shows after it (quote that page).
 3. If the claim states a value (a total, an item, a count), compare it with the page; a mismatch fails that requirement.
-4. A requirement with no confirming quote is not met. achieved is true only if every requirement is met. "source" is the id of the block the quote is copied from; the quote is checked against that block alone.
+4. A requirement with no confirming quote is not met. achieved is true only if every requirement is met. "source" is the id of the block the quote is copied from; the quote is checked against that block alone. A quote may run across adjacent lines of a block (for example "Logged in as tomsmith" where the snapshot shows "Logged in as" and "tomsmith" on two lines); snapshot markup such as "- text:" and "[ref=…]" may be left out.
 
 Respond with ONLY JSON:
 {"requirements":[{"requirement":"...","met":true,"source":"P1","quote":"exact text copied from that block"}],"achieved":true,"confidence":0.9,"missing":["each requirement not confirmed"]}`;
@@ -78,10 +78,27 @@ function normalizeForQuote(text: string): string {
 }
 
 /**
- * True when the quote (split on ellipses) appears in one of the blocks, up to
- * case and spacing. Line boundaries stay: a quote may not stitch a value
- * together from two separate page records ("$3" + "9.98"). Text the browser
- * renders as one run already shares a snapshot line.
+ * The block's visible text in reading order: snapshot markup (list markers,
+ * `text:` labels, `[ref=…]`, quote marks) dropped and lines joined by one
+ * space. "Logged in as" and "tomsmith" on two lines read "logged in as
+ * tomsmith", as the page shows them. The space between lines stays: "$3" and
+ * "9.98" on two lines read "$3 9.98", never "$39.98".
+ */
+function visibleText(text: string): string {
+  return normalizeForQuote(
+    normalizeForQuote(text)
+      .replace(/\[ref=[^\]]*\]/g, ' ')
+      .replace(/(^|\s)-\s/g, ' ')
+      .replace(/(^|\s)text:\s/g, ' ')
+      .replace(/["'`]/g, ' '),
+  );
+}
+
+/**
+ * True when every part of the quote (split on ellipses) appears in one block,
+ * either as written (markup included) or in the block's visible text.
+ * Matching never removes the space between two words or lines, so a quote
+ * cannot stitch one value together from two separate page records.
  */
 export function quoteIsOnPage(quote: string, blocks: Array<{ text: string }>): boolean {
   const parts = normalizeForQuote(quote)
@@ -91,8 +108,9 @@ export function quoteIsOnPage(quote: string, blocks: Array<{ text: string }>): b
     .filter(Boolean);
   if (parts.length === 0 || parts.join('').length < 2) return false;
   return blocks.some((block) => {
-    const haystack = normalizeForQuote(block.text);
-    return parts.every((part) => haystack.includes(part));
+    const asWritten = normalizeForQuote(block.text);
+    const visible = visibleText(block.text);
+    return parts.every((part) => asWritten.includes(part) || (visibleText(part).length > 0 && visible.includes(visibleText(part))));
   });
 }
 
@@ -191,6 +209,7 @@ Was the goal achieved? Check every requirement against the page evidence.`;
       confidence: 0,
       evidence: [],
       missing: ['Failed to parse goal verification response'],
+      raw: raw.slice(0, 8_000),
       ...callUsage,
     };
   }
@@ -227,6 +246,7 @@ Was the goal achieved? Check every requirement against the page evidence.`;
     missing: achieved
       ? []
       : [...new Set([...unconfirmed, ...verifierMissing])].slice(0, 10).concat(requirements.length === 0 ? ['The verdict listed no requirements checked against the page'] : []),
+    raw: raw.slice(0, 8_000),
     ...callUsage,
   };
 }

@@ -1880,9 +1880,9 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
               collectPageEvidence(turns, state, verificationEvidence),
             );
 
-            // Record the verifier call's own token usage into run metrics —
-            // previously invisible in cost accounting (report.json totals and
-            // events.jsonl). Deterministic paths carry no usage fields.
+            if (goalResult?.raw) turn.verifierVerdict = goalResult.raw;
+            // Record the verifier call's own token usage into run metrics
+            // (report.json totals and events.jsonl).
             if (goalResult && (goalResult.inputTokens !== undefined || goalResult.outputTokens !== undefined)) {
               turn.inputTokens = (turn.inputTokens ?? 0) + (goalResult.inputTokens ?? 0);
               turn.outputTokens = (turn.outputTokens ?? 0) + (goalResult.outputTokens ?? 0);

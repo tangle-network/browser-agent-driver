@@ -25,6 +25,8 @@ export interface Turn {
   verified?: boolean;
   /** Verification failure message */
   verificationFailure?: string;
+  /** The goal verifier's raw verdict for this turn's completion, accepted or rejected */
+  verifierVerdict?: string;
   /** Tokens used for this turn */
   tokensUsed?: number;
   /** Input (prompt) tokens for this turn */
