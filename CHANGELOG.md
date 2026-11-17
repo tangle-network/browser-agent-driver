@@ -1,5 +1,11 @@
 # @tangle-network/browser-agent-driver
 
+## 0.38.2
+
+### Patch Changes
+
+- [#182](https://github.com/tangle-network/browser-agent-driver/pull/182) [`6f8058c`](https://github.com/tangle-network/browser-agent-driver/commit/6f8058c2461987da823df186a707878709c3a943) Thanks [@drewstone](https://github.com/drewstone)! - Goal verification ([#177](https://github.com/tangle-network/browser-agent-driver/issues/177)): a requirement's quote must appear in the evidence block it cites. Before, a quote found in any block passed, so text the agent itself wrote into an action (an extract query such as `contains: "Logged in as tomsmith"`, or a to-do it typed) could confirm a requirement the verifier attributed to the final page.
+
 ## 0.38.1
 
 ### Patch Changes
