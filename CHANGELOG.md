@@ -1,5 +1,11 @@
 # @tangle-network/browser-agent-driver
 
+## 0.38.3
+
+### Patch Changes
+
+- [#184](https://github.com/tangle-network/browser-agent-driver/pull/184) [`ebf6ad5`](https://github.com/tangle-network/browser-agent-driver/commit/ebf6ad5f7beb067f34b24bdb58a1d4b7386c5cb1) Thanks [@drewstone](https://github.com/drewstone)! - Goal verification ([#177](https://github.com/tangle-network/browser-agent-driver/issues/177)): a quote may now run across adjacent snapshot lines and leave out snapshot markup. "Logged in as tomsmith" matches a page that shows "Logged in as" and "tomsmith" on two lines, and a list quote copied without its `[ref=…]` tokens matches. The words of a quote are still matched with the spaces between them, so two separate records cannot be stitched into one value ("$3" + "9.98" is not "$39.98"), and each quote is still checked against the block it cites. The verifier's raw verdict is now kept on the run record (`goalVerification.raw`, and `verifierVerdict` on each turn that completed), so a rejection can be audited.
+
 ## 0.38.2
 
 ### Patch Changes
