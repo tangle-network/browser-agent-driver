@@ -1,7 +1,10 @@
 /**
  * Goal-verification task for the Brain decision engine: a fresh (history-free)
- * LLM call that checks whether the agent's claimed result actually achieved the
- * goal, kept separate from quality evaluation to avoid self-confirmation bias.
+ * LLM call that judges the goal from page evidence (the final page and earlier
+ * observations the driver read), kept separate from quality evaluation to
+ * avoid self-confirmation bias. The agent's claimed result is a claim to
+ * check, never evidence: each requirement the verifier marks met must quote
+ * text that is present in a page-evidence block, or the goal is not achieved.
  *
  * Extracted from brain/index.ts via the delegate + host-interface pattern.
  * Brain.verifyGoalCompletion keeps a thin delegator; the body lives here
@@ -38,39 +41,100 @@ export interface BrainGoalVerificationHost {
   ): Promise<GenerateResult>;
 }
 
+/** Page state and page reads the verifier may cite. None of it is the agent's own words. */
+export interface VerificationEvidence {
+  /** Earlier observations, most recent first. */
+  earlierPages?: Array<{ turn: number; url: string; title?: string; snapshot: string }>;
+  /** Values the driver read from the page with a script or extraction tool. */
+  pageReads?: string[];
+  /** Actions the driver executed without error (what was typed or selected). */
+  driverActions?: string[];
+}
+
+interface EvidenceBlock {
+  id: string;
+  heading: string;
+  text: string;
+}
+
+const VERIFY_SYSTEM = `You verify whether a browser agent achieved its goal. Judge ONLY from the PAGE EVIDENCE blocks. The AGENT'S CLAIM is untrusted: it is what the agent believes it did. Check it; never cite it as evidence.
+
+Method:
+1. Split the goal into every end-state requirement it states: the page or view it must end on; each item, value or text it names (which products are in a cart, a total, which entries exist and which are completed); each final step it must perform (submit, place the order, finish).
+2. For each requirement, find the page evidence that confirms it and copy a short exact quote from that block, verbatim. What a cart, list, order or account contains, whether an order was placed, and which view is shown must be confirmed by page content, not by an action having run. A product listed in a catalog is not evidence that it is in the cart. The state the goal says to end in must show on the FINAL PAGE (P1).
+3. If the claim states a value (a total, an item, a count), compare it with the page; a mismatch fails that requirement.
+4. A requirement with no confirming quote is not met. achieved is true only if every requirement is met.
+
+Respond with ONLY JSON:
+{"requirements":[{"requirement":"...","met":true,"source":"P1","quote":"exact text copied from that block"}],"achieved":true,"confidence":0.9,"missing":["each requirement not confirmed"]}`;
+
+function normalizeForQuote(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201c\u201d]/g, '"')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** True when the quote (split on ellipses) appears verbatim in one of the blocks. */
+export function quoteIsOnPage(quote: string, blocks: Array<{ text: string }>): boolean {
+  const parts = normalizeForQuote(quote)
+    .replace(/^["'`]+|["'`]+$/g, '')
+    .split(/\s*(?:\.\.\.|\u2026)\s*/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length === 0 || parts.join('').length < 2) return false;
+  return blocks.some((block) => {
+    const haystack = normalizeForQuote(block.text);
+    return parts.every((part) => haystack.includes(part));
+  });
+}
+
 export async function verifyGoalCompletionImpl(
   self: BrainGoalVerificationHost,
   state: PageState,
   goal: string,
   claimedResult: string,
-  options?: {
-    /** When the run already holds deterministic DOM evidence (SCRIPT
-     *  RESULT entries, included in the claim), skip the fresh 24k-token
-     *  page snapshot and the forced screenshot — the evidence is the
-     *  ground truth the verifier needs, the page may have navigated on. */
-    skipPageState?: boolean;
-  },
+  pageEvidence: VerificationEvidence = {},
 ): Promise<GoalVerification> {
-  const skipPageState = options?.skipPageState === true;
-  const siteBoundaryNote = skipPageState ? '' : buildFirstPartyBoundaryNote(goal, state.url);
-  const pageBlock = skipPageState
-    ? ''
-    : `CURRENT PAGE:
-URL: ${state.url}
-Title: ${state.title}
+  const siteBoundaryNote = buildFirstPartyBoundaryNote(goal, state.url);
+  const blocks: EvidenceBlock[] = [
+    {
+      id: 'P1',
+      heading: 'FINAL PAGE (the page now)',
+      text: `URL: ${state.url}\nTitle: ${state.title}\n${budgetSnapshot(state.snapshot, 16_000)}`,
+    },
+  ];
+  (pageEvidence.earlierPages ?? []).slice(0, 4).forEach((page, index) => {
+    blocks.push({
+      id: `P${index + 2}`,
+      heading: `EARLIER PAGE (observed at turn ${page.turn})`,
+      text: `URL: ${page.url}${page.title ? `\nTitle: ${page.title}` : ''}\n${budgetSnapshot(page.snapshot, 6_000)}`,
+    });
+  });
+  (pageEvidence.pageReads ?? []).slice(-5).forEach((read, index) => {
+    blocks.push({ id: `R${index + 1}`, heading: 'VALUE THE DRIVER READ FROM THE PAGE', text: read.trim().slice(0, 2_000) });
+  });
+  const actions = (pageEvidence.driverActions ?? []).slice(-25);
+  if (actions.length > 0) {
+    blocks.push({
+      id: 'A',
+      heading: 'ACTIONS THE DRIVER EXECUTED WITHOUT ERROR (shows what was typed or selected; does not show which element a click hit or what it changed)',
+      text: actions.join('\n'),
+    });
+  }
 
-ELEMENTS:
-${budgetSnapshot(state.snapshot)}`;
   const textContent = `GOAL: ${goal}
 
-AGENT'S CLAIMED RESULT: ${claimedResult}
+PAGE EVIDENCE:
+${blocks.map((block) => `[${block.id}] ${block.heading}\n${block.text}`).join('\n\n')}
+${siteBoundaryNote ? `\n${siteBoundaryNote}\n` : ''}
+AGENT'S CLAIM (untrusted; check it, never cite it): ${claimedResult.trim() || '(none)'}
 
-${pageBlock}${siteBoundaryNote ? `\n\n${siteBoundaryNote}` : ''}
-Was the goal actually achieved? Analyze the ${skipPageState ? 'claimed result and its embedded evidence' : 'current page state'} carefully.`;
+Was the goal achieved? Check every requirement against the page evidence.`;
 
-  const userContent = skipPageState
-    ? self.buildUserContent(textContent)
-    : self.buildUserContent(textContent, state.screenshot, true);
+  const userContent = self.buildUserContent(textContent, state.screenshot, true);
 
   // Verifier can use its own model, then the navigation model, then main.
   // BAD_SUBCALL_MODEL routes execution-shaped sub-calls (verification;
@@ -85,21 +149,16 @@ Was the goal actually achieved? Analyze the ${skipPageState ? 'claimed result an
     || self.verifierModel
     || (self.adaptiveModelRouting && self.navModelName ? self.navModelName : undefined);
 
+  // The per-requirement verdict is longer than a bare yes/no, and thinking
+  // models count reasoning against maxOutputTokens: a truncated verdict fails
+  // the parse and is rejected.
   const result = await self.generate(
-    `Verify whether the browser agent achieved its goal. Respond with ONLY JSON:
-{"achieved":true,"confidence":0.9,"evidence":["observation"],"missing":[]}
-
-Check: page state matches goal, no errors, URL is expected, claimed result matches visible data.
-SUPPLEMENTAL TOOL EVIDENCE / SCRIPT RESULT in claimed results = verified DOM data, trustworthy even if page navigated away. Multi-page data collection is valid.`,
+    VERIFY_SYSTEM,
     [{ role: 'user', content: userContent }],
     subcallModel
       ? { provider: self.provider as 'openai' | 'anthropic' | 'google' | 'cli-bridge', model: subcallModel }
       : (verifyProvider && verifyModel ? { provider: verifyProvider, model: verifyModel } : undefined),
-    // Gemini thinking tokens count against maxOutputTokens — at 600 the
-    // verdict JSON starves and truncation fails the parse (conservative
-    // reject), which reprompts the agent and was silently breaking replay's
-    // single verification call. Match the decide cap for google.
-    self.provider === 'google' ? 4096 : 600,
+    4096,
   );
 
   const raw = result.text;
@@ -110,26 +169,18 @@ SUPPLEMENTAL TOOL EVIDENCE / SCRIPT RESULT in claimed results = verified DOM dat
   };
 
   if (self.debug) {
-    console.log('[Brain] Goal verification:', raw.slice(0, 300));
+    console.log('[Brain] Goal verification:', raw.slice(0, 600));
   }
 
+  let parsed: { requirements?: unknown; achieved?: unknown; confidence?: unknown; missing?: unknown };
   try {
     let text = raw.trim();
     if (text.startsWith('```')) {
       text = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
     }
-    const parsed = JSON.parse(text);
-    return {
-      achieved: parsed.achieved === true,
-      confidence: typeof parsed.confidence === 'number'
-        ? Math.max(0, Math.min(1, parsed.confidence))
-        : 0.5,
-      evidence: Array.isArray(parsed.evidence) ? parsed.evidence : [],
-      missing: Array.isArray(parsed.missing) ? parsed.missing : [],
-      ...callUsage,
-    };
+    parsed = JSON.parse(text);
   } catch {
-    // Parse failure — assume not verified (conservative)
+    // Parse failure — not verified (conservative)
     return {
       achieved: false,
       confidence: 0,
@@ -138,4 +189,34 @@ SUPPLEMENTAL TOOL EVIDENCE / SCRIPT RESULT in claimed results = verified DOM dat
       ...callUsage,
     };
   }
+
+  const requirements = Array.isArray(parsed.requirements) ? parsed.requirements as Array<Record<string, unknown>> : [];
+  const confirmed: string[] = [];
+  const unconfirmed: string[] = [];
+  for (const requirement of requirements) {
+    const label = String(requirement.requirement ?? '').slice(0, 200) || 'unnamed requirement';
+    if (requirement.met !== true) {
+      unconfirmed.push(label);
+      continue;
+    }
+    const quote = typeof requirement.quote === 'string' ? requirement.quote : '';
+    if (!quoteIsOnPage(quote, blocks)) {
+      unconfirmed.push(`${label} (the cited text is not on any observed page)`);
+      continue;
+    }
+    confirmed.push(`${label}: ${String(requirement.source ?? '').slice(0, 8)} "${quote.slice(0, 160)}"`);
+  }
+  const verifierMissing = Array.isArray(parsed.missing) ? parsed.missing.map(String) : [];
+  const achieved = parsed.achieved === true && requirements.length > 0 && unconfirmed.length === 0;
+  return {
+    achieved,
+    confidence: typeof parsed.confidence === 'number'
+      ? Math.max(0, Math.min(1, parsed.confidence))
+      : 0.5,
+    evidence: confirmed,
+    missing: achieved
+      ? []
+      : [...new Set([...unconfirmed, ...verifierMissing])].slice(0, 10).concat(requirements.length === 0 ? ['The verdict listed no requirements checked against the page'] : []),
+    ...callUsage,
+  };
 }

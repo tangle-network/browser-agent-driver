@@ -22,7 +22,6 @@ import { AppKnowledge } from '../memory/knowledge.js';
 import { SelectorCache } from '../memory/selectors.js';
 import { detectSupervisorSignal, formatSupervisorSignal } from '../supervisor/policy.js';
 import { requestSupervisorDirective } from '../supervisor/critic.js';
-import { shouldAcceptFirstPartyBoundaryCompletion } from '../domain-policy.js';
 import { deriveWasteMetrics } from '../run-metrics.js';
 import { RunState, DEFAULT_TOKEN_BUDGET } from '../run-state.js';
 import { ContextBudget } from '../context-budget.js';
@@ -32,7 +31,7 @@ import type { OverrideContext } from '../override-pipeline.js';
 import { withRetry, findElementForRef, safeHostname, pushGoalVerificationEvidence, capFeedbackText, sanitizeRunScript, pageLooksBlocked, shouldRejectSurrender } from './utils.js';
 import { runExtractWithIndex, formatExtractWithIndexResult } from '../drivers/extract-with-index.js';
 import { buildSearchResultsGuidance, buildVisibleLinkRecommendation, getVisibleLinkRecommendation } from './search-guidance.js';
-import { buildGoalVerificationClaim, collectSearchWorkflowEvidence, shouldAcceptSearchWorkflowCompletion, shouldAcceptScriptBackedCompletion, detectCompletionContentTypeMismatch } from './goal-verification.js';
+import { collectPageEvidence, detectCompletionContentTypeMismatch } from './goal-verification.js';
 import { detectAiTanglePartnerTemplateVisibleState, detectAiTangleVerifiedOutputState, shouldEscalateVision } from './page-analysis.js';
 import { buildOverrideProducers, buildScoutLinkRecommendationText, buildBranchLinkRecommendationText } from './overrides.js';
 import {
@@ -69,8 +68,8 @@ import {
 } from './overlay-narration.js';
 import { applyDemoOverride } from './demo-overrides.js';
 import { matchDeterministicPattern } from './deterministic-patterns.js';
-import { deriveDirectStartUrl, shouldAcceptRolledBookingCompletion } from './direct-start.js';
-import { prepareGoogleFlightsSearch, shouldAcceptRolledGoogleFlightsCompletion } from './google-flights-preflight.js';
+import { deriveDirectStartUrl } from './direct-start.js';
+import { prepareGoogleFlightsSearch } from './google-flights-preflight.js';
 import type { GoogleFlightsPreflightResult } from './google-flights-preflight.js';
 import { containsSelfContradictingCompletion } from './completion-language.js';
 import { detectBatchFillOpportunity } from './batch-fill.js';
@@ -82,7 +81,7 @@ import {
   EXTENSION_TURNS_GRANTED,
 } from './constants.js';
 import { DEFI_BRAIN_CONTEXT } from './prompt-snippets.js';
-import { hasPlaceholderPattern, isMeaningfulRunScriptOutput, synthesizeFinalTurnCompletion, evidenceCorroboratesResult, goalLiteralsCorroborated } from './completion-policy.js';
+import { hasPlaceholderPattern, isMeaningfulRunScriptOutput, synthesizeFinalTurnCompletion } from './completion-policy.js';
 import { validateObservedSelector } from './selector-guard.js';
 import { selectMicroPlanFollowUps } from './micro-plan.js';
 import { decideMaxTurnsExtension } from './max-turns-extension.js';
@@ -1861,106 +1860,25 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
           // Step 1: Goal verification — did the agent actually achieve the goal?
           const shouldVerifyGoal = this.config.goalVerification !== false;
           let goalResult: import('../types.js').GoalVerification | undefined;
-          const persistentSearchEvidence = collectSearchWorkflowEvidence(
-            scenario.goal,
-            action.result || '',
-            turns,
-          );
           const verificationEvidence = [
             ...runState.goalVerificationEvidence,
             ...runState.extractedEvidence,
-            ...persistentSearchEvidence,
           ];
 
           if (shouldVerifyGoal) {
-            // Fast-path: skip LLM verification when agent provides strong
-            // evidence and had no recent errors. The detailed result text
-            // (>50 chars) combined with script-extracted evidence means the
-            // verifier almost always agrees — save the round-trip.
-            //
-            // Content-aware gate: self-contradicting completion text forces
-            // LLM verification instead of using the fast path.
+            // Every completion is judged from page evidence: the final page,
+            // earlier observations, and values the driver read. The agent's
+            // result text is passed as a claim to check, never as evidence;
+            // there is no accept path that skips the page.
             const agentResult = action.result || '';
-            const recentErrors = turns.slice(-2).filter(t => t.error).length;
-            const hasScriptEvidence = verificationEvidence.some(e => e.startsWith('SCRIPT RESULT:'));
-
-            // Detect when the agent's own text admits failure despite
-            // claiming success.
             const selfContradicting = containsSelfContradictingCompletion(agentResult);
-            const fastPathEligible =
-              agentResult.length > 50 &&
-              recentErrors === 0 &&
-              hasScriptEvidence &&
-              !selfContradicting;
-
-            // Deterministic corroboration: the claimed JSON echoes SCRIPT
-            // RESULT values field-for-field, OR every quoted literal in the
-            // goal appears verbatim in the final observation/evidence —
-            // hallucination is impossible by construction, so skip the
-            // verifier LLM entirely (the wave-1 over-conservatism case:
-            // correct JSON re-prompted 3x).
-            const corroborated = !selfContradicting
-              && (
-                evidenceCorroboratesResult(agentResult, runState.goalVerificationEvidence)
-                || goalLiteralsCorroborated(
-                  scenario.goal,
-                  state.snapshot,
-                  runState.goalVerificationEvidence,
-                  turns.map((t) => t.state.snapshot),
-                  // Form-control state evidence: payloads of actions that
-                  // executed without error (driver-confirmed fills/selects).
-                  turns
-                    .filter((t) => !t.error)
-                    .flatMap((t) => [JSON.stringify(t.action), ...(t.executedActions ?? []).map((a) => JSON.stringify(a))]),
-                )
-              );
-
-            let verificationPath: 'corroborated' | 'fast-path' | 'llm' | 'llm-slim';
-            if (corroborated) {
-              verificationPath = 'corroborated';
-              goalResult = {
-                achieved: true,
-                confidence: 0.9,
-                evidence: ['Evidence-corroborated: every claimed result field matches a SCRIPT RESULT value exactly.'],
-                missing: [],
-              };
-              if (this.config.debug) {
-                console.log('[Runner] Goal verification: accepted via script-evidence corroboration (no LLM call)');
-              }
-            } else if (fastPathEligible) {
-              verificationPath = 'fast-path';
-              goalResult = {
-                achieved: true,
-                confidence: 0.9,
-                evidence: ['Fast-path: agent provided detailed result with script-backed evidence, no recent errors, and no self-contradicting language.'],
-                missing: [],
-              };
-              if (this.config.debug) {
-                console.log('[Runner] Goal verification fast-path: skipped LLM call (strong evidence + no errors + no self-contradiction)');
-              }
-            } else if (selfContradicting) {
-              // Force LLM verification — the agent claims success but its
-              // own text suggests failure. The LLM verifier reads the actual
-              // content and makes the right call.
-              verificationPath = hasScriptEvidence ? 'llm-slim' : 'llm';
-              if (this.config.debug) {
-                console.log('[Runner] Fast-path blocked: agent result contains self-contradicting language, forcing LLM verification');
-              }
-              goalResult = await this.brain.verifyGoalCompletion(
-                state,
-                scenario.goal,
-                buildGoalVerificationClaim(agentResult, verificationEvidence),
-                { skipPageState: hasScriptEvidence },
-              );
-            } else {
-              verificationPath = hasScriptEvidence ? 'llm-slim' : 'llm';
-              goalResult = await this.brain.verifyGoalCompletion(
-                state,
-                scenario.goal,
-                buildGoalVerificationClaim(agentResult, verificationEvidence),
-                { skipPageState: hasScriptEvidence },
-              );
-            }
+            const verificationPath = 'llm' as const;
+            goalResult = await this.brain.verifyGoalCompletion(
+              state,
+              scenario.goal,
+              agentResult,
+              collectPageEvidence(turns, state, verificationEvidence),
+            );
 
             // Record the verifier call's own token usage into run metrics —
             // previously invisible in cost accounting (report.json totals and
@@ -1997,117 +1915,6 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
               };
             }
 
-            if (
-              !goalResult.achieved
-              && !selfContradicting
-              && shouldAcceptFirstPartyBoundaryCompletion(
-                scenario.goal,
-                state.url,
-                goalResult,
-                action.result || '',
-              )
-            ) {
-              goalResult = {
-                ...goalResult,
-                achieved: true,
-                confidence: Math.max(goalResult.confidence, 0.8),
-                evidence: [
-                  ...goalResult.evidence,
-                  'Accepted under first-party sibling subdomain policy after substantive result evidence was captured.',
-                ],
-                missing: [],
-              };
-            }
-
-            if (
-              !goalResult.achieved
-              && !selfContradicting
-              && shouldAcceptSearchWorkflowCompletion(
-                scenario.goal,
-                goalResult,
-                action.result || '',
-                verificationEvidence,
-              )
-            ) {
-              goalResult = {
-                ...goalResult,
-                achieved: true,
-                confidence: Math.max(goalResult.confidence, 0.82),
-                evidence: [
-                  ...goalResult.evidence,
-                  'Accepted under persisted search-workflow evidence captured from an earlier turn before the agent navigated away.',
-                ],
-                missing: [],
-              };
-            }
-
-            if (
-              !goalResult.achieved
-              && !selfContradicting
-              && shouldAcceptScriptBackedCompletion(
-                scenario.goal,
-                state,
-                goalResult,
-                action.result || '',
-                verificationEvidence,
-              )
-            ) {
-              goalResult = {
-                ...goalResult,
-                achieved: true,
-                confidence: Math.max(goalResult.confidence, 0.8),
-                evidence: [
-                  ...goalResult.evidence,
-                  'Accepted under script-backed extraction policy after supplemental tool evidence matched the claimed result.',
-                ],
-                missing: [],
-              };
-            }
-
-            if (
-              !goalResult.achieved
-              && !selfContradicting
-              && shouldAcceptRolledBookingCompletion(
-                directStart,
-                goalResult,
-                action.result || '',
-                state,
-              )
-            ) {
-              goalResult = {
-                ...goalResult,
-                achieved: true,
-                confidence: Math.max(goalResult.confidence, 0.82),
-                evidence: [
-                  ...goalResult.evidence,
-                  'Accepted under Booking direct-start date-roll policy: the stale benchmark dates were mapped to equivalent live bookable dates and the completion included concrete Booking evidence.',
-                ],
-                missing: [],
-              };
-            }
-
-            if (
-              !goalResult.achieved
-              && !selfContradicting
-              && shouldAcceptRolledGoogleFlightsCompletion(
-                googleFlightsPreflight,
-                goalResult,
-                action.result || '',
-                state,
-              )
-            ) {
-              goalResult = {
-                ...goalResult,
-                achieved: true,
-                confidence: Math.max(goalResult.confidence, 0.82),
-                evidence: [
-                  ...goalResult.evidence,
-                  'Accepted under Google Flights preflight date-roll policy: stale benchmark flight dates were mapped to equivalent live Google Flights dates and the completion included concrete flight-result evidence.',
-                ],
-                missing: [],
-              };
-            }
-
             const contentTypeMismatch = detectCompletionContentTypeMismatch(
               scenario.goal,
               state,
@@ -2125,34 +1932,6 @@ export class BrowserAgent implements RunnerScoutHost, RunnerDomainHost, RunnerDe
               turns.push(turn);
               this.onTurn?.(turn);
               continue;
-            }
-
-            if (!goalResult.achieved) {
-              // Progressive acceptance: after prior rejections, accept near-misses
-              // rather than burning turns in verification loops.
-              // Tier A: 1+ rejection + confidence ≥0.55 + supplemental evidence → accept
-              // Tier B: 2+ rejections + confidence ≥0.50 → accept (agent has tried hard enough)
-              // Tier C: 3+ rejections + confidence ≥0.40 → accept (prevent total turn exhaustion)
-              const hasSupplementalEvidence = verificationEvidence.length > 0;
-              const priorRejections = runState.verificationRejectionCount;
-              const shouldAccept =
-                !selfContradicting && (
-                  (priorRejections >= 1 && goalResult.confidence >= 0.55 && hasSupplementalEvidence) ||
-                  (priorRejections >= 2 && goalResult.confidence >= 0.50) ||
-                  (priorRejections >= 3 && goalResult.confidence >= 0.40)
-                );
-              if (shouldAccept) {
-                goalResult = {
-                  ...goalResult,
-                  achieved: true,
-                  confidence: goalResult.confidence,
-                  evidence: [
-                    ...goalResult.evidence,
-                    `Accepted under progressive threshold after ${priorRejections} prior rejection(s)${hasSupplementalEvidence ? ' with supplemental evidence' : ''}.`,
-                  ],
-                  missing: [],
-                };
-              }
             }
 
             if (!goalResult.achieved) {

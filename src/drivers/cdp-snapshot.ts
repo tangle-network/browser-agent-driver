@@ -96,7 +96,9 @@ export async function buildCdpSnapshot(cdp: CDPSession): Promise<CdpSnapshotResu
   // Per-node display-name cap; refMap keeps the full name for resolution.
   const NAME_DISPLAY_CAP = 120;
 
-  function walk(nodeId: string, depth: number): void {
+  // `named` is the accessible name of the nearest emitted ancestor: text it
+  // already carries (a button's label, a link's text) is not repeated.
+  function walk(nodeId: string, depth: number, named = ''): void {
     const node = nodeMap.get(nodeId);
     if (!node) return;
 
@@ -105,18 +107,32 @@ export async function buildCdpSnapshot(cdp: CDPSession): Promise<CdpSnapshotResu
     if (node.ignored) {
       if (node.childIds) {
         for (const childId of node.childIds) {
-          walk(childId, depth);
+          walk(childId, depth, named);
         }
       }
       return;
     }
 
     const role = node.role?.value;
+
+    // Visible text the page shows outside any named element: a to-do's
+    // label, a cart line's price, an order total. Without it the model
+    // cannot tell repeated controls apart ("Toggle Todo" x3) and the goal
+    // verifier cannot read the values a goal names.
+    if (role === 'StaticText') {
+      const text = (node.name?.value || '').replace(/\s+/g, ' ').trim();
+      if (text && !named.includes(text)) {
+        const shown = text.length > NAME_DISPLAY_CAP ? `${text.slice(0, NAME_DISPLAY_CAP - 1)}…` : text;
+        lines.push(`${'  '.repeat(depth)}- text: ${shown}`);
+      }
+      return;
+    }
+
     if (!role || SKIP_ROLES.has(role)) {
       // No role or structural role — recurse into children at same depth
       if (node.childIds) {
         for (const childId of node.childIds) {
-          walk(childId, depth);
+          walk(childId, depth, named);
         }
       }
       return;
@@ -147,7 +163,7 @@ export async function buildCdpSnapshot(cdp: CDPSession): Promise<CdpSnapshotResu
     if (!name && (STRUCTURAL_ROLES.has(role) || role === 'image' || role === 'img')) {
       if (node.childIds) {
         for (const childId of node.childIds) {
-          walk(childId, depth);
+          walk(childId, depth, named);
         }
       }
       return;
@@ -171,6 +187,8 @@ export async function buildCdpSnapshot(cdp: CDPSession): Promise<CdpSnapshotResu
     const displayName = name.length > NAME_DISPLAY_CAP ? `${name.slice(0, NAME_DISPLAY_CAP - 1)}…` : name;
     const nameStr = displayName ? ` "${displayName}"` : '';
     const valueStr = value !== undefined ? ` [value="${value}"]` : '';
+    const checked = node.properties?.find((p) => p.name === 'checked')?.value.value;
+    const checkedStr = checked === 'true' || checked === true ? ' [checked]' : checked === 'mixed' ? ' [checked=mixed]' : '';
 
     // Check if node has visible children (not just StaticText/InlineTextBox)
     const hasVisibleChildren = node.childIds?.some((cid) => {
@@ -182,11 +200,11 @@ export async function buildCdpSnapshot(cdp: CDPSession): Promise<CdpSnapshotResu
     }) ?? false;
     const colon = hasVisibleChildren ? ':' : '';
 
-    lines.push(`${indent}- ${role}${nameStr}${refStr}${valueStr}${colon}`);
+    lines.push(`${indent}- ${role}${nameStr}${refStr}${valueStr}${checkedStr}${colon}`);
 
     if (node.childIds) {
       for (const childId of node.childIds) {
-        walk(childId, depth + 1);
+        walk(childId, depth + 1, name || named);
       }
     }
   }

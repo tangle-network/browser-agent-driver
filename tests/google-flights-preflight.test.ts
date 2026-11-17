@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   addGoogleFlightsDatesToTfs,
   deriveGoogleFlightsSearchSpec,
-  shouldAcceptRolledGoogleFlightsCompletion,
 } from '../src/runner/google-flights-preflight.js';
 
 describe('deriveGoogleFlightsSearchSpec', () => {
@@ -151,78 +150,5 @@ describe('addGoogleFlightsDatesToTfs', () => {
     expect(decoded).toContain('2027-01-17');
     expect(decoded.indexOf('/m/02_286')).toBeGreaterThan(-1);
     expect(decoded.indexOf('/m/04jpl')).toBeGreaterThan(-1);
-  });
-});
-
-describe('shouldAcceptRolledGoogleFlightsCompletion', () => {
-  it('accepts verifier date-only rejections when rolled dates have concrete flight evidence', () => {
-    const preflight = {
-      profile: 'google-flights-search' as const,
-      prepared: true,
-      reason: 'Prepared Google Flights search.',
-      spec: {
-        origin: 'Bangkok',
-        destination: 'Madrid',
-        tripType: 'round-trip' as const,
-        departureDate: '2027-02-26',
-        returnDate: '2027-02-28',
-        dateRoll: {
-          originalDepartureDate: '2026-02-26',
-          originalReturnDate: '2026-02-28',
-          departureDate: '2027-02-26',
-          returnDate: '2027-02-28',
-        },
-      },
-      finalUrl: 'https://www.google.com/travel/flights/search?tfs=...',
-    };
-
-    expect(shouldAcceptRolledGoogleFlightsCompletion(
-      preflight,
-      {
-        achieved: false,
-        confidence: 0.5,
-        evidence: [],
-        missing: ['The current page uses 2027 dates but the requested task says 2026.'],
-      },
-      'Google Flights search results returned. Best cheapest round trip Bangkok to Madrid Feb 26 - 28, 2027: Turkish Airlines, 1 stop, $881 round trip.',
-      {
-        url: 'https://www.google.com/travel/flights/search?tfs=...',
-        snapshot: 'Flight search Search results 11 results returned. Best Cheapest from $881 Top departing flights Bangkok Madrid Track prices departing 2027-02-26 and returning 2027-02-28.',
-      },
-    )).toBe(true);
-  });
-
-  it('does not accept rolled dates without concrete flight evidence', () => {
-    expect(shouldAcceptRolledGoogleFlightsCompletion(
-      {
-        profile: 'google-flights-search',
-        prepared: true,
-        reason: 'Prepared Google Flights search.',
-        spec: {
-          origin: 'Bangkok',
-          destination: 'Madrid',
-          tripType: 'round-trip',
-          departureDate: '2027-02-26',
-          returnDate: '2027-02-28',
-          dateRoll: {
-            originalDepartureDate: '2026-02-26',
-            originalReturnDate: '2026-02-28',
-            departureDate: '2027-02-26',
-            returnDate: '2027-02-28',
-          },
-        },
-      },
-      {
-        achieved: false,
-        confidence: 0.5,
-        evidence: [],
-        missing: ['The current page uses 2027 dates but the requested task says 2026.'],
-      },
-      'I could not find the flights.',
-      {
-        url: 'https://www.google.com/travel/flights/',
-        snapshot: 'Google Flights homepage',
-      },
-    )).toBe(false);
   });
 });

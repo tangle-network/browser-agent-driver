@@ -126,40 +126,6 @@ export async function prepareGoogleFlightsSearch(
   }
 }
 
-export function shouldAcceptRolledGoogleFlightsCompletion(
-  preflight: GoogleFlightsPreflightResult | undefined,
-  verification: GoalVerification,
-  claimedResult: string,
-  state: Pick<PageState, 'url' | 'snapshot'>,
-): boolean {
-  if (!preflight?.spec.dateRoll || verification.achieved) return false;
-
-  const { spec } = preflight;
-  const haystack = `${state.url}\n${state.snapshot}\n${claimedResult}`.toLowerCase();
-  const verifierText = [...verification.evidence, ...verification.missing].join('\n').toLowerCase();
-  const hasRolledDates =
-    haystack.includes(spec.departureDate) ||
-    haystack.includes(formatDisplayDate(spec.departureDate)) ||
-    (spec.returnDate ? haystack.includes(spec.returnDate) || haystack.includes(formatDisplayDate(spec.returnDate)) : true);
-  if (!hasRolledDates) return false;
-
-  const hasConcreteFlightEvidence = [
-    /\bgoogle flights\b|\bflight search\b|\bsearch results\b/,
-    /\b(?:\$|usd|round trip|one way|airlines?|stops?|nonstop|layover|duration|departing flights?)\b/,
-    /\b(?:results? returned|top departing flights|best|cheapest|price insights|track prices)\b/,
-  ].every((pattern) => pattern.test(haystack));
-  if (!hasConcreteFlightEvidence) return false;
-
-  return [
-    /\bwrong (?:date|year|dates)\b/,
-    /\b(?:date|year|dates) (?:mismatch|do not match|does not match)\b/,
-    /\brequested .*2026\b/,
-    /\bcurrent .*2027\b/,
-    /\bstale benchmark\b/,
-    /\bnot the requested date\b/,
-  ].some((pattern) => pattern.test(verifierText));
-}
-
 async function runGoogleFlightsUiPreflight(page: Page, spec: GoogleFlightsSearchSpec): Promise<void> {
   await page.waitForLoadState('domcontentloaded', { timeout: 10_000 }).catch(() => undefined);
   await page.waitForTimeout(2_000);

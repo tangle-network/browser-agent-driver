@@ -18,6 +18,9 @@ import type { Page, Locator } from 'playwright';
 interface RefEntry {
   role: string;
   name: string;
+  /** CDP backend DOM node id of the element this ref named when observed.
+   *  Present on the CDP observation path; actions bind to this element. */
+  backendNodeId?: number;
 }
 
 /** Parsed element with value for diffing */
@@ -130,10 +133,35 @@ export class AriaSnapshotHelper {
   /** Last computed diff (undefined on first observe) */
   private lastDiff: SnapshotDiff | undefined;
 
+  /** True once an action ran after the last observation: positional refs
+   *  (repeated role+name, resolved by index) may now name a different element. */
+  private actedSinceObserve = false;
+
   /** Clear refs -- call at the start of each observe() cycle */
   reset(): void {
     this.refMap.clear();
     this.hashCounts.clear();
+  }
+
+  /** Record that an action may have changed the page since the last observation. */
+  noteAction(): void {
+    this.actedSinceObserve = true;
+  }
+
+  get hasActedSinceObserve(): boolean {
+    return this.actedSinceObserve;
+  }
+
+  /** The ref's snapshot entry, or undefined for non-ref selectors and unknown refs. */
+  lookupRefEntry(selector: string): (RefEntry & { refId: string; positional: boolean }) | undefined {
+    if (!selector.startsWith('@')) return undefined;
+    const refId = selector.slice(1);
+    const entry = this.refMap.get(refId);
+    if (!entry) return undefined;
+    // A role+name that occurs more than once resolves by position (`_N`
+    // suffix, or the bare hash for the first of several).
+    const positional = /_\d+$/.test(refId) || this.refMap.has(`${refId}_1`);
+    return { ...entry, refId, positional };
   }
 
   /**
@@ -143,16 +171,17 @@ export class AriaSnapshotHelper {
    * and getDiff() work identically to the Playwright ariaSnapshot path.
    */
   importCdpRefs(
-    refMap: Map<string, { role: string; name: string }>,
+    refMap: Map<string, { role: string; name: string; backendNodeId?: number }>,
     elements: Map<string, ParsedElement>,
   ): void {
     // Save previous elements for diffing
     this.prevElements = this.currElements;
     this.currElements = new Map(elements);
+    this.actedSinceObserve = false;
 
     // Import refs into our refMap
     for (const [refId, entry] of refMap) {
-      this.refMap.set(refId, { role: entry.role, name: entry.name });
+      this.refMap.set(refId, { role: entry.role, name: entry.name, backendNodeId: entry.backendNodeId });
     }
 
     // Compute diff
@@ -178,6 +207,7 @@ export class AriaSnapshotHelper {
     // Save previous elements before parsing new snapshot
     this.prevElements = this.currElements;
     this.currElements = new Map();
+    this.actedSinceObserve = false;
 
     let snapshot = this.parseAriaSnapshot(rawSnapshot);
 
@@ -468,6 +498,22 @@ export class StaleRefError extends Error {
     this.name = 'StaleRefError';
     this.staleRef = staleRef;
     this.availableRefs = availableRefs;
+  }
+}
+
+/**
+ * The element a ref named in the last observation is gone or no longer has
+ * the role and accessible name the model saw. Acting on whatever now sits at
+ * that position would hit the wrong element, so the action (and the rest of
+ * its batch) stops and the next turn observes again.
+ */
+export class TargetChangedError extends StaleRefError {
+  constructor(staleRef: string, observed: { role: string; name: string }, now: string, availableRefs: string[]) {
+    super(staleRef, availableRefs);
+    this.message =
+      `Ref "@${staleRef}" (${observed.role} "${observed.name}") changed since the last observation: ${now}. ` +
+      `Not acting on it; the rest of this batch is skipped. Observe again and use a ref from the new observation.`;
+    this.name = 'TargetChangedError';
   }
 }
 

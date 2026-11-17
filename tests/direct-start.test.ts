@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deriveDirectStartUrl, shouldAcceptRolledBookingCompletion } from '../src/runner/direct-start.js';
+import { deriveDirectStartUrl } from '../src/runner/direct-start.js';
 
 const BEFORE_BENCHMARK_DATES = new Date('2025-01-01T00:00:00Z');
 
@@ -86,49 +86,5 @@ describe('deriveDirectStartUrl', () => {
       checkin: '2027-02-14',
       checkout: '2027-02-21',
     });
-  });
-
-  it('accepts verifier date-only rejections for intentional Booking date rolls', () => {
-    const directStart = deriveDirectStartUrl({
-      startUrl: 'https://www.booking.com/',
-      goal: 'Search for hotels in Rio de Janeiro from March 1-7, 2026, check the Brands filter.',
-    }, { now: new Date('2026-04-29T00:00:00Z') });
-
-    expect(shouldAcceptRolledBookingCompletion(
-      directStart,
-      {
-        achieved: false,
-        confidence: 0.45,
-        evidence: [],
-        missing: ['The current page uses 2027 dates while the requested task says 2026.'],
-      },
-      'On Booking.com, visible Brands counts include Windsor 15 and ibis 9 for https://www.booking.com/searchresults.html?ss=Rio&checkin=2027-03-01&checkout=2027-03-07 .',
-      {
-        url: 'https://www.booking.com/searchresults.html?ss=Rio&checkin=2027-03-01&checkout=2027-03-07',
-        snapshot: 'Brands Windsor 15 ibis 9 Novotel 5 Search results updated. Rio de Janeiro: 2,619 properties found.',
-      },
-    )).toBe(true);
-  });
-
-  it('does not accept rolled-date completions without concrete Booking evidence', () => {
-    const directStart = deriveDirectStartUrl({
-      startUrl: 'https://www.booking.com/',
-      goal: 'Find a hotel in Paris from February 14-21, 2026.',
-    }, { now: new Date('2026-04-29T00:00:00Z') });
-
-    expect(shouldAcceptRolledBookingCompletion(
-      directStart,
-      {
-        achieved: false,
-        confidence: 0.45,
-        evidence: [],
-        missing: ['The current page uses 2027 dates while the requested task says 2026.'],
-      },
-      'I could not find a result for 2027-02-14 to 2027-02-21.',
-      {
-        url: 'https://www.booking.com/searchresults.html?ss=Paris&checkin=2027-02-14&checkout=2027-02-21',
-        snapshot: 'Booking.com homepage',
-      },
-    )).toBe(false);
   });
 });
