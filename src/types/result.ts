@@ -47,6 +47,8 @@ export interface GoalVerification {
   evidence: string[];
   /** Missing criteria (empty if achieved) */
   missing: string[];
+  /** The verifier model's own verdict text (truncated), kept so a rejection can be audited: which requirement and which quote missed. */
+  raw?: string;
   /** Token usage of the verification LLM call itself (absent for
    *  deterministic accept paths that make no LLM call). Recorded into run
    *  metrics by the runner — previously invisible in cost accounting. */
