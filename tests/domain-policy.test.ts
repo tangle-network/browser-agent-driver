@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildFirstPartyBoundaryNote, shouldAcceptFirstPartyBoundaryCompletion } from '../src/domain-policy.js';
+import { buildFirstPartyBoundaryNote } from '../src/domain-policy.js';
 
 describe('buildFirstPartyBoundaryNote', () => {
   it('allows official sibling subdomains under the same registrable domain', () => {
@@ -19,30 +19,5 @@ describe('buildFirstPartyBoundaryNote', () => {
   it('returns nothing when already on the allowed host', () => {
     const goal = 'Only use www.alberta.ca for this task.';
     expect(buildFirstPartyBoundaryNote(goal, 'https://www.alberta.ca/open-government-program')).toBeUndefined();
-  });
-
-  it('accepts boundary-only verification failures when substantive evidence is present', () => {
-    const goal = 'Only use www.alberta.ca for this task.';
-    const verification = {
-      achieved: false,
-      confidence: 0.86,
-      evidence: ['Current URL is https://open.alberta.ca/opendata which is a different host than www.alberta.ca.'],
-      missing: ['Only host-boundary compliance remains uncertain.'],
-    };
-    const claimedResult = [
-      'Found the dataset categories:',
-      '- Health and Wellness',
-      '- Society and Communities',
-      '- Environment',
-    ].join('\n');
-
-    expect(
-      shouldAcceptFirstPartyBoundaryCompletion(
-        goal,
-        'https://open.alberta.ca/opendata',
-        verification,
-        claimedResult,
-      ),
-    ).toBe(true);
   });
 });

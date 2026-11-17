@@ -295,38 +295,6 @@ function normalizeStay(stay: StayDates, options: DirectStartOptions): StayDates 
   };
 }
 
-export function shouldAcceptRolledBookingCompletion(
-  directStart: DirectStartUrl | undefined,
-  verification: import('../types.js').GoalVerification,
-  claimedResult: string,
-  state: Pick<import('../types.js').PageState, 'url' | 'snapshot'>,
-): boolean {
-  if (!directStart?.dateRoll || verification.achieved) return false;
-
-  const haystack = `${state.url}\n${state.snapshot}\n${claimedResult}`.toLowerCase();
-  const verifierText = [...verification.evidence, ...verification.missing].join('\n').toLowerCase();
-  const hasRolledDates =
-    haystack.includes(directStart.dateRoll.checkin) &&
-    haystack.includes(directStart.dateRoll.checkout);
-  if (!hasRolledDates) return false;
-
-  const looksLikeConcreteBookingResult = [
-    /\bbooking\.com\b/,
-    /\b(scored|score|reviews?|properties found|price|per night|total|hotel|room|brand|brands|free cancellation|breakfast)\b/,
-  ].every((pattern) => pattern.test(haystack));
-  if (!looksLikeConcreteBookingResult) return false;
-
-  return [
-    /\bwrong (?:date|year|dates)\b/,
-    /\b(?:date|year|dates) (?:mismatch|do not match|does not match)\b/,
-    /\brequested .*2026\b/,
-    /\bcurrent .*2027\b/,
-    /\bfinal page state\b/,
-    /\bcurrent page\b/,
-    /\bnot visible\b/,
-  ].some((pattern) => pattern.test(verifierText));
-}
-
 function dateParts(monthName: string, day: string, year?: string): DateParts {
   return {
     month: MONTHS[monthName.toLowerCase()] || Number(monthName),

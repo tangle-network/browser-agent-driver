@@ -34,7 +34,7 @@ import type { BrainEvaluateHost } from './tasks/evaluate.js';
 import { recommendLinkCandidateImpl } from './tasks/link-scout.js';
 import type { BrainLinkScoutHost } from './tasks/link-scout.js';
 import { verifyGoalCompletionImpl } from './tasks/goal-verification.js';
-import type { BrainGoalVerificationHost } from './tasks/goal-verification.js';
+import type { BrainGoalVerificationHost, VerificationEvidence } from './tasks/goal-verification.js';
 import { auditDesignImpl } from './tasks/design-audit.js';
 import type { BrainDesignAuditHost } from './tasks/design-audit.js';
 import { extractKnowledgeImpl } from './tasks/knowledge.js';
@@ -359,7 +359,7 @@ export class Brain implements BrainModelHost, BrainSystemPromptHost, BrainEvalua
   }
 
   /**
-   * Verify whether the goal was actually achieved.
+   * Verify whether the goal was actually achieved, judged from page evidence.
    * Separate from quality evaluation — this checks goal completion, not polish.
    * Uses a fresh LLM call (no conversation history) to avoid self-confirmation bias.
    */
@@ -367,9 +367,9 @@ export class Brain implements BrainModelHost, BrainSystemPromptHost, BrainEvalua
     state: PageState,
     goal: string,
     claimedResult: string,
-    options?: { skipPageState?: boolean },
+    pageEvidence?: VerificationEvidence,
   ): Promise<GoalVerification> {
-    return verifyGoalCompletionImpl(this, state, goal, claimedResult, options);
+    return verifyGoalCompletionImpl(this, state, goal, claimedResult, pageEvidence);
   }
 
   /**

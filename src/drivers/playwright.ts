@@ -9,11 +9,12 @@
  * - No 1-second hard sleep (uses lifecycle events only)
  */
 
-import type { Page, CDPSession } from 'playwright';
+import type { Page, CDPSession, Locator } from 'playwright';
 import type { Driver, ActionResult, ResourceBlockingOptions } from './types.js';
 import type { Action, PageState } from '../types.js';
 import { cliWarn } from '../cli-ui.js';
 import { AriaSnapshotHelper, dismissOverlays } from './snapshot.js';
+import { locateObserved } from './ref-binding.js';
 import { ANALYTICS_PATTERNS, IMAGE_PATTERNS, MEDIA_PATTERNS } from './block-patterns.js';
 import { buildCdpSnapshot } from './cdp-snapshot.js';
 import { getPageMetadata } from './cdp-page-state.js';
@@ -289,6 +290,7 @@ export class PlaywrightDriver implements Driver {
   private async animateCursorToSelector(
     selector: string,
     actionOrVerb: Action | string,
+    target?: Locator,
   ): Promise<void> {
     if (!this.options.showCursor) return;
     // Make sure the install promise (fired in the constructor) has resolved
@@ -298,7 +300,7 @@ export class PlaywrightDriver implements Driver {
       await this.cursorInstallPromise.catch(() => undefined);
     }
     try {
-      const locator = this.snapshot.resolveLocator(this.page, selector);
+      const locator = target ?? this.snapshot.resolveLocator(this.page, selector);
       const box = await locator.boundingBox({ timeout: 1000 }).catch(() => null);
       if (!box) return;
 
@@ -462,13 +464,18 @@ export class PlaywrightDriver implements Driver {
     return this.page.url();
   }
 
+  /** Resolve a selector to the element the model saw (see ref-binding.ts). */
+  private async locate(selector: string): Promise<Locator> {
+    const timeoutMs = this.options.cdpObserveTimeoutMs ?? CDP_OBSERVE_TIMEOUT_MS;
+    return locateObserved(this.page, this.snapshot, selector, () => this.ensureCdpSession(), (p, step) => withObserveTimeout(p, step, timeoutMs));
+  }
+
   async inspectSelectorHref(selector: string): Promise<string | undefined> {
-    const locator = this.snapshot.resolveLocator(this.page, selector);
-    return locator.evaluate((node) => {
+    return this.locate(selector).then((locator) => locator.evaluate((node) => {
       const element = node as Element | null;
       const anchor = element?.closest('a[href]') as HTMLAnchorElement | null;
       return anchor?.href || undefined;
-    }).catch(() => undefined);
+    })).catch(() => undefined);
   }
 
   private async adoptPage(nextPage: Page): Promise<void> {
@@ -819,6 +826,10 @@ export class PlaywrightDriver implements Driver {
   }
 
   async execute(action: Action): Promise<ActionResult> {
+    try { return await this.executeAction(action); } finally { if (action.action !== 'wait') this.snapshot.noteAction(); }
+  }
+
+  private async executeAction(action: Action): Promise<ActionResult> {
     const timeout = this.options.timeout ?? 30000;
 
     // The cursor overlay install is fire-and-forget from the constructor.
@@ -833,9 +844,9 @@ export class PlaywrightDriver implements Driver {
     try {
       switch (action.action) {
         case 'click': {
-          const locator = this.snapshot.resolveLocator(this.page, action.selector);
+          const locator = await this.locate(action.selector);
           const bounds = await this.captureBounds(locator);
-          await this.animateCursorToSelector(action.selector, action);
+          await this.animateCursorToSelector(action.selector, action, locator);
           // Human-like mouse movement to the target before clicking
           if (bounds) {
             const targetX = bounds.x + bounds.width / 2 + gaussianOffset(bounds.width);
@@ -871,56 +882,38 @@ export class PlaywrightDriver implements Driver {
         }
 
         case 'type': {
-          const locator = this.snapshot.resolveLocator(this.page, action.selector);
+          const locator = await this.locate(action.selector);
           const bounds = await this.captureBounds(locator);
-          await this.animateCursorToSelector(action.selector, action);
-          try {
-            await this.withOverlayRecovery(async () => {
-              // No pre-fill click: fill() focuses the element itself, and the
-              // click used to hang to the full actionability timeout on
-              // elements whose hit target is obstructed (e.g. date inputs
-              // with a picker trigger) even though fill succeeds instantly.
-              await locator.fill(action.text, { timeout });
-              await locator.evaluate((el) => {
-                el.dispatchEvent(new Event('input', { bubbles: true }));
-                el.dispatchEvent(new Event('change', { bubbles: true }));
-              });
-            });
-          } catch (err) {
-            const message = err instanceof Error ? err.message : String(err);
-            if (!isPointerInterceptError(message)) throw err;
-            await locator.fill(action.text, { timeout, force: true });
+          await this.animateCursorToSelector(action.selector, action, locator);
+          // No pre-fill click: fill() focuses the element itself, and the
+          // click used to hang to the full actionability timeout on elements
+          // whose hit target is obstructed (e.g. date inputs with a picker
+          // trigger) even though fill succeeds instantly.
+          const fillAndNotify = async (force: boolean) => {
+            await locator.fill(action.text, { timeout, force });
             await locator.evaluate((el) => {
               el.dispatchEvent(new Event('input', { bubbles: true }));
               el.dispatchEvent(new Event('change', { bubbles: true }));
             });
+          };
+          try {
+            await this.withOverlayRecovery(() => fillAndNotify(false));
+          } catch (err) {
+            if (!isPointerInterceptError(err instanceof Error ? err.message : String(err))) throw err;
+            await fillAndNotify(true);
           }
           return { success: true, bounds };
         }
 
-        case 'press': {
-          const locator = this.snapshot.resolveLocator(this.page, action.selector);
-          const bounds = await this.captureBounds(locator);
-          await this.animateCursorToSelector(action.selector, action);
-          await this.withOverlayRecovery(async () => {
-            await locator.press(action.key, { timeout });
-          });
-          return { success: true, bounds };
-        }
-
-        case 'hover': {
-          const locator = this.snapshot.resolveLocator(this.page, action.selector);
-          const bounds = await this.captureBounds(locator);
-          await this.animateCursorToSelector(action.selector, action);
-          await locator.hover({ timeout });
-          return { success: true, bounds };
-        }
-
+        case 'press':
+        case 'hover':
         case 'select': {
-          const locator = this.snapshot.resolveLocator(this.page, action.selector);
+          const locator = await this.locate(action.selector);
           const bounds = await this.captureBounds(locator);
-          await this.animateCursorToSelector(action.selector, action);
-          await locator.selectOption(action.value, { timeout });
+          await this.animateCursorToSelector(action.selector, action, locator);
+          if (action.action === 'press') await this.withOverlayRecovery(() => locator.press(action.key, { timeout }));
+          else if (action.action === 'hover') await locator.hover({ timeout });
+          else await locator.selectOption(action.value, { timeout });
           return { success: true, bounds };
         }
 
@@ -930,7 +923,7 @@ export class PlaywrightDriver implements Driver {
             : -(action.amount ?? 500);
           if (action.selector) {
             // Scroll a specific container element
-            const container = this.snapshot.resolveLocator(this.page, action.selector);
+            const container = await this.locate(action.selector);
             await container.evaluate((el, d) => { el.scrollBy(0, d); }, delta);
           } else {
             await this.page.mouse.wheel(0, delta);
@@ -1014,7 +1007,7 @@ export class PlaywrightDriver implements Driver {
           for (let fi = 0; fi < fieldEntries.length; fi++) {
             const [ref, text] = fieldEntries[fi]!;
             try {
-              const locator = this.snapshot.resolveLocator(this.page, ref);
+              const locator = await this.locate(ref);
               const bounds = await this.captureBounds(locator);
               if (bounds) lastBounds = bounds;
               await this.withOverlayRecovery(async () => {
@@ -1036,7 +1029,7 @@ export class PlaywrightDriver implements Driver {
           }
           for (const [ref, value] of selectEntries) {
             try {
-              const locator = this.snapshot.resolveLocator(this.page, ref);
+              const locator = await this.locate(ref);
               const bounds = await this.captureBounds(locator);
               if (bounds) lastBounds = bounds;
               await locator.selectOption(value, { timeout: batchFieldTimeout });
@@ -1047,7 +1040,7 @@ export class PlaywrightDriver implements Driver {
           }
           for (const ref of checkEntries) {
             try {
-              const locator = this.snapshot.resolveLocator(this.page, ref);
+              const locator = await this.locate(ref);
               const bounds = await this.captureBounds(locator);
               if (bounds) lastBounds = bounds;
               await locator.check({ timeout: batchFieldTimeout });
@@ -1062,7 +1055,7 @@ export class PlaywrightDriver implements Driver {
             const mismatches: string[] = [];
             for (const [ref, expectedText] of fieldEntries) {
               try {
-                const locator = this.snapshot.resolveLocator(this.page, ref);
+                const locator = await this.locate(ref);
                 const actualValue = await locator.inputValue({ timeout: 2000 }).catch(() =>
                   locator.evaluate((el: HTMLElement) => {
                     if ('value' in el) return (el as HTMLInputElement).value;
@@ -1087,7 +1080,7 @@ export class PlaywrightDriver implements Driver {
                 const entry = fieldEntries.find(([r]) => r === ref);
                 if (!entry) continue;
                 try {
-                  const locator = this.snapshot.resolveLocator(this.page, ref);
+                  const locator = await this.locate(ref);
                   await locator.click({ timeout: 3000 });
                   // Select all existing text
                   await this.page.keyboard.press('Control+a');
@@ -1125,13 +1118,14 @@ export class PlaywrightDriver implements Driver {
           for (let i = 0; i < action.refs.length; i++) {
             const ref = action.refs[i];
             try {
-              const locator = this.snapshot.resolveLocator(this.page, ref);
+              const locator = await this.locate(ref);
               const bounds = await this.captureBounds(locator);
               if (bounds) lastBounds = bounds;
-              await this.animateCursorToSelector(ref, { action: 'click', selector: ref });
+              await this.animateCursorToSelector(ref, { action: 'click', selector: ref }, locator);
               await this.withOverlayRecovery(async () => {
                 await locator.click({ timeout: sequenceClickTimeout });
               });
+              this.snapshot.noteAction();
             } catch (err) {
               const message = err instanceof Error ? err.message : String(err);
               return { success: false, error: `clickSequence step ${i + 1}/${action.refs.length} (${ref}): ${message}` };

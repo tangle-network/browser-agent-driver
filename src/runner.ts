@@ -19,10 +19,7 @@ export {
   getRankedVisibleLinkCandidates,
 
   // Goal verification
-  buildGoalVerificationClaim,
-  collectSearchWorkflowEvidence,
-  shouldAcceptSearchWorkflowCompletion,
-  shouldAcceptScriptBackedCompletion,
+  collectPageEvidence,
   detectCompletionContentTypeMismatch,
 
   // Effect verification

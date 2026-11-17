@@ -20,10 +20,7 @@ export {
 
 // Goal verification
 export {
-  buildGoalVerificationClaim,
-  collectSearchWorkflowEvidence,
-  shouldAcceptSearchWorkflowCompletion,
-  shouldAcceptScriptBackedCompletion,
+  collectPageEvidence,
   detectCompletionContentTypeMismatch,
 } from './goal-verification.js';
 
