@@ -1,5 +1,15 @@
 # @tangle-network/browser-agent-driver
 
+## 0.38.1
+
+### Patch Changes
+
+- [#180](https://github.com/tangle-network/browser-agent-driver/pull/180) [`850cccb`](https://github.com/tangle-network/browser-agent-driver/commit/850cccbfc0e5201d71f5108eb85f76b84759ccf9) Thanks [@drewstone](https://github.com/drewstone)! - Follow-up to [#177](https://github.com/tangle-network/browser-agent-driver/issues/177) from the first re-measurement run on saucedemo.
+  
+  - Adjacent text nodes now share one snapshot line ("Item total: $39.98", not "Item total: $" and "39.98"), keeping the space between them, so a correct total is no longer rejected as "not on any observed page". The verifier still requires each quoted value inside one snapshot line, so it cannot stitch a value together from two separate records.
+  - The cookie-banner shortcut no longer fires on page buttons such as "Continue Shopping": the button's whole name must be an accept phrase, and the nearby text must mention cookies, consent or GDPR (a footer "Privacy Policy" link, now visible in snapshots, no longer counts).
+  - The verifier prompt says typed values are confirmed by the driver's actions and a sign-in by the page that follows it.
+
 ## 0.38.0
 
 ### Minor Changes
