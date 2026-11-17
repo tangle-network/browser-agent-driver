@@ -160,7 +160,7 @@ describe('page text the goal verifier quotes (#177)', () => {
     const page = await (await browser.newContext()).newPage();
     const driver = new PlaywrightDriver(page, { captureScreenshots: false });
     await page.setContent(`<main>
-      <h2>Secure Area</h2><p>Logged in as <span>tomsmith</span></p>
+      <h2>Secure Area</h2><p>Logged in as <span id="username">tomsmith</span></p>
       <ul>
         <li><input type="checkbox" aria-label="Toggle Todo"><label>buy milk</label></li>
         <li><input type="checkbox" aria-label="Toggle Todo" checked><label>write report</label></li>
