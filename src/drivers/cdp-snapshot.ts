@@ -96,6 +96,9 @@ export async function buildCdpSnapshot(cdp: CDPSession): Promise<CdpSnapshotResu
   // Per-node display-name cap; refMap keeps the full name for resolution.
   const NAME_DISPLAY_CAP = 120;
 
+  // Parent of the text node that produced the last line, to join siblings.
+  let lastTextParent: string | undefined;
+
   // `named` is the accessible name of the nearest emitted ancestor: text it
   // already carries (a button's label, a link's text) is not repeated.
   function walk(nodeId: string, depth: number, named = ''): void {
@@ -118,15 +121,21 @@ export async function buildCdpSnapshot(cdp: CDPSession): Promise<CdpSnapshotResu
     // Visible text the page shows outside any named element: a to-do's
     // label, a cart line's price, an order total. Without it the model
     // cannot tell repeated controls apart ("Toggle Todo" x3) and the goal
-    // verifier cannot read the values a goal names.
+    // verifier cannot read the values a goal names. Adjacent text nodes
+    // render as one string ("Item total: $" + "39.98"), so they share a line.
     if (role === 'StaticText') {
       const text = (node.name?.value || '').replace(/\s+/g, ' ').trim();
       if (text && !named.includes(text)) {
         const shown = text.length > NAME_DISPLAY_CAP ? `${text.slice(0, NAME_DISPLAY_CAP - 1)}…` : text;
-        lines.push(`${'  '.repeat(depth)}- text: ${shown}`);
+        const prefix = `${'  '.repeat(depth)}- text: `;
+        const sibling = node.parentId && lastTextParent === node.parentId && lines[lines.length - 1]?.startsWith(prefix);
+        if (sibling) lines[lines.length - 1] += shown;
+        else lines.push(`${prefix}${shown}`);
+        lastTextParent = node.parentId;
       }
       return;
     }
+    lastTextParent = undefined;
 
     if (!role || SKIP_ROLES.has(role)) {
       // No role or structural role — recurse into children at same depth

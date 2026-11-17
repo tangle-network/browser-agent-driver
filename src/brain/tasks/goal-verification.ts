@@ -61,7 +61,7 @@ const VERIFY_SYSTEM = `You verify whether a browser agent achieved its goal. Jud
 
 Method:
 1. Split the goal into every end-state requirement it states: the page or view it must end on; each item, value or text it names (which products are in a cart, a total, which entries exist and which are completed); each final step it must perform (submit, place the order, finish).
-2. For each requirement, find the page evidence that confirms it and copy a short exact quote from that block, verbatim. What a cart, list, order or account contains, whether an order was placed, and which view is shown must be confirmed by page content, not by an action having run. A product listed in a catalog is not evidence that it is in the cart. The state the goal says to end in must show on the FINAL PAGE (P1).
+2. For each requirement, find the page evidence that confirms it and copy a short exact quote from that block, verbatim. What a cart, list, order or account contains, whether an order was placed, and which view is shown must be confirmed by page content, not by an action having run. A product listed in a catalog is not evidence that it is in the cart. The state the goal says to end in must show on the FINAL PAGE (P1). Values the goal says to type or select (a username, a name, a postal code) are confirmed by block A; a step such as signing in is confirmed by a page that only shows after it (quote that page).
 3. If the claim states a value (a total, an item, a count), compare it with the page; a mismatch fails that requirement.
 4. A requirement with no confirming quote is not met. achieved is true only if every requirement is met.
 
@@ -77,16 +77,20 @@ function normalizeForQuote(text: string): string {
     .trim();
 }
 
-/** True when the quote (split on ellipses) appears verbatim in one of the blocks. */
+/** Text with snapshot markup, quotes and whitespace removed: a quote that spans two text lines still matches. */
+function compactForQuote(text: string): string {
+  return normalizeForQuote(text).replace(/- text:|\[ref=[^\]]*\]/g, '').replace(/["'`\s]/g, '');
+}
+
+/** True when the quote (split on ellipses) appears in one of the blocks, ignoring snapshot markup and spacing. */
 export function quoteIsOnPage(quote: string, blocks: Array<{ text: string }>): boolean {
   const parts = normalizeForQuote(quote)
-    .replace(/^["'`]+|["'`]+$/g, '')
     .split(/\s*(?:\.\.\.|\u2026)\s*/)
-    .map((part) => part.trim())
+    .map(compactForQuote)
     .filter(Boolean);
   if (parts.length === 0 || parts.join('').length < 2) return false;
   return blocks.some((block) => {
-    const haystack = normalizeForQuote(block.text);
+    const haystack = compactForQuote(block.text);
     return parts.every((part) => haystack.includes(part));
   });
 }
