@@ -77,20 +77,21 @@ function normalizeForQuote(text: string): string {
     .trim();
 }
 
-/** Text with snapshot markup, quotes and whitespace removed: a quote that spans two text lines still matches. */
-function compactForQuote(text: string): string {
-  return normalizeForQuote(text).replace(/- text:|\[ref=[^\]]*\]/g, '').replace(/["'`\s]/g, '');
-}
-
-/** True when the quote (split on ellipses) appears in one of the blocks, ignoring snapshot markup and spacing. */
+/**
+ * True when the quote (split on ellipses) appears in one of the blocks, up to
+ * case and spacing. Line boundaries stay: a quote may not stitch a value
+ * together from two separate page records ("$3" + "9.98"). Text the browser
+ * renders as one run already shares a snapshot line.
+ */
 export function quoteIsOnPage(quote: string, blocks: Array<{ text: string }>): boolean {
   const parts = normalizeForQuote(quote)
+    .replace(/^["'`]+|["'`]+$/g, '')
     .split(/\s*(?:\.\.\.|\u2026)\s*/)
-    .map(compactForQuote)
+    .map((part) => part.trim())
     .filter(Boolean);
   if (parts.length === 0 || parts.join('').length < 2) return false;
   return blocks.some((block) => {
-    const haystack = compactForQuote(block.text);
+    const haystack = normalizeForQuote(block.text);
     return parts.every((part) => haystack.includes(part));
   });
 }

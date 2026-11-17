@@ -16,6 +16,7 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { chromium, type Browser, type Page } from 'playwright';
 import { PlaywrightDriver } from '../src/drivers/playwright.js';
+import { quoteIsOnPage } from '../src/brain/tasks/goal-verification.js';
 
 const INVENTORY_HTML = `<!doctype html>
 <html><body>
@@ -134,4 +135,22 @@ describe('batched clicks after the first click re-renders the list (#177)', () =
     expect(result.success).toBe(true);
     expect(await cartOf(page)).toEqual(['Sauce Labs Backpack', 'Sauce Labs Bike Light']);
   }, 60_000);
+});
+
+describe('page text the goal verifier quotes (#177)', () => {
+  let browser: Browser;
+  beforeAll(async () => { browser = await chromium.launch({ headless: true }); }, 30_000);
+  afterAll(async () => { await browser?.close(); });
+
+  it('keeps one rendered text run on one line and never stitches separate records into a value', async () => {
+    const page = await (await browser.newContext()).newPage();
+    const driver = new PlaywrightDriver(page, { captureScreenshots: false });
+    // React renders "Item total: $" and the amount as two text nodes.
+    await page.setContent('<main><div>Item total: $<!-- -->39.98</div><div>New <!-- -->York</div><div>Tax: $3</div><div>9.98</div></main>');
+    const { snapshot } = await driver.observe();
+    expect(snapshot).toContain('- text: Item total: $39.98');
+    expect(snapshot).toContain('- text: New York');
+    expect(quoteIsOnPage('Item total: $39.98', [{ text: snapshot }])).toBe(true);
+    expect(quoteIsOnPage('Tax: $39.98', [{ text: snapshot }])).toBe(false);
+  }, 30_000);
 });
